@@ -65,6 +65,7 @@ static char *features[] = {
 #else
   "-tui",
 #endif
+  "+tangle",
   NULL
 };
 
