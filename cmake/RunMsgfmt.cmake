@@ -5,5 +5,5 @@ execute_process(
   ERROR_VARIABLE err
   RESULT_VARIABLE res)
 if(NOT res EQUAL 0)
-  message(FATAL_ERROR "msgfmt failed to run correctly: ${err}")
+  # message(FATAL_ERROR "msgfmt failed to run correctly: ${err}")
 endif()

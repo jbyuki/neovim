@@ -841,6 +841,7 @@ enum {
   BV_TSRFU,
   BV_TAGS,
   BV_TC,
+  BV_TGL,
   BV_TS,
   BV_TW,
   BV_TX,

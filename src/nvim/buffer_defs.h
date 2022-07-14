@@ -765,6 +765,7 @@ struct file_buffer {
   char_u *b_p_vts;              ///< 'vartabstop'
   long *b_p_vts_array;           ///< 'vartabstop' in internal format
   char_u *b_p_keymap;           ///< 'keymap'
+  int b_p_tgl;                  ///< 'tangle' 
 
   // local values for options which are normally global
   char_u *b_p_gp;               ///< 'grepprg' local value

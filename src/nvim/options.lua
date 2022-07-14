@@ -2508,6 +2508,14 @@ return {
       defaults={if_true=true}
     },
     {
+      full_name='tangle', abbreviation='tgl',
+      short_desc=N_("tangle view"),
+      type='bool', scope={'buffer'},
+      redraw={'statuslines'},
+      varname='p_tgl',
+      defaults={if_true=false}
+    },
+    {
       full_name='termbidi', abbreviation='tbidi',
       short_desc=N_("terminal takes care of bi-directionality"),
       type='bool', scope={'global'},

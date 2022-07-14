@@ -183,6 +183,7 @@ static long p_wm;
 static char_u *p_vsts;
 static char_u *p_vts;
 static char_u *p_keymap;
+static int p_tgl;
 
 // Saved values for when 'bin' is set.
 static int p_et_nobin;
@@ -6279,6 +6280,8 @@ static char_u *get_varp(vimoption_T *p)
     return (char_u *)&(curbuf->b_p_sw);
   case PV_TFU:
     return (char_u *)&(curbuf->b_p_tfu);
+  case PV_TGL:
+    return (char_u *)&(curbuf->b_p_tgl);
   case PV_TS:
     return (char_u *)&(curbuf->b_p_ts);
   case PV_TW:
