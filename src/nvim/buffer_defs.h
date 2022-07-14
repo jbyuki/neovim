@@ -907,6 +907,10 @@ struct file_buffer {
   int flush_count;
 
   int b_diff_failed;    // internal diff failed for this buffer
+  
+
+  // Tangle related
+  buf_T* tangle_view;
 };
 
 /*

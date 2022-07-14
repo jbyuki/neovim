@@ -4239,6 +4239,12 @@ static char *set_bool_option(const int opt_idx, char_u *const varp, const int va
         emsg(_(errmsg));
       }
     }
+  } else if ((int *)varp == &curbuf->b_p_tgl) {
+    if(curbuf->b_p_tgl) {
+      attach_tangle(curbuf);
+    } else {
+      deattach_tangle(curbuf);
+    }
   }
 
   if ((int *)varp == &curwin->w_p_arab) {
