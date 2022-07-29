@@ -27,6 +27,7 @@
 #include "nvim/state.h"
 #include "nvim/ui.h"
 #include "nvim/undo.h"
+#include "nvim/tangle.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "change.c.generated.h"
@@ -567,7 +568,12 @@ void ins_char(int c)
   if (buf[0] == 0) {
     buf[0] = '\n';
   }
-  ins_char_bytes((char_u *)buf, n);
+  
+  if(curbuf->b_p_tgl == 0) {
+    ins_char_bytes((char_u *)buf, n);
+  } else {
+    ins_char_bytes_tangle((char_u *)buf, n);
+  }
 }
 
 void ins_char_bytes(char_u *buf, size_t charlen)
