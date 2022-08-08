@@ -734,7 +734,12 @@ int del_chars(long count, int fixpos)
     bytes += l;
     p += l;
   }
-  return del_bytes(bytes, fixpos, true);
+
+  if(curbuf->b_p_tgl == 0) {
+    return del_bytes(bytes, fixpos, true);
+  } else {
+    return del_bytes_tangle(bytes, fixpos, true);
+  }
 }
 
 /// Delete "count" bytes under the cursor.

@@ -57,6 +57,8 @@
 #include "nvim/vim.h"
 #include "nvim/window.h"
 
+#include "nvim/tangle.h"
+
 static yankreg_T y_regs[NUM_REGISTERS] = { 0 };
 
 static yankreg_T *y_previous = NULL;  // ptr to last written yankreg
@@ -1749,8 +1751,13 @@ int op_delete(oparg_T *oap)
         }
       }
 
-      (void)del_bytes((colnr_T)n, !virtual_op,
-                      oap->op_type == OP_DELETE && !oap->is_VIsual);
+      if(curbuf->b_p_tgl == 0) {
+        (void)del_bytes((colnr_T)n, !virtual_op,
+                        oap->op_type == OP_DELETE && !oap->is_VIsual);
+      } else {
+        (void)del_bytes_tangle((colnr_T)n, !virtual_op,
+                        oap->op_type == OP_DELETE && !oap->is_VIsual);
+      }
     } else {
       // delete characters between lines
       pos_T curpos;
