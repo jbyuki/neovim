@@ -385,3 +385,59 @@ curwin->w_cursor.lnum = old_cursor.lnum + 1;
 
 curwin->w_cursor.col = newcol;
 curwin->w_cursor.coladd = 0;
+
+@define_functions+=
+void del_lines_tangle(long nlines, bool undo)
+{
+  @del_lines_variables
+
+  @get_first_line_to_delete
+  @save_lines_for_undo_del_line
+  @del_lines
+  @changed_lines_del_line
+
+  buf_T* save_buf = curbuf;
+  curbuf = curbuf->tangle_view;
+
+  @save_lines_for_undo_del_line
+  @del_lines
+  @changed_lines_del_line
+
+  curbuf = save_buf;
+
+  @adjust_cursor_del_line
+}
+
+@del_lines_variables+=
+long n;
+linenr_T first;
+
+@get_first_line_to_delete+=
+first = curwin->w_cursor.lnum;
+
+@save_lines_for_undo_del_line+=
+if (undo && u_savedel(first, nlines) == FAIL) {
+  return;
+}
+
+@del_lines+=
+for (n = 0; n < nlines;) {
+  if (curbuf->b_ml.ml_flags & ML_EMPTY) {  // nothing to delete
+    break;
+  }
+
+  ml_delete(first, true);
+  n++;
+
+  // If we delete the last line in the file, stop
+  if (first > curbuf->b_ml.ml_line_count) {
+    break;
+  }
+}
+
+@adjust_cursor_del_line+=
+curwin->w_cursor.col = 0;
+check_cursor_lnum();
+
+@changed_lines_del_line+=
+deleted_lines_mark(first, n);

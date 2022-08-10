@@ -344,8 +344,67 @@ int open_line_tangle(int dir, int flags, int second_line_indent, bool *did_do_co
   curwin->w_cursor.col = newcol;
   curwin->w_cursor.coladd = 0;
 
+
   curbuf = save_buf;
   return true;
+}
+
+void del_lines_tangle(long nlines, bool undo)
+{
+  long n;
+  linenr_T first;
+
+
+  first = curwin->w_cursor.lnum;
+
+  if (undo && u_savedel(first, nlines) == FAIL) {
+    return;
+  }
+
+  for (n = 0; n < nlines;) {
+    if (curbuf->b_ml.ml_flags & ML_EMPTY) {  // nothing to delete
+      break;
+    }
+
+    ml_delete(first, true);
+    n++;
+
+    // If we delete the last line in the file, stop
+    if (first > curbuf->b_ml.ml_line_count) {
+      break;
+    }
+  }
+
+  deleted_lines_mark(first, n);
+
+  buf_T* save_buf = curbuf;
+  curbuf = curbuf->tangle_view;
+
+  if (undo && u_savedel(first, nlines) == FAIL) {
+    return;
+  }
+
+  for (n = 0; n < nlines;) {
+    if (curbuf->b_ml.ml_flags & ML_EMPTY) {  // nothing to delete
+      break;
+    }
+
+    ml_delete(first, true);
+    n++;
+
+    // If we delete the last line in the file, stop
+    if (first > curbuf->b_ml.ml_line_count) {
+      break;
+    }
+  }
+
+  deleted_lines_mark(first, n);
+
+  curbuf = save_buf;
+
+  curwin->w_cursor.col = 0;
+  check_cursor_lnum();
+
 }
 
 
