@@ -52,6 +52,7 @@ void deattach_tangle(buf_T *buf)
 @define_functions+=
 void ins_char_bytes_tangle(char_u *buf, size_t charlen)
 {
+  @ins_char_bytes_variables
   @get_cursor_position_insert
   @get_old_line_information
   @allocate_new_line
@@ -68,14 +69,14 @@ void ins_char_bytes_tangle(char_u *buf, size_t charlen)
   buf_T* save_buf = curbuf;
   curbuf = curbuf->tangle_view;
 
-  @get_old_line_information_tangle
-  @allocate_new_line_tangle
+  @get_old_line_information
+  @allocate_new_line
 
-  @copy_old_line_before_tangle
-  @copy_old_line_after_tangle
-  @copy_new_character_tangle
+  @copy_old_line_before
+  @copy_old_line_after
+  @copy_new_character
 
-  @replace_line_buffer_tangle
+  @replace_line_buffer
 
   curbuf = save_buf;
 }
@@ -86,27 +87,43 @@ void ins_char_bytes_tangle(char_u *buf, size_t charlen)
 #include "nvim/memline.h"
 #include "nvim/vim.h"
 
+@ins_char_bytes_variables+=
+size_t col;
+linenr_T lnum;
+
 @get_cursor_position_insert+=
-size_t col = (size_t)curwin->w_cursor.col;
-linenr_T lnum = curwin->w_cursor.lnum;
+col = (size_t)curwin->w_cursor.col;
+lnum = curwin->w_cursor.lnum;
+
+@ins_char_bytes_variables+=
+char_u *oldp;
+size_t linelen;
 
 @get_old_line_information+=
-char_u *oldp = ml_get(lnum);
-size_t linelen = STRLEN(oldp) + 1;  // length of old line including NUL
+oldp = ml_get(lnum);
+linelen = STRLEN(oldp) + 1;  // length of old line including NUL
+
+@ins_char_bytes_variables+=
+size_t oldlen;
+size_t newlen;
+char_u *newp;
 
 @allocate_new_line+=
-size_t oldlen = 0;
-size_t newlen = charlen;
+oldlen = 0;
+newlen = charlen;
 
-char_u *newp = xmalloc(linelen + newlen - oldlen);
+newp = xmalloc(linelen + newlen - oldlen);
 
 @copy_old_line_before+=
 if (col > 0) {
   memmove(newp, oldp, col);
 }
 
+@ins_char_bytes_variables+=
+char_u *p;
+
 @copy_old_line_after+=
-char_u *p = newp + col;
+p = newp + col;
 if (linelen > col + oldlen) {
   memmove(p + newlen, oldp + col + oldlen,
           (size_t)(linelen - col - oldlen));
@@ -142,43 +159,14 @@ buf_T* tangle_view = buflist_new(NULL, NULL, (linenr_T)1, BLN_DUMMY | BLN_LISTED
 @set_tangle_buffer+=
 buf->tangle_view = tangle_view;
 
-@get_old_line_information_tangle+=
-oldp = ml_get_buf(curbuf, lnum, false);
-linelen = STRLEN(oldp) + 1;  // length of old line including NUL
-
-@allocate_new_line_tangle+=
-oldlen = 0;
-newlen = charlen;
-
-newp = xmalloc(linelen + newlen - oldlen);
-
-@copy_old_line_before_tangle+=
-if (col > 0) {
-  memmove(newp, oldp, col);
-}
-
-@copy_old_line_after_tangle+=
-p = newp + col;
-if (linelen > col + oldlen) {
-  memmove(p + newlen, oldp + col + oldlen,
-          (size_t)(linelen - col - oldlen));
-}
-
-@copy_new_character_tangle+=
-memmove(p, buf, charlen);
-for (size_t i = charlen; i < newlen; i++) {
-  p[i] = ' ';
-}
-
-@replace_line_buffer_tangle+=
-ml_replace(lnum, (char *)newp, false);
-
 @define_functions+=
 int del_bytes_tangle(colnr_T count, bool fixpos, bool use_delcombine)
 {
-  @get_cursor_position_insert
-  @get_old_line_information
-  @get_old_line_length
+  @del_bytes_variables
+
+  @get_cursor_position_delete
+  @get_old_line_information_delete
+  @get_old_line_length_delete
 
   @check_if_can_delete
 
@@ -192,10 +180,10 @@ int del_bytes_tangle(colnr_T count, bool fixpos, bool use_delcombine)
   buf_T* save_buf = curbuf;
   curbuf = curbuf->tangle_view;
 
-  @get_old_line_information_tangle
-  @get_old_line_length_tangle
+  @get_old_line_information_delete
+  @get_old_line_length_delete
 
-  @allocate_line_if_not_allocated_tangle
+  @allocate_line_if_not_allocated
   @copy_line_after_delete
   @replace_line_buffer_delete
 
@@ -203,8 +191,27 @@ int del_bytes_tangle(colnr_T count, bool fixpos, bool use_delcombine)
   return OK;
 }
 
-@get_old_line_length+=
-colnr_T oldlen = (colnr_T)STRLEN(oldp);
+@del_bytes_variables+=
+size_t col;
+linenr_T lnum;
+
+@get_cursor_position_delete+=
+col = (size_t)curwin->w_cursor.col;
+lnum = curwin->w_cursor.lnum;
+
+@del_bytes_variables+=
+char_u *oldp;
+size_t linelen;
+
+@get_old_line_information_delete+=
+oldp = ml_get(lnum);
+linelen = STRLEN(oldp) + 1;  // length of old line including NUL
+
+@del_bytes_variables+=
+colnr_T oldlen;
+
+@get_old_line_length_delete+=
+oldlen = (colnr_T)STRLEN(oldp);
 
 @check_if_can_delete+=
 if (col >= oldlen) {
@@ -215,12 +222,16 @@ if (count == 0) {
   return OK;
 }
 
-@allocate_line_if_not_allocated+=
-int movelen = oldlen - col - count + 1;  // includes trailing NUL
-
-bool was_alloced = ml_line_alloced();     // check if oldp was allocated
-
+@del_bytes_variables+=
+int movelen;
+bool was_alloced;
 char_u *newp;
+
+@allocate_line_if_not_allocated+=
+movelen = oldlen - col - count + 1;  // includes trailing NUL
+
+was_alloced = ml_line_alloced();     // check if oldp was allocated
+
 if (was_alloced) {
   ml_add_deleted_len(curbuf->b_ml.ml_line_ptr, oldlen);
   newp = oldp;                            // use same allocated memory
@@ -240,18 +251,137 @@ if (!was_alloced) {
 @mark_buffer_as_deleted+=
 inserted_bytes(lnum, col, count, 0);
 
-@get_old_line_length_tangle+=
-oldlen = (colnr_T)STRLEN(oldp);
+@define_functions+=
+int open_line_tangle(int dir, int flags, int second_line_indent, bool *did_do_comment)
+{
+  @open_line_variables
 
-@allocate_line_if_not_allocated_tangle+=
-movelen = oldlen - col - count + 1;  // includes trailing NUL
+  @get_cursor_position_open
+  @save_cursor_delete
 
-was_alloced = ml_line_alloced();     // check if oldp was allocated
+  @save_current_line_open
+  @compute_extra_open
 
-if (was_alloced) {
-  ml_add_deleted_len(curbuf->b_ml.ml_line_ptr, oldlen);
-  newp = oldp;                            // use same allocated memory
-} else {                                  // need to allocate a new line
-  newp = xmalloc((size_t)(oldlen + 1 - count));
-  memmove(newp, oldp, (size_t)col);
+  @clear_some_line_states_open
+
+  @compute_indent_open
+  @append_new_line
+  @truncate_current_line
+
+  @open_line_free
+
+  buf_T* save_buf = curbuf;
+  curbuf = curbuf->tangle_view;
+
+  @save_current_line_open
+  @compute_extra_open
+
+  @clear_some_line_states_open
+
+  @compute_indent_open
+  @append_new_line
+  @truncate_current_line
+
+  @open_line_free
+
+  @move_cursor_delete
+
+  curbuf = save_buf;
+  return true;
 }
+
+@open_line_variables+=
+colnr_T mincol;
+linenr_T lnum;
+
+@get_cursor_position_open+=
+mincol = (size_t)curwin->w_cursor.col + 1;
+lnum = curwin->w_cursor.lnum;
+
+@open_line_variables+=
+char_u *saved_line;
+
+@includes+=
+#include "nvim/cursor.h"
+
+@save_current_line_open+=
+saved_line = vim_strsave(get_cursor_line_ptr());
+
+@open_line_free+=
+xfree(saved_line);
+
+@includes+=
+#include "nvim/indent.h"
+
+@open_line_variables+=
+char_u *p_extra = NULL;
+bool do_si = may_do_si();
+char_u *p;
+int first_char = NUL;
+int extra_len = 0;
+char_u saved_char = NUL;
+
+@compute_extra_open+=
+if ((State & MODE_INSERT) && (State & VREPLACE_FLAG) == 0) {
+  p_extra = saved_line + curwin->w_cursor.col;
+  if (do_si) {  // need first char after new line break
+    p = (char_u *)skipwhite((char *)p_extra);
+    first_char = *p;
+  }
+  extra_len = (int)STRLEN(p_extra);
+  saved_char = *p_extra;
+  *p_extra = NUL;
+}
+
+@includes+=
+#include "nvim/undo.h"
+
+@clear_some_line_states_open+=
+u_clearline();
+did_si = false;
+ai_col = 0;
+
+@open_line_variables+=
+colnr_T less_cols = 0;
+
+@compute_indent_open+=
+less_cols = (int)(p_extra - saved_line);
+end_comment_pending = NUL;
+
+@open_line_variables+=
+pos_T old_cursor;
+bool did_append;
+
+@save_cursor_delete+=
+old_cursor = curwin->w_cursor;
+
+@append_new_line+=
+curbuf_splice_pending++;
+
+if ((State & VREPLACE_FLAG) == 0 || old_cursor.lnum >= orig_line_count) {
+  ml_append(curwin->w_cursor.lnum, (char *)p_extra, (colnr_T)0, false);
+  did_append = true;
+}
+
+@open_line_variables+=
+bool trunc_line = false;
+colnr_T newcol = 0;
+
+@truncate_current_line+=
+if (dir == FORWARD) {
+  if (trunc_line || (State & MODE_INSERT)) {
+      // truncate current line at cursor
+      if (did_append) {
+        changed_lines(curwin->w_cursor.lnum, curwin->w_cursor.col,
+                      curwin->w_cursor.lnum + 1, 1L, true);
+        did_append = false;
+      }
+  }
+}
+curbuf_splice_pending--;
+
+@move_cursor_delete+=
+curwin->w_cursor.lnum = old_cursor.lnum + 1;
+
+curwin->w_cursor.col = newcol;
+curwin->w_cursor.coladd = 0;
