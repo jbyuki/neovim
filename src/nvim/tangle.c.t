@@ -273,6 +273,8 @@ int open_line_tangle(int dir, int flags, int second_line_indent, bool *did_do_co
   buf_T* save_buf = curbuf;
   curbuf = curbuf->tangle_view;
 
+  @save_cursor_delete
+
   @save_current_line_open
   @compute_extra_open
 
@@ -348,6 +350,10 @@ colnr_T less_cols = 0;
 less_cols = (int)(p_extra - saved_line);
 end_comment_pending = NUL;
 
+if (p_extra == NULL) {
+  p_extra = (char_u *)"";                 // append empty line
+}
+
 @open_line_variables+=
 pos_T old_cursor;
 bool did_append;
@@ -363,25 +369,42 @@ if ((State & VREPLACE_FLAG) == 0 || old_cursor.lnum >= orig_line_count) {
   did_append = true;
 }
 
+@includes+=
+#include <nvim/extmark.h>
+
 @open_line_variables+=
 bool trunc_line = false;
 colnr_T newcol = 0;
+bcount_t extra;
 
 @truncate_current_line+=
 if (dir == FORWARD) {
   if (trunc_line || (State & MODE_INSERT)) {
-      // truncate current line at cursor
-      if (did_append) {
-        changed_lines(curwin->w_cursor.lnum, curwin->w_cursor.col,
-                      curwin->w_cursor.lnum + 1, 1L, true);
-        did_append = false;
-      }
+    // truncate current line at cursor
+    if (did_append) {
+      changed_lines(curwin->w_cursor.lnum, curwin->w_cursor.col,
+                    curwin->w_cursor.lnum + 1, 1L, true);
+      did_append = false;
+    } else {
+      changed_bytes(curwin->w_cursor.lnum, curwin->w_cursor.col);
+    }
   }
+
+  old_cursor.lnum += 1;
 }
+
+if (did_append) {
+  changed_lines(old_cursor.lnum, 0, old_cursor.lnum, 1L, true);
+  // bail out and just get the final length of the line we just manipulated
+  extra = (bcount_t)STRLEN(ml_get(old_cursor.lnum));
+  extmark_splice(curbuf, (int)old_cursor.lnum - 1, 0,
+                 0, 0, 0, 1, 0, 1 + extra, kExtmarkUndo);
+}
+
 curbuf_splice_pending--;
 
 @move_cursor_delete+=
-curwin->w_cursor.lnum = old_cursor.lnum + 1;
+curwin->w_cursor.lnum = old_cursor.lnum;
 
 curwin->w_cursor.col = newcol;
 curwin->w_cursor.coladd = 0;
