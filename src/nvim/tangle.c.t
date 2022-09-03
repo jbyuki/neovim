@@ -152,9 +152,15 @@ if (!p_ri || (State & REPLACE_FLAG)) {
 
 @includes+=
 #include "nvim/buffer.h"
+#include "nvim/option.h"
 
 @create_tangle_buffer+=
-buf_T* tangle_view = buflist_new(NULL, NULL, (linenr_T)1, BLN_DUMMY | BLN_LISTED);
+buf_T* tangle_view = buflist_new(NULL, NULL, (linenr_T)1, BLN_LISTED);
+
+buf_T* save_buf = curbuf;
+curbuf = tangle_view;
+set_option_value("ft", 0L, "help", OPT_LOCAL);
+curbuf = save_buf;
 
 @set_tangle_buffer+=
 buf->tangle_view = tangle_view;
