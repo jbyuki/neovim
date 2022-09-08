@@ -7,6 +7,7 @@
 #include "nvim/decoration.h"
 #include "nvim/decoration_provider.h"
 #include "nvim/highlight.h"
+#include "nvim/lib/kvec.h"
 #include "nvim/lua/executor.h"
 
 static kvec_t(DecorProvider) decor_providers = KV_INITIAL_VALUE;
@@ -14,7 +15,7 @@ static kvec_t(DecorProvider) decor_providers = KV_INITIAL_VALUE;
 #define DECORATION_PROVIDER_INIT(ns_id) (DecorProvider) \
   { ns_id, false, LUA_NOREF, LUA_NOREF, \
     LUA_NOREF, LUA_NOREF, LUA_NOREF, \
-    LUA_NOREF, -1 }
+    LUA_NOREF, -1, false, false }
 
 static bool decor_provider_invoke(NS ns_id, const char *name, LuaRef ref, Array args,
                                   bool default_true, char **perr)
@@ -47,11 +48,33 @@ static bool decor_provider_invoke(NS ns_id, const char *name, LuaRef ref, Array 
   return false;
 }
 
+void decor_providers_invoke_spell(win_T *wp, int start_row, int start_col, int end_row, int end_col,
+                                  char **err)
+{
+  for (size_t i = 0; i < kv_size(decor_providers); i++) {
+    DecorProvider *p = &kv_A(decor_providers, i);
+    if (!p->active) {
+      continue;
+    }
+
+    if (p->spell_nav != LUA_NOREF) {
+      MAXSIZE_TEMP_ARRAY(args, 6);
+      ADD_C(args, INTEGER_OBJ(wp->handle));
+      ADD_C(args, INTEGER_OBJ(wp->w_buffer->handle));
+      ADD_C(args, INTEGER_OBJ(start_row));
+      ADD_C(args, INTEGER_OBJ(start_col));
+      ADD_C(args, INTEGER_OBJ(end_row));
+      ADD_C(args, INTEGER_OBJ(end_col));
+      decor_provider_invoke(p->ns_id, "spell", p->spell_nav, args, true, err);
+    }
+  }
+}
+
 /// For each provider invoke the 'start' callback
 ///
 /// @param[out] providers Decoration providers
 /// @param[out] err       Provider err
-void decor_providers_start(DecorProviders *providers, int type, char **err)
+void decor_providers_start(DecorProviders *providers, char **err)
 {
   kvi_init(*providers);
 
@@ -63,9 +86,8 @@ void decor_providers_start(DecorProviders *providers, int type, char **err)
 
     bool active;
     if (p->redraw_start != LUA_NOREF) {
-      FIXED_TEMP_ARRAY(args, 2);
-      args.items[0] = INTEGER_OBJ((int)display_tick);
-      args.items[1] = INTEGER_OBJ(type);
+      MAXSIZE_TEMP_ARRAY(args, 2);
+      ADD_C(args, INTEGER_OBJ((int)display_tick));
       active = decor_provider_invoke(p->ns_id, "start", p->redraw_start, args, true, err);
     } else {
       active = true;
@@ -96,19 +118,17 @@ void decor_providers_invoke_win(win_T *wp, DecorProviders *providers,
   for (size_t k = 0; k < kv_size(*providers); k++) {
     DecorProvider *p = kv_A(*providers, k);
     if (p && p->redraw_win != LUA_NOREF) {
-      FIXED_TEMP_ARRAY(args, 4);
-      args.items[0] = WINDOW_OBJ(wp->handle);
-      args.items[1] = BUFFER_OBJ(wp->w_buffer->handle);
+      MAXSIZE_TEMP_ARRAY(args, 4);
+      ADD_C(args, WINDOW_OBJ(wp->handle));
+      ADD_C(args, BUFFER_OBJ(wp->w_buffer->handle));
       // TODO(bfredl): we are not using this, but should be first drawn line?
-      args.items[2] = INTEGER_OBJ(wp->w_topline - 1);
-      args.items[3] = INTEGER_OBJ(knownmax);
+      ADD_C(args, INTEGER_OBJ(wp->w_topline - 1));
+      ADD_C(args, INTEGER_OBJ(knownmax));
       if (decor_provider_invoke(p->ns_id, "win", p->redraw_win, args, true, err)) {
         kvi_push(*line_providers, p);
       }
     }
   }
-
-  win_check_ns_hl(wp);
 }
 
 /// For each provider invoke the 'line' callback for a given window row.
@@ -118,16 +138,16 @@ void decor_providers_invoke_win(win_T *wp, DecorProviders *providers,
 /// @param      row       Row to invoke line callback for
 /// @param[out] has_decor Set when at least one provider invokes a line callback
 /// @param[out] err       Provider error
-void providers_invoke_line(win_T *wp, DecorProviders *providers, int row, bool *has_decor,
-                           char **err)
+void decor_providers_invoke_line(win_T *wp, DecorProviders *providers, int row, bool *has_decor,
+                                 char **err)
 {
   for (size_t k = 0; k < kv_size(*providers); k++) {
     DecorProvider *p = kv_A(*providers, k);
     if (p && p->redraw_line != LUA_NOREF) {
-      FIXED_TEMP_ARRAY(args, 3);
-      args.items[0] = WINDOW_OBJ(wp->handle);
-      args.items[1] = BUFFER_OBJ(wp->w_buffer->handle);
-      args.items[2] = INTEGER_OBJ(row);
+      MAXSIZE_TEMP_ARRAY(args, 3);
+      ADD_C(args, WINDOW_OBJ(wp->handle));
+      ADD_C(args, BUFFER_OBJ(wp->w_buffer->handle));
+      ADD_C(args, INTEGER_OBJ(row));
       if (decor_provider_invoke(p->ns_id, "line", p->redraw_line, args, true, err)) {
         *has_decor = true;
       } else {
@@ -135,7 +155,7 @@ void providers_invoke_line(win_T *wp, DecorProviders *providers, int row, bool *
         kv_A(*providers, k) = NULL;
       }
 
-      win_check_ns_hl(wp);
+      hl_check_ns();
     }
   }
 }
@@ -150,8 +170,8 @@ void decor_providers_invoke_buf(buf_T *buf, DecorProviders *providers, char **er
   for (size_t i = 0; i < kv_size(*providers); i++) {
     DecorProvider *p = kv_A(*providers, i);
     if (p && p->redraw_buf != LUA_NOREF) {
-      FIXED_TEMP_ARRAY(args, 1);
-      args.items[0] = BUFFER_OBJ(buf->handle);
+      MAXSIZE_TEMP_ARRAY(args, 1);
+      ADD_C(args, BUFFER_OBJ(buf->handle));
       decor_provider_invoke(p->ns_id, "buf", p->redraw_buf, args, true, err);
     }
   }
@@ -167,8 +187,8 @@ void decor_providers_invoke_end(DecorProviders *providers, char **err)
   for (size_t i = 0; i < kv_size(*providers); i++) {
     DecorProvider *p = kv_A(*providers, i);
     if (p && p->active && p->redraw_end != LUA_NOREF) {
-      FIXED_TEMP_ARRAY(args, 1);
-      args.items[0] = INTEGER_OBJ((int)display_tick);
+      MAXSIZE_TEMP_ARRAY(args, 1);
+      ADD_C(args, INTEGER_OBJ((int)display_tick));
       decor_provider_invoke(p->ns_id, "end", p->redraw_end, args, true, err);
     }
   }
@@ -176,6 +196,7 @@ void decor_providers_invoke_end(DecorProviders *providers, char **err)
 
 DecorProvider *get_decor_provider(NS ns_id, bool force)
 {
+  assert(ns_id > 0);
   size_t i;
   size_t len = kv_size(decor_providers);
   for (i = 0; i < len; i++) {
@@ -216,6 +237,7 @@ void decor_provider_clear(DecorProvider *p)
   NLUA_CLEAR_REF(p->redraw_win);
   NLUA_CLEAR_REF(p->redraw_line);
   NLUA_CLEAR_REF(p->redraw_end);
+  NLUA_CLEAR_REF(p->spell_nav);
   p->active = false;
 }
 

@@ -77,7 +77,7 @@
 ///
 /// @return - The open memory file, on success.
 ///         - NULL, on failure (e.g. file does not exist).
-memfile_T *mf_open(char_u *fname, int flags)
+memfile_T *mf_open(char *fname, int flags)
 {
   memfile_T *mfp = xmalloc(sizeof(memfile_T));
 
@@ -148,7 +148,7 @@ memfile_T *mf_open(char_u *fname, int flags)
 ///
 /// @return OK    On success.
 ///         FAIL  If file could not be opened.
-int mf_open_file(memfile_T *mfp, char_u *fname)
+int mf_open_file(memfile_T *mfp, char *fname)
 {
   if (mf_do_open(mfp, fname, O_RDWR | O_CREAT | O_EXCL)) {
     mfp->mf_dirty = true;
@@ -170,7 +170,7 @@ void mf_close(memfile_T *mfp, bool del_file)
     emsg(_(e_swapclose));
   }
   if (del_file && mfp->mf_fname != NULL) {
-    os_remove((char *)mfp->mf_fname);
+    os_remove(mfp->mf_fname);
   }
 
   // free entries in used list
@@ -210,7 +210,7 @@ void mf_close_file(buf_T *buf, bool getlines)
   mfp->mf_fd = -1;
 
   if (mfp->mf_fname != NULL) {
-    os_remove((char *)mfp->mf_fname);    // delete the swap file
+    os_remove(mfp->mf_fname);    // delete the swap file
     mf_free_fnames(mfp);
   }
 }
@@ -749,10 +749,10 @@ void mf_free_fnames(memfile_T *mfp)
 ///
 /// Only called when creating or renaming the swapfile. Either way it's a new
 /// name so we must work out the full path name.
-void mf_set_fnames(memfile_T *mfp, char_u *fname)
+void mf_set_fnames(memfile_T *mfp, char *fname)
 {
   mfp->mf_fname = fname;
-  mfp->mf_ffname = (char_u *)FullName_save((char *)mfp->mf_fname, false);
+  mfp->mf_ffname = (char_u *)FullName_save(mfp->mf_fname, false);
 }
 
 /// Make name of memfile's swapfile a full path.
@@ -762,7 +762,7 @@ void mf_fullname(memfile_T *mfp)
 {
   if (mfp != NULL && mfp->mf_fname != NULL && mfp->mf_ffname != NULL) {
     xfree(mfp->mf_fname);
-    mfp->mf_fname = mfp->mf_ffname;
+    mfp->mf_fname = (char *)mfp->mf_ffname;
     mfp->mf_ffname = NULL;
   }
 }
@@ -779,7 +779,7 @@ bool mf_need_trans(memfile_T *mfp)
 ///
 /// @param  flags  Flags for open().
 /// @return A bool indicating success of the `open` call.
-static bool mf_do_open(memfile_T *mfp, char_u *fname, int flags)
+static bool mf_do_open(memfile_T *mfp, char *fname, int flags)
 {
   // fname cannot be NameBuff, because it must have been allocated.
   mf_set_fnames(mfp, fname);
@@ -789,7 +789,7 @@ static bool mf_do_open(memfile_T *mfp, char_u *fname, int flags)
   /// exist yet. If there is a symbolic link, this is most likely an attack.
   FileInfo file_info;
   if ((flags & O_CREAT)
-      && os_fileinfo_link((char *)mfp->mf_fname, &file_info)) {
+      && os_fileinfo_link(mfp->mf_fname, &file_info)) {
     mfp->mf_fd = -1;
     emsg(_("E300: Swap file already exists (symlink attack?)"));
   } else {
@@ -821,7 +821,7 @@ static bool mf_do_open(memfile_T *mfp, char_u *fname, int flags)
 /// Initialize an empty hash table.
 static void mf_hash_init(mf_hashtab_T *mht)
 {
-  memset(mht, 0, sizeof(mf_hashtab_T));
+  CLEAR_POINTER(mht);
   mht->mht_buckets = mht->mht_small_buckets;
   mht->mht_mask = MHT_INIT_SIZE - 1;
 }
@@ -924,7 +924,7 @@ static void mf_hash_grow(mf_hashtab_T *mht)
     /// a power of two.
 
     mf_hashitem_T *tails[MHT_GROWTH_FACTOR];
-    memset(tails, 0, sizeof(tails));
+    CLEAR_FIELD(tails);
 
     for (mf_hashitem_T *mhi = mht->mht_buckets[i];
          mhi != NULL; mhi = mhi->mhi_next) {

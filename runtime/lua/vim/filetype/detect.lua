@@ -62,7 +62,7 @@ end
 -- Checks the first 5 lines for a asmsyntax=foo override.
 -- Only whitespace characters can be present immediately before or after this statement.
 function M.asm_syntax(bufnr)
-  local lines = table.concat(getlines(bufnr, 1, 5), ' '):lower()
+  local lines = ' ' .. table.concat(getlines(bufnr, 1, 5), ' '):lower() .. ' '
   local match = lines:match('%sasmsyntax=([a-zA-Z0-9]+)%s')
   if match then
     return match
@@ -554,6 +554,8 @@ function M.inc(bufnr)
     -- headers so assume POV-Ray
   elseif findany(lines, { '^%s{', '^%s%(%*' }) or matchregex(lines, pascal_keywords) then
     return 'pascal'
+  elseif findany(lines, { '^%s*inherit ', '^%s*require ', '^%s*%u[%w_:${}]*%s+%??[?:+]?= ' }) then
+    return 'bitbake'
   else
     local syntax = M.asm_syntax(bufnr)
     if not syntax or syntax == '' then
@@ -928,7 +930,7 @@ function M.progress_pascal(bufnr)
   return 'progress'
 end
 
--- Distinguish between "default" and Cproto prototype file.
+-- Distinguish between "default", Prolog and Cproto prototype file.
 function M.proto(bufnr, default)
   -- Cproto files have a comment in the first line and a function prototype in
   -- the second line, it always ends in ";".  Indent files may also have
@@ -938,7 +940,18 @@ function M.proto(bufnr, default)
   if getlines(bufnr, 2):find('.;$') then
     return 'cpp'
   else
-    return default
+    -- Recognize Prolog by specific text in the first non-empty line;
+    -- require a blank after the '%' because Perl uses "%list" and "%translate"
+    local line = nextnonblank(bufnr, 1)
+    if
+      line and line:find(':%-')
+      or matchregex(line, [[\c\<prolog\>]])
+      or findany(line, { '^%s*%%+%s', '^%s*%%+$', '^%s*/%*' })
+    then
+      return 'prolog'
+    else
+      return default
+    end
   end
 end
 
@@ -1179,6 +1192,19 @@ function M.shell(path, contents, name)
     end
   end
   return name
+end
+
+-- Swift Intermediate Language or SILE
+function M.sil(bufnr)
+  for _, line in ipairs(getlines(bufnr, 1, 100)) do
+    if line:find('^%s*[\\%%]') then
+      return 'sile'
+    elseif line:find('^%s*%S') then
+      return 'sil'
+    end
+  end
+  -- No clue, default to "sil"
+  return 'sil'
 end
 
 -- SMIL or SNMP MIB file

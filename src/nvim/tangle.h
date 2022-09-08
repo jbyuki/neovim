@@ -1,4 +1,3 @@
-// Generated using ntangle.nvim
 #ifndef NVIM_TANGLE_H
 #define NVIM_TANGLE_H
 

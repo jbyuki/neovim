@@ -47,8 +47,6 @@ enum {
 
 typedef int LineFlags;
 
-EXTERN ArenaMem ui_ext_fixblk INIT(= NULL);
-
 struct ui_t {
   bool rgb;
   bool override;  ///< Force highest-requested UI capabilities.
@@ -70,6 +68,11 @@ struct ui_t {
 
   void (*inspect)(UI *ui, Dictionary *info);
 };
+
+typedef struct ui_event_callback {
+  LuaRef cb;
+  bool ext_widgets[kUIGlobalCount];
+} UIEventCallback;
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "ui.h.generated.h"

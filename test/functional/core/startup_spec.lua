@@ -2,6 +2,7 @@ local helpers = require('test.functional.helpers')(after_each)
 local Screen = require('test.functional.ui.screen')
 
 local assert_alive = helpers.assert_alive
+local assert_log = helpers.assert_log
 local clear = helpers.clear
 local command = helpers.command
 local ok = helpers.ok
@@ -23,6 +24,29 @@ local iswin = helpers.iswin
 local startswith = helpers.startswith
 local write_file = helpers.write_file
 local meths = helpers.meths
+local alter_slashes = helpers.alter_slashes
+
+local testfile = 'Xtest_startuptime'
+after_each(function()
+  os.remove(testfile)
+end)
+
+describe('startup', function()
+  it('--clean', function()
+    clear()
+    ok(string.find(alter_slashes(meths.get_option('runtimepath')), funcs.stdpath('config'), 1, true) ~= nil)
+    clear('--clean')
+    ok(string.find(alter_slashes(meths.get_option('runtimepath')), funcs.stdpath('config'), 1, true) == nil)
+  end)
+
+  it('--startuptime', function()
+    clear({ args = {'--startuptime', testfile}})
+    retry(nil, 1000, function()
+      assert_log('sourcing', testfile, 100)
+      assert_log("require%('vim%._editor'%)", testfile, 100)
+    end)
+  end)
+end)
 
 describe('startup', function()
   before_each(function()
@@ -501,8 +525,8 @@ describe('sysinit', function()
     screen:expect([[
       ^                                                            |
       Entering Debug mode.  Type "cont" to continue.              |
-      pre-vimrc command line                                      |
-      cmd: set noruler                                            |
+      nvim_exec()                                                 |
+      cmd: aunmenu *                                              |
       >                                                           |
       <" -u NONE -i NONE --cmd "set noruler" -D 1,1            All|
                                                                   |
@@ -518,13 +542,6 @@ describe('sysinit', function()
                                                                   |
     ]])
   end)
-end)
-
-describe('clean', function()
-  clear()
-  ok(string.find(meths.get_option('runtimepath'), funcs.stdpath('config'), 1, true) ~= nil)
-  clear('--clean')
-  ok(string.find(meths.get_option('runtimepath'), funcs.stdpath('config'), 1, true) == nil)
 end)
 
 describe('user config init', function()

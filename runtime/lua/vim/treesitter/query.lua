@@ -47,6 +47,9 @@ function M.get_query_files(lang, query_name, is_included)
     return {}
   end
 
+  local base_query = nil
+  local extensions = {}
+
   local base_langs = {}
 
   -- Now get the base languages by looking at the first line of every file
@@ -55,13 +58,26 @@ function M.get_query_files(lang, query_name, is_included)
   --
   -- {language} ::= {lang} | ({lang})
   local MODELINE_FORMAT = '^;+%s*inherits%s*:?%s*([a-z_,()]+)%s*$'
+  local EXTENDS_FORMAT = '^;+%s*extends%s*$'
 
-  for _, file in ipairs(lang_files) do
-    local modeline = safe_read(file, '*l')
+  for _, filename in ipairs(lang_files) do
+    local file, err = io.open(filename, 'r')
+    if not file then
+      error(err)
+    end
 
-    if modeline then
+    local extension = false
+
+    for modeline in
+      function()
+        return file:read('*l')
+      end
+    do
+      if not vim.startswith(modeline, ';') then
+        break
+      end
+
       local langlist = modeline:match(MODELINE_FORMAT)
-
       if langlist then
         for _, incllang in ipairs(vim.split(langlist, ',', true)) do
           local is_optional = incllang:match('%(.*%)')
@@ -74,16 +90,25 @@ function M.get_query_files(lang, query_name, is_included)
             table.insert(base_langs, incllang)
           end
         end
+      elseif modeline:match(EXTENDS_FORMAT) then
+        extension = true
       end
     end
+
+    if extension then
+      table.insert(extensions, filename)
+    elseif base_query == nil then
+      base_query = filename
+    end
+    io.close(file)
   end
 
-  local query_files = {}
+  local query_files = { base_query }
   for _, base_lang in ipairs(base_langs) do
     local base_files = M.get_query_files(base_lang, query_name, true)
     vim.list_extend(query_files, base_files)
   end
-  vim.list_extend(query_files, lang_files)
+  vim.list_extend(query_files, extensions)
 
   return query_files
 end
@@ -140,12 +165,9 @@ function M.get_query(lang, query_name)
   end
 end
 
-local query_cache = setmetatable({}, {
-  __index = function(tbl, key)
-    rawset(tbl, key, {})
-    return rawget(tbl, key)
-  end,
-})
+local query_cache = vim.defaulttable(function()
+  return setmetatable({}, { __mode = 'v' })
+end)
 
 --- Parse {query} as a string. (If the query is in a file, the caller
 --- should read the contents into a string before calling).
@@ -181,9 +203,14 @@ end
 
 --- Gets the text corresponding to a given node
 ---
----@param node the node
----@param source The buffer or string from which the node is extracted
-function M.get_node_text(node, source)
+---@param node table The node
+---@param source table The buffer or string from which the node is extracted
+---@param opts table Optional parameters.
+---          - concat: (boolean default true) Concatenate result in a string
+function M.get_node_text(node, source, opts)
+  opts = opts or {}
+  local concat = vim.F.if_nil(opts.concat, true)
+
   local start_row, start_col, start_byte = node:start()
   local end_row, end_col, end_byte = node:end_()
 
@@ -210,7 +237,7 @@ function M.get_node_text(node, source)
       end
     end
 
-    return table.concat(lines, '\n')
+    return concat and table.concat(lines, '\n') or lines
   elseif type(source) == 'string' then
     return source:sub(start_byte + 1, end_byte)
   end
@@ -221,6 +248,9 @@ end
 local predicate_handlers = {
   ['eq?'] = function(match, _, source, predicate)
     local node = match[predicate[2]]
+    if not node then
+      return true
+    end
     local node_text = M.get_node_text(node, source)
 
     local str
@@ -241,6 +271,9 @@ local predicate_handlers = {
 
   ['lua-match?'] = function(match, _, source, predicate)
     local node = match[predicate[2]]
+    if not node then
+      return true
+    end
     local regex = predicate[3]
     return string.find(M.get_node_text(node, source), regex)
   end,
@@ -265,6 +298,9 @@ local predicate_handlers = {
 
     return function(match, _, source, pred)
       local node = match[pred[2]]
+      if not node then
+        return true
+      end
       local regex = compiled_vim_regexes[pred[3]]
       return regex:match_str(M.get_node_text(node, source))
     end
@@ -272,6 +308,9 @@ local predicate_handlers = {
 
   ['contains?'] = function(match, _, source, predicate)
     local node = match[predicate[2]]
+    if not node then
+      return true
+    end
     local node_text = M.get_node_text(node, source)
 
     for i = 3, #predicate do
@@ -285,6 +324,9 @@ local predicate_handlers = {
 
   ['any-of?'] = function(match, _, source, predicate)
     local node = match[predicate[2]]
+    if not node then
+      return true
+    end
     local node_text = M.get_node_text(node, source)
 
     -- Since 'predicate' will not be used by callers of this function, use it

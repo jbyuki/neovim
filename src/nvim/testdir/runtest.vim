@@ -114,6 +114,13 @@ if has('win32')
   let $PROMPT = '$P$G'
 endif
 
+if has('mac')
+  " In MacOS, when starting a shell in a terminal, a bash deprecation warning
+  " message is displayed. This breaks the terminal test. Disable the warning
+  " message.
+  let $BASH_SILENCE_DEPRECATION_WARNING = 1
+endif
+
 " Prepare for calling test_garbagecollect_now().
 let v:testing = 1
 
@@ -152,6 +159,9 @@ func RunTheTest(test)
   " The test may change the current directory. Save and restore the
   " directory after executing the test.
   let save_cwd = getcwd()
+
+  " Align Nvim defaults to Vim.
+  source setup.vim
 
   if exists("*SetUp")
     try
@@ -254,6 +264,7 @@ endfunc
 func EarlyExit(test)
   " It's OK for the test we use to test the quit detection.
   if a:test != 'Test_zz_quit_detected()'
+    call add(v:errors, v:errmsg)
     call add(v:errors, 'Test caused Vim to exit: ' . a:test)
   endif
 
@@ -361,24 +372,25 @@ let s:flaky_tests = [
       \ 'Test_cursorhold_insert()',
       \ 'Test_exit_callback_interval()',
       \ 'Test_map_timeout_with_timer_interrupt()',
-      \ 'Test_oneshot()',
       \ 'Test_out_cb()',
-      \ 'Test_paused()',
       \ 'Test_popup_and_window_resize()',
       \ 'Test_quoteplus()',
       \ 'Test_quotestar()',
       \ 'Test_reltime()',
-      \ 'Test_repeat_many()',
-      \ 'Test_repeat_three()',
       \ 'Test_state()',
-      \ 'Test_stop_all_in_callback()',
       \ 'Test_term_mouse_double_click_to_create_tab()',
       \ 'Test_term_mouse_multiple_clicks_to_visually_select()',
       \ 'Test_terminal_composing_unicode()',
       \ 'Test_terminal_redir_file()',
       \ 'Test_terminal_tmap()',
+      \ 'Test_timer_oneshot()',
+      \ 'Test_timer_paused()',
+      \ 'Test_timer_repeat_many()',
+      \ 'Test_timer_repeat_three()',
+      \ 'Test_timer_stop_all_in_callback()',
+      \ 'Test_timer_stop_in_callback()',
+      \ 'Test_timer_with_partial_callback()',
       \ 'Test_termwinscroll()',
-      \ 'Test_with_partial_callback()',
       \ ]
 
 " Locate Test_ functions and execute them.
@@ -413,7 +425,7 @@ for s:test in sort(s:tests)
   set belloff=all
   let prev_error = ''
   let total_errors = []
-  let run_nr = 1
+  let g:run_nr = 1
 
   " A test can set g:test_is_flaky to retry running the test.
   let g:test_is_flaky = 0
@@ -432,10 +444,10 @@ for s:test in sort(s:tests)
       call add(s:messages, 'Found errors in ' . s:test . ':')
       call extend(s:messages, v:errors)
 
-      call add(total_errors, 'Run ' . run_nr . ':')
+      call add(total_errors, 'Run ' . g:run_nr . ':')
       call extend(total_errors, v:errors)
 
-      if run_nr == 5 || prev_error == v:errors[0]
+      if g:run_nr >= 5 || prev_error == v:errors[0]
         call add(total_errors, 'Flaky test failed too often, giving up')
         let v:errors = total_errors
         break
@@ -450,7 +462,7 @@ for s:test in sort(s:tests)
 
       let prev_error = v:errors[0]
       let v:errors = []
-      let run_nr += 1
+      let g:run_nr += 1
 
       call RunTheTest(s:test)
 

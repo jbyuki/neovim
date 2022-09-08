@@ -163,6 +163,8 @@ CTRL-W v						*CTRL-W_v*
 		3. 'eadirection' isn't "ver", and
 		4. one of the other windows is wider than the current or new
 		   window.
+		If N was given make the new window N columns wide, if
+		possible.
 		Note: In other places CTRL-Q does the same as CTRL-V, but here
 		it doesn't!
 
@@ -233,8 +235,15 @@ and 'winminwidth' are relevant.
 						*:vert* *:vertical*
 :vert[ical] {cmd}
 		Execute {cmd}.  If it contains a command that splits a window,
-		it will be split vertically.
+		it will be split vertically.  For `vertical wincmd =` windows
+		will be equalized only vertically.
 		Doesn't work for |:execute| and |:normal|.
+
+						*:hor* *:horizontal*
+:hor[izontal] {cmd}
+		Execute {cmd}.  Currently only makes a difference for
+		`horizontal wincmd =`, which will equalize windows only
+		horizontally.
 
 :lefta[bove] {cmd}				*:lefta* *:leftabove*
 :abo[veleft] {cmd}				*:abo* *:aboveleft*
@@ -372,7 +381,7 @@ CTRL-W o						*CTRL-W_o* *E445*
 CTRL-W CTRL-O					*CTRL-W_CTRL-O* *:on* *:only*
 		Make the current window the only one on the screen. All other
 		windows are closed.  For {count} see the `:quit` command
- 		above |:count_quit|.
+		above |:count_quit|.
 
 		When the 'hidden' option is set, all buffers in closed windows
 		become hidden.
@@ -442,6 +451,7 @@ position is set to keep the same Visual area selected.
 These commands can also be executed with ":wincmd":
 
 :[count]winc[md] {arg}
+:winc[md] [count] {arg}
 		Like executing CTRL-W [count] {arg}.  Example: >
 			:wincmd j
 <		Moves to the window below the current one.
@@ -527,6 +537,10 @@ CTRL-W =	Make all windows (almost) equally high and wide, but use
 		'winheight' and 'winwidth' for the current window.
 		Windows with 'winfixheight' set keep their height and windows
 		with 'winfixwidth' set keep their width.
+		To equalize only vertically (make window equally high) use
+		`vertical wincmd =`
+		To equalize only horizontally (make window equally wide) use
+		`horizontal wincmd =`
 
 :res[ize] -N					*:res* *:resize* *CTRL-W_-*
 CTRL-W -	Decrease current window height by N (default 1).

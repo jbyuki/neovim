@@ -10,14 +10,12 @@ source test_ex_z.vim
 source test_ex_mode.vim
 source test_expand.vim
 source test_expand_func.vim
-source test_feedkeys.vim
 source test_file_perm.vim
 source test_fnamemodify.vim
 source test_ga.vim
 source test_glob2regpat.vim
 source test_global.vim
 source test_lispwords.vim
-source test_menu.vim
 source test_move.vim
 source test_put.vim
 source test_reltime.vim

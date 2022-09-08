@@ -19,6 +19,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: octect-stream\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 #: ../api/private/helpers.c:201
 #, fuzzy
@@ -786,8 +787,10 @@ msgstr "-c [argumentos]"
 
 #: ../eval.c:9229
 #, c-format
-msgid "+-%s%3ld lines: "
-msgstr "+-%s%3ld líneas: "
+msgid "+-%s%3ld line: "
+msgid_plural "+-%s%3ld lines: "
+msgstr[0] "+-%s%3ld línea: "
+msgstr[1] "+-%s%3ld líneas: "
 
 #: ../eval.c:9291
 #, c-format
@@ -6050,9 +6053,9 @@ msgstr "E669: Carácter no imprimible en el nombre del grupo"
 
 # This is an error, but since there previously was no check only
 # * give a warning.
-#: ../syntax.c:7434
-msgid "W18: Invalid character in group name"
-msgstr "W18: Hay un carácter no válido en el nombre del grupo"
+#: ../highlight_group.c:1756
+msgid "E5248: Invalid character in group name"
+msgstr "E5248: Hay un carácter no válido en el nombre del grupo"
 
 #: ../syntax.c:7448
 msgid "E849: Too many highlight and syntax groups"

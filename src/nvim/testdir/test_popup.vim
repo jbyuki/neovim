@@ -382,11 +382,11 @@ func Test_completefunc_opens_new_window_two()
   setlocal completefunc=DummyCompleteTwo
   call setline(1, 'two')
   /^two
-  call assert_fails('call feedkeys("A\<C-X>\<C-U>\<C-N>\<Esc>", "x")', 'E764:')
-  call assert_notequal(winid, win_getid())
-  q!
+  call assert_fails('call feedkeys("A\<C-X>\<C-U>\<C-N>\<Esc>", "x")', 'E565:')
   call assert_equal(winid, win_getid())
-  call assert_equal('two', getline(1))
+  " v8.2.1919 hasn't been ported yet
+  " call assert_equal('twodef', getline(1))
+  call assert_equal('twoDEF', getline(1))
   q!
 endfunc
 
@@ -655,8 +655,8 @@ func Test_complete_func_mess()
   set completefunc=MessComplete
   new
   call setline(1, 'Ju')
-  call feedkeys("A\<c-x>\<c-u>/\<esc>", 'tx')
-  call assert_equal('Oct/Oct', getline(1))
+  call assert_fails('call feedkeys("A\<c-x>\<c-u>/\<esc>", "tx")', 'E565:')
+  call assert_equal('Jan/', getline(1))
   bwipe!
   set completefunc=
 endfunc
@@ -864,15 +864,21 @@ func Test_popup_position()
 endfunc
 
 func Test_popup_command()
-  if !CanRunVimInTerminal() || !has('menu')
-    return
-  endif
+  CheckScreendump
+  CheckFeature menu
 
-  call writefile([
-	\ 'one two three four five',
-	\ 'and one two Xthree four five',
-	\ 'one more two three four five',
-	\ ], 'Xtest')
+  menu Test.Foo Foo
+  call assert_fails('popup Test.Foo', 'E336:')
+  call assert_fails('popup Test.Foo.X', 'E327:')
+  call assert_fails('popup Foo', 'E337:')
+  unmenu Test.Foo
+
+  let lines =<< trim END
+	one two three four five
+	and one two Xthree four five
+	one more two three four five
+  END
+  call writefile(lines, 'Xtest')
   let buf = RunVimInTerminal('Xtest', {})
   call term_sendkeys(buf, ":source $VIMRUNTIME/menu.vim\<CR>")
   call term_sendkeys(buf, "/X\<CR>:popup PopUp\<CR>")
@@ -953,6 +959,25 @@ func Test_menu_only_exists_in_terminal()
   catch
     call assert_exception('E328:')
   endtry
+endfunc
+
+" This used to crash before patch 8.1.1424
+func Test_popup_delete_when_shown()
+  CheckFeature menu
+  CheckNotGui
+
+  func Func()
+    popup Foo
+    return "\<Ignore>"
+  endfunc
+
+  nmenu Foo.Bar :
+  nnoremap <expr> <F2> Func()
+  call feedkeys("\<F2>\<F2>\<Esc>", 'xt')
+
+  delfunc Func
+  nunmenu Foo.Bar
+  nunmap <F2>
 endfunc
 
 func Test_popup_complete_info_01()

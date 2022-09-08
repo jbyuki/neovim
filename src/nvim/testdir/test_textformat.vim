@@ -962,78 +962,6 @@ func Test_tw_2_fo_tm_noai()
   bwipe!
 endfunc
 
-func Test_tw_2_fo_cqm_com()
-  new
-  let t =<< trim END
-    {
-    Ｘ
-    Ｘa
-    ＸaＹ
-    ＸＹ
-    ＸＹＺ
-    Ｘ Ｙ
-    Ｘ ＹＺ
-    ＸＸ
-    ＸＸa
-    ＸＸＹ
-    }
-  END
-  call setline(1, t)
-  call cursor(2, 1)
-
-  set tw=2 fo=cqm comments=n:Ｘ
-  exe "normal gqgqjgqgqjgqgqjgqgqjgqgqjgqgqjgqgqjgqgqjgqgqjgqgq"
-  let t =<< trim END
-    Ｘ
-    Ｘa
-    ＸaＹ
-    ＸＹ
-    ＸＹＺ
-    Ｘ Ｙ
-    Ｘ ＹＺ
-    ＸＸ
-    ＸＸa
-    ＸＸＹ
-  END
-  exe "normal o\n" . join(t, "\n")
-
-  let expected =<< trim END
-    {
-    Ｘ
-    Ｘa
-    Ｘa
-    ＸＹ
-    ＸＹ
-    ＸＹ
-    ＸＺ
-    Ｘ Ｙ
-    Ｘ Ｙ
-    Ｘ Ｚ
-    ＸＸ
-    ＸＸa
-    ＸＸＹ
-
-    Ｘ
-    Ｘa
-    Ｘa
-    ＸＹ
-    ＸＹ
-    ＸＹ
-    ＸＺ
-    Ｘ Ｙ
-    Ｘ Ｙ
-    Ｘ Ｚ
-    ＸＸ
-    ＸＸa
-    ＸＸＹ
-    }
-  END
-  call assert_equal(expected, getline(1, '$'))
-
-  set tw& fo& comments&
-  bwipe!
-endfunc
-
 func Test_tw_2_fo_tm_replace()
   new
   let t =<< trim END
@@ -1060,7 +988,7 @@ func Test_tw_2_fo_tm_replace()
 endfunc
 
 " Test for 'matchpairs' with multibyte chars
-func Test_mps()
+func Test_mps_multibyte()
   new
   let t =<< trim END
     {
@@ -1082,6 +1010,30 @@ func Test_mps()
 
   set mps&
   bwipe!
+endfunc
+
+" Test for 'matchpairs' in latin1 encoding
+func Test_mps_latin1()
+  new
+  let save_enc = &encoding
+  " set encoding=latin1
+  call setline(1, 'abc(def)ghi')
+  normal %
+  call assert_equal(8, col('.'))
+  normal %
+  call assert_equal(4, col('.'))
+  call cursor(1, 6)
+  normal [(
+  call assert_equal(4, col('.'))
+  normal %
+  call assert_equal(8, col('.'))
+  call cursor(1, 6)
+  normal ])
+  call assert_equal(8, col('.'))
+  normal %
+  call assert_equal(4, col('.'))
+  let &encoding = save_enc
+  close!
 endfunc
 
 func Test_empty_matchpairs()
@@ -1135,10 +1087,6 @@ func Test_whichwrap_multi_byte()
   call assert_equal(expected, getline(1, '$'))
 
   bwipe!
-endfunc
-
-func Test_substitute()
-  call assert_equal('a１a２a３a', substitute('１２３', '\zs', 'a', 'g'))
 endfunc
 
 " Test for 'a' and 'w' flags in 'formatoptions'
@@ -1314,51 +1262,16 @@ func Test_fo_2()
   close!
 endfunc
 
-" Test for formatting lines where only the first line has a comment.
-func Test_fo_gq_with_firstline_comment()
+" This was leaving the cursor after the end of a line.  Complicated way to
+" have the problem show up with valgrind.
+func Test_correct_cursor_position()
+  " set encoding=iso8859
   new
-  setlocal formatoptions=tcq
-  call setline(1, ['- one two', 'three'])
-  normal gggqG
-  call assert_equal(['- one two three'], getline(1, '$'))
+  norm a0000
+  sil! norm gggg0i0gw0gg
 
-  %d
-  call setline(1, ['- one', '- two'])
-  normal gggqG
-  call assert_equal(['- one', '- two'], getline(1, '$'))
-  close!
-endfunc
-
-" Test for trying to join a comment line with a non-comment line
-func Test_join_comments()
-  new
-  call setline(1, ['one', '/* two */', 'three'])
-  normal gggqG
-  call assert_equal(['one', '/* two */', 'three'], getline(1, '$'))
-  close!
-endfunc
-
-" Test for using 'a' in 'formatoptions' with comments
-func Test_autoformat_comments()
-  new
-  setlocal formatoptions+=a
-  call feedkeys("a- one\n- two\n", 'xt')
-  call assert_equal(['- one', '- two', ''], getline(1, '$'))
-
-  %d
-  call feedkeys("a\none\n", 'xt')
-  call assert_equal(['', 'one', ''], getline(1, '$'))
-
-  setlocal formatoptions+=aw
-  %d
-  call feedkeys("aone \ntwo\n", 'xt')
-  call assert_equal(['one two', ''], getline(1, '$'))
-
-  %d
-  call feedkeys("aone\ntwo\n", 'xt')
-  call assert_equal(['one', 'two', ''], getline(1, '$'))
-
-  close!
+  bwipe!
+  set encoding=utf8
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

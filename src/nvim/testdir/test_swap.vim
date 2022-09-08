@@ -2,6 +2,7 @@
 
 source check.vim
 source shared.vim
+source term_util.vim
 
 func s:swapname()
   return trim(execute('swapname'))
@@ -278,7 +279,6 @@ func Test_swap_recover_ext()
     autocmd SwapExists * let v:swapchoice = 'r'
   augroup END
 
-
   " Create a valid swapfile by editing a file with a special extension.
   split Xtest.scr
   call setline(1, ['one', 'two', 'three'])
@@ -311,6 +311,46 @@ func Test_swap_recover_ext()
   augroup! test_swap_recover_ext
 endfunc
 
+" Test for closing a split window automatically when a swap file is detected
+" and 'Q' is selected in the confirmation prompt.
+func Test_swap_split_win()
+  autocmd! SwapExists
+  augroup test_swap_splitwin
+    autocmd!
+    autocmd SwapExists * let v:swapchoice = 'q'
+  augroup END
+
+  " Create a valid swapfile by editing a file with a special extension.
+  split Xtest.scr
+  call setline(1, ['one', 'two', 'three'])
+  write  " file is written, not modified
+  write  " write again to make sure the swapfile is created
+  " read the swapfile as a Blob
+  let swapfile_name = swapname('%')
+  let swapfile_bytes = readfile(swapfile_name, 'B')
+
+  " Close and delete the file and recreate the swap file.
+  quit
+  call delete('Xtest.scr')
+  call writefile(swapfile_bytes, swapfile_name)
+  " Split edit the file again. This should fail to open the window
+  try
+    split Xtest.scr
+  catch
+    " E308 should be caught, not E306.
+    call assert_exception('E308:')  " Original file may have been changed
+  endtry
+  call assert_equal(1, winnr('$'))
+
+  call delete('Xtest.scr')
+  call delete(swapfile_name)
+
+  augroup test_swap_splitwin
+      autocmd!
+  augroup END
+  augroup! test_swap_splitwin
+endfunc
+
 " Test for selecting 'q' in the attention prompt
 func Test_swap_prompt_splitwin()
   CheckRunVimInTerminal
@@ -335,24 +375,26 @@ func Test_swap_prompt_splitwin()
   call WaitForAssert({-> assert_match('^1$', term_getline(buf, 20))})
   call StopVimInTerminal(buf)
 
-  " This caused Vim to crash when typing "q".
-  " TODO: it does not actually reproduce the crash.
-  call writefile(['au BufAdd * set virtualedit=all'], 'Xvimrc')
-
-  let buf = RunVimInTerminal('-u Xvimrc Xfile1', {'rows': 20, 'wait_for_ruler': 0})
-  call TermWait(buf)
-  call WaitForAssert({-> assert_match('^\[O\]pen Read-Only, (E)dit anyway, (R)ecover, (Q)uit, (A)bort:', term_getline(buf, 20))})
+  " This caused Vim to crash when typing "q" at the swap file prompt.
+  let buf = RunVimInTerminal('-c "au bufadd * let foo_w = wincol()"', {'rows': 18})
+  call term_sendkeys(buf, ":e Xfile1\<CR>")
+  call WaitForAssert({-> assert_match('More', term_getline(buf, 18))})
+  call term_sendkeys(buf, " ")
+  call WaitForAssert({-> assert_match('^\[O\]pen Read-Only, (E)dit anyway, (R)ecover, (Q)uit, (A)bort:', term_getline(buf, 18))})
   call term_sendkeys(buf, "q")
+  call TermWait(buf)
+  " check that Vim is still running
+  call term_sendkeys(buf, ":echo 'hello'\<CR>")
+  call WaitForAssert({-> assert_match('^hello', term_getline(buf, 18))})
+  call term_sendkeys(buf, ":%bwipe!\<CR>")
+  call StopVimInTerminal(buf)
 
   %bwipe!
   call delete('Xfile1')
-  call delete('Xvimrc')
 endfunc
 
 func Test_swap_symlink()
-  if !has("unix")
-    return
-  endif
+  CheckUnix
 
   call writefile(['text'], 'Xtestfile')
   silent !ln -s -f Xtestfile Xtestlink

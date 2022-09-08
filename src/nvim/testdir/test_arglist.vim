@@ -1,5 +1,8 @@
 " Test argument list commands
 
+source shared.vim
+source term_util.vim
+
 func Reset_arglist()
   args a | %argd
 endfunc
@@ -84,6 +87,10 @@ func Test_argadd()
   new
   arga
   call assert_equal(0, len(argv()))
+
+  if has('unix')
+    call assert_fails('argadd `Xdoes_not_exist`', 'E479:')
+  endif
 endfunc
 
 func Test_argadd_empty_curbuf()
@@ -405,6 +412,35 @@ func Test_argedit()
   bw! x
 endfunc
 
+" Test for the :argdedupe command
+func Test_argdedupe()
+  call Reset_arglist()
+  argdedupe
+  call assert_equal([], argv())
+  args a a a aa b b a b aa
+  argdedupe
+  call assert_equal(['a', 'aa', 'b'], argv())
+  args a b c
+  argdedupe
+  call assert_equal(['a', 'b', 'c'], argv())
+  args a
+  argdedupe
+  call assert_equal(['a'], argv())
+  args a A b B
+  argdedupe
+  if has('fname_case')
+    call assert_equal(['a', 'A', 'b', 'B'], argv())
+  else
+    call assert_equal(['a', 'b'], argv())
+  endif
+  args a b a c a b
+  last
+  argdedupe
+  next
+  call assert_equal('c', expand('%:t'))
+  %argd
+endfunc
+
 " Test for the :argdelete command
 func Test_argdelete()
   call Reset_arglist()
@@ -417,6 +453,8 @@ func Test_argdelete()
   call assert_equal(['b'], argv())
   call assert_fails('argdelete', 'E610:')
   call assert_fails('1,100argdelete', 'E16:')
+  call assert_fails('argdel /\)/', 'E55:')
+  call assert_fails('1argdel 1', 'E474:')
 
   call Reset_arglist()
   args a b c d
@@ -424,6 +462,8 @@ func Test_argdelete()
   argdel
   call Assert_argc(['a', 'c', 'd'])
   %argdel
+
+  call assert_fails('argdel does_not_exist', 'E480:')
 endfunc
 
 func Test_argdelete_completion()
@@ -469,13 +509,16 @@ func Test_arglist_autocmd()
   new
   " redefine arglist; go to Xxx1
   next! Xxx1 Xxx2 Xxx3
-  " open window for all args
+  " open window for all args; Reading Xxx2 will change the arglist and the
+  " third window will get Xxx1:
+  "   win 1: Xxx1
+  "   win 2: Xxx2
+  "   win 3: Xxx1
   all
   call assert_equal('test file Xxx1', getline(1))
   wincmd w
   wincmd w
   call assert_equal('test file Xxx1', getline(1))
-  " should now be in Xxx2
   rewind
   call assert_equal('test file Xxx2', getline(1))
 
@@ -510,3 +553,42 @@ func Test_argdo()
   call assert_equal(['Xa.c', 'Xb.c', 'Xc.c'], l)
   bwipe Xa.c Xb.c Xc.c
 endfunc
+
+" Test for quiting Vim with unedited files in the argument list
+func Test_quit_with_arglist()
+  if !CanRunVimInTerminal()
+    throw 'Skipped: cannot run vim in terminal'
+  endif
+  let buf = RunVimInTerminal('', {'rows': 6})
+  call term_sendkeys(buf, ":set nomore\n")
+  call term_sendkeys(buf, ":args a b c\n")
+  call term_sendkeys(buf, ":quit\n")
+  call term_wait(buf)
+  call WaitForAssert({-> assert_match('^E173:', term_getline(buf, 6))})
+  call StopVimInTerminal(buf)
+
+  " Try :confirm quit with unedited files in arglist
+  let buf = RunVimInTerminal('', {'rows': 6})
+  call term_sendkeys(buf, ":set nomore\n")
+  call term_sendkeys(buf, ":args a b c\n")
+  call term_sendkeys(buf, ":confirm quit\n")
+  call term_wait(buf)
+  call WaitForAssert({-> assert_match('^\[Y\]es, (N)o: *$',
+        \ term_getline(buf, 6))})
+  call term_sendkeys(buf, "N")
+  call term_wait(buf)
+  call term_sendkeys(buf, ":confirm quit\n")
+  call WaitForAssert({-> assert_match('^\[Y\]es, (N)o: *$',
+        \ term_getline(buf, 6))})
+  call term_sendkeys(buf, "Y")
+  call term_wait(buf)
+  call WaitForAssert({-> assert_equal("finished", term_getstatus(buf))})
+  only!
+  " When this test fails, swap files are left behind which breaks subsequent
+  " tests
+  call delete('.a.swp')
+  call delete('.b.swp')
+  call delete('.c.swp')
+endfunc
+
+" vim: shiftwidth=2 sts=2 expandtab

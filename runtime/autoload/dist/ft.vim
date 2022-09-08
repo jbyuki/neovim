@@ -348,7 +348,7 @@ func dist#ft#FTidl()
   setf idl
 endfunc
 
-" Distinguish between "default" and Cproto prototype file. */
+" Distinguish between "default", Prolog and Cproto prototype file. */
 func dist#ft#ProtoCheck(default)
   " Cproto files have a comment in the first line and a function prototype in
   " the second line, it always ends in ";".  Indent files may also have
@@ -358,7 +358,14 @@ func dist#ft#ProtoCheck(default)
   if getline(2) =~ '.;$'
     setf cpp
   else
-    exe 'setf ' . a:default
+    " recognize Prolog by specific text in the first non-empty line
+    " require a blank after the '%' because Perl uses "%list" and "%translate"
+    let l = getline(nextnonblank(1))
+    if l =~ '\<prolog\>' || l =~ '^\s*\(%\+\(\s\|$\)\|/\*\)' || l =~ ':-'
+      setf prolog
+    else
+      exe 'setf ' .. a:default
+    endif
   endif
 endfunc
 
@@ -461,7 +468,7 @@ endfunc
 
 " Returns true if file content looks like LambdaProlog module
 func IsLProlog()
-  " skip apparent comments and blank lines, what looks like 
+  " skip apparent comments and blank lines, what looks like
   " LambdaProlog comment may be RAPID header
   let l = nextnonblank(1)
   while l > 0 && l < line('$') && getline(l) =~ '^\s*%' " LambdaProlog comment
@@ -519,12 +526,14 @@ func dist#ft#FTinc()
     " headers so assume POV-Ray
     elseif lines =~ '^\s*\%({\|(\*\)' || lines =~? s:ft_pascal_keywords
       setf pascal
+    elseif lines =~# '\<\%(require\|inherit\)\>' || lines =~# '[A-Z][A-Za-z0-9_:${}]*\s\+\%(??\|[?:+]\)\?= '
+      setf bitbake
     else
       call dist#ft#FTasmsyntax()
       if exists("b:asmsyntax")
-	exe "setf " . fnameescape(b:asmsyntax)
+        exe "setf " . fnameescape(b:asmsyntax)
       else
-	setf pov
+        setf pov
       endif
     endif
   endif
@@ -866,6 +875,23 @@ func dist#ft#FTsig()
   elseif line =~ sml_comment || line =~# sml_keyword
     setf sml
   endif
+endfunc
+
+" This function checks the first 100 lines of files matching "*.sil" to
+" resolve detection between Swift Intermediate Language and SILE.
+func dist#ft#FTsil()
+  for lnum in range(1, [line('$'), 100]->min())
+    let line = getline(lnum)
+    if line =~ '^\s*[\\%]'
+      setf sile
+      return
+    elseif line =~ '^\s*\S'
+      setf sil
+      return
+    endif
+  endfor
+  " no clue, default to "sil"
+  setf sil
 endfunc
 
 func dist#ft#FTsys()

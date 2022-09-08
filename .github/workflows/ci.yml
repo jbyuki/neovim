@@ -18,11 +18,6 @@ concurrency:
 
 jobs:
   lint:
-    # This job tests two things: it lints the code but also builds neovim using
-    # system dependencies instead of bundled dependencies. This is to make sure
-    # we are able to build neovim without pigeonholing ourselves into specifics
-    # of the bundled dependencies.
-
     if: (github.event_name == 'pull_request' && github.base_ref == 'master') || (github.event_name == 'push' && github.ref == 'refs/heads/master')
     runs-on: ubuntu-20.04
     timeout-minutes: 10
@@ -42,7 +37,6 @@ jobs:
             autoconf \
             automake \
             build-essential \
-            ccache \
             cmake \
             flake8 \
             gettext \
@@ -65,7 +59,6 @@ jobs:
             luajit \
             ninja-build \
             pkg-config
-
 
       - name: Cache uncrustify
         id: cache-uncrustify
@@ -97,18 +90,10 @@ jobs:
         with:
           path: |
             ${{ env.CACHE_NVIM_DEPS_DIR }}
-            ~/.ccache
           key: lint-${{ hashFiles('cmake/*', '**/CMakeLists.txt', '!cmake.deps/**CMakeLists.txt') }}-${{ github.base_ref }}
 
       - name: Build third-party deps
         run: ./ci/before_script.sh
-
-      - name: Build nvim
-        run: ./ci/run_tests.sh build_nvim
-
-      - if: "!cancelled()"
-        name: lintcfull
-        run: ./ci/run_lint.sh lintcfull
 
       - if: "!cancelled()"
         name: lintstylua
@@ -118,26 +103,105 @@ jobs:
           args: --check runtime/
 
       - if: "!cancelled()"
-        name: uncrustify
-        run: |
-          ${{ env.CACHE_UNCRUSTIFY }} -c ./src/uncrustify.cfg -q --replace --no-backup $(find ./src/nvim -name "*.[ch]")
-          git diff --color --exit-code
-
-      - if: "!cancelled()"
         name: lintlua
-        run: ./ci/run_lint.sh lintlua
+        run: make lintlua
 
       - if: "!cancelled()"
         name: lintpy
-        run: ./ci/run_lint.sh lintpy
+        run: make lintpy
 
       - if: "!cancelled()"
         name: lintsh
-        run: ./ci/run_lint.sh lintsh
+        run: make lintsh
+
+      - if: "!cancelled()"
+        name: uncrustify
+        run: |
+          ${{ env.CACHE_UNCRUSTIFY }} -c ./src/uncrustify.cfg -q --replace --no-backup $(find ./src/nvim -name "*.[ch]")
+
+      - if: "!cancelled()"
+        name: suggester / uncrustify
+        uses: reviewdog/action-suggester@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tool_name: uncrustify
+          cleanup: false
+
+      - if: "!cancelled()"
+        name: check uncrustify
+        run: |
+          git diff --color --exit-code
+
+      - name: Cache dependencies
+        run: ./ci/before_cache.sh
+
+  lintc:
+    # This job tests two things: it lints the code but also builds neovim using
+    # system dependencies instead of bundled dependencies. This is to make sure
+    # we are able to build neovim without pigeonholing ourselves into specifics
+    # of the bundled dependencies.
+
+    if: (github.event_name == 'pull_request' && github.base_ref == 'master') || (github.event_name == 'push' && github.ref == 'refs/heads/master')
+    runs-on: ubuntu-20.04
+    timeout-minutes: 10
+    env:
+      CC: gcc
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup common environment variables
+        run: ./.github/workflows/env.sh lint
+
+      - name: Install apt packages
+        run: |
+          sudo add-apt-repository ppa:neovim-ppa/stable
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf \
+            automake \
+            build-essential \
+            cmake \
+            gettext \
+            libluajit-5.1-dev \
+            libmsgpack-dev \
+            libtermkey-dev \
+            libtool-bin \
+            libtree-sitter-dev \
+            libunibilium-dev \
+            libuv1-dev \
+            libvterm-dev \
+            locales \
+            lua-busted \
+            lua-check \
+            lua-filesystem \
+            lua-inspect \
+            lua-lpeg \
+            lua-luv-dev \
+            lua-nvim \
+            luajit \
+            ninja-build \
+            pkg-config
+
+      - name: Cache artifacts
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ env.CACHE_NVIM_DEPS_DIR }}
+          key: lint-${{ hashFiles('cmake/*', '**/CMakeLists.txt', '!cmake.deps/**CMakeLists.txt') }}-${{ github.base_ref }}
+
+      - name: Build third-party deps
+        run: ./ci/before_script.sh
+
+      - name: Build nvim
+        run: ./ci/run_tests.sh build_nvim
+
+      - if: "!cancelled()"
+        name: lintc
+        run: make lintc
 
       - if: "!cancelled()"
         name: check-single-includes
-        run: ./ci/run_lint.sh check-single-includes
+        run: make check-single-includes
 
       - name: Cache dependencies
         run: ./ci/before_cache.sh
@@ -161,10 +225,7 @@ jobs:
             runner: ubuntu-20.04
             os: linux
           - cc: clang
-            runner: macos-10.15
-            os: osx
-          - cc: clang
-            runner: macos-11.0
+            runner: macos-11
             os: osx
 
             # functionaltest-lua is our dumping ground for non-mainline configurations.
@@ -193,7 +254,7 @@ jobs:
         if: matrix.os == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf automake build-essential ccache cmake cpanminus cscope gcc-multilib gdb gettext language-pack-tr libtool-bin locales ninja-build pkg-config python3 python3-pip python3-setuptools unzip valgrind xclip
+          sudo apt-get install -y autoconf automake build-essential cmake cpanminus cscope gcc-multilib gdb gettext language-pack-tr libtool-bin locales ninja-build pkg-config python3 python3-pip python3-setuptools unzip valgrind xclip
 
       - name: Install minimum required version of cmake
         if: matrix.cmake == 'minimum_required'
@@ -225,7 +286,7 @@ jobs:
         if: matrix.os == 'osx'
         run: |
           brew update --quiet
-          brew install automake ccache cpanminus ninja
+          brew install automake cpanminus ninja
 
       - name: Setup interpreter packages
         run: ./ci/install.sh
@@ -235,7 +296,6 @@ jobs:
         with:
           path: |
             ${{ env.CACHE_NVIM_DEPS_DIR }}
-            ~/.ccache
           key: ${{ matrix.runner }}-${{ matrix.flavor }}-${{ matrix.cc }}-${{ hashFiles('cmake/*', 'cmake.deps/**', '**/CMakeLists.txt') }}-${{ github.base_ref }}
 
       - name: Build third-party deps
@@ -269,6 +329,7 @@ jobs:
     env:
       DEPS_BUILD_DIR: ${{ format('{0}/nvim-deps', github.workspace) }}
       DEPS_PREFIX: ${{ format('{0}/nvim-deps/usr', github.workspace) }}
+      CMAKE_BUILD_TYPE: "RelWithDebInfo"
     name: windows (MSVC_64)
     steps:
       - uses: actions/checkout@v3
@@ -278,7 +339,20 @@ jobs:
           path: ${{ env.DEPS_BUILD_DIR }}
           key: ${{ hashFiles('cmake.deps\**') }}
 
-      - name: Run CI
-        run: powershell ci\build.ps1
-        env:
-          CONFIGURATION: MSVC_64
+      - name: Build deps
+        run: .\ci\build.ps1 -BuildDeps
+
+      - name: Build nvim
+        run: .\ci\build.ps1 -Build
+
+      - name: Install test deps
+        continue-on-error: false
+        run: .\ci\build.ps1 -EnsureTestDeps
+
+      - if: "!cancelled()"
+        name: Run tests
+        run: .\ci\build.ps1 -Test
+
+      - if: "!cancelled()"
+        name: Run old tests
+        run: .\ci\build.ps1 -TestOld

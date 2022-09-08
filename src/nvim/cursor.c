@@ -9,6 +9,7 @@
 #include "nvim/change.h"
 #include "nvim/charset.h"
 #include "nvim/cursor.h"
+#include "nvim/drawscreen.h"
 #include "nvim/extmark.h"
 #include "nvim/fold.h"
 #include "nvim/mark.h"
@@ -17,7 +18,6 @@
 #include "nvim/move.h"
 #include "nvim/option.h"
 #include "nvim/plines.h"
-#include "nvim/screen.h"
 #include "nvim/state.h"
 #include "nvim/vim.h"
 
@@ -101,7 +101,7 @@ static int coladvance2(pos_T *pos, bool addspaces, bool finetune, colnr_T wcol_a
                  || (VIsual_active && *p_sel != 'o')
                  || ((get_ve_flags() & VE_ONEMORE) && wcol < MAXCOL);
 
-  char_u *line = ml_get_buf(curbuf, pos->lnum, false);
+  char_u *line = (char_u *)ml_get_buf(curbuf, pos->lnum, false);
 
   if (wcol >= MAXCOL) {
     idx = (int)STRLEN(line) - 1 + one_more;
@@ -137,14 +137,18 @@ static int coladvance2(pos_T *pos, bool addspaces, bool finetune, colnr_T wcol_a
       }
     }
 
-    char_u *ptr = line;
-    while (col <= wcol && *ptr != NUL) {
+    chartabsize_T cts;
+    init_chartabsize_arg(&cts, curwin, pos->lnum, 0, (char *)line, (char *)line);
+    while (cts.cts_vcol <= wcol && *cts.cts_ptr != NUL) {
       // Count a tab for what it's worth (if list mode not on)
-      csize = win_lbr_chartabsize(curwin, line, ptr, col, &head);
-      MB_PTR_ADV(ptr);
-      col += csize;
+      csize = win_lbr_chartabsize(&cts, &head);
+      MB_PTR_ADV(cts.cts_ptr);
+      cts.cts_vcol += csize;
     }
-    idx = (int)(ptr - line);
+    col = cts.cts_vcol;
+    idx = (int)(cts.cts_ptr - (char *)line);
+    clear_chartabsize_arg(&cts);
+
     // Handle all the special cases.  The virtual_active() check
     // is needed to ensure that a virtual position off the end of
     // a line has the correct indexing.  The one_more comparison
@@ -304,7 +308,7 @@ void check_pos(buf_T *buf, pos_T *pos)
   }
 
   if (pos->col > 0) {
-    char_u *line = ml_get_buf(buf, pos->lnum, false);
+    char_u *line = (char_u *)ml_get_buf(buf, pos->lnum, false);
     colnr_T len = (colnr_T)STRLEN(line);
     if (pos->col > len) {
       pos->col = len;
@@ -471,13 +475,13 @@ bool leftcol_changed(void)
   if (retval) {
     curwin->w_set_curswant = true;
   }
-  redraw_later(curwin, NOT_VALID);
+  redraw_later(curwin, UPD_NOT_VALID);
   return retval;
 }
 
 int gchar_cursor(void)
 {
-  return utf_ptr2char((char *)get_cursor_pos_ptr());
+  return utf_ptr2char(get_cursor_pos_ptr());
 }
 
 /// Write a character at the current cursor position.
@@ -485,18 +489,17 @@ int gchar_cursor(void)
 void pchar_cursor(char_u c)
 {
   *(ml_get_buf(curbuf, curwin->w_cursor.lnum, true)
-    + curwin->w_cursor.col) = c;
+    + curwin->w_cursor.col) = (char)c;
 }
 
 /// @return  pointer to cursor line.
-char_u *get_cursor_line_ptr(void)
+char *get_cursor_line_ptr(void)
 {
   return ml_get_buf(curbuf, curwin->w_cursor.lnum, false);
 }
 
 /// @return  pointer to cursor position.
-char_u *get_cursor_pos_ptr(void)
+char *get_cursor_pos_ptr(void)
 {
-  return ml_get_buf(curbuf, curwin->w_cursor.lnum, false) +
-         curwin->w_cursor.col;
+  return ml_get_buf(curbuf, curwin->w_cursor.lnum, false) + curwin->w_cursor.col;
 }

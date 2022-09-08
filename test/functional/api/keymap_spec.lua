@@ -6,6 +6,7 @@ local command = helpers.command
 local curbufmeths = helpers.curbufmeths
 local eq, neq = helpers.eq, helpers.neq
 local exec_lua = helpers.exec_lua
+local exec = helpers.exec
 local feed = helpers.feed
 local funcs = helpers.funcs
 local meths = helpers.meths
@@ -25,6 +26,7 @@ describe('nvim_get_keymap', function()
   local foo_bar_string = 'nnoremap foo bar'
   local foo_bar_map_table = {
     lhs='foo',
+    lhsraw='foo',
     script=0,
     silent=0,
     rhs='bar',
@@ -56,6 +58,7 @@ describe('nvim_get_keymap', function()
     command('nnoremap foo_longer bar_longer')
     local foolong_bar_map_table = shallowcopy(foo_bar_map_table)
     foolong_bar_map_table['lhs'] = 'foo_longer'
+    foolong_bar_map_table['lhsraw'] = 'foo_longer'
     foolong_bar_map_table['rhs'] = 'bar_longer'
 
     eq({foolong_bar_map_table, foo_bar_map_table},
@@ -87,6 +90,7 @@ describe('nvim_get_keymap', function()
     command('nnoremap foo_longer bar_longer')
     local foolong_bar_map_table = shallowcopy(foo_bar_map_table)
     foolong_bar_map_table['lhs'] = 'foo_longer'
+    foolong_bar_map_table['lhsraw'] = 'foo_longer'
     foolong_bar_map_table['rhs'] = 'bar_longer'
 
     local buffer_table = shallowcopy(foo_bar_map_table)
@@ -283,6 +287,16 @@ describe('nvim_get_keymap', function()
     command('onoremap \\<C-a><C-a><LT>C-a>\\  \\<C-b><C-b><LT>C-b>\\')
     command('onoremap <special> \\<C-c><C-c><LT>C-c>\\  \\<C-d><C-d><LT>C-d>\\')
 
+    -- wrapper around get_keymap() that drops "lhsraw" and "lhsrawalt" which are hard to check
+    local function get_keymap_noraw(...)
+      local ret = meths.get_keymap(...)
+      for _, item in ipairs(ret) do
+        item.lhsraw = nil
+        item.lhsrawalt = nil
+      end
+      return ret
+    end
+
     for _, cmd in ipairs({
       'set cpo-=B',
       'set cpo+=B',
@@ -290,22 +304,23 @@ describe('nvim_get_keymap', function()
       command(cmd)
       eq({cpomap('\\<C-C><C-C><lt>C-c>\\', '\\<C-D><C-D><lt>C-d>\\', 'n'),
           cpomap('\\<C-A><C-A><lt>C-a>\\', '\\<C-B><C-B><lt>C-b>\\', 'n')},
-         meths.get_keymap('n'))
+         get_keymap_noraw('n'))
       eq({cpomap('\\<C-C><C-C><lt>C-c>\\', '\\<C-D><C-D><lt>C-d>\\', 'x'),
           cpomap('\\<C-A><C-A><lt>C-a>\\', '\\<C-B><C-B><lt>C-b>\\', 'x')},
-         meths.get_keymap('x'))
+         get_keymap_noraw('x'))
       eq({cpomap('<lt>C-c><C-C><lt>C-c> ', '<lt>C-d><C-D><lt>C-d>', 's'),
           cpomap('<lt>C-a><C-A><lt>C-a> ', '<lt>C-b><C-B><lt>C-b>', 's')},
-         meths.get_keymap('s'))
+         get_keymap_noraw('s'))
       eq({cpomap('<lt>C-c><C-C><lt>C-c> ', '<lt>C-d><C-D><lt>C-d>', 'o'),
           cpomap('<lt>C-a><C-A><lt>C-a> ', '<lt>C-b><C-B><lt>C-b>', 'o')},
-         meths.get_keymap('o'))
+         get_keymap_noraw('o'))
     end
   end)
 
   it('always uses space for space and bar for bar', function()
     local space_table = {
       lhs='|   |',
+      lhsraw='|   |',
       rhs='|    |',
       mode='n',
       script=0,
@@ -322,24 +337,30 @@ describe('nvim_get_keymap', function()
   end)
 
   it('can handle lua mappings', function()
-    eq(0, exec_lua [[
+    eq(0, exec_lua([[
       GlobalCount = 0
-      vim.api.nvim_set_keymap ('n', 'asdf', '', {callback = function() GlobalCount = GlobalCount + 1 end })
+      vim.api.nvim_set_keymap('n', 'asdf', '', {callback = function() GlobalCount = GlobalCount + 1 end })
       return GlobalCount
-    ]])
+    ]]))
 
     feed('asdf\n')
-    eq(1, exec_lua[[return GlobalCount]])
+    eq(1, exec_lua([[return GlobalCount]]))
 
-    eq(2, exec_lua[[
+    eq(2, exec_lua([[
       vim.api.nvim_get_keymap('n')[1].callback()
       return GlobalCount
+    ]]))
+
+    exec([[
+      call nvim_get_keymap('n')[0].callback()
     ]])
+    eq(3, exec_lua([[return GlobalCount]]))
+
     local mapargs = meths.get_keymap('n')
-    assert(type(mapargs[1].callback) == 'number', 'callback is not luaref number')
     mapargs[1].callback = nil
     eq({
       lhs='asdf',
+      lhsraw='asdf',
       script=0,
       silent=0,
       expr=0,
@@ -356,6 +377,7 @@ describe('nvim_get_keymap', function()
     meths.set_keymap('n', 'lhs', 'rhs', {desc="map description"})
     eq({
       lhs='lhs',
+      lhsraw='lhs',
       rhs='rhs',
       script=0,
       silent=0,
@@ -413,7 +435,11 @@ describe('nvim_set_keymap, nvim_del_keymap', function()
 
   -- Gets a maparg() dict from Nvim, if one exists.
   local function get_mapargs(mode, lhs)
-    return funcs.maparg(lhs, normalize_mapmode(mode), false, true)
+    local mapargs = funcs.maparg(lhs, normalize_mapmode(mode), false, true)
+    -- drop "lhsraw" and "lhsrawalt" which are hard to check
+    mapargs.lhsraw = nil
+    mapargs.lhsrawalt = nil
+    return mapargs
   end
 
   it('error on empty LHS', function()
@@ -501,6 +527,11 @@ describe('nvim_set_keymap, nvim_del_keymap', function()
   it('error on <buffer> option key', function()
     eq("Invalid key: 'buffer'",
       pcall_err(meths.set_keymap, 'n', 'lhs', 'rhs', {buffer = true}))
+  end)
+
+  it('error when "replace_keycodes" is used without "expr"', function()
+    eq('"replace_keycodes" requires "expr"',
+      pcall_err(meths.set_keymap, 'n', 'lhs', 'rhs', {replace_keycodes = true}))
   end)
 
   local optnames = {'nowait', 'silent', 'script', 'expr', 'unique'}
@@ -797,7 +828,7 @@ describe('nvim_set_keymap, nvim_del_keymap', function()
       vim.api.nvim_set_keymap ('n', 'asdf', '', {callback = function() print('jkl;') end })
     ]]
     assert.truthy(string.match(exec_lua[[return vim.api.nvim_exec(':nmap asdf', true)]],
-                  "^\nn  asdf          <Lua function %d+>"))
+                  "^\nn  asdf          <Lua %d+>"))
   end)
 
   it ('mapcheck() returns lua mapping correctly', function()
@@ -805,29 +836,63 @@ describe('nvim_set_keymap, nvim_del_keymap', function()
       vim.api.nvim_set_keymap ('n', 'asdf', '', {callback = function() print('jkl;') end })
     ]]
     assert.truthy(string.match(funcs.mapcheck('asdf', 'n'),
-                  "^<Lua function %d+>"))
+                  "^<Lua %d+>"))
   end)
 
   it ('maparg() returns lua mapping correctly', function()
-    exec_lua [[
-      vim.api.nvim_set_keymap ('n', 'asdf', '', {callback = function() print('jkl;') end })
-    ]]
-    assert.truthy(string.match(funcs.maparg('asdf', 'n'),
-                  "^<Lua function %d+>"))
+    eq(0, exec_lua([[
+      GlobalCount = 0
+      vim.api.nvim_set_keymap('n', 'asdf', '', {callback = function() GlobalCount = GlobalCount + 1 end })
+      return GlobalCount
+    ]]))
+
+    assert.truthy(string.match(funcs.maparg('asdf', 'n'), "^<Lua %d+>"))
+
     local mapargs = funcs.maparg('asdf', 'n', false, true)
-    assert(type(mapargs.callback) == 'number', 'callback is not luaref number')
     mapargs.callback = nil
+    mapargs.lhsraw = nil
+    mapargs.lhsrawalt = nil
     eq(generate_mapargs('n', 'asdf', nil, {sid=sid_lua}), mapargs)
+
+    eq(1, exec_lua([[
+      vim.fn.maparg('asdf', 'n', false, true).callback()
+      return GlobalCount
+    ]]))
+
+    exec([[
+      call maparg('asdf', 'n', v:false, v:true).callback()
+    ]])
+    eq(2, exec_lua([[return GlobalCount]]))
   end)
 
-  it('can make lua expr mappings', function()
+  it('can make lua expr mappings replacing keycodes', function()
     exec_lua [[
-      vim.api.nvim_set_keymap ('n', 'aa', '', {callback = function() return vim.api.nvim_replace_termcodes(':lua SomeValue = 99<cr>', true, false, true) end, expr = true })
+      vim.api.nvim_set_keymap ('n', 'aa', '', {callback = function() return '<Insert>π<C-V><M-π>foo<lt><Esc>' end, expr = true, replace_keycodes = true })
     ]]
 
     feed('aa')
 
-    eq(99, exec_lua[[return SomeValue]])
+    eq({'π<M-π>foo<'}, meths.buf_get_lines(0, 0, -1, false))
+  end)
+
+  it('can make lua expr mappings without replacing keycodes', function()
+    exec_lua [[
+      vim.api.nvim_set_keymap ('i', 'aa', '', {callback = function() return '<space>' end, expr = true })
+    ]]
+
+    feed('iaa<esc>')
+
+    eq({'<space>'}, meths.buf_get_lines(0, 0, -1, false))
+  end)
+
+  it('lua expr mapping returning nil is equivalent to returnig an empty string', function()
+    exec_lua [[
+      vim.api.nvim_set_keymap ('i', 'aa', '', {callback = function() return nil end, expr = true })
+    ]]
+
+    feed('iaa<esc>')
+
+    eq({''}, meths.buf_get_lines(0, 0, -1, false))
   end)
 
   it('does not reset pum in lua mapping', function()
@@ -1018,15 +1083,26 @@ describe('nvim_buf_set_keymap, nvim_buf_del_keymap', function()
     eq(1, exec_lua[[return GlobalCount]])
   end)
 
-  it('can make lua expr mappings', function()
+  it('can make lua expr mappings replacing keycodes', function()
     exec_lua [[
-      vim.api.nvim_buf_set_keymap (0, 'n', 'aa', '', {callback = function() return vim.api.nvim_replace_termcodes(':lua SomeValue = 99<cr>', true, false, true) end, expr = true })
+      vim.api.nvim_buf_set_keymap (0, 'n', 'aa', '', {callback = function() return '<Insert>π<C-V><M-π>foo<lt><Esc>' end, expr = true, replace_keycodes = true })
     ]]
 
     feed('aa')
 
-    eq(99, exec_lua[[return SomeValue ]])
+    eq({'π<M-π>foo<'}, meths.buf_get_lines(0, 0, -1, false))
   end)
+
+  it('can make lua expr mappings without replacing keycodes', function()
+    exec_lua [[
+      vim.api.nvim_buf_set_keymap (0, 'i', 'aa', '', {callback = function() return '<space>' end, expr = true })
+    ]]
+
+    feed('iaa<esc>')
+
+    eq({'<space>'}, meths.buf_get_lines(0, 0, -1, false))
+  end)
+
 
   it('can overwrite lua mappings', function()
     eq(0, exec_lua [[

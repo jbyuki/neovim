@@ -633,6 +633,9 @@ Directory for temporary files is created in the first possible directory of:
 			actually work differently.  You can use `:&&` to keep
 			the flags.
 
+								*&-default*
+			Mapped to ":&&<CR>" by default. |default-mappings|
+
 								*g&*
 g&			Synonym for `:%s//~/&` (repeat last substitute with
 			last search pattern on all lines with the same flags).
@@ -761,6 +764,8 @@ Otherwise it works on whole lines anyway.
 When the {string} starts with "\=" it is evaluated as an expression, see
 |sub-replace-expression|.  You can use that for complex replacement or special
 characters.
+
+The substitution is limited in recursion to 4 levels. *E1290*
 
 Otherwise these characters in {string} have a special meaning:
 

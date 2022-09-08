@@ -45,7 +45,7 @@ char hash_removed;
 void hash_init(hashtab_T *ht)
 {
   // This zeroes all "ht_" entries and all the "hi_key" in "ht_smallarray".
-  memset(ht, 0, sizeof(hashtab_T));
+  CLEAR_POINTER(ht);
   ht->ht_array = ht->ht_smallarray;
   ht->ht_mask = HT_INIT_SIZE - 1;
 }
@@ -67,7 +67,7 @@ void hash_clear(hashtab_T *ht)
 void hash_clear_all(hashtab_T *ht, unsigned int off)
 {
   size_t todo = ht->ht_used;
-  for (hashitem_T *hi = ht->ht_array; todo > 0; ++hi) {
+  for (hashitem_T *hi = ht->ht_array; todo > 0; hi++) {
     if (!HASHITEM_EMPTY(hi)) {
       xfree(hi->hi_key - off);
       todo--;
@@ -342,11 +342,13 @@ static void hash_may_resize(hashtab_T *ht, size_t minitems)
   hashitem_T *oldarray = keep_smallarray
     ? memcpy(temparray, ht->ht_smallarray, sizeof(temparray))
     : ht->ht_array;
+
+  if (newarray_is_small) {
+    CLEAR_FIELD(ht->ht_smallarray);
+  }
   hashitem_T *newarray = newarray_is_small
     ? ht->ht_smallarray
-    : xmalloc(sizeof(hashitem_T) * newsize);
-
-  memset(newarray, 0, sizeof(hashitem_T) * newsize);
+    : xcalloc(newsize, sizeof(hashitem_T));
 
   // Move all the items from the old array to the new one, placing them in
   // the right spot. The new array won't have any removed items, thus this
@@ -354,7 +356,7 @@ static void hash_may_resize(hashtab_T *ht, size_t minitems)
   hash_T newmask = newsize - 1;
   size_t todo = ht->ht_used;
 
-  for (hashitem_T *olditem = oldarray; todo > 0; ++olditem) {
+  for (hashitem_T *olditem = oldarray; todo > 0; olditem++) {
     if (HASHITEM_EMPTY(olditem)) {
       continue;
     }

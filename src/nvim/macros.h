@@ -31,7 +31,7 @@
 /// @return `s, sizeof(s) - 1`
 #define S_LEN(s) (s), (sizeof(s) - 1)
 
-/// LINEEMPTY() - return TRUE if the line is empty
+/// LINEEMPTY() - return true if the line is empty
 #define LINEEMPTY(p) (*ml_get(p) == NUL)
 
 // toupper() and tolower() that use the current locale.
@@ -54,7 +54,7 @@
 #define ASCII_ISALNUM(c) (ASCII_ISALPHA(c) || ascii_isdigit(c))
 
 // Returns empty string if it is NULL.
-#define EMPTY_IF_NULL(x) (char *)((x) ? (x) : (char_u *)"")
+#define EMPTY_IF_NULL(x) ((x) ? (x) : "")
 
 /// Adjust chars in a language according to 'langmap' option.
 /// NOTE that there is no noticeable overhead if 'langmap' is not set.
@@ -104,7 +104,7 @@
 // MB_PTR_BACK(): backup a pointer to the previous character, taking care of
 // multi-byte characters if needed. Only use with "p" > "s" !
 #define MB_PTR_BACK(s, p) \
-  (p -= utf_head_off((char_u *)(s), (char_u *)(p) - 1) + 1)
+  (p -= utf_head_off((char *)(s), (char *)(p) - 1) + 1)
 
 // MB_CHAR2BYTES(): convert character to bytes and advance pointer to bytes
 #define MB_CHAR2BYTES(c, b) ((b) += utf_char2bytes((c), ((char *)b)))

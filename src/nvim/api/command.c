@@ -11,9 +11,11 @@
 #include "nvim/api/private/helpers.h"
 #include "nvim/autocmd.h"
 #include "nvim/ex_docmd.h"
+#include "nvim/ex_eval.h"
 #include "nvim/lua/executor.h"
 #include "nvim/ops.h"
 #include "nvim/regexp.h"
+#include "nvim/usercmd.h"
 #include "nvim/window.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -60,13 +62,14 @@
 ///             - browse: (boolean) |:browse|.
 ///             - confirm: (boolean) |:confirm|.
 ///             - hide: (boolean) |:hide|.
+///             - horizontal: (boolean) |:horizontal|.
 ///             - keepalt: (boolean) |:keepalt|.
 ///             - keepjumps: (boolean) |:keepjumps|.
 ///             - keepmarks: (boolean) |:keepmarks|.
 ///             - keeppatterns: (boolean) |:keeppatterns|.
 ///             - lockmarks: (boolean) |:lockmarks|.
 ///             - noswapfile: (boolean) |:noswapfile|.
-///             - tab: (integer) |:tab|.
+///             - tab: (integer) |:tab|. -1 when omitted.
 ///             - verbose: (integer) |:verbose|. -1 when omitted.
 ///             - vertical: (boolean) |:vertical|.
 ///             - split: (string) Split modifier string, is an empty string when there's no split
@@ -236,7 +239,7 @@ Dictionary nvim_parse_cmd(String str, Dictionary opts, Error *err)
   PUT(mods, "unsilent", BOOLEAN_OBJ(cmdinfo.cmdmod.cmod_flags & CMOD_UNSILENT));
   PUT(mods, "sandbox", BOOLEAN_OBJ(cmdinfo.cmdmod.cmod_flags & CMOD_SANDBOX));
   PUT(mods, "noautocmd", BOOLEAN_OBJ(cmdinfo.cmdmod.cmod_flags & CMOD_NOAUTOCMD));
-  PUT(mods, "tab", INTEGER_OBJ(cmdinfo.cmdmod.cmod_tab));
+  PUT(mods, "tab", INTEGER_OBJ(cmdinfo.cmdmod.cmod_tab - 1));
   PUT(mods, "verbose", INTEGER_OBJ(cmdinfo.cmdmod.cmod_verbose - 1));
   PUT(mods, "browse", BOOLEAN_OBJ(cmdinfo.cmdmod.cmod_flags & CMOD_BROWSE));
   PUT(mods, "confirm", BOOLEAN_OBJ(cmdinfo.cmdmod.cmod_flags & CMOD_CONFIRM));
@@ -248,6 +251,7 @@ Dictionary nvim_parse_cmd(String str, Dictionary opts, Error *err)
   PUT(mods, "lockmarks", BOOLEAN_OBJ(cmdinfo.cmdmod.cmod_flags & CMOD_LOCKMARKS));
   PUT(mods, "noswapfile", BOOLEAN_OBJ(cmdinfo.cmdmod.cmod_flags & CMOD_NOSWAPFILE));
   PUT(mods, "vertical", BOOLEAN_OBJ(cmdinfo.cmdmod.cmod_split & WSP_VERT));
+  PUT(mods, "horizontal", BOOLEAN_OBJ(cmdinfo.cmdmod.cmod_split & WSP_HOR));
 
   const char *split;
   if (cmdinfo.cmdmod.cmod_split & WSP_BOT) {
@@ -299,14 +303,14 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
   FUNC_API_SINCE(10)
 {
   exarg_T ea;
-  memset(&ea, 0, sizeof(ea));
+  CLEAR_FIELD(ea);
 
   CmdParseInfo cmdinfo;
-  memset(&cmdinfo, 0, sizeof(cmdinfo));
+  CLEAR_FIELD(cmdinfo);
 
   char *cmdline = NULL;
   char *cmdname = NULL;
-  char **args = NULL;
+  ArrayOf(String) args;
   size_t argc = 0;
 
   String retv = (String)STRING_INIT;
@@ -412,22 +416,15 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
     }
 
     if (!argc_valid) {
-      argc = 0;  // Ensure that args array isn't erroneously freed at the end.
       VALIDATION_ERROR("Incorrect number of arguments supplied");
     }
 
-    if (argc != 0) {
-      args = xcalloc(argc, sizeof(char *));
-
-      for (size_t i = 0; i < argc; i++) {
-        args[i] = string_to_cstr(cmd->args.data.array.items[i].data.string);
-      }
-    }
+    args = cmd->args.data.array;
   }
 
   // Simply pass the first argument (if it exists) as the arg pointer to `set_cmd_addr_type()`
   // since it only ever checks the first argument.
-  set_cmd_addr_type(&ea, argc > 0 ? args[0] : NULL);
+  set_cmd_addr_type(&ea, argc > 0 ? args.items[0].data.string.data : NULL);
 
   if (HAS_KEY(cmd->range)) {
     if (!(ea.argt & EX_RANGE)) {
@@ -512,6 +509,11 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
 
     OBJ_TO_BOOL(cmdinfo.magic.file, magic.file, ea.argt & EX_XFILE, "'magic.file'");
     OBJ_TO_BOOL(cmdinfo.magic.bar, magic.bar, ea.argt & EX_TRLBAR, "'magic.bar'");
+    if (cmdinfo.magic.file) {
+      ea.argt |= EX_XFILE;
+    } else {
+      ea.argt &= ~EX_XFILE;
+    }
   } else {
     cmdinfo.magic.file = ea.argt & EX_XFILE;
     cmdinfo.magic.bar = ea.argt & EX_TRLBAR;
@@ -557,15 +559,17 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
     }
 
     if (HAS_KEY(mods.tab)) {
-      if (mods.tab.type != kObjectTypeInteger || mods.tab.data.integer < 0) {
-        VALIDATION_ERROR("'mods.tab' must be a non-negative Integer");
+      if (mods.tab.type != kObjectTypeInteger) {
+        VALIDATION_ERROR("'mods.tab' must be an Integer");
+      } else if ((int)mods.tab.data.integer >= 0) {
+        // Silently ignore negative integers to allow mods.tab to be set to -1.
+        cmdinfo.cmdmod.cmod_tab = (int)mods.tab.data.integer + 1;
       }
-      cmdinfo.cmdmod.cmod_tab = (int)mods.tab.data.integer + 1;
     }
 
     if (HAS_KEY(mods.verbose)) {
       if (mods.verbose.type != kObjectTypeInteger) {
-        VALIDATION_ERROR("'mods.verbose' must be a Integer");
+        VALIDATION_ERROR("'mods.verbose' must be an Integer");
       } else if ((int)mods.verbose.data.integer >= 0) {
         // Silently ignore negative integers to allow mods.verbose to be set to -1.
         cmdinfo.cmdmod.cmod_verbose = (int)mods.verbose.data.integer + 1;
@@ -575,6 +579,10 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
     bool vertical;
     OBJ_TO_BOOL(vertical, mods.vertical, false, "'mods.vertical'");
     cmdinfo.cmdmod.cmod_split |= (vertical ? WSP_VERT : 0);
+
+    bool horizontal;
+    OBJ_TO_BOOL(horizontal, mods.horizontal, false, "'mods.horizontal'");
+    cmdinfo.cmdmod.cmod_split |= (horizontal ? WSP_HOR : 0);
 
     if (HAS_KEY(mods.split)) {
       if (mods.split.type != kObjectTypeString) {
@@ -600,7 +608,7 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
 
     OBJ_TO_CMOD_FLAG(CMOD_SILENT, mods.silent, false, "'mods.silent'");
     OBJ_TO_CMOD_FLAG(CMOD_ERRSILENT, mods.emsg_silent, false, "'mods.emsg_silent'");
-    OBJ_TO_CMOD_FLAG(CMOD_UNSILENT, mods.silent, false, "'mods.unsilent'");
+    OBJ_TO_CMOD_FLAG(CMOD_UNSILENT, mods.unsilent, false, "'mods.unsilent'");
     OBJ_TO_CMOD_FLAG(CMOD_SANDBOX, mods.sandbox, false, "'mods.sandbox'");
     OBJ_TO_CMOD_FLAG(CMOD_NOAUTOCMD, mods.noautocmd, false, "'mods.noautocmd'");
     OBJ_TO_CMOD_FLAG(CMOD_BROWSE, mods.browse, false, "'mods.browse'");
@@ -626,6 +634,7 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
   garray_T capture_local;
   const int save_msg_silent = msg_silent;
   garray_T * const save_capture_ga = capture_ga;
+  const int save_msg_col = msg_col;
 
   if (output) {
     ga_init(&capture_local, 1, 80);
@@ -636,6 +645,7 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
     try_start();
     if (output) {
       msg_silent++;
+      msg_col = 0;  // prevent leading spaces
     }
 
     WITH_SCRIPT_CONTEXT(channel_id, {
@@ -645,6 +655,8 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
     if (output) {
       capture_ga = save_capture_ga;
       msg_silent = save_msg_silent;
+      // Put msg_col back where it was, since nothing should have been written.
+      msg_col = save_msg_col;
     }
 
     try_end(err);
@@ -676,10 +688,6 @@ end:
   xfree(cmdname);
   xfree(ea.args);
   xfree(ea.arglens);
-  for (size_t i = 0; i < argc; i++) {
-    xfree(args[i]);
-  }
-  xfree(args);
 
   return retv;
 
@@ -704,12 +712,11 @@ static bool string_iswhite(String str)
 }
 
 /// Build cmdline string for command, used by `nvim_cmd()`.
-///
-/// @return OK or FAIL.
-static void build_cmdline_str(char **cmdlinep, exarg_T *eap, CmdParseInfo *cmdinfo, char **args,
-                              size_t argc)
+static void build_cmdline_str(char **cmdlinep, exarg_T *eap, CmdParseInfo *cmdinfo,
+                              ArrayOf(String) args, size_t argc)
 {
   StringBuilder cmdline = KV_INITIAL_VALUE;
+  kv_resize(cmdline, 32);  // Make it big enough to handle most typical commands
 
   // Add command modifiers
   if (cmdinfo->cmdmod.cmod_tab != 0) {
@@ -754,6 +761,7 @@ static void build_cmdline_str(char **cmdlinep, exarg_T *eap, CmdParseInfo *cmdin
   } while (0)
 
   CMDLINE_APPEND_IF(cmdinfo->cmdmod.cmod_split & WSP_VERT, "vertical ");
+  CMDLINE_APPEND_IF(cmdinfo->cmdmod.cmod_split & WSP_HOR, "horizontal ");
   CMDLINE_APPEND_IF(cmdinfo->cmdmod.cmod_flags & CMOD_SANDBOX, "sandbox ");
   CMDLINE_APPEND_IF(cmdinfo->cmdmod.cmod_flags & CMOD_NOAUTOCMD, "noautocmd ");
   CMDLINE_APPEND_IF(cmdinfo->cmdmod.cmod_flags & CMOD_BROWSE, "browse ");
@@ -779,11 +787,11 @@ static void build_cmdline_str(char **cmdlinep, exarg_T *eap, CmdParseInfo *cmdin
 
   // Keep the index of the position where command name starts, so eap->cmd can point to it.
   size_t cmdname_idx = cmdline.size;
-  kv_printf(cmdline, "%s", eap->cmd);
+  kv_concat(cmdline, eap->cmd);
 
   // Command bang.
   if (eap->argt & EX_BANG && eap->forceit) {
-    kv_printf(cmdline, "!");
+    kv_concat(cmdline, "!");
   }
 
   // Command register.
@@ -791,37 +799,46 @@ static void build_cmdline_str(char **cmdlinep, exarg_T *eap, CmdParseInfo *cmdin
     kv_printf(cmdline, " %c", eap->regname);
   }
 
-  // Iterate through each argument and store the starting index and length of each argument
-  size_t *argidx = xcalloc(argc, sizeof(size_t));
   eap->argc = argc;
   eap->arglens = xcalloc(argc, sizeof(size_t));
+  size_t argstart_idx = cmdline.size;
   for (size_t i = 0; i < argc; i++) {
-    argidx[i] = cmdline.size + 1;  // add 1 to account for the space.
-    eap->arglens[i] = STRLEN(args[i]);
-    kv_printf(cmdline, " %s", args[i]);
+    String s = args.items[i].data.string;
+    eap->arglens[i] = s.size;
+    kv_concat(cmdline, " ");
+    kv_concat_len(cmdline, s.data, s.size);
   }
+
+  // Done appending to cmdline, ensure it is NUL terminated
+  kv_push(cmdline, NUL);
 
   // Now that all the arguments are appended, use the command index and argument indices to set the
   // values of eap->cmd, eap->arg and eap->args.
   eap->cmd = cmdline.items + cmdname_idx;
   eap->args = xcalloc(argc, sizeof(char *));
+  size_t offset = argstart_idx;
   for (size_t i = 0; i < argc; i++) {
-    eap->args[i] = cmdline.items + argidx[i];
+    offset++;  // Account for space
+    eap->args[i] = cmdline.items + offset;
+    offset += eap->arglens[i];
   }
   // If there isn't an argument, make eap->arg point to end of cmdline.
-  eap->arg = argc > 0 ? eap->args[0] : cmdline.items + cmdline.size;
+  eap->arg = argc > 0 ? eap->args[0] :
+             cmdline.items + cmdline.size - 1;  // Subtract 1 to account for NUL
 
   // Finally, make cmdlinep point to the cmdline string.
   *cmdlinep = cmdline.items;
-  xfree(argidx);
 
   // Replace, :make and :grep with 'makeprg' and 'grepprg'.
   char *p = replace_makeprg(eap, eap->arg, cmdlinep);
   if (p != eap->arg) {
     // If replace_makeprg modified the cmdline string, correct the argument pointers.
-    assert(argc == 1);
     eap->arg = p;
-    eap->args[0] = p;
+    // We can only know the position of the first argument because the argument list can be used
+    // multiple times in makeprg / grepprg.
+    if (argc >= 1) {
+      eap->args[0] = p;
+    }
   }
 }
 
@@ -945,7 +962,7 @@ void create_user_command(String name, Object command, Dict(user_command) *opts, 
   cmd_addr_T addr_type_arg = ADDR_NONE;
   int compl = EXPAND_NOTHING;
   char *compl_arg = NULL;
-  char *rep = NULL;
+  const char *rep = NULL;
   LuaRef luaref = LUA_NOREF;
   LuaRef compl_luaref = LUA_NOREF;
   LuaRef preview_luaref = LUA_NOREF;
@@ -1117,8 +1134,7 @@ void create_user_command(String name, Object command, Dict(user_command) *opts, 
     if (opts->desc.type == kObjectTypeString) {
       rep = opts->desc.data.string.data;
     } else {
-      snprintf((char *)IObuff, IOSIZE, "<Lua function %d>", luaref);
-      rep = (char *)IObuff;
+      rep = "";
     }
     break;
   case kObjectTypeString:

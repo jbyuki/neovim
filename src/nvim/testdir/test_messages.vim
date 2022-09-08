@@ -95,6 +95,65 @@ func Test_echoerr()
   call test_ignore_error('RESET')
 endfunc
 
+func Test_mode_message_at_leaving_insert_by_ctrl_c()
+  if !has('terminal') || has('gui_running')
+    return
+  endif
+
+  " Set custom statusline built by user-defined function.
+  let testfile = 'Xtest.vim'
+  call writefile([
+        \ 'func StatusLine() abort',
+        \ '  return ""',
+        \ 'endfunc',
+        \ 'set statusline=%!StatusLine()',
+        \ 'set laststatus=2',
+        \ ], testfile)
+
+  let rows = 10
+  let buf = term_start([GetVimProg(), '--clean', '-S', testfile], {'term_rows': rows})
+  call term_wait(buf, 200)
+  call assert_equal('run', job_status(term_getjob(buf)))
+
+  call term_sendkeys(buf, "i")
+  call WaitForAssert({-> assert_match('^-- INSERT --\s*$', term_getline(buf, rows))})
+  call term_sendkeys(buf, "\<C-C>")
+  call WaitForAssert({-> assert_match('^\s*$', term_getline(buf, rows))})
+
+  call term_sendkeys(buf, ":qall!\<CR>")
+  call WaitForAssert({-> assert_equal('dead', job_status(term_getjob(buf)))})
+  exe buf . 'bwipe!'
+  call delete(testfile)
+endfunc
+
+func Test_mode_message_at_leaving_insert_with_esc_mapped()
+  if !has('terminal') || has('gui_running')
+    return
+  endif
+
+  " Set custom statusline built by user-defined function.
+  let testfile = 'Xtest.vim'
+  call writefile([
+        \ 'set laststatus=2',
+        \ 'inoremap <Esc> <Esc>00',
+        \ ], testfile)
+
+  let rows = 10
+  let buf = term_start([GetVimProg(), '--clean', '-S', testfile], {'term_rows': rows})
+  call term_wait(buf, 200)
+  call assert_equal('run', job_status(term_getjob(buf)))
+
+  call term_sendkeys(buf, "i")
+  call WaitForAssert({-> assert_match('^-- INSERT --\s*$', term_getline(buf, rows))})
+  call term_sendkeys(buf, "\<Esc>")
+  call WaitForAssert({-> assert_match('^\s*$', term_getline(buf, rows))})
+
+  call term_sendkeys(buf, ":qall!\<CR>")
+  call WaitForAssert({-> assert_equal('dead', job_status(term_getjob(buf)))})
+  exe buf . 'bwipe!'
+  call delete(testfile)
+endfunc
+
 func Test_echospace()
   set noruler noshowcmd laststatus=1
   call assert_equal(&columns - 1, v:echospace)
@@ -110,6 +169,146 @@ func Test_echospace()
   call assert_equal(&columns - 29, v:echospace)
 
   set ruler& showcmd&
+endfunc
+
+" Test more-prompt (see :help more-prompt).
+func Test_message_more()
+  CheckRunVimInTerminal
+  let buf = RunVimInTerminal('', {'rows': 6})
+  call term_sendkeys(buf, ":call setline(1, range(1, 100))\n")
+
+  call term_sendkeys(buf, ":%pfoo\<C-H>\<C-H>\<C-H>#")
+  call WaitForAssert({-> assert_equal(':%p#', term_getline(buf, 6))})
+  call term_sendkeys(buf, "\n")
+  call WaitForAssert({-> assert_equal('  5 5', term_getline(buf, 5))})
+  call WaitForAssert({-> assert_equal('-- More --', term_getline(buf, 6))})
+
+  call term_sendkeys(buf, '?')
+  call WaitForAssert({-> assert_equal('  5 5', term_getline(buf, 5))})
+  call WaitForAssert({-> assert_equal('-- More -- SPACE/d/j: screen/page/line down, b/u/k: up, q: quit ', term_getline(buf, 6))})
+
+  " Down a line with j, <CR>, <NL> or <Down>.
+  call term_sendkeys(buf, "j")
+  call WaitForAssert({-> assert_equal('  6 6', term_getline(buf, 5))})
+  call WaitForAssert({-> assert_equal('-- More --', term_getline(buf, 6))})
+  call term_sendkeys(buf, "\<NL>")
+  call WaitForAssert({-> assert_equal('  7 7', term_getline(buf, 5))})
+  call term_sendkeys(buf, "\<CR>")
+  call WaitForAssert({-> assert_equal('  8 8', term_getline(buf, 5))})
+  call term_sendkeys(buf, "\<Down>")
+  call WaitForAssert({-> assert_equal('  9 9', term_getline(buf, 5))})
+
+  " Down a screen with <Space>, f, or <PageDown>.
+  call term_sendkeys(buf, 'f')
+  call WaitForAssert({-> assert_equal(' 14 14', term_getline(buf, 5))})
+  call WaitForAssert({-> assert_equal('-- More --', term_getline(buf, 6))})
+  call term_sendkeys(buf, ' ')
+  call WaitForAssert({-> assert_equal(' 19 19', term_getline(buf, 5))})
+  call term_sendkeys(buf, "\<PageDown>")
+  call WaitForAssert({-> assert_equal(' 24 24', term_getline(buf, 5))})
+
+  " Down a page (half a screen) with d.
+  call term_sendkeys(buf, 'd')
+  call WaitForAssert({-> assert_equal(' 27 27', term_getline(buf, 5))})
+
+  " Down all the way with 'G'.
+  call term_sendkeys(buf, 'G')
+  call WaitForAssert({-> assert_equal('100 100', term_getline(buf, 5))})
+  call WaitForAssert({-> assert_equal('Press ENTER or type command to continue', term_getline(buf, 6))})
+
+  " Up a line k, <BS> or <Up>.
+  call term_sendkeys(buf, 'k')
+  call WaitForAssert({-> assert_equal(' 99 99', term_getline(buf, 5))})
+  call term_sendkeys(buf, "\<BS>")
+  call WaitForAssert({-> assert_equal(' 98 98', term_getline(buf, 5))})
+  call term_sendkeys(buf, "\<Up>")
+  call WaitForAssert({-> assert_equal(' 97 97', term_getline(buf, 5))})
+
+  " Up a screen with b or <PageUp>.
+  call term_sendkeys(buf, 'b')
+  call WaitForAssert({-> assert_equal(' 92 92', term_getline(buf, 5))})
+  call term_sendkeys(buf, "\<PageUp>")
+  call WaitForAssert({-> assert_equal(' 87 87', term_getline(buf, 5))})
+
+  " Up a page (half a screen) with u.
+  call term_sendkeys(buf, 'u')
+  call WaitForAssert({-> assert_equal(' 84 84', term_getline(buf, 5))})
+
+  " Up all the way with 'g'.
+  call term_sendkeys(buf, 'g')
+  call WaitForAssert({-> assert_equal('  4 4', term_getline(buf, 5))})
+  call WaitForAssert({-> assert_equal(':%p#', term_getline(buf, 1))})
+  call WaitForAssert({-> assert_equal('-- More --', term_getline(buf, 6))})
+
+  " All the way down. Pressing f should do nothing but pressing
+  " space should end the more prompt.
+  call term_sendkeys(buf, 'G')
+  call WaitForAssert({-> assert_equal('100 100', term_getline(buf, 5))})
+  call WaitForAssert({-> assert_equal('Press ENTER or type command to continue', term_getline(buf, 6))})
+  call term_sendkeys(buf, 'f')
+  call WaitForAssert({-> assert_equal('100 100', term_getline(buf, 5))})
+  call term_sendkeys(buf, ' ')
+  call WaitForAssert({-> assert_equal('100', term_getline(buf, 5))})
+
+  " Pressing g< shows the previous command output.
+  call term_sendkeys(buf, 'g<')
+  call WaitForAssert({-> assert_equal('100 100', term_getline(buf, 5))})
+  call WaitForAssert({-> assert_equal('Press ENTER or type command to continue', term_getline(buf, 6))})
+
+  " A command line that doesn't print text is appended to scrollback,
+  " even if it invokes a nested command line.
+  call term_sendkeys(buf, ":\<C-R>=':'\<CR>:\<CR>g<")
+  call WaitForAssert({-> assert_equal('100 100', term_getline(buf, 4))})
+  call WaitForAssert({-> assert_equal(':::', term_getline(buf, 5))})
+  call WaitForAssert({-> assert_equal('Press ENTER or type command to continue', term_getline(buf, 6))})
+
+  call term_sendkeys(buf, ":%p#\n")
+  call WaitForAssert({-> assert_equal('  5 5', term_getline(buf, 5))})
+  call WaitForAssert({-> assert_equal('-- More --', term_getline(buf, 6))})
+
+  " Stop command output with q, <Esc> or CTRL-C.
+  call term_sendkeys(buf, 'q')
+  call WaitForAssert({-> assert_equal('100', term_getline(buf, 5))})
+
+  " Execute a : command from the more prompt
+  call term_sendkeys(buf, ":%p#\n")
+  call term_wait(buf)
+  call WaitForAssert({-> assert_equal('-- More --', term_getline(buf, 6))})
+  call term_sendkeys(buf, ":")
+  call term_wait(buf)
+  call WaitForAssert({-> assert_equal(':', term_getline(buf, 6))})
+  call term_sendkeys(buf, "echo 'Hello'\n")
+  call term_wait(buf)
+  call WaitForAssert({-> assert_equal('Hello ', term_getline(buf, 5))})
+
+  call StopVimInTerminal(buf)
+endfunc
+
+func Test_ask_yesno()
+  CheckRunVimInTerminal
+  let buf = RunVimInTerminal('', {'rows': 6})
+  call term_sendkeys(buf, ":call setline(1, range(1, 2))\n")
+
+  call term_sendkeys(buf, ":2,1s/^/n/\n")
+  call WaitForAssert({-> assert_equal('Backwards range given, OK to swap (y/n)?', term_getline(buf, 6))})
+  call term_sendkeys(buf, "n")
+  call WaitForAssert({-> assert_match('^Backwards range given, OK to swap (y/n)?n *1,1 *All$', term_getline(buf, 6))})
+  call WaitForAssert({-> assert_equal('1', term_getline(buf, 1))})
+
+  call term_sendkeys(buf, ":2,1s/^/Esc/\n")
+  call WaitForAssert({-> assert_equal('Backwards range given, OK to swap (y/n)?', term_getline(buf, 6))})
+  call term_sendkeys(buf, "\<Esc>")
+  call WaitForAssert({-> assert_match('^Backwards range given, OK to swap (y/n)?n *1,1 *All$', term_getline(buf, 6))})
+  call WaitForAssert({-> assert_equal('1', term_getline(buf, 1))})
+
+  call term_sendkeys(buf, ":2,1s/^/y/\n")
+  call WaitForAssert({-> assert_equal('Backwards range given, OK to swap (y/n)?', term_getline(buf, 6))})
+  call term_sendkeys(buf, "y")
+  call WaitForAssert({-> assert_match('^Backwards range given, OK to swap (y/n)?y *2,1 *All$', term_getline(buf, 6))})
+  call WaitForAssert({-> assert_equal('y1', term_getline(buf, 1))})
+  call WaitForAssert({-> assert_equal('y2', term_getline(buf, 2))})
+
+  call StopVimInTerminal(buf)
 endfunc
 
 func Test_mapping_at_hit_return_prompt()
@@ -174,6 +373,66 @@ func Test_fileinfo_after_echo()
   call StopVimInTerminal(buf)
   call delete('Xtest_fileinfo_after_echo')
   call delete('b.txt')
+endfunc
+
+func Test_cmdheight_zero()
+  enew
+  set cmdheight=0
+  set showcmd
+  redraw!
+
+  echo 'test echo'
+  call assert_equal(116, screenchar(&lines, 1))
+  redraw!
+
+  echomsg 'test echomsg'
+  call assert_equal(116, screenchar(&lines, 1))
+  redraw!
+
+  call feedkeys(":ls\<CR>", "xt")
+  call assert_equal(':ls', Screenline(&lines - 1))
+  redraw!
+
+  let char = getchar(0)
+  call assert_match(char, 0)
+
+  " Check change/restore cmdheight when macro
+  call feedkeys("qa", "xt")
+  call assert_equal(1, &cmdheight)
+  call feedkeys("q", "xt")
+  call assert_equal(0, &cmdheight)
+
+  call setline(1, 'somestring')
+  call feedkeys("y", "n")
+  %s/somestring/otherstring/gc
+  call assert_equal('otherstring', getline(1))
+
+  call feedkeys("g\<C-g>", "xt")
+  call assert_match(
+        \ 'Col 1 of 11; Line 1 of 1; Word 1 of 1',
+        \ Screenline(&lines))
+
+  " Check split behavior
+  for i in range(1, 10)
+    split
+  endfor
+  only
+  call assert_equal(0, &cmdheight)
+
+  " Check that pressing ":" should not scroll a window
+  " Check for what patch 9.0.0115 fixes
+  botright 10new
+  call setline(1, range(12))
+  7
+  call feedkeys(":\"\<C-R>=line('w0')\<CR>\<CR>", "xt")
+  call assert_equal('"1', @:)
+
+  bwipe!
+  bwipe!
+  set cmdheight&
+  set showcmd&
+  tabnew
+  tabonly
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

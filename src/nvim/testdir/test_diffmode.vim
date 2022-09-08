@@ -33,7 +33,8 @@ func Test_diff_fold_sync()
   call win_gotoid(winone)
   call assert_equal(23, getcurpos()[1])
 
-  call assert_equal(1, g:update_count)
+  " depending on how redraw is done DiffUpdated may be triggered once or twice
+  call assert_inrange(1, 2, g:update_count)
   au! DiffUpdated
 
   windo diffoff
@@ -136,7 +137,7 @@ func Common_vert_split()
 
   " Test diffoff
   diffoff!
-  1wincmd 2
+  1wincmd w
   let &diff = 1
   let &fdm = diff_fdm
   let &fdc = diff_fdc
@@ -540,7 +541,7 @@ func Test_diffopt_hiddenoff()
 
   bwipe!
   bwipe!
-  set nohidden diffopt&
+  set hidden& diffopt&
 endfunc
 
 func Test_diffoff_hidden()
@@ -577,7 +578,7 @@ func Test_diffoff_hidden()
 
   bwipe!
   bwipe!
-  set nohidden diffopt&
+  set hidden& diffopt&
 endfunc
 
 func Test_setting_cursor()
@@ -743,17 +744,13 @@ func Test_diff_hlID()
 
   call diff_hlID(-1, 1)->synIDattr("name")->assert_equal("")
 
-  call assert_equal(diff_hlID(1, 1), hlID("DiffChange"))
   call diff_hlID(1, 1)->synIDattr("name")->assert_equal("DiffChange")
-  call assert_equal(diff_hlID(1, 2), hlID("DiffText"))
   call diff_hlID(1, 2)->synIDattr("name")->assert_equal("DiffText")
   call diff_hlID(2, 1)->synIDattr("name")->assert_equal("")
-  call assert_equal(diff_hlID(3, 1), hlID("DiffAdd"))
   call diff_hlID(3, 1)->synIDattr("name")->assert_equal("DiffAdd")
-  call diff_hlID(4, 1)->synIDattr("name")->assert_equal("")
+  eval 4->diff_hlID(1)->synIDattr("name")->assert_equal("")
 
   wincmd w
-  call assert_equal(diff_hlID(1, 1), hlID("DiffChange"))
   call assert_equal(synIDattr(diff_hlID(1, 1), "name"), "DiffChange")
   call assert_equal(synIDattr(diff_hlID(2, 1), "name"), "")
   call assert_equal(synIDattr(diff_hlID(3, 1), "name"), "")
@@ -1331,5 +1328,158 @@ func Test_diff_binary()
   call delete('Xtest_diff_bin')
   set diffopt&vim
 endfunc
+
+" Test for using the 'zi' command to invert 'foldenable' in diff windows (test
+" for the issue fixed by patch 6.2.317)
+func Test_diff_foldinvert()
+  %bw!
+  edit Xfile1
+  new Xfile2
+  new Xfile3
+  windo diffthis
+  " open a non-diff window
+  botright new
+  1wincmd w
+  call assert_true(getwinvar(1, '&foldenable'))
+  call assert_true(getwinvar(2, '&foldenable'))
+  call assert_true(getwinvar(3, '&foldenable'))
+  normal zi
+  call assert_false(getwinvar(1, '&foldenable'))
+  call assert_false(getwinvar(2, '&foldenable'))
+  call assert_false(getwinvar(3, '&foldenable'))
+  normal zi
+  call assert_true(getwinvar(1, '&foldenable'))
+  call assert_true(getwinvar(2, '&foldenable'))
+  call assert_true(getwinvar(3, '&foldenable'))
+
+  " If the current window has 'noscrollbind', then 'zi' should not change
+  " 'foldenable' in other windows.
+  1wincmd w
+  set noscrollbind
+  normal zi
+  call assert_false(getwinvar(1, '&foldenable'))
+  call assert_true(getwinvar(2, '&foldenable'))
+  call assert_true(getwinvar(3, '&foldenable'))
+
+  " 'zi' should not change the 'foldenable' for windows with 'noscrollbind'
+  1wincmd w
+  set scrollbind
+  normal zi
+  call setwinvar(2, '&scrollbind', v:false)
+  normal zi
+  call assert_false(getwinvar(1, '&foldenable'))
+  call assert_true(getwinvar(2, '&foldenable'))
+  call assert_false(getwinvar(3, '&foldenable'))
+
+  %bw!
+  set scrollbind&
+endfunc
+
+" This was scrolling for 'cursorbind' but 'scrollbind' is more important
+func Test_diff_scroll()
+  CheckScreendump
+
+  let left =<< trim END
+      line 1
+      line 2
+      line 3
+      line 4
+
+      // Common block
+      // one
+      // containing
+      // four lines
+
+      // Common block
+      // two
+      // containing
+      // four lines
+  END
+  call writefile(left, 'Xleft')
+  let right =<< trim END
+      line 1
+      line 2
+      line 3
+      line 4
+
+      Lorem
+      ipsum
+      dolor
+      sit
+      amet,
+      consectetur
+      adipiscing
+      elit.
+      Etiam
+      luctus
+      lectus
+      sodales,
+      dictum
+
+      // Common block
+      // one
+      // containing
+      // four lines
+
+      Vestibulum
+      tincidunt
+      aliquet
+      nulla.
+
+      // Common block
+      // two
+      // containing
+      // four lines
+  END
+  call writefile(right, 'Xright')
+  let buf = RunVimInTerminal('-d Xleft Xright', {'rows': 12})
+  call term_sendkeys(buf, "\<C-W>\<C-W>jjjj")
+  call VerifyScreenDump(buf, 'Test_diff_scroll_1', {})
+  call term_sendkeys(buf, "j")
+  call VerifyScreenDump(buf, 'Test_diff_scroll_2', {})
+
+  call StopVimInTerminal(buf)
+  call delete('Xleft')
+  call delete('Xright')
+endfunc
+
+" This was trying to update diffs for a buffer being closed
+func Test_diff_only()
+  silent! lfile
+  set diff
+  lopen
+  norm o
+  silent! norm o
+
+  set nodiff
+  %bwipe!
+endfunc
+
+" This was causing invalid diff block values
+" FIXME: somehow this causes a valgrind error when run directly but not when
+" run as a test.
+func Test_diff_manipulations()
+  set diff
+  split 0
+  sil! norm RdoobdeuRdoobdeuRdoobdeu
+
+  set nodiff
+  %bwipe!
+endfunc
+
+" This was causing the line number in the diff block to go below one.
+" FIXME: somehow this causes a valgrind error when run directly but not when
+" run as a test.
+func Test_diff_put_and_undo()
+  set diff
+  next 0
+  split 00
+  sil! norm o0gguudpo0ggJuudp
+
+  bwipe!
+  bwipe!
+  set nodiff
+endfunc
+
 
 " vim: shiftwidth=2 sts=2 expandtab

@@ -133,13 +133,19 @@ function Test_tabpage()
   call assert_fails("99tabmove", 'E16:')
   call assert_fails("+99tabmove", 'E16:')
   call assert_fails("-99tabmove", 'E16:')
-  call assert_fails("tabmove foo", 'E474:')
-  call assert_fails("tabmove 99", 'E474:')
-  call assert_fails("tabmove +99", 'E474:')
-  call assert_fails("tabmove -99", 'E474:')
-  call assert_fails("tabmove -3+", 'E474:')
-  call assert_fails("tabmove $3", 'E474:')
+  call assert_fails("tabmove foo", 'E475:')
+  call assert_fails("tabmove 99", 'E475:')
+  call assert_fails("tabmove +99", 'E475:')
+  call assert_fails("tabmove -99", 'E475:')
+  call assert_fails("tabmove -3+", 'E475:')
+  call assert_fails("tabmove $3", 'E475:')
+  call assert_fails("%tabonly", 'E16:')
   1tabonly!
+  tabmove 1
+  call assert_equal(1, tabpagenr())
+  tabnew
+  call assert_fails("-2tabmove", 'E16:')
+  tabonly!
 endfunc
 
 " Test autocommands
@@ -314,14 +320,14 @@ function Test_tabpage_with_tabnext()
   call Check_tab_count(4, 'tabnext -', 3)
   call Check_tab_count(4, 'tabnext -2', 2)
   call Check_tab_count(3, 'tabnext $', 5)
-  call assert_fails('tabnext 0', 'E474:')
-  call assert_fails('tabnext .', 'E474:')
-  call assert_fails('tabnext -+', 'E474:')
-  call assert_fails('tabnext +2-', 'E474:')
-  call assert_fails('tabnext $3', 'E474:')
-  call assert_fails('tabnext 99', 'E474:')
-  call assert_fails('tabnext +99', 'E474:')
-  call assert_fails('tabnext -99', 'E474:')
+  call assert_fails('tabnext 0', 'E475:')
+  call assert_fails('tabnext .', 'E475:')
+  call assert_fails('tabnext -+', 'E475:')
+  call assert_fails('tabnext +2-', 'E475:')
+  call assert_fails('tabnext $3', 'E475:')
+  call assert_fails('tabnext 99', 'E475:')
+  call assert_fails('tabnext +99', 'E475:')
+  call assert_fails('tabnext -99', 'E475:')
 
   1tabonly!
 endfunction
@@ -346,7 +352,7 @@ function Test_tabpage_with_tabprevious()
           let err_code = 'E16:'
         else
           let entire_cmd = cmd . ' ' . c
-          let err_code = 'E474:'
+          let err_code = 'E475:'
         endif
         call assert_fails(entire_cmd, err_code)
       endfor
@@ -445,7 +451,7 @@ function Test_tabpage_with_tabclose()
         let err_code = 'E16:'
       else
         let entire_cmd = 'tabclose ' . c
-        let err_code = 'E474:'
+        let err_code = 'E475:'
       endif
       call assert_fails(entire_cmd, err_code)
       call assert_equal(6, tabpagenr('$'))
@@ -454,8 +460,8 @@ function Test_tabpage_with_tabclose()
 
   call assert_fails('3tabclose', 'E37:')
   call assert_fails('tabclose 3', 'E37:')
-  call assert_fails('tabclose -+', 'E474:')
-  call assert_fails('tabclose +2-', 'E474:')
+  call assert_fails('tabclose -+', 'E475:')
+  call assert_fails('tabclose +2-', 'E475:')
   call assert_equal(6, tabpagenr('$'))
 
   1tabonly!
@@ -500,7 +506,7 @@ function Test_tabpage_with_tabonly()
         let err_code = 'E16:'
       else
         let entire_cmd = 'tabonly ' . c
-        let err_code = 'E474:'
+        let err_code = 'E475:'
       endif
       call assert_fails(entire_cmd, err_code)
       call assert_equal(6, tabpagenr('$'))
@@ -511,13 +517,13 @@ function Test_tabpage_with_tabonly()
   for c in tc
     call s:reconstruct_tabpage_for_test(6)
     let entire_cmd = 'tabonly' . c[2] . ' ' . c[1]
-    let err_code = 'E474:'
+    let err_code = 'E475:'
     call assert_fails(entire_cmd, err_code)
     call assert_equal(6, tabpagenr('$'))
   endfor
 
-  call assert_fails('tabonly -+', 'E474:')
-  call assert_fails('tabonly +2-', 'E474:')
+  call assert_fails('tabonly -+', 'E475:')
+  call assert_fails('tabonly +2-', 'E475:')
   call assert_equal(6, tabpagenr('$'))
 
   1tabonly!
@@ -607,6 +613,16 @@ func Test_tabpage_cmdheight()
   call delete('XTest_tabpage_cmdheight')
 endfunc
 
+" Test for closing the tab page from a command window
+func Test_tabpage_close_cmdwin()
+  tabnew
+  call feedkeys("q/:tabclose\<CR>\<Esc>", 'xt')
+  call assert_equal(2, tabpagenr('$'))
+  call feedkeys("q/:tabonly\<CR>\<Esc>", 'xt')
+  call assert_equal(2, tabpagenr('$'))
+  tabonly
+endfunc
+
 " Return the terminal key code for selecting a tab page from the tabline. This
 " sequence contains the following codes: a CSI (0x9b), KS_TABLINE (0xf0),
 " KS_FILLER (0x58) and then the tab page number.
@@ -654,15 +670,19 @@ func Test_tabline_tabmenu()
   call assert_equal(3, tabpagenr('$'))
 
   " go to tab page 2 in operator-pending mode (should beep)
-  call assert_beeps('call feedkeys("f" .. TabLineSelectPageCode(2), "Lx!")')
+  call assert_beeps('call feedkeys("c" .. TabLineSelectPageCode(2), "Lx!")')
+  call assert_equal(2, tabpagenr())
+  call assert_equal(3, tabpagenr('$'))
 
   " open new tab page before tab page 1 in operator-pending mode (should beep)
-  call assert_beeps('call feedkeys("f" .. TabMenuNewItemCode(1), "Lx!")')
+  call assert_beeps('call feedkeys("c" .. TabMenuNewItemCode(1), "Lx!")')
+  call assert_equal(1, tabpagenr())
+  call assert_equal(4, tabpagenr('$'))
 
   " open new tab page after tab page 3 in normal mode
   call feedkeys(TabMenuNewItemCode(4), "Lx!")
   call assert_equal(4, tabpagenr())
-  call assert_equal(4, tabpagenr('$'))
+  call assert_equal(5, tabpagenr('$'))
 
   " go to tab page 2 in insert mode
   call feedkeys("i" .. TabLineSelectPageCode(2) .. "\<C-C>", "Lx!")
@@ -670,18 +690,81 @@ func Test_tabline_tabmenu()
 
   " close tab page 2 in insert mode
   call feedkeys("i" .. TabMenuCloseItemCode(2) .. "\<C-C>", "Lx!")
-  call assert_equal(3, tabpagenr('$'))
+  call assert_equal(4, tabpagenr('$'))
 
   " open new tab page before tab page 3 in insert mode
   call feedkeys("i" .. TabMenuNewItemCode(3) .. "\<C-C>", "Lx!")
   call assert_equal(3, tabpagenr())
-  call assert_equal(4, tabpagenr('$'))
+  call assert_equal(5, tabpagenr('$'))
 
   " open new tab page after tab page 4 in insert mode
   call feedkeys("i" .. TabMenuNewItemCode(5) .. "\<C-C>", "Lx!")
   call assert_equal(5, tabpagenr())
-  call assert_equal(5, tabpagenr('$'))
+  call assert_equal(6, tabpagenr('$'))
 
+  %bw!
+endfunc
+
+" Test for changing the current tab page from an autocmd when closing a tab
+" page.
+func Test_tabpage_switchtab_on_close()
+  only
+  tabnew
+  tabnew
+  " Test for BufLeave
+  augroup T1
+    au!
+    au BufLeave * tabfirst
+  augroup END
+  tabclose
+  call assert_equal(1, tabpagenr())
+  augroup T1
+    au!
+  augroup END
+
+  " Test for WinLeave
+  $tabnew
+  augroup T1
+    au!
+    au WinLeave * tabfirst
+  augroup END
+  tabclose
+  call assert_equal(1, tabpagenr())
+  augroup T1
+    au!
+  augroup END
+
+  " Test for TabLeave
+  $tabnew
+  augroup T1
+    au!
+    au TabLeave * tabfirst
+  augroup END
+  tabclose
+  call assert_equal(1, tabpagenr())
+  augroup T1
+    au!
+  augroup END
+  augroup! T1
+  tabonly
+endfunc
+
+" Test for closing the destination tabpage when jumping from one to another.
+func Test_tabpage_close_on_switch()
+  tabnew
+  tabnew
+  edit Xfile
+  augroup T2
+    au!
+    au BufLeave Xfile 1tabclose
+  augroup END
+  tabfirst
+  call assert_equal(2, tabpagenr())
+  call assert_equal('Xfile', @%)
+  augroup T2
+    au!
+  augroup END
+  augroup! T2
   %bw!
 endfunc
 

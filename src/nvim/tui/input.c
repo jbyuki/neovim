@@ -233,12 +233,12 @@ static void tinput_wait_enqueue(void **argv)
       if (ui_client_channel_id) {
         Array args = ARRAY_DICT_INIT;
         Error err = ERROR_INIT;
-        ADD(args, STRING_OBJ(copy_string(keys)));
+        ADD(args, STRING_OBJ(copy_string(keys, NULL)));
         // TODO(bfredl): could be non-blocking now with paste?
         ArenaMem res_mem = NULL;
         Object result = rpc_send_call(ui_client_channel_id, "nvim_input", args, &res_mem, &err);
         consumed = result.type == kObjectTypeInteger ? (size_t)result.data.integer : 0;
-        arena_mem_free(res_mem, NULL);
+        arena_mem_free(res_mem);
       } else {
         consumed = input_enqueue(keys);
       }
@@ -398,8 +398,16 @@ static void forward_mouse_event(TermInput *input, TermKeyKey *key)
     button = last_pressed_button;
   }
 
-  if (button == 0 || (ev != TERMKEY_MOUSE_PRESS && ev != TERMKEY_MOUSE_DRAG
-                      && ev != TERMKEY_MOUSE_RELEASE)) {
+  if (ev == TERMKEY_MOUSE_UNKNOWN && !(key->code.mouse[0] & 0x20)) {
+    int code = key->code.mouse[0] & ~0x3c;
+    if (code == 66 || code == 67) {
+      ev = TERMKEY_MOUSE_PRESS;
+      button = code - 60;
+    }
+  }
+
+  if ((button == 0 && ev != TERMKEY_MOUSE_RELEASE)
+      || (ev != TERMKEY_MOUSE_PRESS && ev != TERMKEY_MOUSE_DRAG && ev != TERMKEY_MOUSE_RELEASE)) {
     return;
   }
 
@@ -431,8 +439,11 @@ static void forward_mouse_event(TermInput *input, TermKeyKey *key)
     if (button == 4) {
       len += (size_t)snprintf(buf + len, sizeof(buf) - len, "ScrollWheelUp");
     } else if (button == 5) {
-      len += (size_t)snprintf(buf + len, sizeof(buf) - len,
-                              "ScrollWheelDown");
+      len += (size_t)snprintf(buf + len, sizeof(buf) - len, "ScrollWheelDown");
+    } else if (button == 6) {
+      len += (size_t)snprintf(buf + len, sizeof(buf) - len, "ScrollWheelLeft");
+    } else if (button == 7) {
+      len += (size_t)snprintf(buf + len, sizeof(buf) - len, "ScrollWheelRight");
     } else {
       len += (size_t)snprintf(buf + len, sizeof(buf) - len, "Mouse");
       last_pressed_button = button;
@@ -442,7 +453,8 @@ static void forward_mouse_event(TermInput *input, TermKeyKey *key)
     len += (size_t)snprintf(buf + len, sizeof(buf) - len, "Drag");
     break;
   case TERMKEY_MOUSE_RELEASE:
-    len += (size_t)snprintf(buf + len, sizeof(buf) - len, "Release");
+    len += (size_t)snprintf(buf + len, sizeof(buf) - len, button ? "Release" : "MouseMove");
+    last_pressed_button = 0;
     break;
   case TERMKEY_MOUSE_UNKNOWN:
     abort();

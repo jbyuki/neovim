@@ -288,6 +288,9 @@ end
 
 --- Execute Vim script commands.
 ---
+--- Note that `vim.cmd` can be indexed with a command name to return a callable function to the
+--- command.
+---
 --- Example:
 --- <pre>
 ---   vim.cmd('echo 42')
@@ -297,7 +300,23 @@ end
 ---       autocmd FileType c setlocal cindent
 ---     augroup END
 ---   ]])
----   vim.cmd({ cmd = 'echo', args = { '"foo"' } })
+---
+---   -- Ex command :echo "foo"
+---   -- Note string literals need to be double quoted.
+---   vim.cmd('echo "foo"')
+---   vim.cmd { cmd = 'echo', args = { '"foo"' } }
+---   vim.cmd.echo({ args = { '"foo"' } })
+---   vim.cmd.echo('"foo"')
+---
+---   -- Ex command :write! myfile.txt
+---   vim.cmd('write! myfile.txt')
+---   vim.cmd { cmd = 'write', args = { "myfile.txt" }, bang = true }
+---   vim.cmd.write { args = { "myfile.txt" }, bang = true }
+---   vim.cmd.write { "myfile.txt", bang = true }
+---
+---   -- Ex command :colorscheme blue
+---   vim.cmd('colorscheme blue')
+---   vim.cmd.colorscheme('blue')
 --- </pre>
 ---
 ---@param command string|table Command(s) to execute.
@@ -307,13 +326,46 @@ end
 ---                            If a table, executes a single command. In this case, it is an alias
 ---                            to |nvim_cmd()| where `opts` is empty.
 ---@see |ex-cmd-index|
-function vim.cmd(command)
-  if type(command) == 'table' then
-    return vim.api.nvim_cmd(command, {})
-  else
-    return vim.api.nvim_exec(command, false)
-  end
+function vim.cmd(command) -- luacheck: no unused
+  error(command) -- Stub for gen_vimdoc.py
 end
+
+local VIM_CMD_ARG_MAX = 20
+
+vim.cmd = setmetatable({}, {
+  __call = function(_, command)
+    if type(command) == 'table' then
+      return vim.api.nvim_cmd(command, {})
+    else
+      return vim.api.nvim_exec(command, false)
+    end
+  end,
+  __index = function(t, command)
+    t[command] = function(...)
+      local opts
+      if select('#', ...) == 1 and type(select(1, ...)) == 'table' then
+        opts = select(1, ...)
+
+        -- Move indexed positions in opts to opt.args
+        if opts[1] and not opts.args then
+          opts.args = {}
+          for i = 1, VIM_CMD_ARG_MAX do
+            if not opts[i] then
+              break
+            end
+            opts.args[i] = opts[i]
+            opts[i] = nil
+          end
+        end
+      else
+        opts = { args = { ... } }
+      end
+      opts.cmd = command
+      return vim.api.nvim_cmd(opts, {})
+    end
+    return t[command]
+  end,
+})
 
 -- These are the vim.env/v/g/o/bo/wo variable magic accessors.
 do
@@ -614,7 +666,7 @@ function vim._expand_pat(pat, env)
   local function insert_keys(obj)
     for k, _ in pairs(obj) do
       if type(k) == 'string' and string.sub(k, 1, string.len(match_part)) == match_part then
-        table.insert(keys, k)
+        keys[k] = true
       end
     end
   end
@@ -630,6 +682,7 @@ function vim._expand_pat(pat, env)
     insert_keys(vim._submodules)
   end
 
+  keys = vim.tbl_keys(keys)
   table.sort(keys)
 
   return keys, #prefix_match_pat
@@ -808,6 +861,44 @@ function vim.deprecate(name, alternative, version, plugin, backtrace)
   if vim.notify_once(message, vim.log.levels.WARN) and backtrace ~= false then
     vim.notify(debug.traceback('', 2):sub(2), vim.log.levels.WARN)
   end
+end
+
+--- Create builtin mappings (incl. menus).
+--- Called once on startup.
+function vim._init_default_mappings()
+  -- mappings
+
+  --@private
+  local function map(mode, lhs, rhs)
+    vim.api.nvim_set_keymap(mode, lhs, rhs, { noremap = true, desc = 'Nvim builtin' })
+  end
+
+  map('n', 'Y', 'y$')
+  -- Use normal! <C-L> to prevent inserting raw <C-L> when using i_<C-O>. #17473
+  map('n', '<C-L>', '<Cmd>nohlsearch<Bar>diffupdate<Bar>normal! <C-L><CR>')
+  map('i', '<C-U>', '<C-G>u<C-U>')
+  map('i', '<C-W>', '<C-G>u<C-W>')
+  map('x', '*', 'y/\\V<C-R>"<CR>')
+  map('x', '#', 'y?\\V<C-R>"<CR>')
+  -- Use : instead of <Cmd> so that ranges are supported. #19365
+  map('n', '&', ':&&<CR>')
+
+  -- menus
+
+  -- TODO VimScript, no l10n
+  vim.cmd([[
+    aunmenu *
+    vnoremenu PopUp.Cut                     "+x
+    vnoremenu PopUp.Copy                    "+y
+    anoremenu PopUp.Paste                   "+gP
+    vnoremenu PopUp.Paste                   "+P
+    vnoremenu PopUp.Delete                  "_x
+    nnoremenu PopUp.Select\ All             ggVG
+    vnoremenu PopUp.Select\ All             gg0oG$
+    inoremenu PopUp.Select\ All             <C-Home><C-O>VG
+    anoremenu PopUp.-1-                     <Nop>
+    anoremenu PopUp.How-to\ disable\ mouse  <Cmd>help disable-mouse<CR>
+  ]])
 end
 
 require('vim._meta')

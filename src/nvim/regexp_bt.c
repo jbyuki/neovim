@@ -466,7 +466,7 @@ static void regcomp_start(char_u *expr, int re_flags)                        // 
 
   num_complex_braces = 0;
   regnpar = 1;
-  memset(had_endbrace, 0, sizeof(had_endbrace));
+  CLEAR_FIELD(had_endbrace);
   regnzpar = 1;
   re_has_z = 0;
   regsize = 0L;
@@ -492,7 +492,7 @@ static void regc(int b)
   if (regcode == JUST_CALC_SIZE) {
     regsize++;
   } else {
-    *regcode++ = b;
+    *regcode++ = (char_u)b;
   }
 }
 
@@ -1493,7 +1493,7 @@ static char_u *regnode(int op)
   if (ret == JUST_CALC_SIZE) {
     regsize += 3;
   } else {
-    *regcode++ = op;
+    *regcode++ = (char_u)op;
     *regcode++ = NUL;                   // Null "next" pointer.
     *regcode++ = NUL;
   }
@@ -1610,7 +1610,7 @@ static void reginsert(int op, char_u *opnd)
   }
 
   place = opnd;                 // Op node, where operand used to be.
-  *place++ = op;
+  *place++ = (char_u)op;
   *place++ = NUL;
   *place = NUL;
 }
@@ -1637,7 +1637,7 @@ static void reginsert_nr(int op, long val, char_u *opnd)
   }
 
   place = opnd;                 // Op node, where operand used to be.
-  *place++ = op;
+  *place++ = (char_u)op;
   *place++ = NUL;
   *place++ = NUL;
   assert(val >= 0 && (uintmax_t)val <= UINT32_MAX);
@@ -1668,7 +1668,7 @@ static void reginsert_limits(int op, long minval, long maxval, char_u *opnd)
   }
 
   place = opnd;                 // Op node, where operand used to be.
-  *place++ = op;
+  *place++ = (char_u)op;
   *place++ = NUL;
   *place++ = NUL;
   assert(minval >= 0 && (uintmax_t)minval <= UINT32_MAX);
@@ -1689,7 +1689,7 @@ static int seen_endbrace(int refnum)
 
     // Trick: check if "@<=" or "@<!" follows, in which case
     // the \1 can appear before the referenced match.
-    for (p = regparse; *p != NUL; p++) {
+    for (p = (char_u *)regparse; *p != NUL; p++) {
       if (p[0] == '@' && p[1] == '<' && (p[2] == '!' || p[2] == '=')) {
         break;
       }
@@ -1857,14 +1857,14 @@ static char_u *regatom(int *flagp)
       char_u *lp;
 
       ret = regnode(EXACTLY);
-      lp = reg_prev_sub;
+      lp = (char_u *)reg_prev_sub;
       while (*lp != NUL) {
         regc(*lp++);
       }
       regc(NUL);
       if (*reg_prev_sub != NUL) {
         *flagp |= HASWIDTH;
-        if ((lp - reg_prev_sub) == 1) {
+        if ((lp - (char_u *)reg_prev_sub) == 1) {
           *flagp |= SIMPLE;
         }
       }
@@ -2071,7 +2071,7 @@ static char_u *regatom(int *flagp)
         EMSG2_RET_NULL(_("E678: Invalid character after %s%%[dxouU]"),
                        reg_magic == MAGIC_ALL);
       }
-      if (use_multibytecode(i)) {
+      if (use_multibytecode((int)i)) {
         ret = regnode(MULTIBYTECODE);
       } else {
         ret = regnode(EXACTLY);
@@ -2079,7 +2079,7 @@ static char_u *regatom(int *flagp)
       if (i == 0) {
         regc(0x0a);
       } else {
-        regmbc(i);
+        regmbc((int)i);
       }
       regc(NUL);
       *flagp |= HASWIDTH;
@@ -2111,8 +2111,8 @@ static char_u *regatom(int *flagp)
           if (ret == JUST_CALC_SIZE) {
             regsize += 2;
           } else {
-            *regcode++ = c;
-            *regcode++ = cmp;
+            *regcode++ = (char_u)c;
+            *regcode++ = (char_u)cmp;
           }
           break;
         } else if (c == 'l' || c == 'c' || c == 'v') {
@@ -2123,7 +2123,7 @@ static char_u *regatom(int *flagp)
           }
           if (c == 'l') {
             if (cur) {
-              n = curwin->w_cursor.lnum;
+              n = (uint32_t)curwin->w_cursor.lnum;
             }
             ret = regnode(RE_LNUM);
             if (save_prev_at_start) {
@@ -2131,7 +2131,7 @@ static char_u *regatom(int *flagp)
             }
           } else if (c == 'c') {
             if (cur) {
-              n = curwin->w_cursor.col;
+              n = (uint32_t)curwin->w_cursor.col;
               n++;
             }
             ret = regnode(RE_COL);
@@ -2139,7 +2139,7 @@ static char_u *regatom(int *flagp)
             if (cur) {
               colnr_T vcol = 0;
               getvvcol(curwin, &curwin->w_cursor, NULL, NULL, &vcol);
-              n = ++vcol;
+              n = (uint32_t)(++vcol);
             }
             ret = regnode(RE_VCOL);
           }
@@ -2149,7 +2149,7 @@ static char_u *regatom(int *flagp)
             // put the number and the optional
             // comparator after the opcode
             regcode = re_put_uint32(regcode, n);
-            *regcode++ = cmp;
+            *regcode++ = (char_u)cmp;
           }
           break;
         }
@@ -2189,7 +2189,7 @@ collection:
 
         while (*regparse != NUL && *regparse != ']') {
           if (*regparse == '-') {
-            ++regparse;
+            regparse++;
             // The '-' is not used for a range at the end and
             // after or before a '\n'.
             if (*regparse == ']' || *regparse == NUL
@@ -2619,7 +2619,7 @@ static char_u *regpiece(int *flagp)
       regoptail(ret, regnode(BACK));
       regoptail(ret, ret);
       reginsert_limits(BRACE_LIMITS, minval, maxval, ret);
-      ++num_complex_braces;
+      num_complex_braces++;
     }
     if (minval > 0 && maxval > 0) {
       *flagp = (HASWIDTH | (flags & (HASNL | HASLOOKBH)));
@@ -2792,7 +2792,7 @@ static char_u *reg(int paren, int *flagp)
       EMSG2_RET_NULL(_("E51: Too many %s("), reg_magic == MAGIC_ALL);
     }
     parno = regnpar;
-    ++regnpar;
+    regnpar++;
     ret = regnode(MOPEN + parno);
   } else if (paren == REG_NPAREN) {
     // Make a NOPEN node.
@@ -2910,7 +2910,7 @@ static regprog_T *bt_regcomp(char_u *expr, int re_flags)
   }
 
   // Allocate space.
-  bt_regprog_T *r = xmalloc(sizeof(bt_regprog_T) + regsize);
+  bt_regprog_T *r = xmalloc(sizeof(bt_regprog_T) + (size_t)regsize);
   r->re_in_use = false;
 
   // Second pass: emit code.
@@ -2938,7 +2938,7 @@ static regprog_T *bt_regcomp(char_u *expr, int re_flags)
     r->regflags |= RF_LOOKBH;
   }
   // Remember whether this pattern has any \z specials in it.
-  r->reghasz = re_has_z;
+  r->reghasz = (char_u)re_has_z;
   scan = r->program + 1;        // First BRANCH.
   if (OP(regnext(scan)) == END) {   // Only one top-level choice.
     scan = OPERAND(scan);
@@ -3027,7 +3027,7 @@ static int coll_get_char(void)
     regparse--;
     nr = '\\';
   }
-  return nr;
+  return (int)nr;
 }
 
 /*
@@ -3181,7 +3181,7 @@ static int regrepeat(char_u *p, long maxcount)
       } else {
         break;
       }
-      ++count;
+      count++;
     }
     break;
 
@@ -3192,7 +3192,7 @@ static int regrepeat(char_u *p, long maxcount)
   case SKWORD:
   case SKWORD + ADD_NL:
     while (count < maxcount) {
-      if (vim_iswordp_buf(scan, rex.reg_buf)
+      if (vim_iswordp_buf((char *)scan, rex.reg_buf)
           && (testval || !ascii_isdigit(*scan))) {
         MB_PTR_ADV(scan);
       } else if (*scan == NUL) {
@@ -3299,7 +3299,7 @@ do_class:
       } else {
         break;
       }
-      ++count;
+      count++;
     }
     break;
 
@@ -3415,7 +3415,7 @@ do_class:
           break;
         }
         scan += len;
-        ++count;
+        count++;
       }
     }
   }
@@ -3453,7 +3453,7 @@ do_class:
         }
         scan++;
       }
-      ++count;
+      count++;
     }
     break;
 
@@ -3505,7 +3505,7 @@ static regitem_T *regstack_push(regstate_T state, char_u *scan)
   rp->rs_state = state;
   rp->rs_scan = scan;
 
-  regstack.ga_len += sizeof(regitem_T);
+  regstack.ga_len += (int)sizeof(regitem_T);
   return rp;
 }
 
@@ -3519,7 +3519,7 @@ static void regstack_pop(char_u **scan)
   rp = (regitem_T *)((char *)regstack.ga_data + regstack.ga_len) - 1;
   *scan = rp->rs_scan;
 
-  regstack.ga_len -= sizeof(regitem_T);
+  regstack.ga_len -= (int)sizeof(regitem_T);
 }
 
 // Save the current subexpr to "bp", so that they can be restored
@@ -3704,9 +3704,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
           int mark = OPERAND(scan)[0];
           int cmp = OPERAND(scan)[1];
           pos_T *pos;
-          size_t col = REG_MULTI ? rex.input - rex.line : 0;
-
-          // fm will be NULL if the mark is not set in reg_buf
+          size_t col = REG_MULTI ? (size_t)(rex.input - rex.line) : 0;
           fmark_T *fm = mark_get(rex.reg_buf, curwin, NULL, kMarkBufLocal, mark);
 
           // Line may have been freed, get it again.
@@ -3766,6 +3764,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
         case RE_VCOL:
           if (!re_num_cmp(win_linetabsize(rex.reg_win == NULL
                                           ? curwin : rex.reg_win,
+                                          rex.reg_firstlnum + rex.lnum,
                                           rex.line,
                                           (colnr_T)(rex.input - rex.line)) + 1,
                           scan)) {
@@ -3830,7 +3829,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
           break;
 
         case KWORD:
-          if (!vim_iswordp_buf(rex.input, rex.reg_buf)) {
+          if (!vim_iswordp_buf((char *)rex.input, rex.reg_buf)) {
             status = RA_NOMATCH;
           } else {
             ADVANCE_REGINPUT();
@@ -3839,7 +3838,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
 
         case SKWORD:
           if (ascii_isdigit(*rex.input)
-              || !vim_iswordp_buf(rex.input, rex.reg_buf)) {
+              || !vim_iswordp_buf((char *)rex.input, rex.reg_buf)) {
             status = RA_NOMATCH;
           } else {
             ADVANCE_REGINPUT();
@@ -4040,14 +4039,14 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
             } else {
               // Need to match first byte again for multi-byte.
               len = (int)STRLEN(opnd);
-              if (cstrncmp(opnd, rex.input, &len) != 0) {
+              if (cstrncmp((char *)opnd, (char *)rex.input, &len) != 0) {
                 status = RA_NOMATCH;
               }
             }
             // Check for following composing character, unless %C
             // follows (skips over all composing chars).
             if (status != RA_NOMATCH
-                && utf_composinglike(rex.input, rex.input + len)
+                && utf_composinglike((char *)rex.input, (char *)rex.input + len)
                 && !rex.reg_icombine
                 && OP(next) != RE_COMPOSING) {
               // raaron: This code makes a composing character get
@@ -4170,7 +4169,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
           if (rp == NULL) {
             status = RA_FAIL;
           } else {
-            rp->rs_no = no;
+            rp->rs_no = (int16_t)no;
             save_se(&rp->rs_un.sesave, &rex.reg_startpos[no],
                     &rex.reg_startp[no]);
             // We simply continue and handle the result when done.
@@ -4200,7 +4199,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
           if (rp == NULL) {
             status = RA_FAIL;
           } else {
-            rp->rs_no = no;
+            rp->rs_no = (int16_t)no;
             save_se(&rp->rs_un.sesave, &reg_startzpos[no],
                     &reg_startzp[no]);
             // We simply continue and handle the result when done.
@@ -4223,7 +4222,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
           if (rp == NULL) {
             status = RA_FAIL;
           } else {
-            rp->rs_no = no;
+            rp->rs_no = (int16_t)no;
             save_se(&rp->rs_un.sesave, &rex.reg_endpos[no], &rex.reg_endp[no]);
             // We simply continue and handle the result when done.
           }
@@ -4244,7 +4243,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
           if (rp == NULL) {
             status = RA_FAIL;
           } else {
-            rp->rs_no = no;
+            rp->rs_no = (int16_t)no;
             save_se(&rp->rs_un.sesave, &reg_endzpos[no],
                     &reg_endzp[no]);
             // We simply continue and handle the result when done.
@@ -4271,7 +4270,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
             } else {
               // Compare current input with back-ref in the same line.
               len = (int)(rex.reg_endp[no] - rex.reg_startp[no]);
-              if (cstrncmp(rex.reg_startp[no], rex.input, &len) != 0) {
+              if (cstrncmp((char *)rex.reg_startp[no], (char *)rex.input, &len) != 0) {
                 status = RA_NOMATCH;
               }
             }
@@ -4284,8 +4283,8 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
                   && rex.reg_endpos[no].lnum == rex.lnum) {
                 // Compare back-ref within the current line.
                 len = rex.reg_endpos[no].col - rex.reg_startpos[no].col;
-                if (cstrncmp(rex.line + rex.reg_startpos[no].col,
-                             rex.input, &len) != 0) {
+                if (cstrncmp((char *)rex.line + rex.reg_startpos[no].col,
+                             (char *)rex.input, &len) != 0) {
                   status = RA_NOMATCH;
                 }
               } else {
@@ -4321,7 +4320,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
           if (re_extmatch_in != NULL
               && re_extmatch_in->matches[no] != NULL) {
             int len = (int)STRLEN(re_extmatch_in->matches[no]);
-            if (cstrncmp(re_extmatch_in->matches[no], rex.input, &len) != 0) {
+            if (cstrncmp((char *)re_extmatch_in->matches[no], (char *)rex.input, &len) != 0) {
               status = RA_NOMATCH;
             } else {
               rex.input += len;
@@ -4371,7 +4370,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
         case BRACE_COMPLEX + 8:
         case BRACE_COMPLEX + 9:
           no = op - BRACE_COMPLEX;
-          ++brace_count[no];
+          brace_count[no]++;
 
           // If not matched enough times yet, try one more
           if (brace_count[no] <= (brace_min[no] <= brace_max[no]
@@ -4380,7 +4379,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
             if (rp == NULL) {
               status = RA_FAIL;
             } else {
-              rp->rs_no = no;
+              rp->rs_no = (int16_t)no;
               reg_save(&rp->rs_un.regsave, &backpos);
               next = OPERAND(scan);
               // We continue and handle the result when done.
@@ -4396,7 +4395,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
               if (rp == NULL) {
                 status = RA_FAIL;
               } else {
-                rp->rs_no = no;
+                rp->rs_no = (int16_t)no;
                 reg_save(&rp->rs_un.regsave, &backpos);
                 next = OPERAND(scan);
                 // We continue and handle the result when done.
@@ -4465,7 +4464,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
               status = RA_FAIL;
             } else {
               ga_grow(&regstack, sizeof(regstar_T));
-              regstack.ga_len += sizeof(regstar_T);
+              regstack.ga_len += (int)sizeof(regstar_T);
               rp = regstack_push(rst.minval <= rst.maxval ? RS_STAR_LONG : RS_STAR_SHORT, scan);
               if (rp == NULL) {
                 status = RA_FAIL;
@@ -4487,7 +4486,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
           if (rp == NULL) {
             status = RA_FAIL;
           } else {
-            rp->rs_no = op;
+            rp->rs_no = (int16_t)op;
             reg_save(&rp->rs_un.regsave, &backpos);
             next = OPERAND(scan);
             // We continue and handle the result when done.
@@ -4502,7 +4501,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
             status = RA_FAIL;
           } else {
             ga_grow(&regstack, sizeof(regbehind_T));
-            regstack.ga_len += sizeof(regbehind_T);
+            regstack.ga_len += (int)sizeof(regbehind_T);
             rp = regstack_push(RS_BEHIND1, scan);
             if (rp == NULL) {
               status = RA_FAIL;
@@ -4511,7 +4510,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
               // when there is a match but we don't use it.
               save_subexpr(((regbehind_T *)rp) - 1);
 
-              rp->rs_no = op;
+              rp->rs_no = (int16_t)op;
               reg_save(&rp->rs_un.regsave, &backpos);
               // First try if what follows matches.  If it does then we
               // check the behind match by looping.
@@ -4691,7 +4690,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
       case RS_BEHIND1:
         if (status == RA_NOMATCH) {
           regstack_pop(&scan);
-          regstack.ga_len -= sizeof(regbehind_T);
+          regstack.ga_len -= (int)sizeof(regbehind_T);
         } else {
           // The stuff after BEHIND/NOBEHIND matches.  Now try if
           // the behind part does (not) match before the current
@@ -4734,7 +4733,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
             restore_subexpr(((regbehind_T *)rp) - 1);
           }
           regstack_pop(&scan);
-          regstack.ga_len -= sizeof(regbehind_T);
+          regstack.ga_len -= (int)sizeof(regbehind_T);
         } else {
           long limit;
 
@@ -4766,8 +4765,8 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
                 reg_getline(rp->rs_un.regsave.rs_u.pos.lnum);
 
               rp->rs_un.regsave.rs_u.pos.col -=
-                utf_head_off(line,
-                             line + rp->rs_un.regsave.rs_u.pos.col - 1)
+                utf_head_off((char *)line,
+                             (char *)line + rp->rs_un.regsave.rs_u.pos.col - 1)
                 + 1;
             }
           } else {
@@ -4808,7 +4807,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
               }
             }
             regstack_pop(&scan);
-            regstack.ga_len -= sizeof(regbehind_T);
+            regstack.ga_len -= (int)sizeof(regbehind_T);
           }
         }
         break;
@@ -4819,7 +4818,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
 
         if (status == RA_MATCH) {
           regstack_pop(&scan);
-          regstack.ga_len -= sizeof(regstar_T);
+          regstack.ga_len -= (int)sizeof(regstar_T);
           break;
         }
 
@@ -4885,7 +4884,7 @@ static bool regmatch(char_u *scan, proftime_T *tm, int *timed_out)
         if (status != RA_CONT) {
           // Failed.
           regstack_pop(&scan);
-          regstack.ga_len -= sizeof(regstar_T);
+          regstack.ga_len -= (int)sizeof(regstar_T);
           status = RA_NOMATCH;
         }
       }
@@ -4976,15 +4975,13 @@ static long regtry(bt_regprog_T *prog, colnr_T col, proftime_T *tm, int *timed_o
             && reg_endzpos[i].lnum == reg_startzpos[i].lnum
             && reg_endzpos[i].col >= reg_startzpos[i].col) {
           re_extmatch_out->matches[i] =
-            vim_strnsave(reg_getline(reg_startzpos[i].lnum)
-                         + reg_startzpos[i].col,
-                         reg_endzpos[i].col
-                         - reg_startzpos[i].col);
+            (char_u *)xstrnsave((char *)reg_getline(reg_startzpos[i].lnum) + reg_startzpos[i].col,
+                                (size_t)(reg_endzpos[i].col - reg_startzpos[i].col));
         }
       } else {
         if (reg_startzp[i] != NULL && reg_endzp[i] != NULL) {
           re_extmatch_out->matches[i] =
-            vim_strnsave(reg_startzp[i], reg_endzp[i] - reg_startzp[i]);
+            (char_u *)xstrnsave((char *)reg_startzp[i], (size_t)(reg_endzp[i] - reg_startzp[i]));
         }
       }
     }
@@ -5072,14 +5069,14 @@ static long bt_regexec_both(char_u *line, colnr_T col, proftime_T *tm, int *time
     // the loop to avoid overhead of conditions.
     if (!rex.reg_ic) {
       while ((s = (char_u *)vim_strchr((char *)s, c)) != NULL) {
-        if (cstrncmp(s, prog->regmust, &prog->regmlen) == 0) {
+        if (cstrncmp((char *)s, (char *)prog->regmust, &prog->regmlen) == 0) {
           break;  // Found it.
         }
         MB_PTR_ADV(s);
       }
     } else {
       while ((s = cstrchr(s, c)) != NULL) {
-        if (cstrncmp(s, prog->regmust, &prog->regmlen) == 0) {
+        if (cstrncmp((char *)s, (char *)prog->regmust, &prog->regmlen) == 0) {
           break;  // Found it.
         }
         MB_PTR_ADV(s);

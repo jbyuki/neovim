@@ -1818,6 +1818,83 @@ describe("folded lines", function()
         ]])
       end
     end)
+
+    it('fold text is shown when text has been scrolled to the right #19123', function()
+      insert(content1)
+      command('set number nowrap')
+      command('3,4fold')
+      feed('gg')
+      if multigrid then
+        screen:expect([[
+        ## grid 1
+          [2:---------------------------------------------]|
+          [2:---------------------------------------------]|
+          [2:---------------------------------------------]|
+          [2:---------------------------------------------]|
+          [2:---------------------------------------------]|
+          [2:---------------------------------------------]|
+          [2:---------------------------------------------]|
+          [3:---------------------------------------------]|
+        ## grid 2
+          {8:  1 }^This is a                                |
+          {8:  2 }valid English                            |
+          {8:  3 }{5:+--  2 lines: sentence composed by·······}|
+          {8:  5 }in his cave.                             |
+          {8:  6 }                                         |
+          {1:~                                            }|
+          {1:~                                            }|
+        ## grid 3
+                                                       |
+        ]])
+      else
+        screen:expect([[
+          {8:  1 }^This is a                                |
+          {8:  2 }valid English                            |
+          {8:  3 }{5:+--  2 lines: sentence composed by·······}|
+          {8:  5 }in his cave.                             |
+          {8:  6 }                                         |
+          {1:~                                            }|
+          {1:~                                            }|
+                                                       |
+        ]])
+      end
+
+      feed('zl')
+      if multigrid then
+        screen:expect([[
+        ## grid 1
+          [2:---------------------------------------------]|
+          [2:---------------------------------------------]|
+          [2:---------------------------------------------]|
+          [2:---------------------------------------------]|
+          [2:---------------------------------------------]|
+          [2:---------------------------------------------]|
+          [2:---------------------------------------------]|
+          [3:---------------------------------------------]|
+        ## grid 2
+          {8:  1 }^his is a                                 |
+          {8:  2 }alid English                             |
+          {8:  3 }{5:+--  2 lines: sentence composed by·······}|
+          {8:  5 }n his cave.                              |
+          {8:  6 }                                         |
+          {1:~                                            }|
+          {1:~                                            }|
+        ## grid 3
+                                                       |
+        ]])
+      else
+        screen:expect([[
+          {8:  1 }^his is a                                 |
+          {8:  2 }alid English                             |
+          {8:  3 }{5:+--  2 lines: sentence composed by·······}|
+          {8:  5 }n his cave.                              |
+          {8:  6 }                                         |
+          {1:~                                            }|
+          {1:~                                            }|
+                                                       |
+        ]])
+      end
+    end)
   end
 
   describe("with ext_multigrid", function()
@@ -1826,5 +1903,12 @@ describe("folded lines", function()
 
   describe('without ext_multigrid', function()
     with_ext_multigrid(false)
+  end)
+
+  it('no folds remains if :delete makes buffer empty #19671', function()
+    funcs.setline(1, {'foo', 'bar', 'baz'})
+    command('2,3fold')
+    command('%delete')
+    eq(0, funcs.foldlevel(1))
   end)
 end)

@@ -25,6 +25,7 @@
 #include "nvim/os/shell.h"
 #include "nvim/os/signal.h"
 #include "nvim/path.h"
+#include "nvim/profile.h"
 #include "nvim/screen.h"
 #include "nvim/strings.h"
 #include "nvim/tag.h"
@@ -47,11 +48,11 @@ typedef struct {
 # include "os/shell.c.generated.h"
 #endif
 
-static void save_patterns(int num_pat, char_u **pat, int *num_file, char_u ***file)
+static void save_patterns(int num_pat, char **pat, int *num_file, char ***file)
 {
   *file = xmalloc((size_t)num_pat * sizeof(char_u *));
   for (int i = 0; i < num_pat; i++) {
-    char_u *s = vim_strsave(pat[i]);
+    char *s = xstrdup(pat[i]);
     // Be compatible with expand_filename(): halve the number of
     // backslashes.
     backslash_halve(s);
@@ -60,7 +61,7 @@ static void save_patterns(int num_pat, char_u **pat, int *num_file, char_u ***fi
   *num_file = num_pat;
 }
 
-static bool have_wildcard(int num, char_u **file)
+static bool have_wildcard(int num, char **file)
 {
   for (int i = 0; i < num; i++) {
     if (path_has_wildcard(file[i])) {
@@ -70,10 +71,10 @@ static bool have_wildcard(int num, char_u **file)
   return false;
 }
 
-static bool have_dollars(int num, char_u **file)
+static bool have_dollars(int num, char **file)
 {
   for (int i = 0; i < num; i++) {
-    if (vim_strchr((char *)file[i], '$') != NULL) {
+    if (vim_strchr(file[i], '$') != NULL) {
       return true;
     }
   }
@@ -98,7 +99,7 @@ static bool have_dollars(int num, char_u **file)
 ///                      copied into *file.
 ///
 /// @returns             OK for success or FAIL for error.
-int os_expand_wildcards(int num_pat, char_u **pat, int *num_file, char_u ***file, int flags)
+int os_expand_wildcards(int num_pat, char **pat, int *num_file, char ***file, int flags)
   FUNC_ATTR_NONNULL_ARG(3)
   FUNC_ATTR_NONNULL_ARG(4)
 {
@@ -151,7 +152,7 @@ int os_expand_wildcards(int num_pat, char_u **pat, int *num_file, char_u ***file
   // Don't allow the use of backticks in secure.
   if (secure) {
     for (i = 0; i < num_pat; i++) {
-      if (vim_strchr((char *)pat[i], '`') != NULL
+      if (vim_strchr(pat[i], '`') != NULL
           && (check_secure())) {
         return FAIL;
       }
@@ -159,7 +160,7 @@ int os_expand_wildcards(int num_pat, char_u **pat, int *num_file, char_u ***file
   }
 
   // get a name for the temp file
-  if ((tempname = vim_tempname()) == NULL) {
+  if ((tempname = (char_u *)vim_tempname()) == NULL) {
     emsg(_(e_notmp));
     return FAIL;
   }
@@ -248,10 +249,16 @@ int os_expand_wildcards(int num_pat, char_u **pat, int *num_file, char_u ***file
     }
     STRCAT(command, ">");
   } else {
-    if (flags & EW_NOTFOUND) {
-      STRCPY(command, "set nonomatch; ");
-    } else {
-      STRCPY(command, "unset nonomatch; ");
+    STRCPY(command, "");
+    if (shell_style == STYLE_GLOB) {
+      // Assume the nonomatch option is valid only for csh like shells,
+      // otherwise, this may set the positional parameters for the shell,
+      // e.g. "$*".
+      if (flags & EW_NOTFOUND) {
+        STRCAT(command, "set nonomatch; ");
+      } else {
+        STRCAT(command, "unset nonomatch; ");
+      }
     }
     if (shell_style == STYLE_GLOB) {
       STRCAT(command, "glob >");
@@ -297,7 +304,7 @@ int os_expand_wildcards(int num_pat, char_u **pat, int *num_file, char_u ***file
         }
 
         // Copy one character.
-        *p++ = pat[i][j];
+        *p++ = (char_u)pat[i][j];
       }
       *p = NUL;
     }
@@ -471,7 +478,7 @@ int os_expand_wildcards(int num_pat, char_u **pat, int *num_file, char_u ***file
   // Isolate the individual file names.
   p = buffer;
   for (i = 0; i < *num_file; i++) {
-    (*file)[i] = p;
+    (*file)[i] = (char *)p;
     // Space or NL separates
     if (shell_style == STYLE_ECHO || shell_style == STYLE_BT
         || shell_style == STYLE_VIMGLOB) {
@@ -508,7 +515,7 @@ int os_expand_wildcards(int num_pat, char_u **pat, int *num_file, char_u ***file
 
     // Skip files that are not executable if we check for that.
     if (!dir && (flags & EW_EXEC)
-        && !os_can_exe((char *)(*file)[i], NULL, !(flags & EW_SHELLCMD))) {
+        && !os_can_exe((*file)[i], NULL, !(flags & EW_SHELLCMD))) {
       continue;
     }
 
@@ -517,7 +524,7 @@ int os_expand_wildcards(int num_pat, char_u **pat, int *num_file, char_u ***file
     if (dir) {
       add_pathsep((char *)p);             // add '/' to a directory name
     }
-    (*file)[j++] = p;
+    (*file)[j++] = (char *)p;
   }
   xfree(buffer);
   *num_file = j;
@@ -739,7 +746,7 @@ char_u *get_cmd_output(char_u *cmd, char_u *infile, ShellOpts flags, size_t *ret
   }
 
   // get a name for the temp file
-  char_u *tempname = vim_tempname();
+  char_u *tempname = (char_u *)vim_tempname();
   if (tempname == NULL) {
     emsg(_(e_notmp));
     return NULL;
@@ -904,7 +911,7 @@ static int do_os_system(char **argv, const char *input, size_t len, char **outpu
     out_data_ring(NULL, SIZE_MAX);
   }
   if (forward_output) {
-    // caller should decide if wait_return is invoked
+    // caller should decide if wait_return() is invoked
     no_wait_return++;
     msg_end();
     no_wait_return--;
@@ -1099,13 +1106,13 @@ static void out_data_append_to_screen(char *output, size_t *count, bool eof)
       //    incomplete UTF-8 sequence that could be composing with the last
       //    complete sequence.
       // This will be corrected when we switch to vterm based implementation
-      int i = *p ? utfc_ptr2len_len((char_u *)p, (int)(end - p)) : 1;
+      int i = *p ? utfc_ptr2len_len(p, (int)(end - p)) : 1;
       if (!eof && i == 1 && utf8len_tab_zero[*(uint8_t *)p] > (end - p)) {
         *count = (size_t)(p - output);
         goto end;
       }
 
-      (void)msg_outtrans_len_attr((char_u *)p, i, 0);
+      (void)msg_outtrans_len_attr(p, i, 0);
       p += i;
     }
   }
@@ -1201,7 +1208,7 @@ static void read_input(DynamicBuffer *buf)
 {
   size_t written = 0, l = 0, len = 0;
   linenr_T lnum = curbuf->b_op_start.lnum;
-  char_u *lp = ml_get(lnum);
+  char_u *lp = (char_u *)ml_get(lnum);
 
   for (;;) {
     l = strlen((char *)lp + written);
@@ -1233,7 +1240,7 @@ static void read_input(DynamicBuffer *buf)
       if (lnum > curbuf->b_op_end.lnum) {
         break;
       }
-      lp = ml_get(lnum);
+      lp = (char_u *)ml_get(lnum);
       written = 0;
     } else if (len > 0) {
       written += len;

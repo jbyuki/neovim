@@ -2148,6 +2148,13 @@ describe('lua stdlib', function()
     ]]
     eq('2', funcs.luaeval "BUF")
     eq(2, funcs.luaeval "#vim.api.nvim_list_bufs()")
+
+    -- vim.cmd can be indexed with a command name
+    exec_lua [[
+      vim.cmd.let 'g:var = 2'
+    ]]
+
+    eq(2, funcs.luaeval "vim.g.var")
   end)
 
   it('vim.regex', function()
@@ -2493,6 +2500,41 @@ describe('lua stdlib', function()
 
       eq(false, pcall_result)
     end)
+
+    describe('returns -2 when interrupted', function()
+      before_each(function()
+        local channel = meths.get_api_info()[1]
+        meths.set_var('channel', channel)
+      end)
+
+      it('without callback', function()
+        exec_lua([[
+          function _G.Wait()
+            vim.rpcnotify(vim.g.channel, 'ready')
+            local _, interrupted = vim.wait(4000)
+            vim.rpcnotify(vim.g.channel, 'wait', interrupted)
+          end
+        ]])
+        feed(':lua _G.Wait()<CR>')
+        eq({'notification', 'ready', {}}, next_msg(500))
+        feed('<C-C>')
+        eq({'notification', 'wait', {-2}}, next_msg(500))
+      end)
+
+      it('with callback', function()
+        exec_lua([[
+          function _G.Wait()
+            vim.rpcnotify(vim.g.channel, 'ready')
+            local _, interrupted = vim.wait(4000, function() end)
+            vim.rpcnotify(vim.g.channel, 'wait', interrupted)
+          end
+        ]])
+        feed(':lua _G.Wait()<CR>')
+        eq({'notification', 'ready', {}}, next_msg(500))
+        feed('<C-C>')
+        eq({'notification', 'wait', {-2}}, next_msg(500))
+      end)
+    end)
   end)
 
   it('vim.notify_once', function()
@@ -2679,6 +2721,57 @@ describe('lua stdlib', function()
       ]]
     end)
   end)
+
+  describe('vim.iconv', function()
+    it('can convert strings', function()
+      eq('hello', exec_lua[[
+        return vim.iconv('hello', 'latin1', 'utf-8')
+      ]])
+    end)
+
+    it('can validate arguments', function()
+      eq({false, 'Expected at least 3 arguments'}, exec_lua[[
+        return {pcall(vim.iconv, 'hello')}
+      ]])
+
+      eq({false, 'bad argument #3 to \'?\' (expected string)'}, exec_lua[[
+        return {pcall(vim.iconv, 'hello', 'utf-8', true)}
+      ]])
+    end)
+
+    it('can handle bad encodings', function()
+      eq(NIL, exec_lua[[
+        return vim.iconv('hello', 'foo', 'bar')
+      ]])
+    end)
+
+    it('can handle strings with NUL bytes', function()
+      eq(7, exec_lua[[
+        local a = string.char(97, 98, 99, 0, 100, 101, 102) -- abc\0def
+        return string.len(vim.iconv(a, 'latin1', 'utf-8'))
+      ]])
+    end)
+
+  end)
+
+  describe("vim.defaulttable", function()
+    it("creates nested table by default", function()
+      eq({ b = {c = 1 } }, exec_lua[[
+        local a = vim.defaulttable()
+        a.b.c = 1
+        return a
+      ]])
+    end)
+
+    it("allows to create default objects", function()
+      eq({ b = 1 }, exec_lua[[
+        local a = vim.defaulttable(function() return 0 end)
+        a.b = a.b + 1
+        return a
+      ]])
+    end)
+  end)
+
 end)
 
 describe('lua: builtin modules', function()
@@ -2750,12 +2843,12 @@ describe('vim.keymap', function()
 
   it('can make an expr mapping', function()
     exec_lua [[
-      vim.keymap.set('n', 'aa', function() return ':lua SomeValue = 99<cr>' end, {expr = true})
+      vim.keymap.set('n', 'aa', function() return '<Insert>π<C-V><M-π>foo<lt><Esc>' end, {expr = true})
     ]]
 
     feed('aa')
 
-    eq(99, exec_lua[[return SomeValue]])
+    eq({'π<M-π>foo<'}, meths.buf_get_lines(0, 0, -1, false))
   end)
 
   it('can overwrite a mapping', function()

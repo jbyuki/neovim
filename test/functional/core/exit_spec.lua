@@ -3,6 +3,7 @@ local helpers = require('test.functional.helpers')(after_each)
 local assert_alive = helpers.assert_alive
 local command = helpers.command
 local feed_command = helpers.feed_command
+local feed = helpers.feed
 local eval = helpers.eval
 local eq = helpers.eq
 local run = helpers.run
@@ -36,11 +37,12 @@ describe('v:exiting', function()
     end
     run(on_request, nil, on_setup)
   end)
-  it('is 0 on exit from ex-mode involving try-catch', function()
+  it('is 0 on exit from Ex mode involving try-catch vim-patch:8.0.0184', function()
     local function on_setup()
       command('autocmd VimLeavePre * call rpcrequest('..cid..', "")')
       command('autocmd VimLeave    * call rpcrequest('..cid..', "")')
-      feed_command('call feedkey("Q")','try', 'call NoFunction()', 'catch', 'echo "bye"', 'endtry', 'quit')
+      feed('gQ')
+      feed_command('try', 'call NoFunction()', 'catch', 'echo "bye"', 'endtry', 'quit')
     end
     local function on_request()
       eq(0, eval('v:exiting'))
@@ -87,14 +89,14 @@ describe(':cquit', function()
   end)
 
   it('exits with redir msg for multiple exit codes after :cquit 1 2', function()
-    test_cq('cquit 1 2', nil, 'Vim(cquit):E488: Trailing characters: cquit 1 2')
+    test_cq('cquit 1 2', nil, 'Vim(cquit):E488: Trailing characters: 2: cquit 1 2')
   end)
 
   it('exits with redir msg for non-number exit code after :cquit X', function()
-    test_cq('cquit X', nil, 'Vim(cquit):E488: Trailing characters: cquit X')
+    test_cq('cquit X', nil, 'Vim(cquit):E488: Trailing characters: X: cquit X')
   end)
 
   it('exits with redir msg for negative exit code after :cquit -1', function()
-    test_cq('cquit -1', nil, 'Vim(cquit):E488: Trailing characters: cquit -1')
+    test_cq('cquit -1', nil, 'Vim(cquit):E488: Trailing characters: -1: cquit -1')
   end)
 end)

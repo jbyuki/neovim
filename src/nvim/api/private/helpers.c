@@ -19,8 +19,8 @@
 #include "nvim/eval.h"
 #include "nvim/eval/typval.h"
 #include "nvim/ex_cmds_defs.h"
+#include "nvim/ex_eval.h"
 #include "nvim/extmark.h"
-#include "nvim/fileio.h"
 #include "nvim/highlight_group.h"
 #include "nvim/lib/kvec.h"
 #include "nvim/lua/executor.h"
@@ -54,10 +54,11 @@ void try_enter(TryState *const tstate)
   //              save_dbg_stuff()/restore_dbg_stuff().
   *tstate = (TryState) {
     .current_exception = current_exception,
-    .msg_list = (const struct msglist *const *)msg_list,
+    .msg_list = (const msglist_T *const *)msg_list,
     .private_msg_list = NULL,
     .trylevel = trylevel,
     .got_int = got_int,
+    .did_throw = did_throw,
     .need_rethrow = need_rethrow,
     .did_emsg = did_emsg,
   };
@@ -65,6 +66,7 @@ void try_enter(TryState *const tstate)
   current_exception = NULL;
   trylevel = 1;
   got_int = false;
+  did_throw = false;
   need_rethrow = false;
   did_emsg = false;
 }
@@ -85,14 +87,16 @@ bool try_leave(const TryState *const tstate, Error *const err)
   assert(trylevel == 0);
   assert(!need_rethrow);
   assert(!got_int);
+  assert(!did_throw);
   assert(!did_emsg);
   assert(msg_list == &tstate->private_msg_list);
   assert(*msg_list == NULL);
   assert(current_exception == NULL);
-  msg_list = (struct msglist **)tstate->msg_list;
+  msg_list = (msglist_T **)tstate->msg_list;
   current_exception = tstate->current_exception;
   trylevel = tstate->trylevel;
   got_int = tstate->got_int;
+  did_throw = tstate->did_throw;
   need_rethrow = tstate->need_rethrow;
   did_emsg = tstate->did_emsg;
   return ret;
@@ -127,7 +131,7 @@ bool try_end(Error *err)
   force_abort = false;
 
   if (got_int) {
-    if (current_exception) {
+    if (did_throw) {
       // If we got an interrupt, discard the current exception
       discard_current_exception();
     }
@@ -146,7 +150,7 @@ bool try_end(Error *err)
     if (should_free) {
       xfree(msg);
     }
-  } else if (current_exception) {
+  } else if (did_throw) {
     api_set_error(err, kErrorTypeException, "%s", current_exception->value);
     discard_current_exception();
   }
@@ -462,7 +466,7 @@ bool buf_collect_lines(buf_T *buf, size_t n, int64_t start, bool replace_nl, Arr
       return false;
     }
 
-    const char *bufstr = (char *)ml_get_buf(buf, (linenr_T)lnum, false);
+    const char *bufstr = ml_get_buf(buf, (linenr_T)lnum, false);
     Object str = STRING_OBJ(cstr_to_string(bufstr));
 
     if (replace_nl) {
@@ -495,7 +499,7 @@ String buf_get_text(buf_T *buf, int64_t lnum, int64_t start_col, int64_t end_col
     return rv;
   }
 
-  const char *bufstr = (char *)ml_get_buf(buf, (linenr_T)lnum, false);
+  const char *bufstr = ml_get_buf(buf, (linenr_T)lnum, false);
   size_t line_length = strlen(bufstr);
 
   start_col = start_col < 0 ? (int64_t)line_length + start_col + 1 : start_col;
@@ -618,6 +622,7 @@ void api_clear_error(Error *value)
   value->type = kErrorTypeNone;
 }
 
+/// @returns a shared value. caller must not modify it!
 Dictionary api_metadata(void)
 {
   static Dictionary metadata = ARRAY_DICT_INIT;
@@ -630,7 +635,7 @@ Dictionary api_metadata(void)
     init_type_metadata(&metadata);
   }
 
-  return copy_object(DICTIONARY_OBJ(metadata)).data.dictionary;
+  return metadata;
 }
 
 static void init_function_metadata(Dictionary *metadata)
@@ -715,36 +720,40 @@ static void init_type_metadata(Dictionary *metadata)
   PUT(*metadata, "types", DICTIONARY_OBJ(types));
 }
 
-String copy_string(String str)
+// all the copy_[object] functions allow arena=NULL,
+// then global allocations are used, and the resulting object
+// should be freed with an api_free_[object] function
+
+String copy_string(String str, Arena *arena)
 {
   if (str.data != NULL) {
-    return (String){ .data = xmemdupz(str.data, str.size), .size = str.size };
+    return (String){ .data = arena_memdupz(arena, str.data, str.size), .size = str.size };
   } else {
     return (String)STRING_INIT;
   }
 }
 
-Array copy_array(Array array)
+Array copy_array(Array array, Arena *arena)
 {
-  Array rv = ARRAY_DICT_INIT;
+  Array rv = arena_array(arena, array.size);
   for (size_t i = 0; i < array.size; i++) {
-    ADD(rv, copy_object(array.items[i]));
+    ADD(rv, copy_object(array.items[i], arena));
   }
   return rv;
 }
 
-Dictionary copy_dictionary(Dictionary dict)
+Dictionary copy_dictionary(Dictionary dict, Arena *arena)
 {
-  Dictionary rv = ARRAY_DICT_INIT;
+  Dictionary rv = arena_dict(arena, dict.size);
   for (size_t i = 0; i < dict.size; i++) {
     KeyValuePair item = dict.items[i];
-    PUT(rv, item.key.data, copy_object(item.value));
+    PUT_C(rv, copy_string(item.key, arena).data, copy_object(item.value, arena));
   }
   return rv;
 }
 
 /// Creates a deep clone of an object
-Object copy_object(Object obj)
+Object copy_object(Object obj, Arena *arena)
 {
   switch (obj.type) {
   case kObjectTypeBuffer:
@@ -757,13 +766,13 @@ Object copy_object(Object obj)
     return obj;
 
   case kObjectTypeString:
-    return STRING_OBJ(copy_string(obj.data.string));
+    return STRING_OBJ(copy_string(obj.data.string, arena));
 
   case kObjectTypeArray:
-    return ARRAY_OBJ(copy_array(obj.data.array));
+    return ARRAY_OBJ(copy_array(obj.data.array, arena));
 
   case kObjectTypeDictionary:
-    return DICTIONARY_OBJ(copy_dictionary(obj.data.dictionary));
+    return DICTIONARY_OBJ(copy_dictionary(obj.data.dictionary, arena));
 
   case kObjectTypeLuaRef:
     return LUAREF_OBJ(api_new_luaref(obj.data.luaref));
@@ -844,7 +853,7 @@ HlMessage parse_hl_msg(Array chunks, Error *err)
       goto free_exit;
     }
 
-    String str = copy_string(chunk.items[0].data.string);
+    String str = copy_string(chunk.items[0].data.string, NULL);
 
     int attr = 0;
     if (chunk.size == 2) {

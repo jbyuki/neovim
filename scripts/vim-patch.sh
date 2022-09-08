@@ -229,12 +229,24 @@ preprocess_patch() {
   LC_ALL=C sed -e 's/\( [ab]\/src\/nvim\)\/evalfunc\.c/\1\/eval\/funcs\.c/g' \
     "$file" > "$file".tmp && mv "$file".tmp "$file"
 
+  # Rename evalvars.c to eval/vars.c
+  LC_ALL=C sed -e 's/\( [ab]\/src\/nvim\)\/evalvars\.c/\1\/eval\/vars\.c/g' \
+    "$file" > "$file".tmp && mv "$file".tmp "$file"
+
   # Rename userfunc.c to eval/userfunc.c
   LC_ALL=C sed -e 's/\( [ab]\/src\/nvim\)\/userfunc\.c/\1\/eval\/userfunc\.c/g' \
     "$file" > "$file".tmp && mv "$file".tmp "$file"
 
   # Rename map.c to mapping.c
   LC_ALL=C sed -e 's/\( [ab]\/src\/nvim\)\/map\(\.[ch]\)/\1\/mapping\2/g' \
+    "$file" > "$file".tmp && mv "$file".tmp "$file"
+
+  # Rename profiler.c to profile.c
+  LC_ALL=C sed -e 's/\( [ab]\/src\/nvim\)\/profiler\(\.[ch]\)/\1\/profile\2/g' \
+    "$file" > "$file".tmp && mv "$file".tmp "$file"
+
+  # Rename scriptfile.c to runtime.c
+  LC_ALL=C sed -e 's/\( [ab]\/src\/nvim\)\/scriptfile\(\.[ch]\)/\1\/runtime\2/g' \
     "$file" > "$file".tmp && mv "$file".tmp "$file"
 
   # Rename session.c to ex_session.c

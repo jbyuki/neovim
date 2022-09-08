@@ -281,8 +281,8 @@ describe('API', function()
       ]]}
     end)
 
-    it('does\'t display messages when output=true', function()
-      local screen = Screen.new(40, 8)
+    it('doesn\'t display messages when output=true', function()
+      local screen = Screen.new(40, 6)
       screen:attach()
       screen:set_default_attr_ids({
         [0] = {bold=true, foreground=Screen.colors.Blue},
@@ -294,9 +294,21 @@ describe('API', function()
         {0:~                                       }|
         {0:~                                       }|
         {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
                                                 |
+      ]]}
+      exec([[
+        func Print()
+          call nvim_exec('echo "hello"', v:true)
+        endfunc
+      ]])
+      feed([[:echon 1 | call Print() | echon 5<CR>]])
+      screen:expect{grid=[[
+        ^                                        |
+        {0:~                                       }|
+        {0:~                                       }|
+        {0:~                                       }|
+        {0:~                                       }|
+        15                                      |
       ]]}
     end)
   end)
@@ -1468,6 +1480,17 @@ describe('API', function()
       local win = nvim('get_current_win').id
       nvim('win_set_option', win, 'number', true)
       eq(true, nvim('get_option_value', 'number', {win = win}))
+    end)
+
+    it('getting current buffer option does not adjust cursor #19381', function()
+      nvim('command', 'new')
+      local buf = nvim('get_current_buf').id
+      local win = nvim('get_current_win').id
+      insert('some text')
+      feed('0v$')
+      eq({1, 9}, nvim('win_get_cursor', win))
+      nvim('get_option_value', 'filetype', {buf = buf})
+      eq({1, 9}, nvim('win_get_cursor', win))
     end)
   end)
 
@@ -2709,8 +2732,8 @@ describe('API', function()
 
     it('should have information about window options', function()
       eq({
-        allows_duplicates = true,
-        commalist = false;
+        allows_duplicates = false,
+        commalist = true;
         default = "";
         flaglist = false;
         global_local = false;
@@ -3172,6 +3195,7 @@ describe('API', function()
               force = false
           },
           hide = false,
+          horizontal = false,
           keepalt = false,
           keepjumps = false,
           keepmarks = false,
@@ -3182,7 +3206,7 @@ describe('API', function()
           sandbox = false,
           silent = false,
           split = "",
-          tab = 0,
+          tab = -1,
           unsilent = false,
           verbose = -1,
           vertical = false,
@@ -3213,6 +3237,7 @@ describe('API', function()
               force = false
           },
           hide = false,
+          horizontal = false,
           keepalt = false,
           keepjumps = false,
           keepmarks = false,
@@ -3223,7 +3248,7 @@ describe('API', function()
           sandbox = false,
           silent = false,
           split = "",
-          tab = 0,
+          tab = -1,
           unsilent = false,
           verbose = -1,
           vertical = false,
@@ -3254,6 +3279,7 @@ describe('API', function()
               force = false
           },
           hide = false,
+          horizontal = false,
           keepalt = false,
           keepjumps = false,
           keepmarks = false,
@@ -3264,7 +3290,7 @@ describe('API', function()
           sandbox = false,
           silent = false,
           split = "",
-          tab = 0,
+          tab = -1,
           unsilent = false,
           verbose = -1,
           vertical = false,
@@ -3295,6 +3321,7 @@ describe('API', function()
               force = false
           },
           hide = false,
+          horizontal = false,
           keepalt = false,
           keepjumps = false,
           keepmarks = false,
@@ -3305,7 +3332,7 @@ describe('API', function()
           sandbox = false,
           silent = false,
           split = "",
-          tab = 0,
+          tab = -1,
           unsilent = false,
           verbose = -1,
           vertical = false,
@@ -3336,6 +3363,7 @@ describe('API', function()
               force = false
           },
           hide = false,
+          horizontal = false,
           keepalt = false,
           keepjumps = false,
           keepmarks = false,
@@ -3346,7 +3374,7 @@ describe('API', function()
           sandbox = false,
           silent = false,
           split = "",
-          tab = 0,
+          tab = -1,
           unsilent = false,
           verbose = -1,
           vertical = false,
@@ -3377,6 +3405,7 @@ describe('API', function()
               force = false
           },
           hide = false,
+          horizontal = false,
           keepalt = false,
           keepjumps = false,
           keepmarks = false,
@@ -3387,7 +3416,7 @@ describe('API', function()
           sandbox = false,
           silent = false,
           split = "",
-          tab = 0,
+          tab = -1,
           unsilent = false,
           verbose = -1,
           vertical = false,
@@ -3418,6 +3447,7 @@ describe('API', function()
               force = false
           },
           hide = false,
+          horizontal = true,
           keepalt = false,
           keepjumps = false,
           keepmarks = false,
@@ -3428,12 +3458,12 @@ describe('API', function()
           sandbox = false,
           silent = true,
           split = "topleft",
-          tab = 2,
+          tab = 1,
           unsilent = false,
           verbose = 15,
           vertical = false,
         },
-      }, meths.parse_cmd('15verbose silent! aboveleft topleft tab filter /foo/ split foo.txt', {}))
+      }, meths.parse_cmd('15verbose silent! horizontal topleft tab filter /foo/ split foo.txt', {}))
       eq({
         cmd = 'split',
         args = { 'foo.txt' },
@@ -3457,6 +3487,7 @@ describe('API', function()
               force = true
           },
           hide = false,
+          horizontal = false,
           keepalt = false,
           keepjumps = false,
           keepmarks = false,
@@ -3472,7 +3503,7 @@ describe('API', function()
           verbose = 0,
           vertical = false,
         },
-      }, meths.parse_cmd('0verbose unsilent botright confirm filter! /foo/ split foo.txt', {}))
+      }, meths.parse_cmd('0verbose unsilent botright 0tab confirm filter! /foo/ split foo.txt', {}))
     end)
     it('works with user commands', function()
       command('command -bang -nargs=+ -range -addr=lines MyCommand echo foo')
@@ -3499,6 +3530,7 @@ describe('API', function()
               force = false
           },
           hide = false,
+          horizontal = false,
           keepalt = false,
           keepjumps = false,
           keepmarks = false,
@@ -3509,7 +3541,7 @@ describe('API', function()
           sandbox = false,
           silent = false,
           split = "",
-          tab = 0,
+          tab = -1,
           unsilent = false,
           verbose = -1,
           vertical = false,
@@ -3540,6 +3572,7 @@ describe('API', function()
               force = false
           },
           hide = false,
+          horizontal = false,
           keepalt = false,
           keepjumps = false,
           keepmarks = false,
@@ -3550,7 +3583,7 @@ describe('API', function()
           sandbox = false,
           silent = false,
           split = "",
-          tab = 0,
+          tab = -1,
           unsilent = false,
           verbose = -1,
           vertical = false,
@@ -3582,6 +3615,7 @@ describe('API', function()
               force = false
           },
           hide = false,
+          horizontal = false,
           keepalt = false,
           keepjumps = false,
           keepmarks = false,
@@ -3592,7 +3626,7 @@ describe('API', function()
           sandbox = false,
           silent = false,
           split = "",
-          tab = 0,
+          tab = -1,
           unsilent = false,
           verbose = -1,
           vertical = false,
@@ -3612,6 +3646,88 @@ describe('API', function()
       command('command! Foobar echo foo')
       eq('Error while parsing command line: E464: Ambiguous use of user-defined command',
          pcall_err(meths.parse_cmd, 'F', {}))
+    end)
+    it('does not interfere with printing line in Ex mode #19400', function()
+      local screen = Screen.new(60, 7)
+      screen:set_default_attr_ids({
+        [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
+        [1] = {bold = true, reverse = true},  -- MsgSeparator
+      })
+      screen:attach()
+      insert([[
+        foo
+        bar]])
+      feed('gQ1')
+      screen:expect([[
+        foo                                                         |
+        bar                                                         |
+        {0:~                                                           }|
+        {0:~                                                           }|
+        {1:                                                            }|
+        Entering Ex mode.  Type "visual" to go to Normal mode.      |
+        :1^                                                          |
+      ]])
+      eq('Error while parsing command line', pcall_err(meths.parse_cmd, '', {}))
+      feed('<CR>')
+      screen:expect([[
+        foo                                                         |
+        bar                                                         |
+        {1:                                                            }|
+        Entering Ex mode.  Type "visual" to go to Normal mode.      |
+        :1                                                          |
+        foo                                                         |
+        :^                                                           |
+      ]])
+    end)
+    it('does not move cursor or change search history/pattern #19878 #19890', function()
+      meths.buf_set_lines(0, 0, -1, true, {'foo', 'bar', 'foo', 'bar'})
+      eq({1, 0}, meths.win_get_cursor(0))
+      eq('', funcs.getreg('/'))
+      eq('', funcs.histget('search'))
+      feed(':')  -- call the API in cmdline mode to test whether it changes search history
+      eq({
+        cmd = 'normal',
+        args = {'x'},
+        bang = true,
+        range = {3, 4},
+        count = -1,
+        reg = '',
+        addr = 'line',
+        magic = {
+          file = false,
+          bar = false,
+        },
+        nargs = '+',
+        nextcmd = '',
+        mods = {
+          browse = false,
+          confirm = false,
+          emsg_silent = false,
+          filter = {
+            pattern = "",
+            force = false,
+          },
+          hide = false,
+          horizontal = false,
+          keepalt = false,
+          keepjumps = false,
+          keepmarks = false,
+          keeppatterns = false,
+          lockmarks = false,
+          noautocmd = false,
+          noswapfile = false,
+          sandbox = false,
+          silent = false,
+          split = "",
+          tab = -1,
+          unsilent = false,
+          verbose = -1,
+          vertical = false,
+        }
+      }, meths.parse_cmd('+2;/bar/normal! x', {}))
+      eq({1, 0}, meths.win_get_cursor(0))
+      eq('', funcs.getreg('/'))
+      eq('', funcs.histget('search'))
     end)
   end)
   describe('nvim_cmd', function()
@@ -3690,8 +3806,24 @@ describe('API', function()
       eq("", meths.cmd({ cmd = "Foo", bang = false }, { output = true }))
     end)
     it('works with modifiers', function()
+      -- with :silent output is still captured
+      eq('1',
+         meths.cmd({ cmd = 'echomsg', args = { '1' }, mods = { silent = true } },
+                   { output = true }))
+      -- but message isn't added to message history
+      eq('', meths.cmd({ cmd = 'messages' }, { output = true }))
       meths.create_user_command("Foo", 'set verbose', {})
       eq("  verbose=1", meths.cmd({ cmd = "Foo", mods = { verbose = 1 } }, { output = true }))
+      meths.create_user_command("Mods", "echo '<mods>'", {})
+      eq('keepmarks keeppatterns silent 3verbose aboveleft horizontal',
+         meths.cmd({ cmd = "Mods", mods = {
+           horizontal = true,
+           keepmarks = true,
+           keeppatterns = true,
+           silent = true,
+           split = 'aboveleft',
+           verbose = 3,
+         } }, { output = true }))
       eq(0, meths.get_option_value("verbose", {}))
       command('edit foo.txt | edit bar.txt')
       eq('  1 #h   "foo.txt"                      line 1',
@@ -3772,6 +3904,50 @@ describe('API', function()
       ]], {})
       feed("[l")
       neq(nil, string.find(eval("v:errmsg"), "E5108:"))
+    end)
+    it('handles 0 range #19608', function()
+      meths.buf_set_lines(0, 0, -1, false, { "aa" })
+      meths.cmd({ cmd = 'delete', range = { 0 } }, {})
+      command('undo')
+      eq({'aa'}, meths.buf_get_lines(0, 0, 1, false))
+      assert_alive()
+    end)
+    it("'make' command works when argument count isn't 1 #19696", function()
+      command('set makeprg=echo')
+      meths.cmd({ cmd = 'make' }, {})
+      assert_alive()
+      meths.cmd({ cmd = 'make', args = { 'foo', 'bar' } }, {})
+      assert_alive()
+    end)
+    it('doesn\'t display messages when output=true', function()
+      local screen = Screen.new(40, 6)
+      screen:attach()
+      screen:set_default_attr_ids({
+        [0] = {bold=true, foreground=Screen.colors.Blue},
+      })
+      meths.cmd({cmd = 'echo', args = {[['hello']]}}, {output = true})
+      screen:expect{grid=[[
+        ^                                        |
+        {0:~                                       }|
+        {0:~                                       }|
+        {0:~                                       }|
+        {0:~                                       }|
+                                                |
+      ]]}
+      exec([[
+        func Print()
+          call nvim_cmd(#{cmd: 'echo', args: ['"hello"']}, #{output: v:true})
+        endfunc
+      ]])
+      feed([[:echon 1 | call Print() | echon 5<CR>]])
+      screen:expect{grid=[[
+        ^                                        |
+        {0:~                                       }|
+        {0:~                                       }|
+        {0:~                                       }|
+        {0:~                                       }|
+        15                                      |
+      ]]}
     end)
   end)
 end)

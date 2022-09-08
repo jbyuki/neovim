@@ -142,6 +142,7 @@ local extension = {
   asp = function(path, bufnr)
     return require('vim.filetype.detect').asp(bufnr)
   end,
+  astro = 'astro',
   atl = 'atlas',
   as = 'atlas',
   ahk = 'autohotkey',
@@ -172,7 +173,11 @@ local extension = {
     return require('vim.filetype.detect').bindzone(bufnr, '')
   end,
   bicep = 'bicep',
+  bb = 'bitbake',
+  bbappend = 'bitbake',
+  bbclass = 'bitbake',
   bl = 'blank',
+  bsd = 'bsdl',
   bsdl = 'bsdl',
   bst = 'bst',
   btm = function(path, bufnr)
@@ -259,6 +264,7 @@ local extension = {
   fdr = 'csp',
   csp = 'csp',
   css = 'css',
+  csv = 'csv',
   con = 'cterm',
   feature = 'cucumber',
   cuh = 'cuda',
@@ -416,9 +422,11 @@ local extension = {
   gdb = 'gdb',
   gdmo = 'gdmo',
   mo = 'gdmo',
-  tres = 'gdresource',
   tscn = 'gdresource',
+  tres = 'gdresource',
   gd = 'gdscript',
+  gdshader = 'gdshader',
+  shader = 'gdshader',
   ged = 'gedcom',
   gmi = 'gemtext',
   gemini = 'gemtext',
@@ -532,6 +540,7 @@ local extension = {
   mjs = 'javascript',
   javascript = 'javascript',
   js = 'javascript',
+  jsm = 'javascript',
   cjs = 'javascript',
   jsx = 'javascriptreact',
   clp = 'jess',
@@ -548,6 +557,8 @@ local extension = {
   ['json-patch'] = 'json',
   json5 = 'json5',
   jsonc = 'jsonc',
+  jsonnet = 'jsonnet',
+  libjsonnet = 'jsonnet',
   jsp = 'jsp',
   jl = 'julia',
   kv = 'kivy',
@@ -663,6 +674,21 @@ local extension = {
   moo = 'moo',
   moon = 'moonscript',
   mp = 'mp',
+  mpiv = function(path, bufnr)
+    return 'mp', function(b)
+      vim.b[b].mp_metafun = 1
+    end
+  end,
+  mpvi = function(path, bufnr)
+    return 'mp', function(b)
+      vim.b[b].mp_metafun = 1
+    end
+  end,
+  mpxl = function(path, bufnr)
+    return 'mp', function(b)
+      vim.b[b].mp_metafun = 1
+    end
+  end,
   mof = 'msidl',
   odl = 'msidl',
   msql = 'msql',
@@ -771,6 +797,7 @@ local extension = {
   ptl = 'python',
   ql = 'ql',
   qll = 'ql',
+  qmd = 'quarto',
   R = function(path, bufnr)
     return require('vim.filetype.detect').r(bufnr)
   end,
@@ -878,7 +905,9 @@ local extension = {
   sig = function(path, bufnr)
     return require('vim.filetype.detect').sig(bufnr)
   end,
-  sil = 'sil',
+  sil = function(path, bufnr)
+    return require('vim.filetype.detect').sil(bufnr)
+  end,
   sim = 'simula',
   ['s85'] = 'sinda',
   sin = 'sinda',
@@ -964,7 +993,7 @@ local extension = {
   txi = 'texinfo',
   texinfo = 'texinfo',
   text = 'text',
-  tfvars = 'terraform',
+  tfvars = 'terraform-vars',
   tla = 'tla',
   tli = 'tli',
   toml = 'toml',
@@ -974,6 +1003,7 @@ local extension = {
   tsscl = 'tsscl',
   tssgm = 'tssgm',
   tssop = 'tssop',
+  tsv = 'tsv',
   tutor = 'tutor',
   twig = 'twig',
   ts = function(path, bufnr)
@@ -988,6 +1018,11 @@ local extension = {
   dsm = 'vb',
   ctl = 'vb',
   vbs = 'vb',
+  vdmpp = 'vdmpp',
+  vpp = 'vdmpp',
+  vdmrt = 'vdmrt',
+  vdmsl = 'vdmsl',
+  vdm = 'vdmsl',
   vr = 'vera',
   vri = 'vera',
   vrh = 'vera',
@@ -1378,10 +1413,6 @@ local filename = {
   ['/etc/host.conf'] = 'hostconf',
   ['/etc/hosts.allow'] = 'hostsaccess',
   ['/etc/hosts.deny'] = 'hostsaccess',
-  ['/i3/config'] = 'i3config',
-  ['/sway/config'] = 'i3config',
-  ['/.sway/config'] = 'i3config',
-  ['/.i3/config'] = 'i3config',
   ['/.icewm/menu'] = 'icemenu',
   ['.indent.pro'] = 'indent',
   indentrc = 'indent',
@@ -1660,7 +1691,9 @@ local pattern = {
   ['[mM]akefile%.am'] = 'automake',
   ['.*/bind/db%..*'] = starsetf('bindzone'),
   ['.*/named/db%..*'] = starsetf('bindzone'),
-  ['.*bsd'] = 'bsdl',
+  ['.*/build/conf/.*%.conf'] = 'bitbake',
+  ['.*/meta/conf/.*%.conf'] = 'bitbake',
+  ['.*/meta%-.*/conf/.*%.conf'] = 'bitbake',
   ['bzr_log%..*'] = 'bzr',
   ['.*enlightenment/.*%.cfg'] = 'c',
   ['cabal%.project%..*'] = starsetf('cabalproject'),
@@ -1827,9 +1860,7 @@ local pattern = {
   ['.*/etc/hosts%.allow'] = 'hostsaccess',
   ['.*%.html%.m4'] = 'htmlm4',
   ['.*/%.i3/config'] = 'i3config',
-  ['.*/sway/config'] = 'i3config',
   ['.*/i3/config'] = 'i3config',
-  ['.*/%.sway/config'] = 'i3config',
   ['.*/%.icewm/menu'] = 'icemenu',
   ['.*/etc/initng/.*/.*%.i'] = 'initng',
   ['JAM.*%..*'] = starsetf('jam'),
@@ -2068,6 +2099,8 @@ local pattern = {
   end,
   ['.*/etc/sudoers'] = 'sudoers',
   ['svn%-commit.*%.tmp'] = 'svn',
+  ['.*/sway/config'] = 'swayconfig',
+  ['.*/%.sway/config'] = 'swayconfig',
   ['.*%.swift%.gyb'] = 'swiftgyb',
   ['.*%.[Ss][Yy][Ss]'] = function(path, bufnr)
     return require('vim.filetype.detect').sys(bufnr)
@@ -2233,30 +2266,30 @@ end
 --- <pre>
 ---  vim.filetype.add({
 ---    extension = {
----      foo = "fooscript",
+---      foo = 'fooscript',
 ---      bar = function(path, bufnr)
 ---        if some_condition() then
----          return "barscript", function(bufnr)
+---          return 'barscript', function(bufnr)
 ---            -- Set a buffer variable
 ---            vim.b[bufnr].barscript_version = 2
 ---          end
 ---        end
----        return "bar"
+---        return 'bar'
 ---      end,
 ---    },
 ---    filename = {
----      [".foorc"] = "toml",
----      ["/etc/foo/config"] = "toml",
+---      ['.foorc'] = 'toml',
+---      ['/etc/foo/config'] = 'toml',
 ---    },
 ---    pattern = {
----      [".*/etc/foo/.*"] = "fooscript",
+---      ['.*/etc/foo/.*'] = 'fooscript',
 ---      -- Using an optional priority
----      [".*/etc/foo/.*%.conf"] = { "dosini", { priority = 10 } },
----      ["README.(%a+)$"] = function(path, bufnr, ext)
----        if ext == "md" then
----          return "markdown"
----        elseif ext == "rst" then
----          return "rst"
+---      ['.*/etc/foo/.*%.conf'] = { 'dosini', { priority = 10 } },
+---      ['README.(%a+)$'] = function(path, bufnr, ext)
+---        if ext == 'md' then
+---          return 'markdown'
+---        elseif ext == 'rst' then
+---          return 'rst'
 ---        end
 ---      end,
 ---    },
@@ -2271,9 +2304,9 @@ end
 ---       priority = -math.huge,
 ---       function(path, bufnr)
 ---         local content = vim.filetype.getlines(bufnr, 1)
----         if vim.filetype.matchregex(content, { [[^#!.*\\<mine\\>]] }) then
+---         if vim.filetype.matchregex(content, [[^#!.*\\<mine\\>]]) then
 ---           return 'mine'
----         elseif vim.filetype.matchregex(content, { [[\\<drawing\\>]] }) then
+---         elseif vim.filetype.matchregex(content, [[\\<drawing\\>]]) then
 ---           return 'drawing'
 ---         end
 ---       end,
@@ -2468,7 +2501,15 @@ function M.match(args)
 
   -- Finally, check file contents
   if contents or bufnr then
-    contents = contents or M.getlines(bufnr)
+    if contents == nil then
+      if api.nvim_buf_line_count(bufnr) > 101 then
+        -- only need first 100 and last line for current checks
+        contents = M.getlines(bufnr, 1, 100)
+        contents[#contents + 1] = M.getlines(bufnr, -1)
+      else
+        contents = M.getlines(bufnr)
+      end
+    end
     -- If name is nil, catch any errors from the contents filetype detection function.
     -- If the function tries to use the filename that is nil then it will fail,
     -- but this enables checks which do not need a filename to still work.

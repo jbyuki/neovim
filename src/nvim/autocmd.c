@@ -11,18 +11,25 @@
 #include "nvim/buffer.h"
 #include "nvim/charset.h"
 #include "nvim/cursor.h"
+#include "nvim/drawscreen.h"
 #include "nvim/edit.h"
 #include "nvim/eval.h"
 #include "nvim/eval/userfunc.h"
+#include "nvim/eval/vars.h"
 #include "nvim/ex_docmd.h"
+#include "nvim/ex_eval.h"
 #include "nvim/ex_getln.h"
 #include "nvim/fileio.h"
 #include "nvim/getchar.h"
+#include "nvim/grid.h"
+#include "nvim/insexpand.h"
 #include "nvim/lua/executor.h"
 #include "nvim/map.h"
-#include "nvim/option.h"
+#include "nvim/optionstr.h"
 #include "nvim/os/input.h"
+#include "nvim/profile.h"
 #include "nvim/regexp.h"
+#include "nvim/runtime.h"
 #include "nvim/search.h"
 #include "nvim/state.h"
 #include "nvim/ui_compositor.h"
@@ -194,9 +201,16 @@ static void aupat_show(AutoPat *ap, event_T event, int previous_group)
     if (ac->desc != NULL) {
       size_t msglen = 100;
       char *msg = (char *)xmallocz(msglen);
-      snprintf(msg, msglen, "%s [%s]", exec_to_string, ac->desc);
+      if (ac->exec.type == CALLABLE_CB) {
+        msg_puts_attr(exec_to_string, HL_ATTR(HLF_8));
+        snprintf(msg, msglen, " [%s]", ac->desc);
+      } else {
+        snprintf(msg, msglen, "%s [%s]", exec_to_string, ac->desc);
+      }
       msg_outtrans(msg);
       XFREE_CLEAR(msg);
+    } else if (ac->exec.type == CALLABLE_CB) {
+      msg_puts_attr(exec_to_string, HL_ATTR(HLF_8));
     } else {
       msg_outtrans(exec_to_string);
     }
@@ -672,7 +686,7 @@ const char *event_nr2name(event_T event)
 static bool event_ignored(event_T event)
   FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT
 {
-  char *p = (char *)p_ei;
+  char *p = p_ei;
 
   while (*p != NUL) {
     if (STRNICMP(p, "all", 3) == 0 && (p[3] == NUL || p[3] == ',')) {
@@ -689,7 +703,7 @@ static bool event_ignored(event_T event)
 // Return OK when the contents of p_ei is valid, FAIL otherwise.
 int check_ei(void)
 {
-  char *p = (char *)p_ei;
+  char *p = p_ei;
 
   while (*p) {
     if (STRNICMP(p, "all", 3) == 0 && (p[3] == NUL || p[3] == ',')) {
@@ -710,8 +724,8 @@ int check_ei(void)
 // Returns the old value of 'eventignore' in allocated memory.
 char *au_event_disable(char *what)
 {
-  char *save_ei = (char *)vim_strsave(p_ei);
-  char *new_ei = (char *)vim_strnsave(p_ei, STRLEN(p_ei) + STRLEN(what));
+  char *save_ei = xstrdup(p_ei);
+  char *new_ei = xstrnsave(p_ei, STRLEN(p_ei) + STRLEN(what));
   if (*what == ',' && *p_ei == NUL) {
     STRCPY(new_ei, what + 1);
   } else {
@@ -1105,6 +1119,7 @@ int autocmd_register(int64_t id, event_T event, char *pat, int patlen, int group
     if (event == EVENT_WINSCROLLED && !has_event(EVENT_WINSCROLLED)) {
       curwin->w_last_topline = curwin->w_topline;
       curwin->w_last_leftcol = curwin->w_leftcol;
+      curwin->w_last_skipcol = curwin->w_skipcol;
       curwin->w_last_width = curwin->w_width;
       curwin->w_last_height = curwin->w_height;
     }
@@ -1132,7 +1147,7 @@ int autocmd_register(int64_t id, event_T event, char *pat, int patlen, int group
   ac->id = id;
   ac->exec = aucmd_exec_copy(aucmd);
   ac->script_ctx = current_sctx;
-  ac->script_ctx.sc_lnum += sourcing_lnum;
+  ac->script_ctx.sc_lnum += SOURCING_LNUM;
   nlua_set_sctx(&ac->script_ctx);
   ac->next = NULL;
   ac->once = once;
@@ -1706,9 +1721,9 @@ bool apply_autocmds_group(event_T event, char *fname, char *fname_io, bool force
       fname = NULL;
     } else {
       if (event == EVENT_SYNTAX) {
-        fname = (char *)buf->b_p_syn;
+        fname = buf->b_p_syn;
       } else if (event == EVENT_FILETYPE) {
-        fname = (char *)buf->b_p_ft;
+        fname = buf->b_p_ft;
       } else {
         if (buf->b_sfname != NULL) {
           sfname = xstrdup(buf->b_sfname);
@@ -1760,10 +1775,9 @@ bool apply_autocmds_group(event_T event, char *fname, char *fname_io, bool force
 
   // Don't redraw while doing autocommands.
   RedrawingDisabled++;
-  char *save_sourcing_name = sourcing_name;
-  sourcing_name = NULL;  // don't free this one
-  linenr_T save_sourcing_lnum = sourcing_lnum;
-  sourcing_lnum = 0;  // no line number here
+
+  // name and lnum are filled in later
+  estack_push(ETYPE_AUCMD, NULL, 0);
 
   const sctx_T save_current_sctx = current_sctx;
 
@@ -1798,16 +1812,15 @@ bool apply_autocmds_group(event_T event, char *fname, char *fname_io, bool force
   char *tail = path_tail(fname);
 
   // Find first autocommand that matches
-  AutoPatCmd patcmd;
-  patcmd.curpat = first_autopat[(int)event];
-  patcmd.nextcmd = NULL;
-  patcmd.group = group;
-  patcmd.fname = fname;
-  patcmd.sfname = sfname;
-  patcmd.tail = tail;
-  patcmd.event = event;
-  patcmd.arg_bufnr = autocmd_bufnr;
-  patcmd.next = NULL;
+  AutoPatCmd patcmd = {
+    .curpat = first_autopat[(int)event],
+    .group = group,
+    .fname = fname,
+    .sfname = sfname,
+    .tail = tail,
+    .event = event,
+    .arg_bufnr = autocmd_bufnr,
+  };
   auto_next_pat(&patcmd, false);
 
   // found one, start executing the autocommands
@@ -1835,9 +1848,13 @@ bool apply_autocmds_group(event_T event, char *fname, char *fname_io, bool force
     }
     ap->last = true;
 
+    // Make sure cursor and topline are valid.  The first time the current
+    // values are saved, restored by reset_lnums().  When nested only the
+    // values are corrected when needed.
     if (nesting == 1) {
-      // make sure cursor and topline are valid
       check_lnums(true);
+    } else {
+      check_lnums_nested(true);
     }
 
     // Execute the autocmd. The `getnextac` callback handles iteration.
@@ -1863,9 +1880,8 @@ bool apply_autocmds_group(event_T event, char *fname, char *fname_io, bool force
   autocmd_busy = save_autocmd_busy;
   filechangeshell_busy = false;
   autocmd_nested = save_autocmd_nested;
-  xfree(sourcing_name);
-  sourcing_name = save_sourcing_name;
-  sourcing_lnum = save_sourcing_lnum;
+  xfree(SOURCING_NAME);
+  estack_pop();
   xfree(autocmd_fname);
   autocmd_fname = save_autocmd_fname;
   autocmd_bufnr = save_autocmd_bufnr;
@@ -1969,7 +1985,11 @@ void auto_next_pat(AutoPatCmd *apc, int stop_at_last)
   AutoCmd *cp;
   char *s;
 
-  XFREE_CLEAR(sourcing_name);
+  estack_T *const entry = ((estack_T *)exestack.ga_data) + exestack.ga_len - 1;
+
+  // Clear the exestack entry for this ETYPE_AUCMD entry.
+  XFREE_CLEAR(entry->es_name);
+  entry->es_info.aucmd = NULL;
 
   for (ap = apc->curpat; ap != NULL && !got_int; ap = ap->next) {
     apc->curpat = NULL;
@@ -1994,13 +2014,17 @@ void auto_next_pat(AutoPatCmd *apc, int stop_at_last)
         const size_t sourcing_name_len
           = (STRLEN(s) + strlen(name) + (size_t)ap->patlen + 1);
 
-        sourcing_name = xmalloc(sourcing_name_len);
-        snprintf(sourcing_name, sourcing_name_len, s, name, ap->pat);
+        char *const namep = xmalloc(sourcing_name_len);
+        snprintf(namep, sourcing_name_len, s, name, ap->pat);
         if (p_verbose >= 8) {
           verbose_enter();
-          smsg(_("Executing %s"), sourcing_name);
+          smsg(_("Executing %s"), namep);
           verbose_leave();
         }
+
+        // Update the exestack entry for this autocmd.
+        entry->es_name = namep;
+        entry->es_info.aucmd = apc;
 
         apc->curpat = ap;
         apc->nextcmd = ap->cmds;
@@ -2034,7 +2058,7 @@ static bool call_autocmd_callback(const AutoCmd *ac, const AutoPatCmd *apc)
     PUT(data, "buf", INTEGER_OBJ(autocmd_bufnr));
 
     if (apc->data) {
-      PUT(data, "data", copy_object(*apc->data));
+      PUT(data, "data", copy_object(*apc->data, NULL));
     }
 
     int group = apc->curpat->group;
@@ -2051,8 +2075,8 @@ static bool call_autocmd_callback(const AutoCmd *ac, const AutoPatCmd *apc)
       break;
     }
 
-    FIXED_TEMP_ARRAY(args, 1);
-    args.items[0] = DICTIONARY_OBJ(data);
+    MAXSIZE_TEMP_ARRAY(args, 1);
+    ADD_C(args, DICTIONARY_OBJ(data));
 
     Object result = nlua_call_ref(callback.data.luaref, NULL, args, true, NULL);
     if (result.type == kObjectTypeBoolean) {
@@ -2133,6 +2157,7 @@ char *getnextac(int c, void *cookie, int indent, bool do_concat)
   // lua code, so that it works properly
   autocmd_nested = ac->nested;
   current_sctx = ac->script_ctx;
+  acp->script_ctx = current_sctx;
 
   if (ac->exec.type == CALLABLE_CB) {
     if (call_autocmd_callback(ac, acp)) {
@@ -2189,7 +2214,7 @@ bool has_autocmd(event_T event, char *sfname, buf_T *buf)
 #ifdef BACKSLASH_IN_FILENAME
   // Replace all backslashes with forward slashes. This makes the
   // autocommand patterns portable between Unix and Windows.
-  sfname = vim_strsave(sfname);
+  sfname = xstrdup(sfname);
   forward_slash(sfname);
   forward_slash(fname);
 #endif

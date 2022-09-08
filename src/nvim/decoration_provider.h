@@ -12,7 +12,9 @@ typedef struct {
   LuaRef redraw_line;
   LuaRef redraw_end;
   LuaRef hl_def;
+  LuaRef spell_nav;
   int hl_valid;
+  bool hl_cached;
 } DecorProvider;
 
 typedef kvec_withinit_t(DecorProvider *, 4) DecorProviders;

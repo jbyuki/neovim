@@ -3,7 +3,7 @@
 
 #include "nvim/api/private/defs.h"
 #include "nvim/decoration.h"
-#include "nvim/ex_eval.h"
+#include "nvim/ex_eval_defs.h"
 #include "nvim/getchar.h"
 #include "nvim/lib/kvec.h"
 #include "nvim/memory.h"
@@ -74,15 +74,15 @@
 #define ADD_C(array, item) \
   kv_push_c(array, item)
 
-#define FIXED_TEMP_ARRAY(name, fixsize) \
-  Array name = ARRAY_DICT_INIT; \
-  Object name##__items[fixsize]; \
-  name.size = fixsize; \
-  name.items = name##__items; \
-
 #define MAXSIZE_TEMP_ARRAY(name, maxsize) \
   Array name = ARRAY_DICT_INIT; \
   Object name##__items[maxsize]; \
+  name.capacity = maxsize; \
+  name.items = name##__items; \
+
+#define MAXSIZE_TEMP_DICT(name, maxsize) \
+  Dictionary name = ARRAY_DICT_INIT; \
+  KeyValuePair name##__items[maxsize]; \
   name.capacity = maxsize; \
   name.items = name##__items; \
 
@@ -130,10 +130,11 @@ EXTERN PMap(handle_T) tabpage_handles INIT(= MAP_INIT);
 /// processed and that “other VimL code” must not be affected.
 typedef struct {
   except_T *current_exception;
-  struct msglist *private_msg_list;
-  const struct msglist *const *msg_list;
+  msglist_T *private_msg_list;
+  const msglist_T *const *msg_list;
   int trylevel;
   int got_int;
+  bool did_throw;
   int need_rethrow;
   int did_emsg;
 } TryState;
@@ -144,8 +145,8 @@ typedef struct {
 // TODO(bfredl): prepare error-handling at "top level" (nv_event).
 #define TRY_WRAP(code) \
   do { \
-    struct msglist **saved_msg_list = msg_list; \
-    struct msglist *private_msg_list; \
+    msglist_T **saved_msg_list = msg_list; \
+    msglist_T *private_msg_list; \
     msg_list = &private_msg_list; \
     private_msg_list = NULL; \
     code \

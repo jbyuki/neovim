@@ -44,15 +44,16 @@
 
 #include "nvim/api/private/helpers.h"
 #include "nvim/ascii.h"
+#include "nvim/autocmd.h"
 #include "nvim/buffer.h"
 #include "nvim/change.h"
 #include "nvim/cursor.h"
-#include "nvim/edit.h"
+#include "nvim/drawscreen.h"
+#include "nvim/eval.h"
 #include "nvim/event/loop.h"
 #include "nvim/event/time.h"
 #include "nvim/ex_cmds.h"
 #include "nvim/ex_docmd.h"
-#include "nvim/fileio.h"
 #include "nvim/getchar.h"
 #include "nvim/highlight.h"
 #include "nvim/highlight_group.h"
@@ -68,8 +69,8 @@
 #include "nvim/mouse.h"
 #include "nvim/move.h"
 #include "nvim/option.h"
+#include "nvim/optionstr.h"
 #include "nvim/os/input.h"
-#include "nvim/screen.h"
 #include "nvim/state.h"
 #include "nvim/terminal.h"
 #include "nvim/ui.h"
@@ -82,6 +83,7 @@ typedef struct terminal_state {
   int save_rd;              // saved value of RedrawingDisabled
   bool close;
   bool got_bsl;             // if the last input was <C-\>
+  bool got_bsl_o;           // if left terminal mode with <c-\><c-o>
 } TerminalState;
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -117,6 +119,10 @@ struct terminal {
   // it actually points to entries that are no longer in sb_buffer (because the
   // window height has increased) and must be deleted from the terminal buffer
   int sb_pending;
+
+  char *title;     // VTermStringFragment buffer
+  size_t title_len;    // number of rows pushed to sb_buffer
+  size_t title_size;   // sb_buffer size
 
   // buf_T instance that acts as a "drawing surface" for libvterm
   // we can't store a direct reference to the buffer because the
@@ -228,7 +234,7 @@ Terminal *terminal_open(buf_T *buf, TerminalOptions opts)
   set_option_value("wrap", false, NULL, OPT_LOCAL);
   set_option_value("list", false, NULL, OPT_LOCAL);
   if (buf->b_ffname != NULL) {
-    buf_set_term_title(buf, buf->b_ffname);
+    buf_set_term_title(buf, buf->b_ffname, strlen((char *)buf->b_ffname));
   }
   RESET_BINDING(curwin);
   // Reset cursor in current window.
@@ -366,7 +372,12 @@ void terminal_check_size(Terminal *term)
   vterm_get_size(term->vt, &curheight, &curwidth);
   uint16_t width = 0, height = 0;
 
+  // Check if there is a window that displays the terminal and find the maximum width and height.
+  // Skip the autocommand window which isn't actually displayed.
   FOR_ALL_TAB_WINDOWS(tp, wp) {
+    if (wp == aucmd_win) {
+      continue;
+    }
     if (wp->w_buffer && wp->w_buffer->terminal == term) {
       const uint16_t win_width =
         (uint16_t)(MAX(0, wp->w_width_inner - win_col_off(wp)));
@@ -388,12 +399,11 @@ void terminal_check_size(Terminal *term)
 }
 
 /// Implements MODE_TERMINAL state. :help Terminal-mode
-void terminal_enter(void)
+bool terminal_enter(void)
 {
   buf_T *buf = curbuf;
   assert(buf->terminal);  // Should only be called when curbuf has a terminal.
-  TerminalState state, *s = &state;
-  memset(s, 0, sizeof(TerminalState));
+  TerminalState s[1] = { 0 };
   s->term = buf->terminal;
   stop_insert_mode = false;
 
@@ -412,7 +422,7 @@ void terminal_enter(void)
   // placed at end of buffer to "follow" output. #11072
   handle_T save_curwin = curwin->handle;
   bool save_w_p_cul = curwin->w_p_cul;
-  char_u *save_w_p_culopt = NULL;
+  char *save_w_p_culopt = NULL;
   char_u save_w_p_culopt_flags = curwin->w_p_culopt_flags;
   int save_w_p_cuc = curwin->w_p_cuc;
   long save_w_p_so = curwin->w_p_so;
@@ -420,7 +430,7 @@ void terminal_enter(void)
   if (curwin->w_p_cul && curwin->w_p_culopt_flags & CULOPT_NBR) {
     if (STRCMP(curwin->w_p_culopt, "number")) {
       save_w_p_culopt = curwin->w_p_culopt;
-      curwin->w_p_culopt = (char_u *)xstrdup("number");
+      curwin->w_p_culopt = xstrdup("number");
     }
     curwin->w_p_culopt_flags = CULOPT_NBR;
   } else {
@@ -443,7 +453,9 @@ void terminal_enter(void)
   s->state.check = terminal_check;
   state_enter(&s->state);
 
-  restart_edit = 0;
+  if (!s->got_bsl_o) {
+    restart_edit = 0;
+  }
   State = save_state;
   RedrawingDisabled = s->save_rd;
   apply_autocmds(EVENT_TERMLEAVE, NULL, NULL, false, curbuf);
@@ -451,7 +463,7 @@ void terminal_enter(void)
   if (save_curwin == curwin->handle) {  // Else: window was closed.
     curwin->w_p_cul = save_w_p_cul;
     if (save_w_p_culopt) {
-      xfree(curwin->w_p_culopt);
+      free_string_option(curwin->w_p_culopt);
       curwin->w_p_culopt = save_w_p_culopt;
     }
     curwin->w_p_culopt_flags = save_w_p_culopt_flags;
@@ -459,7 +471,7 @@ void terminal_enter(void)
     curwin->w_p_so = save_w_p_so;
     curwin->w_p_siso = save_w_p_siso;
   } else if (save_w_p_culopt) {
-    xfree(save_w_p_culopt);
+    free_string_option(save_w_p_culopt);
   }
 
   // draw the unfocused cursor
@@ -467,7 +479,11 @@ void terminal_enter(void)
   if (curbuf->terminal == s->term && !s->close) {
     terminal_check_cursor();
   }
-  unshowmode(true);
+  if (restart_edit) {
+    showmode();
+  } else {
+    unshowmode(true);
+  }
   ui_busy_stop();
   if (s->close) {
     bool wipe = s->term->buf_handle != 0;
@@ -477,6 +493,8 @@ void terminal_enter(void)
       do_cmdline_cmd("bwipeout!");
     }
   }
+
+  return s->got_bsl_o;
 }
 
 static void terminal_check_cursor(void)
@@ -564,6 +582,14 @@ static int terminal_execute(VimState *state, int key)
     }
     FALLTHROUGH;
 
+  case Ctrl_O:
+    if (s->got_bsl) {
+      s->got_bsl_o = true;
+      restart_edit = 'I';
+      return 0;
+    }
+    FALLTHROUGH;
+
   default:
     if (key == Ctrl_BSL && !s->got_bsl) {
       s->got_bsl = true;
@@ -614,6 +640,7 @@ void terminal_destroy(Terminal **termpp)
       xfree(term->sb_buffer[i]);
     }
     xfree(term->sb_buffer);
+    xfree(term->title);
     vterm_free(term->vt);
     xfree(term);
     *termpp = NULL;  // coverity[dead-store]
@@ -660,7 +687,7 @@ static bool is_filter_char(int c)
   return !!(tpf_flags & flag);
 }
 
-void terminal_paste(long count, char_u **y_array, size_t y_size)
+void terminal_paste(long count, char **y_array, size_t y_size)
 {
   if (y_size == 0) {
     return;
@@ -681,7 +708,7 @@ void terminal_paste(long count, char_u **y_array, size_t y_size)
         buff_len = len;
       }
       char_u *dst = buff;
-      char_u *src = y_array[j];
+      char_u *src = (char_u *)y_array[j];
       while (*src != '\0') {
         len = (size_t)utf_ptr2len((char *)src);
         int c = utf_ptr2char((char *)src);
@@ -836,13 +863,13 @@ static int term_movecursor(VTermPos new, VTermPos old, int visible, void *data)
   return 1;
 }
 
-static void buf_set_term_title(buf_T *buf, char *title)
+static void buf_set_term_title(buf_T *buf, const char *title, size_t len)
   FUNC_ATTR_NONNULL_ALL
 {
   Error err = ERROR_INIT;
   dict_set_var(buf->b_vars,
                STATIC_CSTR_AS_STRING("term_title"),
-               STRING_OBJ(cstr_as_string(title)),
+               STRING_OBJ(((String){ .data = (char *)title, .size = len })),
                false,
                false,
                &err);
@@ -865,7 +892,34 @@ static int term_settermprop(VTermProp prop, VTermValue *val, void *data)
 
   case VTERM_PROP_TITLE: {
     buf_T *buf = handle_get_buffer(term->buf_handle);
-    buf_set_term_title(buf, val->string);
+#if VTERM_VERSION_MAJOR > 0 || (VTERM_VERSION_MAJOR == 0 && VTERM_VERSION_MINOR >= 2)
+    VTermStringFragment frag = val->string;
+
+    if (frag.initial && frag.final) {
+      buf_set_term_title(buf, frag.str, frag.len);
+      break;
+    }
+
+    if (frag.initial) {
+      term->title_len = 0;
+      term->title_size = MAX(frag.len, 1024);
+      term->title = xmalloc(sizeof(char *) * term->title_size);
+    } else if (term->title_len + frag.len > term->title_size) {
+      term->title_size *= 2;
+      term->title = xrealloc(term->title, sizeof(char *) * term->title_size);
+    }
+
+    memcpy(term->title + term->title_len, frag.str, frag.len);
+    term->title_len += frag.len;
+
+    if (frag.final) {
+      buf_set_term_title(buf, term->title, term->title_len);
+      xfree(term->title);
+      term->title = NULL;
+    }
+#else
+    buf_set_term_title(buf, val->string, strlen(val->string));
+#endif
     break;
   }
 
@@ -1353,7 +1407,7 @@ static bool send_mouse_event(Terminal *term, int c)
     curwin->w_redr_status = true;
     curwin = save_curwin;
     curbuf = curwin->w_buffer;
-    redraw_later(mouse_win, NOT_VALID);
+    redraw_later(mouse_win, UPD_NOT_VALID);
     invalidate_terminal(term, -1, -1);
     // Only need to exit focus if the scrolled window is the terminal window
     return mouse_win == curwin;
@@ -1384,7 +1438,7 @@ static void fetch_row(Terminal *term, int row, int end_col)
     fetch_cell(term, row, col, &cell);
     if (cell.chars[0]) {
       int cell_len = 0;
-      for (int i = 0; cell.chars[i]; i++) {
+      for (int i = 0; i < VTERM_MAX_CHARS_PER_CELL && cell.chars[i]; i++) {
         cell_len += utf_char2bytes((int)cell.chars[i], ptr + cell_len);
       }
       ptr += cell_len;

@@ -1,18 +1,19 @@
 # This is not meant to be included by the top-level.
-cmake_minimum_required (VERSION 2.8.12)
+cmake_minimum_required (VERSION 3.10)
 project(NVIM_DEPS C)
-
-# Needed for: check_c_compiler_flag()
-include(CheckCCompilerFlag)
 
 # Point CMake at any custom modules we may ship
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" "${PROJECT_SOURCE_DIR}/../cmake")
 
-# In Windows/MSVC CMAKE_BUILD_TYPE changes the paths/linking of the build
-# recipes (libuv, msgpack), make sure it is set
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release)
+include(CheckCCompilerFlag)
+include(Util)
+
+get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(NOT isMultiConfig)
+  set(BUILD_TYPE_STRING -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE})
 endif()
+
+set_default_buildtype()
 
 set(DEFAULT_MAKE_CFLAGS CFLAGS+=-g)
 
@@ -63,11 +64,9 @@ endif()
 
 option(USE_EXISTING_SRC_DIR "Skip download of deps sources in case of existing source directory." OFF)
 
-if(WIN32)
-  find_package(Git)
-  if(NOT Git_FOUND)
-    message(FATAL_ERROR "Git is required to apply patches for Windows.")
-  endif()
+find_package(Git)
+if(NOT Git_FOUND)
+  message(FATAL_ERROR "Git is required to apply patches.")
 endif()
 
 if(UNIX)
@@ -132,6 +131,18 @@ if(CMAKE_OSX_ARCHITECTURES)
   endforeach()
 endif()
 
+# If the macOS deployment target is not set manually (via $MACOSX_DEPLOYMENT_TARGET),
+# fall back to local system version. Needs to be done here and in top-level CMakeLists.txt.
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+    execute_process(COMMAND sw_vers -productVersion
+                    OUTPUT_VARIABLE MACOS_VERSION
+                    OUTPUT_STRIP_TRAILING_WHITESPACE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "${MACOS_VERSION}")
+  endif()
+  message("-- Using deployment target ${CMAKE_OSX_DEPLOYMENT_TARGET}")
+endif()
+
 set(HOSTDEPS_INSTALL_DIR "${DEPS_INSTALL_DIR}")
 set(HOSTDEPS_BIN_DIR "${DEPS_BIN_DIR}")
 set(HOSTDEPS_LIB_DIR "${DEPS_LIB_DIR}")
@@ -140,15 +151,15 @@ set(HOSTDEPS_CXX_COMPILER "${DEPS_CXX_COMPILER}")
 
 include(ExternalProject)
 
-set(LIBUV_URL https://github.com/libuv/libuv/archive/730e07e2f77a4001bdf6894112271c926399f5a8.tar.gz)
-set(LIBUV_SHA256 271869759a7dbdaf1d1bf75f1ec388a7307592153b34ebb52d3934715cbaac8a)
+set(LIBUV_URL https://github.com/libuv/libuv/archive/v1.44.2.tar.gz)
+set(LIBUV_SHA256 e6e2ba8b4c349a4182a33370bb9be5e23c51b32efb9b9e209d0e8556b73a48da)
 
 set(MSGPACK_URL https://github.com/msgpack/msgpack-c/releases/download/c-4.0.0/msgpack-c-4.0.0.tar.gz)
 set(MSGPACK_SHA256 420fe35e7572f2a168d17e660ef981a589c9cbe77faa25eb34a520e1fcc032c8)
 
 # https://github.com/LuaJIT/LuaJIT/tree/v2.1
-set(LUAJIT_URL https://github.com/LuaJIT/LuaJIT/archive/4ef96cff887c268cc676f9b4b1dc9c54a693efd5.tar.gz)
-set(LUAJIT_SHA256 ae913e33be80dded08a2fc368787f168305c22808519c962553bf4c8668e9856)
+set(LUAJIT_URL https://github.com/LuaJIT/LuaJIT/archive/633f265f67f322cbe2c5fd11d3e46d968ac220f7.tar.gz)
+set(LUAJIT_SHA256 2681f0a6f624a64a8dfb70a5a377d494daf38960442c547d9c468674c1afa3c2)
 
 set(LUA_URL https://www.lua.org/ftp/lua-5.1.5.tar.gz)
 set(LUA_SHA256 2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333)
@@ -162,12 +173,12 @@ set(UNIBILIUM_SHA256 29815283c654277ef77a3adcc8840db79ddbb20a0f0b0c8f648bd8cd49a
 set(LIBTERMKEY_URL https://www.leonerd.org.uk/code/libtermkey/libtermkey-0.22.tar.gz)
 set(LIBTERMKEY_SHA256 6945bd3c4aaa83da83d80a045c5563da4edd7d0374c62c0d35aec09eb3014600)
 
-set(LIBVTERM_URL https://www.leonerd.org.uk/code/libvterm/libvterm-0.1.4.tar.gz)
-set(LIBVTERM_SHA256 bc70349e95559c667672fc8c55b9527d9db9ada0fb80a3beda533418d782d3dd)
+set(LIBVTERM_URL https://www.leonerd.org.uk/code/libvterm/libvterm-0.3-RC1.tar.gz)
+set(LIBVTERM_SHA256 441d1c372b84a0df12525100ab06c0366260fb4f6252abd1665ee4fa571b5134)
 
-set(LUV_VERSION 1.43.0-0)
-set(LUV_URL https://github.com/luvit/luv/archive/9f80386338af7d164ff1f47d480ee1ae775cb0ef.tar.gz)
-set(LUV_SHA256 a6fe420f06944c0d84a173fccff2eb0d14dfd1293bc24666a580b98dd1a7254f)
+set(LUV_VERSION 1.44.2-0)
+set(LUV_URL https://github.com/luvit/luv/archive/1.44.2-0.tar.gz)
+set(LUV_SHA256 44ccda27035bfe683e6325a2a93f2c254be1eb76bde6efc2bd37c56a7af7b00a)
 
 set(LUA_COMPAT53_URL https://github.com/keplerproject/lua-compat-5.3/archive/v0.9.tar.gz)
 set(LUA_COMPAT53_SHA256 ad05540d2d96a48725bb79a1def35cf6652a4e2ec26376e2617c8ce2baa6f416)
@@ -190,11 +201,17 @@ set(GETTEXT_SHA256 66415634c6e8c3fa8b71362879ec7575e27da43da562c798a8a2f223e6e47
 set(LIBICONV_URL https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.15.tar.gz)
 set(LIBICONV_SHA256 ccf536620a45458d26ba83887a983b96827001e92a13847b45e4925cc8913178)
 
-set(TREESITTER_C_URL https://github.com/tree-sitter/tree-sitter-c/archive/v0.20.1.tar.gz)
-set(TREESITTER_C_SHA256 ffcc2ef0eded59ad1acec9aec4f9b0c7dd209fc1a85d85f8b0e81298e3dddcc2)
+set(TREESITTER_C_URL https://github.com/tree-sitter/tree-sitter-c/archive/v0.20.2.tar.gz)
+set(TREESITTER_C_SHA256 af66fde03feb0df4faf03750102a0d265b007e5d957057b6b293c13116a70af2 )
 
-set(TREESITTER_URL https://github.com/tree-sitter/tree-sitter/archive/v0.20.6.tar.gz)
-set(TREESITTER_SHA256 4d37eaef8a402a385998ff9aca3e1043b4a3bba899bceeff27a7178e1165b9de)
+set(TREESITTER_LUA_URL https://github.com/MunifTanjim/tree-sitter-lua/archive/v0.0.12.tar.gz)
+set(TREESITTER_LUA_SHA256 b6d7c6d04e9101a2e589d25f1d61668301e776c0b8defa6eae8dd86272e9e7c3)
+
+set(TREESITTER_VIM_URL https://github.com/vigoux/tree-sitter-viml/archive/v0.2.0.tar.gz)
+set(TREESITTER_VIM_SHA256 608dcc31a7948cb66ae7f45494620e2e9face1af75598205541f80d782ec4501)
+
+set(TREESITTER_URL https://github.com/tree-sitter/tree-sitter/archive/v0.20.7.tar.gz)
+set(TREESITTER_SHA256 b355e968ec2d0241bbd96748e00a9038f83968f85d822ecb9940cbe4c42e182e)
 
 if(USE_BUNDLED_UNIBILIUM)
   include(BuildUnibilium)

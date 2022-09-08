@@ -294,7 +294,7 @@ endfunc
 
 " Test for *:s%* on :substitute.
 func Test_sub_cmd_6()
-  throw "skipped: Nvim removed POSIX-related 'cpoptions' flags"
+  throw 'Skipped: Nvim does not support cpoptions flag "/"'
   set magic&
   set cpo+=/
 
@@ -808,6 +808,41 @@ func Test_sub_expand_text()
   close!
 endfunc
 
+" Test for command failures when the last substitute pattern is not set.
+func Test_sub_with_no_last_pat()
+  let lines =<< trim [SCRIPT]
+    call assert_fails('~', 'E33:')
+    call assert_fails('s//abc/g', 'E476:')
+    call assert_fails('s\/bar', 'E476:')
+    call assert_fails('s\&bar&', 'E476:')
+    call writefile(v:errors, 'Xresult')
+    qall!
+  [SCRIPT]
+  call writefile(lines, 'Xscript')
+  if RunVim([], [], '--clean -S Xscript')
+    call assert_equal([], readfile('Xresult'))
+  endif
+
+  " Nvim does not support cpoptions flag "/"'
+  " let lines =<< trim [SCRIPT]
+  "   set cpo+=/
+  "   call assert_fails('s/abc/%/', 'E33:')
+  "   call writefile(v:errors, 'Xresult')
+  "   qall!
+  " [SCRIPT]
+  " call writefile(lines, 'Xscript')
+  " if RunVim([], [], '--clean -S Xscript')
+  "   call assert_equal([], readfile('Xresult'))
+  " endif
+
+  call delete('Xscript')
+  call delete('Xresult')
+endfunc
+
+func Test_substitute()
+  call assert_equal('a１a２a３a', substitute('１２３', '\zs', 'a', 'g'))
+endfunc
+
 func Test_submatch_list_concatenate()
   let pat = 'A\(.\)'
   let Rep = {-> string([submatch(0, 1)] + [[submatch(1)]])}
@@ -821,6 +856,44 @@ func Test_substitute_skipped_range()
   endif
   call assert_equal([0, 1, 1, 0, 1], getcurpos())
   bwipe!
+endfunc
+
+" Test using the 'gdefault' option (when on, flag 'g' is default on).
+func Test_substitute_gdefault()
+  new
+
+  " First check without 'gdefault'
+  call setline(1, 'foo bar foo')
+  s/foo/FOO/
+  call assert_equal('FOO bar foo', getline(1))
+  call setline(1, 'foo bar foo')
+  s/foo/FOO/g
+  call assert_equal('FOO bar FOO', getline(1))
+  call setline(1, 'foo bar foo')
+  s/foo/FOO/gg
+  call assert_equal('FOO bar foo', getline(1))
+
+  " Then check with 'gdefault'
+  set gdefault
+  call setline(1, 'foo bar foo')
+  s/foo/FOO/
+  call assert_equal('FOO bar FOO', getline(1))
+  call setline(1, 'foo bar foo')
+  s/foo/FOO/g
+  call assert_equal('FOO bar foo', getline(1))
+  call setline(1, 'foo bar foo')
+  s/foo/FOO/gg
+  call assert_equal('FOO bar FOO', getline(1))
+
+  " Setting 'compatible' should reset 'gdefault'
+  call assert_equal(1, &gdefault)
+  " set compatible
+  set nogdefault
+  call assert_equal(0, &gdefault)
+  set nocompatible
+  call assert_equal(0, &gdefault)
+
+  bw!
 endfunc
 
 " This was using "old_sub" after it was freed.

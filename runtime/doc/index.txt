@@ -1101,8 +1101,11 @@ tag		command		action in Command-line editing mode	~
 5. Terminal mode				*terminal-mode-index*
 
 In a |terminal| buffer all keys except CTRL-\ are forwarded to the terminal
-job.  If CTRL-\ is pressed, the next key is forwarded unless it is CTRL-N.
+job.  If CTRL-\ is pressed, the next key is forwarded unless it is CTRL-N
+or CTRL-O.
 Use |CTRL-\_CTRL-N| to go to Normal mode.
+Use |t_CTRL-\_CTRL-O| to execute one normal mode command and then return
+to terminal mode.
 
 
 You found it, Arthur!				*holy-grail*
@@ -1140,6 +1143,7 @@ tag		command		action ~
 				be remapped
 |:args|		:ar[gs]		print the argument list
 |:argadd|	:arga[dd]	add items to the argument list
+|:argdedupe|	:argded[upe]	remove duplicates from the argument list
 |:argdelete|	:argd[elete]	delete items from the argument list
 |:argedit|	:arge[dit]	add item to the argument list and edit it
 |:argdo|	:argdo		do a command on all items in the argument list

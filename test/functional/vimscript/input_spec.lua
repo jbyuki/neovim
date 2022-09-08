@@ -8,7 +8,9 @@ local clear = helpers.clear
 local source = helpers.source
 local command = helpers.command
 local exc_exec = helpers.exc_exec
-local nvim_async = helpers.nvim_async
+local pcall_err = helpers.pcall_err
+local async_meths = helpers.async_meths
+local NIL = helpers.NIL
 
 local screen
 
@@ -200,6 +202,15 @@ describe('input()', function()
     feed(':let var = input({"cancelreturn": "BAR"})<CR>')
     feed('<Esc>')
     eq('BAR', meths.get_var('var'))
+    feed(':let var = input({"cancelreturn": []})<CR>')
+    feed('<Esc>')
+    eq({}, meths.get_var('var'))
+    feed(':let var = input({"cancelreturn": v:false})<CR>')
+    feed('<Esc>')
+    eq(false, meths.get_var('var'))
+    feed(':let var = input({"cancelreturn": v:null})<CR>')
+    feed('<Esc>')
+    eq(NIL, meths.get_var('var'))
   end)
   it('supports default string', function()
     feed(':let var = input("", "DEF1")<CR>')
@@ -219,8 +230,6 @@ describe('input()', function()
        exc_exec('call input("", "", [])'))
     eq('Vim(call):E730: using List as a String',
        exc_exec('call input({"prompt": []})'))
-    eq('Vim(call):E730: using List as a String',
-       exc_exec('call input({"cancelreturn": []})'))
     eq('Vim(call):E730: using List as a String',
        exc_exec('call input({"default": []})'))
     eq('Vim(call):E730: using List as a String',
@@ -418,8 +427,6 @@ describe('inputdialog()', function()
     eq('Vim(call):E730: using List as a String',
        exc_exec('call inputdialog({"prompt": []})'))
     eq('Vim(call):E730: using List as a String',
-       exc_exec('call inputdialog({"cancelreturn": []})'))
-    eq('Vim(call):E730: using List as a String',
        exc_exec('call inputdialog({"default": []})'))
     eq('Vim(call):E730: using List as a String',
        exc_exec('call inputdialog({"completion": []})'))
@@ -443,6 +450,78 @@ describe('inputdialog()', function()
 end)
 
 describe('confirm()', function()
+  -- oldtest: Test_confirm()
+  it('works', function()
+    meths.set_option('more', false)  -- Avoid hit-enter prompt
+    meths.set_option('laststatus', 2)
+    -- screen:expect() calls are needed to avoid feeding input too early
+    screen:expect({any = '%[No Name%]'})
+
+    async_meths.command([[let a = confirm('Press O to proceed')]])
+    screen:expect({any = '{CONFIRM:.+: }'})
+    feed('o')
+    screen:expect({any = '%[No Name%]'})
+    eq(1, meths.get_var('a'))
+
+    async_meths.command([[let a = 'Are you sure?'->confirm("&Yes\n&No")]])
+    screen:expect({any = '{CONFIRM:.+: }'})
+    feed('y')
+    screen:expect({any = '%[No Name%]'})
+    eq(1, meths.get_var('a'))
+
+    async_meths.command([[let a = confirm('Are you sure?', "&Yes\n&No")]])
+    screen:expect({any = '{CONFIRM:.+: }'})
+    feed('n')
+    screen:expect({any = '%[No Name%]'})
+    eq(2, meths.get_var('a'))
+
+    -- Not possible to match Vim's CTRL-C test here as CTRL-C always sets got_int in Nvim.
+
+    -- confirm() should return 0 when pressing ESC.
+    async_meths.command([[let a = confirm('Are you sure?', "&Yes\n&No")]])
+    screen:expect({any = '{CONFIRM:.+: }'})
+    feed('<Esc>')
+    screen:expect({any = '%[No Name%]'})
+    eq(0, meths.get_var('a'))
+
+    -- Default choice is returned when pressing <CR>.
+    async_meths.command([[let a = confirm('Are you sure?', "&Yes\n&No")]])
+    screen:expect({any = '{CONFIRM:.+: }'})
+    feed('<CR>')
+    screen:expect({any = '%[No Name%]'})
+    eq(1, meths.get_var('a'))
+
+    async_meths.command([[let a = confirm('Are you sure?', "&Yes\n&No", 2)]])
+    screen:expect({any = '{CONFIRM:.+: }'})
+    feed('<CR>')
+    screen:expect({any = '%[No Name%]'})
+    eq(2, meths.get_var('a'))
+
+    async_meths.command([[let a = confirm('Are you sure?', "&Yes\n&No", 0)]])
+    screen:expect({any = '{CONFIRM:.+: }'})
+    feed('<CR>')
+    screen:expect({any = '%[No Name%]'})
+    eq(0, meths.get_var('a'))
+
+    -- Test with the {type} 4th argument
+    for _, type in ipairs({'Error', 'Question', 'Info', 'Warning', 'Generic'}) do
+      async_meths.command(([[let a = confirm('Are you sure?', "&Yes\n&No", 1, '%s')]]):format(type))
+      screen:expect({any = '{CONFIRM:.+: }'})
+      feed('y')
+      screen:expect({any = '%[No Name%]'})
+      eq(1, meths.get_var('a'))
+    end
+
+    eq('Vim(call):E730: using List as a String',
+       pcall_err(command, 'call confirm([])'))
+    eq('Vim(call):E730: using List as a String',
+       pcall_err(command, 'call confirm("Are you sure?", [])'))
+    eq('Vim(call):E745: Using a List as a Number',
+       pcall_err(command, 'call confirm("Are you sure?", "&Yes\n&No\n", [])'))
+    eq('Vim(call):E730: using List as a String',
+       pcall_err(command, 'call confirm("Are you sure?", "&Yes\n&No\n", 0, [])'))
+  end)
+
   it("shows dialog even if :silent #8788", function()
     command("autocmd BufNewFile * call confirm('test')")
 
@@ -477,7 +556,7 @@ describe('confirm()', function()
     feed(':call nvim_command("edit x")<cr>')
     check_and_clear(':call nvim_command("edit |\n')
 
-    nvim_async('command', 'edit x')
+    async_meths.command('edit x')
     check_and_clear('                         |\n')
   end)
 end)

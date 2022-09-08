@@ -18,6 +18,7 @@
 #include "nvim/change.h"
 #include "nvim/cursor.h"
 #include "nvim/decoration.h"
+#include "nvim/drawscreen.h"
 #include "nvim/ex_cmds.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/extmark.h"
@@ -538,9 +539,9 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
                        Integer end_row, Integer end_col, ArrayOf(String) replacement, Error *err)
   FUNC_API_SINCE(7)
 {
-  FIXED_TEMP_ARRAY(scratch, 1);
+  MAXSIZE_TEMP_ARRAY(scratch, 1);
   if (replacement.size == 0) {
-    scratch.items[0] = STRING_OBJ(STATIC_CSTR_AS_STRING(""));
+    ADD_C(scratch, STRING_OBJ(STATIC_CSTR_AS_STRING("")));
     replacement = scratch;
   }
 
@@ -565,27 +566,33 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
     return;
   }
 
-  char *str_at_start = (char *)ml_get_buf(buf, (linenr_T)start_row, false);
-  if (start_col < 0 || (size_t)start_col > strlen(str_at_start)) {
+  char *str_at_start = NULL;
+  char *str_at_end = NULL;
+
+  // Another call to ml_get_buf() may free the line, so make a copy.
+  str_at_start = xstrdup(ml_get_buf(buf, (linenr_T)start_row, false));
+  size_t len_at_start = strlen(str_at_start);
+  if (start_col < 0 || (size_t)start_col > len_at_start) {
     api_set_error(err, kErrorTypeValidation, "start_col out of bounds");
-    return;
+    goto early_end;
   }
 
-  char *str_at_end = (char *)ml_get_buf(buf, (linenr_T)end_row, false);
+  // Another call to ml_get_buf() may free the line, so make a copy.
+  str_at_end = xstrdup(ml_get_buf(buf, (linenr_T)end_row, false));
   size_t len_at_end = strlen(str_at_end);
   if (end_col < 0 || (size_t)end_col > len_at_end) {
     api_set_error(err, kErrorTypeValidation, "end_col out of bounds");
-    return;
+    goto early_end;
   }
 
   if (start_row > end_row || (end_row == start_row && start_col > end_col)) {
     api_set_error(err, kErrorTypeValidation, "start is higher than end");
-    return;
+    goto early_end;
   }
 
   bool disallow_nl = (channel_id != VIML_INTERNAL_CALL);
   if (!check_string_array(replacement, disallow_nl, err)) {
-    return;
+    goto early_end;
   }
 
   size_t new_len = replacement.size;
@@ -597,11 +604,11 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
   if (start_row == end_row) {
     old_byte = (bcount_t)end_col - start_col;
   } else {
-    old_byte += (bcount_t)strlen(str_at_start) - start_col;
+    old_byte += (bcount_t)len_at_start - start_col;
     for (int64_t i = 1; i < end_row - start_row; i++) {
       int64_t lnum = start_row + i;
 
-      const char *bufline = (char *)ml_get_buf(buf, (linenr_T)lnum, false);
+      const char *bufline = ml_get_buf(buf, (linenr_T)lnum, false);
       old_byte += (bcount_t)(strlen(bufline)) + 1;
     }
     old_byte += (bcount_t)end_col + 1;
@@ -611,7 +618,7 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
   String last_item = replacement.items[replacement.size - 1].data.string;
 
   size_t firstlen = (size_t)start_col + first_item.size;
-  size_t last_part_len = strlen(str_at_end) - (size_t)end_col;
+  size_t last_part_len = len_at_end - (size_t)end_col;
   if (replacement.size == 1) {
     firstlen += last_part_len;
   }
@@ -751,6 +758,10 @@ end:
   xfree(lines);
   aucmd_restbuf(&aco);
   try_end(err);
+
+early_end:
+  xfree(str_at_start);
+  xfree(str_at_end);
 }
 
 /// Gets a range from the buffer.
@@ -932,9 +943,9 @@ Integer nvim_buf_get_changedtick(Buffer buffer, Error *err)
 /// @param  mode       Mode short-name ("n", "i", "v", ...)
 /// @param  buffer     Buffer handle, or 0 for current buffer
 /// @param[out]  err   Error details, if any
-/// @returns Array of maparg()-like dictionaries describing mappings.
+/// @returns Array of |maparg()|-like dictionaries describing mappings.
 ///          The "buffer" key holds the associated buffer handle.
-ArrayOf(Dictionary) nvim_buf_get_keymap(uint64_t channel_id, Buffer buffer, String mode, Error *err)
+ArrayOf(Dictionary) nvim_buf_get_keymap(Buffer buffer, String mode, Error *err)
   FUNC_API_SINCE(3)
 {
   buf_T *buf = find_buffer_by_handle(buffer, err);
@@ -943,7 +954,7 @@ ArrayOf(Dictionary) nvim_buf_get_keymap(uint64_t channel_id, Buffer buffer, Stri
     return (Array)ARRAY_DICT_INIT;
   }
 
-  return keymap_array(mode, buf, channel_id == LUA_INTERNAL_CALL);
+  return keymap_array(mode, buf);
 }
 
 /// Sets a buffer-local |mapping| for the given mode.
@@ -1010,7 +1021,7 @@ void nvim_buf_del_var(Buffer buffer, String name, Error *err)
 /// @param buffer     Buffer handle, or 0 for current buffer
 /// @param[out] err   Error details, if any
 /// @return Buffer name
-String nvim_buf_get_name(Buffer buffer, Error *err)
+String nvim_buf_get_name(Buffer buffer, Arena *arena, Error *err)
   FUNC_API_SINCE(1)
 {
   String rv = STRING_INIT;
@@ -1020,7 +1031,7 @@ String nvim_buf_get_name(Buffer buffer, Error *err)
     return rv;
   }
 
-  return cstr_to_string((char *)buf->b_ffname);
+  return cstr_as_string(buf->b_ffname);
 }
 
 /// Sets the full file name for a buffer

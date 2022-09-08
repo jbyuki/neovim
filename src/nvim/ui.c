@@ -13,11 +13,12 @@
 #include "nvim/cursor.h"
 #include "nvim/cursor_shape.h"
 #include "nvim/diff.h"
+#include "nvim/drawscreen.h"
 #include "nvim/event/loop.h"
-#include "nvim/ex_cmds2.h"
 #include "nvim/ex_getln.h"
 #include "nvim/fold.h"
 #include "nvim/garray.h"
+#include "nvim/grid.h"
 #include "nvim/highlight.h"
 #include "nvim/log.h"
 #include "nvim/main.h"
@@ -31,8 +32,7 @@
 #include "nvim/os/signal.h"
 #include "nvim/os/time.h"
 #include "nvim/os_unix.h"
-#include "nvim/popupmnu.h"
-#include "nvim/screen.h"
+#include "nvim/popupmenu.h"
 #include "nvim/ui.h"
 #include "nvim/ui_compositor.h"
 #include "nvim/vim.h"
@@ -198,13 +198,16 @@ void ui_refresh(void)
     ext_widgets[i] = true;
   }
 
+  UI *compositor = uis[0];
+
   bool inclusive = ui_override();
-  for (size_t i = 0; i < ui_count; i++) {
+  for (size_t i = 1; i < ui_count; i++) {
     UI *ui = uis[i];
     width = MIN(ui->width, width);
     height = MIN(ui->height, height);
     for (UIExtension j = 0; (int)j < kUIExtCount; j++) {
-      ext_widgets[j] &= (ui->ui_ext[j] || inclusive);
+      bool in_compositor = ui->composed && compositor->ui_ext[j];
+      ext_widgets[j] &= (ui->ui_ext[j] || in_compositor || inclusive);
     }
   }
 
@@ -336,7 +339,7 @@ void vim_beep(unsigned val)
     // When 'debug' contains "beep" produce a message.  If we are sourcing
     // a script or executing a function give the user a hint where the beep
     // comes from.
-    if (vim_strchr((char *)p_debug, 'e') != NULL) {
+    if (vim_strchr(p_debug, 'e') != NULL) {
       msg_source(HL_ATTR(HLF_W));
       msg_attr(_("Beep!"), HL_ATTR(HLF_W));
     }
@@ -348,7 +351,8 @@ void ui_attach_impl(UI *ui, uint64_t chanid)
   if (ui_count == MAX_UI_COUNT) {
     abort();
   }
-  if (!ui->ui_ext[kUIMultigrid] && !ui->ui_ext[kUIFloatDebug]) {
+  if (!ui->ui_ext[kUIMultigrid] && !ui->ui_ext[kUIFloatDebug]
+      && !ui_client_channel_id) {
     ui_comp_attach(ui);
   }
 
@@ -502,6 +506,9 @@ handle_T ui_cursor_grid(void)
 
 void ui_flush(void)
 {
+  if (!ui_active()) {
+    return;
+  }
   cmdline_ui_flush();
   win_ui_flush();
   msg_ext_ui_flush();
@@ -513,11 +520,10 @@ void ui_flush(void)
   }
   if (pending_mode_info_update) {
     Arena arena = ARENA_EMPTY;
-    arena_start(&arena, &ui_ext_fixblk);
     Array style = mode_style_array(&arena);
     bool enabled = (*p_guicursor != NUL);
     ui_call_mode_info_set(enabled, style);
-    arena_mem_free(arena_finish(&arena), &ui_ext_fixblk);
+    arena_mem_free(arena_finish(&arena));
     pending_mode_info_update = false;
   }
   if (pending_mode_update && !starting) {
@@ -562,7 +568,7 @@ void ui_check_mouse(void)
   // - 'a' is in 'mouse' and "c" is in MOUSE_A, or
   // - the current buffer is a help file and 'h' is in 'mouse' and we are in a
   //   normal editing mode (not at hit-return message).
-  for (char_u *p = p_mouse; *p; p++) {
+  for (char *p = p_mouse; *p; p++) {
     switch (*p) {
     case 'a':
       if (vim_strchr(MOUSE_A, checkfor) != NULL) {
@@ -606,6 +612,12 @@ void ui_cursor_shape(void)
 bool ui_has(UIExtension ext)
 {
   return ui_ext[ext];
+}
+
+/// Returns true if the UI has messages area.
+bool ui_has_messages(void)
+{
+  return p_ch > 0 || ui_has(kUIMessages);
 }
 
 Array ui_array(void)
@@ -653,6 +665,6 @@ void ui_grid_resize(handle_T grid_handle, int width, int height, Error *error)
     // non-positive indicates no request
     wp->w_height_request = MAX(height, 0);
     wp->w_width_request = MAX(width, 0);
-    win_set_inner_size(wp);
+    win_set_inner_size(wp, true);
   }
 }

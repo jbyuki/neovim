@@ -33,15 +33,11 @@ struct sign_entry {
 };
 
 /// Sign attributes. Used by the screen refresh routines.
-typedef struct sign_attrs_S {
-  int sat_typenr;
-  char_u *sat_text;
-  int sat_texthl;
-  int sat_linehl;
-  int sat_culhl;
-  int sat_numhl;
-  int sat_prio;  // Used for inserting extmark signs
-} sign_attrs_T;
+typedef struct {
+  char *text;
+  int hl_attr_id;
+  int priority;
+} SignTextAttrs;
 
 #define SIGN_SHOW_MAX 9
 
@@ -55,4 +51,4 @@ typedef enum {
   SIGN_TEXT,
 } SignType;
 
-#endif // NVIM_SIGN_DEFS_H
+#endif  // NVIM_SIGN_DEFS_H

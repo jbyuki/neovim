@@ -6,9 +6,7 @@
 
 Builtin functions				*builtin-functions*
 
-1. Overview				|builtin-function-list|
-2. Details				|builtin-function-details|
-3. Matching a pattern in a String	|string-match|
+				      Type |gO| to see the table of contents.
 
 ==============================================================================
 1. Overview					*builtin-function-list*
@@ -77,6 +75,7 @@ changenr()			Number	current change number
 chanclose({id} [, {stream}])	Number	Closes a channel or one of its streams
 chansend({id}, {data})		Number	Writes {data} to channel
 char2nr({expr} [, {utf8}])	Number	ASCII/UTF-8 value of first char in {expr}
+charclass({string})		Number	character class of {string}
 charcol({expr})			Number	column number of cursor or mark
 charidx({string}, {idx} [, {countcc}])
 				Number	char index of byte {idx} in {string}
@@ -119,7 +118,7 @@ dictwatcherdel({dict}, {pattern}, {callback})
 did_filetype()			Number	|TRUE| if FileType autocommand event used
 diff_filler({lnum})		Number	diff filler lines about {lnum}
 diff_hlID({lnum}, {col})	Number	diff highlighting at {lnum}/{col}
-digraph_get({chars})		String	get the digraph of {chars}
+digraph_get({chars})		String	get the |digraph| of {chars}
 digraph_getlist([{listall}])	List	get all |digraph|s
 digraph_set({chars}, {digraph})	Boolean	register |digraph|
 digraph_setlist({digraphlist})	Boolean	register multiple |digraph|s
@@ -132,12 +131,12 @@ executable({expr})		Number	1 if executable {expr} exists
 execute({command})		String	execute and capture output of {command}
 exepath({expr})			String	full path of the command {expr}
 exists({expr})			Number	|TRUE| if {expr} exists
-extend({expr1}, {expr2} [, {expr3}])
-				List/Dict insert items of {expr2} into {expr1}
 exp({expr})			Float	exponential of {expr}
 expand({expr} [, {nosuf} [, {list}]])
 				any	expand special keywords in {expr}
 expandcmd({expr})		String	expand {expr} like with `:edit`
+extend({expr1}, {expr2} [, {expr3}])
+				List/Dict insert items of {expr2} into {expr1}
 feedkeys({string} [, {mode}])	Number	add key sequence to typeahead buffer
 filereadable({file})		Number	|TRUE| if {file} is a readable file
 filewritable({file})		Number	|TRUE| if {file} is a writable file
@@ -239,12 +238,12 @@ haslocaldir([{winnr} [, {tabnr}]])
 					the tab executed |:tcd|
 hasmapto({what} [, {mode} [, {abbr}]])
 				Number	|TRUE| if mapping to {what} exists
-histadd({history}, {item})	String	add an item to a history
-histdel({history} [, {item}])	String	remove an item from a history
+histadd({history}, {item})	Number	add an item to a history
+histdel({history} [, {item}])	Number	remove an item from a history
 histget({history} [, {index}])	String	get the item {index} from a history
 histnr({history})		Number	highest index of a history
-hlexists({name})		Number	|TRUE| if highlight group {name} exists
 hlID({name})			Number	syntax ID of highlight group {name}
+hlexists({name})		Number	|TRUE| if highlight group {name} exists
 hostname()			String	name of the machine Vim is running on
 iconv({expr}, {from}, {to})	String	convert encoding of {expr}
 indent({lnum})			Number	indent of line {lnum}
@@ -295,6 +294,8 @@ maparg({name} [, {mode} [, {abbr} [, {dict}]]])
 					rhs of mapping {name} in mode {mode}
 mapcheck({name} [, {mode} [, {abbr}]])
 				String	check for mappings matching {name}
+mapset({mode}, {abbr}, {dict})
+				none	restore mapping from |maparg()| result
 match({expr}, {pat} [, {start} [, {count}]])
 				Number	position where {pat} matches in {expr}
 matchadd({group}, {pattern} [, {priority} [, {id} [, {dict}]]])
@@ -317,6 +318,7 @@ matchstrpos({expr}, {pat} [, {start} [, {count}]])
 				List	{count}'th match of {pat} in {expr}
 max({expr})			Number	maximum value of items in {expr}
 menu_get({path} [, {modes}])	List	description of |menus| matched by {path}
+menu_info({name} [, {mode}])	Dict	get menu item information
 min({expr})			Number	minimum value of items in {expr}
 mkdir({name} [, {path} [, {prot}]])
 				Number	create directory {name}
@@ -338,8 +340,8 @@ prompt_setinterrupt({buf}, {text}) none	set prompt interrupt function
 prompt_setprompt({buf}, {text}) none	set prompt text
 pum_getpos()			Dict	position and size of pum if visible
 pumvisible()			Number	whether popup menu is visible
-pyeval({expr})			any	evaluate |Python| expression
 py3eval({expr})			any	evaluate |python3| expression
+pyeval({expr})			any	evaluate |Python| expression
 pyxeval({expr})			any	evaluate |python_x| expression
 rand([{expr}])			Number	get pseudo-random number
 range({expr} [, {max} [, {stride}]])
@@ -393,8 +395,10 @@ setbufline({expr}, {lnum}, {text})
 				Number	set line {lnum} to {text} in buffer
 					{expr}
 setbufvar({buf}, {varname}, {val})	set {varname} in buffer {buf} to {val}
+setcellwidths({list})		none	set character cell width overrides
 setcharpos({expr}, {list})	Number	set the {expr} position to {list}
 setcharsearch({dict})		Dict	set character search from {dict}
+setcmdline({str} [, {pos}])	Number	set command-line
 setcmdpos({pos})		Number	set cursor position in command-line
 setcursorcharpos({list})	Number	move cursor to position in {list}
 setenv({name}, {val})		none	set environment variable
@@ -458,10 +462,10 @@ str2list({expr} [, {utf8}])	List	convert each character of {expr} to
 					ASCII/UTF-8 value
 str2nr({expr} [, {base} [, {quoted}]])
 				Number	convert String to Number
-strchars({expr} [, {skipcc}])	Number	character length of the String {expr}
 strcharpart({str}, {start} [, {len}])
 				String	{len} characters of {str} at
 					character {start}
+strchars({expr} [, {skipcc}])	Number	character length of the String {expr}
 strdisplaywidth({expr} [, {col}]) Number display length of the String {expr}
 strftime({format} [, {time}])	String	format time with a specified format
 strgetchar({str}, {index})	Number	get char {index} from {str}
@@ -496,8 +500,8 @@ tabpagebuflist([{arg}])		List	list of buffer numbers in tab page
 tabpagenr([{arg}])		Number	number of current or last tab page
 tabpagewinnr({tabarg} [, {arg}])
 				Number	number of current window in tab page
-taglist({expr} [, {filename}])	List	list of tags matching {expr}
 tagfiles()			List	tags files used
+taglist({expr} [, {filename}])	List	list of tags matching {expr}
 tan({expr})			Float	tangent of {expr}
 tanh({expr})			Float	hyperbolic tangent of {expr}
 tempname()			String	name for a temporary file
@@ -583,7 +587,7 @@ acos({expr})							*acos()*
 		{expr} must evaluate to a |Float| or a |Number| in the range
 		[-1, 1].
 		Returns NaN if {expr} is outside the range [-1, 1].  Returns
- 		0.0 if {expr} is not a |Float| or a |Number|.
+		0.0 if {expr} is not a |Float| or a |Number|.
 		Examples: >
 			:echo acos(0)
 <			1.570796 >
@@ -779,7 +783,8 @@ browsedir({title}, {initdir})
 		browsing is not possible, an empty string is returned.
 
 bufadd({name})						*bufadd()*
-		Add a buffer to the buffer list with String {name}.
+		Add a buffer to the buffer list with name {name} (must be a
+		String).
 		If a buffer for file {name} already exists, return that buffer
 		number.  Otherwise return the buffer number of the newly
 		created buffer.  When {name} is an empty string then a new
@@ -830,7 +835,8 @@ bufload({buf})						*bufload()*
 		Ensure the buffer {buf} is loaded.  When the buffer name
 		refers to an existing file then the file is read.  Otherwise
 		the buffer will be empty.  If the buffer was already loaded
-		then there is no change.
+		then there is no change.  If the buffer is not related to a
+		file the no file is read (e.g., when 'buftype' is "nofile").
 		If there is an existing swap file for the file of the buffer,
 		there will be no dialog, the buffer will be loaded anyway.
 		The {buf} argument is used like with |bufexists()|.
@@ -1022,7 +1028,7 @@ chanclose({id} [, {stream}])				*chanclose()*
 		are closed. If the channel is a pty, this will then close the
 		pty master, sending SIGHUP to the job process.
 		For a socket, there is only one stream, and {stream} should be
-		ommited.
+		omitted.
 
 chansend({id}, {data})					*chansend()*
 		Send data to channel {id}. For a job, it writes it to the
@@ -1060,7 +1066,19 @@ char2nr({string} [, {utf8}])					*char2nr()*
 
 		Can also be used as a |method|: >
 			GetChar()->char2nr()
-<
+
+charclass({string})					*charclass()*
+		Return the character class of the first character in {string}.
+		The character class is one of:
+			0	blank
+			1	punctuation
+			2	word character
+			3	emoji
+			other	specific Unicode class
+		The class is used in patterns and word motions.
+		Returns 0 if {string} is not a |String|.
+
+
 							*charcol()*
 charcol({expr})	Same as |col()| but returns the character index of the column
 		position given with {expr} instead of the byte position.
@@ -1119,6 +1137,9 @@ chdir({dir})						*chdir()*
 			   " ... do some work
 			   call chdir(save_dir)
 			endif
+
+<		Can also be used as a |method|: >
+			GetDir()->chdir()
 <
 cindent({lnum})						*cindent()*
 		Get the amount of indent for line {lnum} according the C
@@ -1132,8 +1153,8 @@ cindent({lnum})						*cindent()*
 			GetLnum()->cindent()
 
 clearmatches([{win}])					*clearmatches()*
- 		Clears all matches previously defined for the current window
- 		by |matchadd()| and the |:match| commands.
+		Clears all matches previously defined for the current window
+		by |matchadd()| and the |:match| commands.
 		If {win} is specified, use the window with this number or
 		window ID instead of the current window.
 
@@ -1253,7 +1274,7 @@ complete_info([{what}])				*complete_info()*
 				typed text only, or the last completion after
 				no item is selected when using the <Up> or
 				<Down> keys)
-		   inserted	Inserted string. [NOT IMPLEMENT YET]
+		   inserted	Inserted string. [NOT IMPLEMENTED YET]
 
 							*complete_info_mode*
 		mode values are:
@@ -1508,6 +1529,18 @@ cursor({list})
 
 		Can also be used as a |method|: >
 			GetCursorPos()->cursor()
+
+debugbreak({pid})					*debugbreak()*
+		Specifically used to interrupt a program being debugged.  It
+		will cause process {pid} to get a SIGTRAP.  Behavior for other
+		processes is undefined. See |terminal-debugger|.
+		{Sends a SIGINT to a process {pid} other than MS-Windows}
+
+		Returns |TRUE| if successfully interrupted the program.
+		Otherwise returns |FALSE|.
+
+		Can also be used as a |method|: >
+			GetPid()->debugbreak()
 
 deepcopy({expr} [, {noref}])				*deepcopy()* *E698*
 		Make a copy of {expr}.  For Numbers and Strings this isn't
@@ -1885,7 +1918,9 @@ exists({expr})	The result is a Number, which is |TRUE| if {expr} is
 					To check for a supported command
 					always check the return value to be 2.
 			:2match		The |:2match| command.
-			:3match		The |:3match| command.
+			:3match		The |:3match| command (but you
+					probably should not use it, it is
+					reserved for internal usage)
 			#event		autocommand defined for this event
 			#event#pattern	autocommand defined for this event and
 					pattern (the pattern is taken
@@ -1948,18 +1983,6 @@ exp({expr})						*exp()*
 		Can also be used as a |method|: >
 			Compute()->exp()
 
-debugbreak({pid})					*debugbreak()*
-		Specifically used to interrupt a program being debugged.  It
-		will cause process {pid} to get a SIGTRAP.  Behavior for other
-		processes is undefined. See |terminal-debugger|.
-		{Sends a SIGINT to a process {pid} other than MS-Windows}
-
-		Returns |TRUE| if successfully interrupted the program.
-		Otherwise returns |FALSE|.
-
-		Can also be used as a |method|: >
-			GetPid()->debugbreak()
-
 expand({string} [, {nosuf} [, {list}]])				*expand()*
 		Expand wildcards and the following special keywords in 
 		{string}.  'wildignorecase' applies.
@@ -1983,6 +2006,7 @@ expand({string} [, {nosuf} [, {list}]])				*expand()*
 			<afile>		autocmd file name
 			<abuf>		autocmd buffer number (as a String!)
 			<amatch>	autocmd matched name
+			<cexpr>		C expression under the cursor
 			<sfile>		sourced script file or function name
 			<slnum>		sourced script line number or function
 					line number
@@ -1990,6 +2014,9 @@ expand({string} [, {nosuf} [, {list}]])				*expand()*
 					a function
 			<SID>		"<SNR>123_"  where "123" is the
 					current script ID  |<SID>|
+			<script>	sourced script file, or script file
+					where the current function was defined
+			<stack>		call stack
 			<cword>		word under the cursor
 			<cWORD>		WORD under the cursor
 			<client>	the {clientid} of the last received
@@ -2022,6 +2049,9 @@ expand({string} [, {nosuf} [, {list}]])				*expand()*
 		is not defined, an empty string is used.  Using "%:p" in a
 		buffer with no name, results in the current directory, with a
 		'/' added.
+		When 'verbose' is set then expanding '%', '#' and <> items
+		will result in an error message if the argument cannot be
+		expanded.
 
 		When {string} does not start with '%', '#' or '<', it is
 		expanded like a file name is expanded on the command line.
@@ -2053,10 +2083,13 @@ expandcmd({string})					*expandcmd()*
 		like with |expand()|, and environment variables, anywhere in
 		{string}.  "~user" and "~/path" are only expanded at the
 		start.
-		Returns the expanded string.  Example: >
+		Returns the expanded string.  If an error is encountered
+		during expansion, the unmodified {string} is returned.
+		Example: >
 			:echo expandcmd('make %<.o')
+<			make /path/runtime/doc/builtin.o ~
 
-<		Can also be used as a |method|: >
+		Can also be used as a |method|: >
 			GetCommand()->expandcmd()
 <
 extend({expr1}, {expr2} [, {expr3}])			*extend()*
@@ -2136,7 +2169,7 @@ feedkeys({string} [, {mode}])				*feedkeys()*
 			script continues.
 			Note that if you manage to call feedkeys() while
 			executing commands, thus calling it recursively, then
-			all typehead will be consumed by the last call.
+			all typeahead will be consumed by the last call.
 		'!'	When used with 'x' will not end Insert mode. Can be
 			used in a test when a timer is set to exit Insert mode
 			a little later.  Useful for testing CursorHoldI.
@@ -2169,7 +2202,7 @@ filewritable({file})					*filewritable()*
 		directory, and we can write to it, the result is 2.
 
 		Can also be used as a |method|: >
-			GetName()->filewriteable()
+			GetName()->filewritable()
 
 filter({expr1}, {expr2})					*filter()*
 		{expr1} must be a |List|, |Blob|, or a |Dictionary|.
@@ -2472,10 +2505,11 @@ funcref({name} [, {arglist}] [, {dict}])
 		Can also be used as a |method|: >
 			GetFuncname()->funcref([arg])
 <
-				       *function()* *E700* *E922* *E923*
+				*function()* *partial* *E700* *E922* *E923*
 function({name} [, {arglist}] [, {dict}])
 		Return a |Funcref| variable that refers to function {name}.
-		{name} can be a user defined function or an internal function.
+		{name} can be the name of a user defined function or an
+		internal function.
 
 		{name} can also be a Funcref or a partial. When it is a
 		partial the dict stored in it will be used and the {dict}
@@ -2494,10 +2528,31 @@ function({name} [, {arglist}] [, {dict}])
 		The arguments are passed to the function in front of other
 		arguments, but after any argument from |method|.  Example: >
 			func Callback(arg1, arg2, name)
-			...
+			"...
 			let Partial = function('Callback', ['one', 'two'])
-			...
+			"...
 			call Partial('name')
+<		Invokes the function as with: >
+			call Callback('one', 'two', 'name')
+
+<		With a |method|: >
+			func Callback(one, two, three)
+			"...
+			let Partial = function('Callback', ['two'])
+			"...
+			eval 'one'->Partial('three')
+<		Invokes the function as with: >
+			call Callback('one', 'two', 'three')
+
+<		The function() call can be nested to add more arguments to the
+		Funcref.  The extra arguments are appended to the list of
+		arguments.  Example: >
+			func Callback(arg1, arg2, name)
+			"...
+			let Func = function('Callback', ['one'])
+			let Func2 = function(Func, ['two'])
+			"...
+			call Func2('name')
 <		Invokes the function as with: >
 			call Callback('one', 'two', 'name')
 
@@ -2506,18 +2561,23 @@ function({name} [, {arglist}] [, {dict}])
 			function Callback() dict
 			   echo "called for " .. self.name
 			endfunction
-			...
+			"...
 			let context = {"name": "example"}
 			let Func = function('Callback', context)
-			...
+			"...
 			call Func()	" will echo: called for example
+<		The use of function() is not needed when there are no extra
+		arguments, these two are equivalent, if Callback() is defined
+		as context.Callback(): >
+			let Func = function('Callback', context)
+			let Func = context.Callback
 
 <		The argument list and the Dictionary can be combined: >
 			function Callback(arg1, count) dict
-			...
+			"...
 			let context = {"name": "example"}
 			let Func = function('Callback', ['one'], context)
-			...
+			"...
 			call Func(500)
 <		Invokes the function as with: >
 			call context.Callback('one', 500)
@@ -2846,7 +2906,8 @@ getcmdcompltype()					*getcmdcompltype()*
 		Only works when the command line is being edited, thus
 		requires use of |c_CTRL-\_e| or |c_CTRL-R_=|.
 		See |:command-completion| for the return string.
-		Also see |getcmdtype()|, |setcmdpos()| and |getcmdline()|.
+		Also see |getcmdtype()|, |setcmdpos()|, |getcmdline()| and
+		|setcmdline()|.
 		Returns an empty string when completion is not defined.
 
 getcmdline()						*getcmdline()*
@@ -2855,7 +2916,8 @@ getcmdline()						*getcmdline()*
 		|c_CTRL-R_=|.
 		Example: >
 			:cmap <F7> <C-\>eescape(getcmdline(), ' \')<CR>
-<		Also see |getcmdtype()|, |getcmdpos()| and |setcmdpos()|.
+<		Also see |getcmdtype()|, |getcmdpos()|, |setcmdpos()| and
+		|setcmdline()|.
 		Returns an empty string when entering a password or using
 		|inputsecret()|.
 
@@ -2865,7 +2927,8 @@ getcmdpos()						*getcmdpos()*
 		Only works when editing the command line, thus requires use of
 		|c_CTRL-\_e| or |c_CTRL-R_=| or an expression mapping.
 		Returns 0 otherwise.
-		Also see |getcmdtype()|, |setcmdpos()| and |getcmdline()|.
+		Also see |getcmdtype()|, |setcmdpos()|, |getcmdline()| and
+		|setcmdline()|.
 
 getcmdscreenpos()					*getcmdscreenpos()*
 		Return the screen position of the cursor in the command line
@@ -2874,7 +2937,8 @@ getcmdscreenpos()					*getcmdscreenpos()*
 		Only works when editing the command line, thus requires use of
 		|c_CTRL-\_e| or |c_CTRL-R_=| or an expression mapping.
 		Returns 0 otherwise.
-		Also see |getcmdpos()|, |setcmdpos()|.
+		Also see |getcmdpos()|, |setcmdpos()|, |getcmdline()| and
+		|setcmdline()|.
 
 getcmdtype()						*getcmdtype()*
 		Return the current command-line type. Possible return values
@@ -2975,10 +3039,10 @@ getcurpos([{winid}])
 		current value of the buffer if it is not the current window.
 		If {winid} is invalid a list with zeroes is returned.
 
- 		This can be used to save and restore the cursor position: >
- 			let save_cursor = getcurpos()
- 			MoveTheCursorAround
- 			call setpos('.', save_cursor)
+		This can be used to save and restore the cursor position: >
+			let save_cursor = getcurpos()
+			MoveTheCursorAround
+			call setpos('.', save_cursor)
 <		Note that this only works within the window.  See
 		|winrestview()| for restoring more state.
 
@@ -3113,7 +3177,7 @@ getjumplist([{winnr} [, {tabnr}]])			*getjumplist()*
 		{winnr} can also be a |window-ID|.
 		With {winnr} and {tabnr} use the window in the specified tab
 		page.  If {winnr} or {tabnr} is invalid, an empty list is
- 		returned.
+		returned.
 
 		The returned list contains two entries: a list with the jump
 		locations and the last used jump position number in the list.
@@ -3252,7 +3316,7 @@ getmousepos()						*getmousepos()*
 		"screenrow" and "screencol" are valid, the others are zero.
 
 		When on the status line below a window or the vertical
-		separater right of a window, the "line" and "column" values
+		separator right of a window, the "line" and "column" values
 		are zero.
 
 		When the position is after the text then "column" is the
@@ -3500,7 +3564,7 @@ gettabwinvar({tabnr}, {winnr}, {varname} [, {def}])		*gettabwinvar()*
 		Get the value of window-local variable {varname} in window
 		{winnr} in tab page {tabnr}.
 		The {varname} argument is a string.  When {varname} is empty a
- 		dictionary with all window-local variables is returned.
+		dictionary with all window-local variables is returned.
 		When {varname} is equal to "&" get the values of all
 		window-local options in a |Dictionary|.
 		Otherwise, when {varname} starts with "&" get the value of a
@@ -4714,6 +4778,7 @@ map({expr1}, {expr2})					*map()*
 		Can also be used as a |method|: >
 			mylist->map(expr2)
 
+
 maparg({name} [, {mode} [, {abbr} [, {dict}]]])			*maparg()*
 		When {dict} is omitted or zero: Return the rhs of mapping
 		{name} in mode {mode}.  The returned String has special
@@ -4721,9 +4786,9 @@ maparg({name} [, {mode} [, {abbr} [, {dict}]]])			*maparg()*
 		listing.
 
 		When there is no mapping for {name}, an empty String is
- 		returned if {dict} is FALSE, otherwise returns an empty Dict.
- 		When the mapping for {name} is empty, then "<Nop>" is
- 		returned.
+		returned if {dict} is FALSE, otherwise returns an empty Dict.
+		When the mapping for {name} is empty, then "<Nop>" is
+		returned.
 
 		The {name} can have special key names, like in the ":map"
 		command.
@@ -4747,7 +4812,10 @@ maparg({name} [, {mode} [, {abbr} [, {dict}]]])			*maparg()*
 		When {dict} is there and it is |TRUE| return a dictionary
 		containing all the information of the mapping with the
 		following items:
-		  "lhs"	     The {lhs} of the mapping.
+		  "lhs"	     The {lhs} of the mapping as it would be typed
+		  "lhsraw"   The {lhs} of the mapping as raw bytes
+		  "lhsrawalt" The {lhs} of the mapping as raw bytes, alternate
+		  	      form, only present when it differs from "lhsraw"
 		  "rhs"	     The {rhs} of the mapping as typed.
 		  "silent"   1 for a |:map-silent| mapping, else 0.
 		  "noremap"  1 if the {rhs} of the mapping is not remappable.
@@ -4765,6 +4833,9 @@ maparg({name} [, {mode} [, {abbr} [, {dict}]]])			*maparg()*
 		  "lnum"     The line number in "sid", zero if unknown.
 		  "nowait"   Do not wait for other, longer mappings.
 			     (|:map-<nowait>|).
+
+		The dictionary can be used to restore a mapping with
+		|mapset()|.
 
 		The mappings local to the current buffer are checked first,
 		then the global mappings.
@@ -4810,6 +4881,22 @@ mapcheck({name} [, {mode} [, {abbr}]])			*mapcheck()*
 
 		Can also be used as a |method|: >
 			GetKey()->mapcheck('n')
+
+mapset({mode}, {abbr}, {dict})				*mapset()*
+		Restore a mapping from a dictionary returned by |maparg()|.
+		{mode} and {abbr} should be the same as for the call to
+		|maparg()|. *E460*
+		{mode} is used to define the mode in which the mapping is set,
+		not the "mode" entry in {dict}.
+		Example for saving and restoring a mapping: >
+			let save_map = maparg('K', 'n', 0, 1)
+			nnoremap K somethingelse
+			...
+			call mapset('n', 0, save_map)
+<		Note that if you are going to replace a map in several modes,
+		e.g. with `:map!`, you need to save the mapping for all of
+		them, since they can differ.
+
 
 match({expr}, {pat} [, {start} [, {count}]])			*match()*
 		When {expr} is a |List| then this returns the index of the
@@ -4905,8 +4992,10 @@ matchadd({group}, {pattern} [, {priority} [, {id} [, {dict}]]])
 		message will appear and the match will not be added.  An ID
 		is specified as a positive integer (zero excluded).  IDs 1, 2
 		and 3 are reserved for |:match|, |:2match| and |:3match|,
-		respectively.  If the {id} argument is not specified or -1,
-		|matchadd()| automatically chooses a free ID.
+		respectively.  3 is reserved for use by the |matchparen|
+		plugin.
+		If the {id} argument is not specified or -1, |matchadd()|
+		automatically chooses a free ID.
 
 		The optional {dict} argument allows for further custom
 		values. Currently this is used to specify a match specific
@@ -4914,7 +5003,7 @@ matchadd({group}, {pattern} [, {priority} [, {id} [, {dict}]]])
 		highlighted matches. The dict can have the following members:
 
 			conceal	    Special character to show instead of the
-				    match (only for |hl-Conceal| highlighed
+				    match (only for |hl-Conceal| highlighted
 				    matches, see |:syn-cchar|)
 			window	    Instead of the current window use the
 				    window with this number or window ID.
@@ -5165,6 +5254,7 @@ matchstrpos({expr}, {pat} [, {start} [, {count}]])		*matchstrpos()*
 		Can also be used as a |method|: >
 			GetText()->matchstrpos('word')
 <
+
 							*max()*
 max({expr})	Return the maximum value of all items in {expr}. Example: >
 			echo max([apples, pears, oranges])
@@ -5177,6 +5267,7 @@ max({expr})	Return the maximum value of all items in {expr}. Example: >
 
 		Can also be used as a |method|: >
 			mylist->max()
+
 
 menu_get({path} [, {modes}])				*menu_get()*
 		Returns a |List| of |Dictionaries| describing |menus| (defined
@@ -5224,7 +5315,81 @@ menu_get({path} [, {modes}])				*menu_get()*
 			} ]
 <
 
-							*min()*
+menu_info({name} [, {mode}])				*menu_info()*
+		Return information about the specified menu {name} in
+		mode {mode}. The menu name should be specified without the
+		shortcut character ('&'). If {name} is "", then the top-level
+		menu names are returned.
+
+		{mode} can be one of these strings:
+			"n"	Normal
+			"v"	Visual (including Select)
+			"o"	Operator-pending
+			"i"	Insert
+			"c"	Cmd-line
+			"s"	Select
+			"x"	Visual
+			"t"	Terminal-Job
+			""	Normal, Visual and Operator-pending
+			"!"	Insert and Cmd-line
+		When {mode} is omitted, the modes for "" are used.
+
+		Returns a |Dictionary| containing the following items:
+		  accel		menu item accelerator text |menu-text|
+		  display	display name (name without '&')
+		  enabled	v:true if this menu item is enabled
+				Refer to |:menu-enable|
+		  icon		name of the icon file (for toolbar)
+				|toolbar-icon|
+		  iconidx	index of a built-in icon
+		  modes		modes for which the menu is defined. In
+				addition to the modes mentioned above, these
+				characters will be used:
+				" "	Normal, Visual and Operator-pending
+		  name		menu item name.
+		  noremenu	v:true if the {rhs} of the menu item is not
+				remappable else v:false.
+		  priority	menu order priority |menu-priority|
+		  rhs		right-hand-side of the menu item. The returned
+				string has special characters translated like
+				in the output of the ":menu" command listing.
+				When the {rhs} of a menu item is empty, then
+				"<Nop>" is returned.
+		  script	v:true if script-local remapping of {rhs} is
+				allowed else v:false.  See |:menu-script|.
+		  shortcut	shortcut key (character after '&' in
+				the menu name) |menu-shortcut|
+		  silent	v:true if the menu item is created
+				with <silent> argument |:menu-silent|
+		  submenus	|List| containing the names of
+				all the submenus.  Present only if the menu
+				item has submenus.
+
+		Returns an empty dictionary if the menu item is not found.
+
+		Examples: >
+			:echo menu_info('Edit.Cut')
+			:echo menu_info('File.Save', 'n')
+
+			" Display the entire menu hierarchy in a buffer
+			func ShowMenu(name, pfx)
+			  let m = menu_info(a:name)
+			  call append(line('$'), a:pfx .. m.display)
+			  for child in m->get('submenus', [])
+			    call ShowMenu(a:name .. '.' .. escape(child, '.'),
+							\ a:pfx .. '    ')
+			  endfor
+			endfunc
+			new
+			for topmenu in menu_info('').submenus
+			  call ShowMenu(topmenu, '')
+			endfor
+<
+		Can also be used as a |method|: >
+			GetMenuName()->menu_info('v')
+
+
+<							*min()*
 min({expr})	Return the minimum value of all items in {expr}. Example:  >
 			echo min([apples, pears, oranges])
 
@@ -5282,6 +5447,7 @@ mode([expr])	Return a string that indicates the current mode.
 		   niV	    Normal using |i_CTRL-O| in |Virtual-Replace-mode|
 		   nt	    Normal in |terminal-emulator| (insert goes to
 				Terminal mode)
+		   ntT	    Normal using |t_CTRL-\_CTRL-O| in |Terminal-mode|
 		   v	    Visual by character
 		   vs	    Visual by character using |v_CTRL-O| in Select mode
 		   V	    Visual by line
@@ -5796,7 +5962,7 @@ pum_getpos()						*pum_getpos()*
 			size		total nr of items
 			scrollbar	|TRUE| if scrollbar is visible
 
-  		The values are the same as in |v:event| during |CompleteChanged|.
+		The values are the same as in |v:event| during |CompleteChanged|.
 
 pumvisible()						*pumvisible()*
 		Returns non-zero when the popup menu is visible, zero
@@ -6291,8 +6457,10 @@ search({pattern} [, {flags} [, {stopline} [, {timeout} [, {skip}]]]])
 		starts in column zero and then matches before the cursor are
 		skipped.  When the 'c' flag is present in 'cpo' the next
 		search starts after the match.  Without the 'c' flag the next
-		search starts one column further.  This matters for
-		overlapping matches.
+		search starts one column after the start of the match.  This
+		matters for overlapping matches.  See |cpo-c|.  You can also
+		insert "\ze" to change where the match ends, see  |/\ze|.
+
 		When searching backwards and the 'z' flag is given then the
 		search starts in column zero, thus no match in the current
 		line will be found (unless wrapping around the end of the
@@ -6397,7 +6565,7 @@ searchcount([{options}])					*searchcount()*
 			" to 1)
 			let result = searchcount()
 <
-		The function is useful to add the count to |statusline|: >
+		The function is useful to add the count to 'statusline': >
 			function! LastSearchCount() abort
 			  let result = searchcount(#{recompute: 0})
 			  if empty(result)
@@ -6455,8 +6623,10 @@ searchcount([{options}])					*searchcount()*
 		  recompute	|Boolean|	if |TRUE|, recompute the count
 						like |n| or |N| was executed.
 						otherwise returns the last
-						result by |n|, |N|, or this
-						function is returned.
+						computed result (when |n| or
+						|N| was used when "S" is not
+						in 'shortmess', or this
+						function was called).
 						(default: |TRUE|)
 		  pattern	|String|	recompute if this was given
 						and different with |@/|.
@@ -6544,7 +6714,7 @@ searchpair({start}, {middle}, {end} [, {flags} [, {skip}
 		When {skip} is omitted or empty, every match is accepted.
 		When evaluating {skip} causes an error the search is aborted
 		and -1 returned.
- 		{skip} can be a string, a lambda, a funcref or a partial.
+		{skip} can be a string, a lambda, a funcref or a partial.
 		Anything else makes the function fail.
 
 		For {stopline} and {timeout} see |search()|.
@@ -6670,7 +6840,6 @@ setbufline({buf}, {lnum}, {text})			*setbufline()*
 		|bufload()| if needed.
 
 		To insert lines use |appendbufline()|.
-		Any text properties in {lnum} are cleared.
 
 		{text} can be a string to set one line, or a list of strings
 		to set multiple lines.  If the list extends below the last
@@ -6709,6 +6878,33 @@ setbufvar({buf}, {varname}, {val})			*setbufvar()*
 		third argument: >
 			GetValue()->setbufvar(buf, varname)
 
+
+setcellwidths({list})					*setcellwidths()*
+		Specify overrides for cell widths of character ranges.  This
+		tells Vim how wide characters are, counted in screen cells.
+		This overrides 'ambiwidth'.  Example: >
+		   setcellwidths([[0xad, 0xad, 1],
+				\ [0x2194, 0x2199, 2]])
+
+<				*E1109* *E1110* *E1111* *E1112* *E1113* *E1114*
+		The {list} argument is a list of lists with each three
+		numbers. These three numbers are [low, high, width].  "low"
+		and "high" can be the same, in which case this refers to one
+		character. Otherwise it is the range of characters from "low"
+		to "high" (inclusive).  "width" is either 1 or 2, indicating
+		the character width in screen cells.
+		An error is given if the argument is invalid, also when a
+		range overlaps with another.
+		Only characters with value 0x100 and higher can be used.
+
+		If the new value causes 'fillchars' or 'listchars' to become
+		invalid it is rejected and an error is given.
+
+		To clear the overrides pass an empty list: >
+		   setcellwidths([]);
+<		You can use the script $VIMRUNTIME/tools/emoji_list.vim to see
+		the effect for known emoji characters.
+
 setcharpos({expr}, {list})				*setcharpos()*
 		Same as |setpos()| but uses the specified column number as the
 		character index instead of the byte index in the line.
@@ -6746,6 +6942,16 @@ setcharsearch({dict})					*setcharsearch()*
 		Can also be used as a |method|: >
 			SavedSearch()->setcharsearch()
 
+setcmdline({str} [, {pos}])					*setcmdline()*
+		Set the command line to {str} and set the cursor position to
+		{pos}.
+		If {pos} is omitted, the cursor is positioned after the text.
+		Returns 0 when successful, 1 when not editing the command
+		line.
+
+		Can also be used as a |method|: >
+			GetText()->setcmdline()
+
 setcmdpos({pos})					*setcmdpos()*
 		Set the cursor position in the command line to byte position
 		{pos}.  The first position is 1.
@@ -6758,8 +6964,8 @@ setcmdpos({pos})					*setcmdpos()*
 		before inserting the resulting text.
 		When the number is too big the cursor is put at the end of the
 		line.  A number smaller than one has undefined results.
-		Returns FALSE when successful, TRUE when not editing the
-		command line.
+		Returns 0 when successful, 1 when not editing the command
+		line.
 
 		Can also be used as a |method|: >
 			GetPos()->setcmdpos()
@@ -7543,29 +7749,28 @@ stdpath({what})					*stdpath()* *E6100*
 		config       String  User configuration directory. |init.vim|
 		                     is stored here.
 		config_dirs  List    Other configuration directories.
-		data         String  User data directory. The |shada-file|
-		                     is stored here.
+		data         String  User data directory.
 		data_dirs    List    Other data directories.
 		log          String  Logs directory (for use by plugins too).
 		run          String  Run directory: temporary, local storage
 				     for sockets, named pipes, etc.
 		state        String  Session state directory: storage for file
-				     drafts, undo, shada, etc.
+				     drafts, undo, |shada|, etc.
 
 		Example: >
 			:echo stdpath("config")
 
 
 str2float({string} [, {quoted}])				*str2float()*
- 		Convert String {string} to a Float.  This mostly works the
- 		same as when using a floating point number in an expression,
- 		see |floating-point-format|.  But it's a bit more permissive.
- 		E.g., "1e40" is accepted, while in an expression you need to
- 		write "1.0e40".  The hexadecimal form "0x123" is also
- 		accepted, but not others, like binary or octal.
- 		When {quoted} is present and non-zero then embedded single
- 		quotes before the dot are ignored, thus "1'000.0" is a
- 		thousand.
+		Convert String {string} to a Float.  This mostly works the
+		same as when using a floating point number in an expression,
+		see |floating-point-format|.  But it's a bit more permissive.
+		E.g., "1e40" is accepted, while in an expression you need to
+		write "1.0e40".  The hexadecimal form "0x123" is also
+		accepted, but not others, like binary or octal.
+		When {quoted} is present and non-zero then embedded single
+		quotes before the dot are ignored, thus "1'000.0" is a
+		thousand.
 		Text after the number is silently ignored.
 		The decimal point is always '.', no matter what the locale is
 		set to.  A comma ends the number: "12,345.67" is converted to
@@ -8008,10 +8213,10 @@ synIDattr({synID}, {what} [, {mode}])			*synIDattr()*
 		The result is a String, which is the {what} attribute of
 		syntax ID {synID}.  This can be used to obtain information
 		about a syntax item.
-		{mode} can be "gui", "cterm" or "term", to get the attributes
+		{mode} can be "gui" or "cterm", to get the attributes
 		for that mode.  When {mode} is omitted, or an invalid value is
 		used, the attributes for the currently active highlighting are
-		used (GUI, cterm or term).
+		used (GUI or cterm).
 		Use synIDtrans() to follow linked highlight groups.
 		{what}		result
 		"name"		the name of the syntax item
@@ -8036,14 +8241,15 @@ synIDattr({synID}, {what} [, {mode}])			*synIDattr()*
 		"underdouble"	"1" if double underlined
 		"underdotted"	"1" if dotted underlined
 		"underdashed"	"1" if dashed underlined
-		"strikethrough" "1" if struckthrough
+		"strikethrough"	"1" if struckthrough
+		"nocombine"	"1" if nocombine
+
+		Returns an empty string on error.
 
 		Example (echoes the color of the syntax item under the
 		cursor): >
 	:echo synIDattr(synIDtrans(synID(line("."), col("."), 1)), "fg")
 <
-		Returns an empty string on error.
-
 		Can also be used as a |method|: >
 	:echo synID(line("."), col("."), 1)->synIDtrans()->synIDattr("fg")
 

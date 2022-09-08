@@ -8,9 +8,8 @@
 
 #include "nvim/ascii.h"
 #include "nvim/charset.h"
+#include "nvim/cmdexpand.h"
 #include "nvim/eval.h"
-#include "nvim/ex_getln.h"
-#include "nvim/fileio.h"
 #include "nvim/macros.h"
 #include "nvim/map.h"
 #include "nvim/memory.h"
@@ -554,9 +553,9 @@ char_u *expand_env_save_opt(char_u *src, bool one)
 /// @param src        Input string e.g. "$HOME/vim.hlp"
 /// @param dst[out]   Where to put the result
 /// @param dstlen     Maximum length of the result
-void expand_env(char_u *src, char_u *dst, int dstlen)
+void expand_env(char *src, char *dst, int dstlen)
 {
-  expand_env_esc(src, dst, dstlen, false, false, NULL);
+  expand_env_esc((char_u *)src, (char_u *)dst, dstlen, false, false, NULL);
 }
 
 /// Expand environment variable with path name and escaping.
@@ -580,18 +579,18 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
 
   int prefix_len = (prefix == NULL) ? 0 : (int)STRLEN(prefix);
 
-  char_u *src = (char_u *)skipwhite((char *)srcp);
+  char *src = skipwhite((char *)srcp);
   dstlen--;  // leave one char space for "\,"
   while (*src && dstlen > 0) {
     // Skip over `=expr`.
     if (src[0] == '`' && src[1] == '=') {
-      var = src;
+      var = (char_u *)src;
       src += 2;
-      (void)skip_expr((char **)&src);
+      (void)skip_expr(&src);
       if (*src == '`') {
         src++;
       }
-      size_t len = (size_t)(src - var);
+      size_t len = (size_t)(src - (char *)var);
       if (len > (size_t)dstlen) {
         len = (size_t)dstlen;
       }
@@ -608,7 +607,7 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
       // The variable name is copied into dst temporarily, because it may
       // be a string in read-only memory and a NUL needs to be appended.
       if (*src != '~') {  // environment var
-        tail = src + 1;
+        tail = (char_u *)src + 1;
         var = dst;
         int c = dstlen - 1;
 
@@ -646,11 +645,11 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
                  || vim_ispathsep(src[1])
                  || vim_strchr(" ,\t\n", src[1]) != NULL) {
         var = (char_u *)homedir;
-        tail = src + 1;
+        tail = (char_u *)src + 1;
       } else {  // user directory
 #if defined(UNIX)
         // Copy ~user to dst[], so we can put a NUL after it.
-        tail = src;
+        tail = (char_u *)src;
         var = dst;
         int c = dstlen - 1;
         while (c-- > 0
@@ -670,8 +669,8 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
 
           ExpandInit(&xpc);
           xpc.xp_context = EXPAND_FILES;
-          var = ExpandOne(&xpc, dst, NULL,
-                          WILD_ADD_SLASH|WILD_SILENT, WILD_EXPAND_FREE);
+          var = (char_u *)ExpandOne(&xpc, (char *)dst, NULL,
+                                    WILD_ADD_SLASH|WILD_SILENT, WILD_EXPAND_FREE);
           mustfree = true;
         }
 #else
@@ -685,7 +684,7 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
       // If 'shellslash' is set change backslashes to forward slashes.
       // Can't use slash_adjust(), p_ssl may be set temporarily.
       if (p_ssl && var != NULL && vim_strchr(var, '\\') != NULL) {
-        char_u *p = vim_strsave(var);
+        char_u *p = xstrdup(var);
 
         if (mustfree) {
           xfree(var);
@@ -723,7 +722,7 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
           tail++;
         }
         dst += c;
-        src = tail;
+        src = (char *)tail;
         copy_char = false;
       }
       if (mustfree) {
@@ -737,17 +736,17 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
       // ":edit foo ~ foo".
       at_start = false;
       if (src[0] == '\\' && src[1] != NUL) {
-        *dst++ = *src++;
+        *dst++ = (char_u)(*src++);
         dstlen--;
       } else if ((src[0] == ' ' || src[0] == ',') && !one) {
         at_start = true;
       }
       if (dstlen > 0) {
-        *dst++ = *src++;
+        *dst++ = (char_u)(*src++);
         dstlen--;
 
         if (prefix != NULL
-            && src - prefix_len >= srcp
+            && src - prefix_len >= (char *)srcp
             && STRNCMP(src - prefix_len, prefix, prefix_len) == 0) {
           at_start = true;
         }
@@ -766,12 +765,12 @@ static char *vim_version_dir(const char *vimdir)
     return NULL;
   }
   char *p = concat_fnames(vimdir, VIM_VERSION_NODOT, true);
-  if (os_isdir((char_u *)p)) {
+  if (os_isdir(p)) {
     return p;
   }
   xfree(p);
   p = concat_fnames(vimdir, RUNTIME_DIRNAME, true);
-  if (os_isdir((char_u *)p)) {
+  if (os_isdir(p)) {
     return p;
   }
   xfree(p);
@@ -938,8 +937,8 @@ char *vim_getenv(const char *name)
   // - the directory name from 'helpfile' (unless it contains '$')
   // - the executable name from argv[0]
   if (vim_path == NULL) {
-    if (p_hf != NULL && vim_strchr((char *)p_hf, '$') == NULL) {
-      vim_path = (char *)p_hf;
+    if (p_hf != NULL && vim_strchr(p_hf, '$') == NULL) {
+      vim_path = p_hf;
     }
 
     char exe_name[MAXPATHL];
@@ -958,7 +957,7 @@ char *vim_getenv(const char *name)
       char *vim_path_end = path_tail(vim_path);
 
       // remove "doc/" from 'helpfile', if present
-      if (vim_path == (char *)p_hf) {
+      if (vim_path == p_hf) {
         vim_path_end = remove_tail(vim_path, vim_path_end, "doc");
       }
 
@@ -977,7 +976,7 @@ char *vim_getenv(const char *name)
       assert(vim_path_end >= vim_path);
       vim_path = xstrndup(vim_path, (size_t)(vim_path_end - vim_path));
 
-      if (!os_isdir((char_u *)vim_path)) {
+      if (!os_isdir(vim_path)) {
         xfree(vim_path);
         vim_path = NULL;
       }
@@ -1069,9 +1068,8 @@ size_t home_replace(const buf_T *const buf, const char *src, char *const dst, si
     must_free = true;
     size_t usedlen = 0;
     size_t flen = strlen(homedir_env_mod);
-    char_u *fbuf = NULL;
-    (void)modify_fname(":p", false, &usedlen,
-                       &homedir_env_mod, (char **)&fbuf, &flen);
+    char *fbuf = NULL;
+    (void)modify_fname(":p", false, &usedlen, &homedir_env_mod, &fbuf, &flen);
     flen = strlen(homedir_env_mod);
     assert(homedir_env_mod != homedir_env);
     if (vim_ispathsep(homedir_env_mod[flen - 1])) {
@@ -1143,7 +1141,7 @@ size_t home_replace(const buf_T *const buf, const char *src, char *const dst, si
 /// Like home_replace, store the replaced string in allocated memory.
 /// @param buf When not NULL, check for help files
 /// @param src Input file name
-char *home_replace_save(buf_T *buf, char *src)
+char *home_replace_save(buf_T *buf, const char *src)
   FUNC_ATTR_NONNULL_RET
 {
   size_t len = 3;             // space for "~/" and trailing NUL
@@ -1158,15 +1156,12 @@ char *home_replace_save(buf_T *buf, char *src)
 /// Function given to ExpandGeneric() to obtain an environment variable name.
 char *get_env_name(expand_T *xp, int idx)
 {
-#define ENVNAMELEN 100
-  // this static buffer is needed to avoid a memory leak in ExpandGeneric
-  static char_u name[ENVNAMELEN];
   assert(idx >= 0);
   char *envname = os_getenvname_at_index((size_t)idx);
   if (envname) {
-    STRLCPY(name, envname, ENVNAMELEN);
+    STRLCPY(xp->xp_buf, envname, EXPAND_BUF_LEN);
     xfree(envname);
-    return (char *)name;
+    return xp->xp_buf;
   }
   return NULL;
 }
@@ -1230,4 +1225,30 @@ bool os_shell_is_cmdexe(const char *sh)
     return true;
   }
   return striequal("cmd.exe", path_tail(sh));
+}
+
+/// Removes environment variable "name" and take care of side effects.
+void vim_unsetenv_ext(const char *var)
+{
+  os_unsetenv(var);
+
+  // "homedir" is not cleared, keep using the old value until $HOME is set.
+  if (STRICMP(var, "VIM") == 0) {
+    didset_vim = false;
+  } else if (STRICMP(var, "VIMRUNTIME") == 0) {
+    didset_vimruntime = false;
+  }
+}
+
+/// Set environment variable "name" and take care of side effects.
+void vim_setenv_ext(const char *name, const char *val)
+{
+  os_setenv(name, val, 1);
+  if (STRICMP(name, "HOME") == 0) {
+    init_homedir();
+  } else if (didset_vim && STRICMP(name, "VIM") == 0) {
+    didset_vim = false;
+  } else if (didset_vimruntime && STRICMP(name, "VIMRUNTIME") == 0) {
+    didset_vimruntime = false;
+  }
 }

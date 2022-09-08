@@ -13,6 +13,10 @@ local exec_lua = helpers.exec_lua
 local eval = helpers.eval
 local exec_capture = helpers.exec_capture
 local neq = helpers.neq
+local matches = helpers.matches
+local iswin = helpers.iswin
+local mkdir = helpers.mkdir
+local rmdir = helpers.rmdir
 
 describe(':source', function()
   before_each(function()
@@ -39,6 +43,47 @@ describe(':source', function()
     os.remove(test_file)
   end)
 
+  it("changing 'shellslash' changes the result of expand()", function()
+    if not iswin() then
+      pending("'shellslash' only works on Windows")
+      return
+    end
+    meths.set_option('shellslash', false)
+    mkdir('Xshellslash')
+
+    write_file([[Xshellslash/Xstack.vim]], [[
+      let g:stack1 = expand('<stack>')
+      set shellslash
+      let g:stack2 = expand('<stack>')
+      set noshellslash
+      let g:stack3 = expand('<stack>')
+    ]])
+
+    for _ = 1, 2 do
+      command([[source Xshellslash/Xstack.vim]])
+      matches([[Xshellslash\Xstack%.vim]], meths.get_var('stack1'))
+      matches([[Xshellslash/Xstack%.vim]], meths.get_var('stack2'))
+      matches([[Xshellslash\Xstack%.vim]], meths.get_var('stack3'))
+    end
+
+    write_file([[Xshellslash/Xstack.lua]], [[
+      vim.g.stack1 = vim.fn.expand('<stack>')
+      vim.o.shellslash = true
+      vim.g.stack2 = vim.fn.expand('<stack>')
+      vim.o.shellslash = false
+      vim.g.stack3 = vim.fn.expand('<stack>')
+    ]])
+
+    for _ = 1, 2 do
+      command([[source Xshellslash/Xstack.lua]])
+      matches([[Xshellslash\Xstack%.lua]], meths.get_var('stack1'))
+      matches([[Xshellslash/Xstack%.lua]], meths.get_var('stack2'))
+      matches([[Xshellslash\Xstack%.lua]], meths.get_var('stack3'))
+    end
+
+    rmdir('Xshellslash')
+  end)
+
   it('current buffer', function()
     insert([[
       let a = 2
@@ -59,7 +104,7 @@ describe(':source', function()
     eq("0zBEEFCAFE", meths.exec('echo d', true))
 
     exec('set cpoptions+=C')
-    eq('Vim(let):E15: Invalid expression: #{', exc_exec('source'))
+    eq('Vim(let):E723: Missing end of Dictionary \'}\': ', exc_exec('source'))
   end)
 
   it('selection in current buffer', function()
@@ -93,7 +138,7 @@ describe(':source', function()
     eq('Vim(echo):E117: Unknown function: s:C', exc_exec('echo D()'))
 
     exec('set cpoptions+=C')
-    eq('Vim(let):E15: Invalid expression: #{', exc_exec("'<,'>source"))
+    eq('Vim(let):E723: Missing end of Dictionary \'}\': ', exc_exec("'<,'>source"))
   end)
 
   it('does not break if current buffer is modified while sourced', function()
@@ -117,11 +162,20 @@ describe(':source', function()
 
   it('can source lua files', function()
     local test_file = 'test.lua'
-    write_file (test_file, [[vim.g.sourced_lua = 1]])
+    write_file(test_file, [[
+      vim.g.sourced_lua = 1
+      vim.g.sfile_value = vim.fn.expand('<sfile>')
+      vim.g.stack_value = vim.fn.expand('<stack>')
+      vim.g.script_value = vim.fn.expand('<script>')
+    ]])
 
-    exec('source ' .. test_file)
-
+    command('set shellslash')
+    command('source ' .. test_file)
     eq(1, eval('g:sourced_lua'))
+    matches([[/test%.lua$]], meths.get_var('sfile_value'))
+    matches([[/test%.lua$]], meths.get_var('stack_value'))
+    matches([[/test%.lua$]], meths.get_var('script_value'))
+
     os.remove(test_file)
   end)
 
@@ -153,13 +207,16 @@ describe(':source', function()
   it('can source current lua buffer without argument', function()
     local test_file = 'test.lua'
 
-    write_file (test_file, [[
+    write_file(test_file, [[
       vim.g.c = 10
       vim.g.c = 11
       vim.g.c = 12
       a = [=[
         \ 1
        "\ 2]=]
+      vim.g.sfile_value = vim.fn.expand('<sfile>')
+      vim.g.stack_value = vim.fn.expand('<stack>')
+      vim.g.script_value = vim.fn.expand('<script>')
     ]])
 
     command('edit '..test_file)
@@ -167,6 +224,10 @@ describe(':source', function()
 
     eq(12, eval('g:c'))
     eq('    \\ 1\n   "\\ 2', exec_lua('return _G.a'))
+    eq(':source (no file)', meths.get_var('sfile_value'))
+    eq(':source (no file)', meths.get_var('stack_value'))
+    eq(':source (no file)', meths.get_var('script_value'))
+
     os.remove(test_file)
   end)
 

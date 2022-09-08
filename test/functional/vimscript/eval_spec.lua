@@ -10,11 +10,13 @@
 --    test/functional/vimscript/functions_spec.lua
 
 local helpers = require('test.functional.helpers')(after_each)
+local Screen = require('test.functional.ui.screen')
 
 local lfs = require('lfs')
 local clear = helpers.clear
 local eq = helpers.eq
 local exc_exec = helpers.exc_exec
+local exec = helpers.exec
 local eval = helpers.eval
 local command = helpers.command
 local write_file = helpers.write_file
@@ -142,5 +144,106 @@ describe('List support code', function()
     if t_dur >= dur / 8 then
       eq(nil, ('Took too long to cancel: %g >= %g'):format(t_dur, dur / 8))
     end
+  end)
+end)
+
+-- oldtest: Test_deep_nest()
+it('Error when if/for/while/try/function is nested too deep',function()
+  clear()
+  local screen = Screen.new(80, 24)
+  screen:attach()
+  meths.set_option('laststatus', 2)
+  exec([[
+    " Deep nesting of if ... endif
+    func Test1()
+      let @a = join(repeat(['if v:true'], 51), "\n")
+      let @a ..= "\n"
+      let @a ..= join(repeat(['endif'], 51), "\n")
+      @a
+      let @a = ''
+    endfunc
+
+    " Deep nesting of for ... endfor
+    func Test2()
+      let @a = join(repeat(['for i in [1]'], 51), "\n")
+      let @a ..= "\n"
+      let @a ..= join(repeat(['endfor'], 51), "\n")
+      @a
+      let @a = ''
+    endfunc
+
+    " Deep nesting of while ... endwhile
+    func Test3()
+      let @a = join(repeat(['while v:true'], 51), "\n")
+      let @a ..= "\n"
+      let @a ..= join(repeat(['endwhile'], 51), "\n")
+      @a
+      let @a = ''
+    endfunc
+
+    " Deep nesting of try ... endtry
+    func Test4()
+      let @a = join(repeat(['try'], 51), "\n")
+      let @a ..= "\necho v:true\n"
+      let @a ..= join(repeat(['endtry'], 51), "\n")
+      @a
+      let @a = ''
+    endfunc
+
+    " Deep nesting of function ... endfunction
+    func Test5()
+      let @a = join(repeat(['function X()'], 51), "\n")
+      let @a ..= "\necho v:true\n"
+      let @a ..= join(repeat(['endfunction'], 51), "\n")
+      @a
+      let @a = ''
+    endfunc
+  ]])
+  screen:expect({any = '%[No Name%]'})
+  feed(':call Test1()<CR>')
+  screen:expect({any = 'E579: '})
+  feed('<C-C>')
+  screen:expect({any = '%[No Name%]'})
+  feed(':call Test2()<CR>')
+  screen:expect({any = 'E585: '})
+  feed('<C-C>')
+  screen:expect({any = '%[No Name%]'})
+  feed(':call Test3()<CR>')
+  screen:expect({any = 'E585: '})
+  feed('<C-C>')
+  screen:expect({any = '%[No Name%]'})
+  feed(':call Test4()<CR>')
+  screen:expect({any = 'E601: '})
+  feed('<C-C>')
+  screen:expect({any = '%[No Name%]'})
+  feed(':call Test5()<CR>')
+  screen:expect({any = 'E1058: '})
+end)
+
+describe("uncaught exception", function()
+  before_each(clear)
+  after_each(function()
+    os.remove('throw1.vim')
+    os.remove('throw2.vim')
+    os.remove('throw3.vim')
+  end)
+
+  it('is not forgotten #13490', function()
+    command('autocmd BufWinEnter * throw "i am error"')
+    eq('i am error', exc_exec('try | new | endtry'))
+
+    -- Like Vim, throwing here aborts the processing of the script, but does not stop :runtime!
+    -- from processing the others.
+    -- Only the first thrown exception should be rethrown from the :try below, though.
+    for i = 1, 3 do
+      write_file('throw' .. i .. '.vim', ([[
+        let result ..= '%d'
+        throw 'throw%d'
+        let result ..= 'X'
+      ]]):format(i, i))
+    end
+    command('set runtimepath+=. | let result = ""')
+    eq('throw1', exc_exec('try | runtime! throw*.vim | endtry'))
+    eq('123', eval('result'))
   end)
 end)

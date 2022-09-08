@@ -19,6 +19,7 @@ describe('UI receives option updates', function()
       linespace=0,
       pumblend=0,
       mousefocus=false,
+      mousemoveevent=false,
       showtabline=1,
       termguicolors=false,
       ttimeout=true,
@@ -51,7 +52,7 @@ describe('UI receives option updates', function()
   end)
 
   it('on attach #11372', function()
-    clear()
+    clear{args_rm={'--headless'}}
     local evs = {}
     screen = Screen.new(20,5)
     -- Override mouse_on/mouse_off handlers.
@@ -63,17 +64,18 @@ describe('UI receives option updates', function()
     end
     screen:attach()
     screen:expect(function()
-      eq({'mouse_off'}, evs)
+      eq({'mouse_on'}, evs)
     end)
-    command("set mouse=nvi")
+    command("set mouse=")
+    command("set mouse&")
     screen:expect(function()
-      eq({'mouse_off','mouse_on'}, evs)
+      eq({'mouse_on','mouse_off', 'mouse_on'}, evs)
     end)
     screen:detach()
-    eq({'mouse_off','mouse_on'}, evs)
+    eq({'mouse_on','mouse_off', 'mouse_on'}, evs)
     screen:attach()
     screen:expect(function()
-      eq({'mouse_off','mouse_on','mouse_on'}, evs)
+      eq({'mouse_on','mouse_off','mouse_on', 'mouse_on'}, evs)
     end)
   end)
 
@@ -85,6 +87,19 @@ describe('UI receives option updates', function()
     expected.termguicolors = true
     screen:expect(function()
       eq(expected, screen.options)
+    end)
+
+    command("set pumblend=50")
+    expected.pumblend = 50
+    screen:expect(function()
+        eq(expected, screen.options)
+    end)
+
+    -- check handling of out-of-bounds value
+    command("set pumblend=-1")
+    expected.pumblend = 0
+    screen:expect(function()
+        eq(expected, screen.options)
     end)
 
     command("set guifont=Comic\\ Sans")
@@ -113,6 +128,12 @@ describe('UI receives option updates', function()
 
     command("set mousefocus")
     expected.mousefocus = true
+    screen:expect(function()
+      eq(expected, screen.options)
+    end)
+
+    command("set mousemoveevent")
+    expected.mousemoveevent = true
     screen:expect(function()
       eq(expected, screen.options)
     end)

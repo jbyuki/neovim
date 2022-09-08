@@ -244,10 +244,12 @@ function module.run_session(lsession, request_cb, notification_cb, setup_cb, tim
     last_error = nil
     error(err)
   end
+
+  return session.eof_err
 end
 
 function module.run(request_cb, notification_cb, setup_cb, timeout)
-  module.run_session(session, request_cb, notification_cb, setup_cb, timeout)
+  return module.run_session(session, request_cb, notification_cb, setup_cb, timeout)
 end
 
 function module.stop()
@@ -271,10 +273,22 @@ function module.command(cmd)
 end
 
 
--- use for commands which expect nvim to quit
-function module.expect_exit(...)
-  eq("EOF was received from Nvim. Likely the Nvim process crashed.",
-     module.pcall_err(...))
+-- Use for commands which expect nvim to quit.
+-- The first argument can also be a timeout.
+function module.expect_exit(fn_or_timeout, ...)
+  local eof_err_msg = 'EOF was received from Nvim. Likely the Nvim process crashed.'
+  if type(fn_or_timeout) == 'function' then
+    eq(eof_err_msg, module.pcall_err(fn_or_timeout, ...))
+  else
+    eq(eof_err_msg, module.pcall_err(function(timeout, fn, ...)
+      fn(...)
+      while session:next_message(timeout) do
+      end
+      if session.eof_err then
+        error(session.eof_err[2])
+      end
+    end, fn_or_timeout, ...))
+  end
 end
 
 -- Evaluates a VimL expression.
@@ -739,15 +753,6 @@ function module.pending_win32(pending_fn)
   else
     return false
   end
-end
-
-function module.pending_c_parser(pending_fn)
-  local status, _ = unpack(module.exec_lua([[ return {pcall(vim.treesitter.require_language, 'c')} ]]))
-  if not status then
-    pending_fn 'no C parser, skipping'
-    return true
-  end
-  return false
 end
 
 -- Calls pending() and returns `true` if the system is too slow to

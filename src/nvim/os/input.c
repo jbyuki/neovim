@@ -8,10 +8,9 @@
 
 #include "nvim/api/private/defs.h"
 #include "nvim/ascii.h"
+#include "nvim/autocmd.h"
 #include "nvim/event/loop.h"
 #include "nvim/event/rstream.h"
-#include "nvim/ex_cmds2.h"
-#include "nvim/fileio.h"
 #include "nvim/getchar.h"
 #include "nvim/keycodes.h"
 #include "nvim/main.h"
@@ -19,6 +18,7 @@
 #include "nvim/memory.h"
 #include "nvim/msgpack_rpc/channel.h"
 #include "nvim/os/input.h"
+#include "nvim/profile.h"
 #include "nvim/screen.h"
 #include "nvim/state.h"
 #include "nvim/ui.h"
@@ -293,7 +293,8 @@ static uint8_t check_multiclick(int code, int grid, int row, int col)
       || code == KE_MOUSEDOWN
       || code == KE_MOUSEUP
       || code == KE_MOUSELEFT
-      || code == KE_MOUSERIGHT) {
+      || code == KE_MOUSERIGHT
+      || code == KE_MOUSEMOVE) {
     return 0;
   }
   uint64_t mouse_time = os_hrtime();    // time of current mouse click (ns)
@@ -347,7 +348,8 @@ static unsigned int handle_mouse_event(char **ptr, uint8_t *buf, unsigned int bu
 
   if (type != KS_EXTRA
       || !((mouse_code >= KE_LEFTMOUSE && mouse_code <= KE_RIGHTRELEASE)
-           || (mouse_code >= KE_MOUSEDOWN && mouse_code <= KE_MOUSERIGHT))) {
+           || (mouse_code >= KE_MOUSEDOWN && mouse_code <= KE_MOUSERIGHT)
+           || mouse_code == KE_MOUSEMOVE)) {
     return bufsize;
   }
 

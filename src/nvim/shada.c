@@ -16,11 +16,12 @@
 #include "nvim/ascii.h"
 #include "nvim/buffer.h"
 #include "nvim/buffer_defs.h"
+#include "nvim/cmdhist.h"
 #include "nvim/eval/decode.h"
 #include "nvim/eval/encode.h"
 #include "nvim/eval/typval.h"
+#include "nvim/ex_cmds.h"
 #include "nvim/ex_docmd.h"
-#include "nvim/ex_getln.h"
 #include "nvim/fileio.h"
 #include "nvim/garray.h"
 #include "nvim/globals.h"
@@ -881,10 +882,10 @@ static const void *shada_hist_iter(const void *const iter, const uint8_t history
       .data = {
         .history_item = {
           .histtype = history_type,
-          .string = (char *)hist_he.hisstr,
+          .string = hist_he.hisstr,
           .sep = (char)(history_type == HIST_SEARCH
-                         ? (char)hist_he.hisstr[STRLEN(hist_he.hisstr) + 1]
-                         : 0),
+                        ? hist_he.hisstr[STRLEN(hist_he.hisstr) + 1]
+                        : 0),
           .additional_elements = hist_he.additional_elements,
         }
       }
@@ -1007,7 +1008,7 @@ static inline void hms_to_he_array(const HistoryMergerState *const hms_p,
   HMLL_FORALL(&hms_p->hmll, cur_entry,  {
     hist->timestamp = cur_entry->data.timestamp;
     hist->hisnum = (int)(hist - hist_array) + 1;
-    hist->hisstr = (char_u *)cur_entry->data.data.history_item.string;
+    hist->hisstr = cur_entry->data.data.history_item.string;
     hist->additional_elements =
       cur_entry->data.data.history_item.additional_elements;
     hist++;
@@ -1237,7 +1238,7 @@ static void shada_read(ShaDaReadDef *const sd_reader, const int flags)
       // string is close to useless: you can only use it with :& or :~ and
       // that’s all because s//~ is not available until the first call to
       // regtilde. Vim was not calling this for some reason.
-      (void)(char *)regtilde((char_u *)cur_entry.data.sub_string.sub, p_magic, false);
+      (void)regtilde(cur_entry.data.sub_string.sub, p_magic, false);
       // Do not free shada entry: its allocated memory was saved above.
       break;
     case kSDItemHistoryEntry:
@@ -1476,7 +1477,7 @@ static char *shada_filename(const char *file)
       //     because various expansions must have already be done by the shell.
       //     If shell is not performing them then they should be done in main.c
       //     where arguments are parsed, *not here*.
-      expand_env((char_u *)file, &(NameBuff[0]), MAXPATHL);
+      expand_env((char *)file, &(NameBuff[0]), MAXPATHL);
       file = (const char *)&(NameBuff[0]);
     }
   }
@@ -2188,7 +2189,7 @@ static inline ShaDaWriteResult shada_read_when_writing(ShaDaReadDef *const sd_re
       k = kh_put(file_marks, &wms->file_marks, fname, &kh_ret);
       FileMarks *const filemarks = &kh_val(&wms->file_marks, k);
       if (kh_ret > 0) {
-        memset(filemarks, 0, sizeof(*filemarks));
+        CLEAR_POINTER(filemarks);
       }
       if (entry.timestamp > filemarks->greatest_timestamp) {
         filemarks->greatest_timestamp = entry.timestamp;
@@ -2449,6 +2450,27 @@ static inline void find_removable_bufs(khash_t(bufset) *removable_bufs)
       (void)kh_put(bufset, removable_bufs, (uintptr_t)buf, &kh_ret);
     }
   }
+}
+
+/// Translate a history type number to the associated character
+static int hist_type2char(const int type)
+  FUNC_ATTR_CONST
+{
+  switch (type) {
+  case HIST_CMD:
+    return ':';
+  case HIST_SEARCH:
+    return '/';
+  case HIST_EXPR:
+    return '=';
+  case HIST_INPUT:
+    return '@';
+  case HIST_DEBUG:
+    return '>';
+  default:
+    abort();
+  }
+  return NUL;
 }
 
 /// Write ShaDa file
@@ -2730,7 +2752,7 @@ static ShaDaWriteResult shada_write(ShaDaWriteDef *const sd_writer, ShaDaReadDef
       k = kh_put(file_marks, &wms->file_marks, fname, &kh_ret);
       FileMarks *const filemarks = &kh_val(&wms->file_marks, k);
       if (kh_ret > 0) {
-        memset(filemarks, 0, sizeof(*filemarks));
+        CLEAR_POINTER(filemarks);
       }
       do {
         fmark_T fm;
@@ -3001,7 +3023,7 @@ shada_write_file_nomerge: {}
     if (tail != fname) {
       const char tail_save = *tail;
       *tail = NUL;
-      if (!os_isdir((char_u *)fname)) {
+      if (!os_isdir(fname)) {
         int ret;
         char *failed_dir;
         if ((ret = os_mkdir_recurse(fname, 0700, &failed_dir)) != 0) {
@@ -3456,7 +3478,7 @@ shada_read_next_item_start:
   // data union are NULL so they are safe to xfree(). This is needed in case
   // somebody calls goto shada_read_next_item_error before anything is set in
   // the switch.
-  memset(entry, 0, sizeof(*entry));
+  CLEAR_POINTER(entry);
   if (sd_reader->eof) {
     return kSDReadStatusFinished;
   }
@@ -3974,12 +3996,12 @@ static bool shada_removable(const char *name)
   bool retval = false;
 
   char *new_name = home_replace_save(NULL, (char *)name);
-  for (p = (char *)p_shada; *p;) {
+  for (p = p_shada; *p;) {
     (void)copy_option_part(&p, part, ARRAY_SIZE(part), ", ");
     if (part[0] == 'r') {
       home_replace(NULL, part + 1, (char *)NameBuff, MAXPATHL, true);
       size_t n = STRLEN(NameBuff);
-      if (mb_strnicmp((char_u *)NameBuff, (char_u *)new_name, n) == 0) {
+      if (mb_strnicmp(NameBuff, new_name, n) == 0) {
         retval = true;
         break;
       }

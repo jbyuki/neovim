@@ -4,6 +4,25 @@
 #include "nvim/eval/typval.h"
 #include "nvim/ex_cmds_defs.h"
 
+// From user function to hashitem and back.
+#define UF2HIKEY(fp) ((fp)->uf_name)
+#define HIKEY2UF(p)  ((ufunc_T *)(p - offsetof(ufunc_T, uf_name)))
+#define HI2UF(hi)    HIKEY2UF((hi)->hi_key)
+
+// flags used in uf_flags
+#define FC_ABORT    0x01          // abort function on error
+#define FC_RANGE    0x02          // function accepts range
+#define FC_DICT     0x04          // Dict function, uses "self"
+#define FC_CLOSURE  0x08          // closure, uses outer scope variables
+#define FC_DELETED  0x10          // :delfunction used while uf_refcount > 0
+#define FC_REMOVED  0x20          // function redefined while uf_refcount > 0
+#define FC_SANDBOX  0x40          // function defined in the sandbox
+#define FC_DEAD     0x80          // function kept only for reference to dfunc
+#define FC_EXPORT   0x100         // "export def Func()"
+#define FC_NOARGS   0x200         // no a: variables in lambda
+#define FC_VIM9     0x400         // defined in vim9 script file
+#define FC_LUAREF  0x800          // luaref callback
+
 ///< Structure used by trans_function_name()
 typedef struct {
   dict_T *fd_dict;  ///< Dictionary used.
@@ -59,8 +78,8 @@ typedef struct {
   .basetv = NULL, \
 }
 
-#define FUNCARG(fp, j)  ((char_u **)(fp->uf_args.ga_data))[j]
-#define FUNCLINE(fp, j) ((char_u **)(fp->uf_lines.ga_data))[j]
+#define FUNCARG(fp, j)  ((char **)(fp->uf_args.ga_data))[j]
+#define FUNCLINE(fp, j) ((char **)(fp->uf_lines.ga_data))[j]
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "eval/userfunc.h.generated.h"

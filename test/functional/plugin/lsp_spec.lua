@@ -137,7 +137,7 @@ local function test_rpc_server(config)
   end
   stop()
   if config.test_name then
-    exec_lua("lsp._vim_exit_handler()")
+    exec_lua("vim.api.nvim_exec_autocmds('VimLeavePre', { modeline = false })")
   end
 end
 
@@ -172,7 +172,7 @@ describe('LSP', function()
   end)
 
   after_each(function()
-    exec_lua("lsp._vim_exit_handler()")
+    exec_lua("vim.api.nvim_exec_autocmds('VimLeavePre', { modeline = false })")
    -- exec_lua("lsp.stop_all_clients(true)")
   end)
 
@@ -249,7 +249,7 @@ describe('LSP', function()
     after_each(function()
       stop()
       exec_lua("lsp.stop_client(lsp.get_active_clients(), true)")
-      exec_lua("lsp._vim_exit_handler()")
+      exec_lua("vim.api.nvim_exec_autocmds('VimLeavePre', { modeline = false })")
     end)
 
     it('should run correctly', function()
@@ -418,6 +418,42 @@ describe('LSP', function()
       }
     end)
 
+    it('should detach buffer on bufwipe', function()
+      local result = exec_lua([[
+        local server = function(dispatchers)
+          local closing = false
+          return {
+            request = function(method, params, callback)
+              if method == 'initialize' then
+                callback(nil, { capabilities = {} })
+              end
+            end,
+            notify = function(...)
+            end,
+            is_closing = function() return closing end,
+            terminate = function() closing = true end
+          }
+        end
+        local bufnr = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_set_current_buf(bufnr)
+        local client_id = vim.lsp.start({ name = 'detach-dummy', cmd = server })
+        assert(client_id, "lsp.start must return client_id")
+        local client = vim.lsp.get_client_by_id(client_id)
+        local num_attached_before = vim.tbl_count(client.attached_buffers)
+        vim.api.nvim_buf_delete(bufnr, { force = true })
+        local num_attached_after = vim.tbl_count(client.attached_buffers)
+        return {
+          bufnr = bufnr,
+          client_id = client_id,
+          num_attached_before = num_attached_before,
+          num_attached_after = num_attached_after,
+        }
+      ]])
+      eq(true, result ~= nil, "exec_lua must return result")
+      eq(1, result.num_attached_before)
+      eq(0, result.num_attached_after)
+    end)
+
     it('client should return settings via workspace/configuration handler', function()
       local expected_handlers = {
         {NIL, {}, {method="shutdown", client_id=1}};
@@ -505,7 +541,7 @@ describe('LSP', function()
       }
     end)
 
-    it('_text_document_did_save_handler sends didSave with bool textDocumentSync.save', function()
+    it('BufWritePost sends didSave with bool textDocumentSync.save', function()
       local expected_handlers = {
         {NIL, {}, {method="shutdown", client_id=1}};
         {NIL, {}, {method="start", client_id=1}};
@@ -526,7 +562,7 @@ describe('LSP', function()
             exec_lua([=[
               BUFFER = vim.api.nvim_get_current_buf()
               lsp.buf_attach_client(BUFFER, TEST_RPC_CLIENT_ID)
-              lsp._text_document_did_save_handler(BUFFER)
+              vim.api.nvim_exec_autocmds('BufWritePost', { buffer = BUFFER, modeline = false })
             ]=])
           else
             client.stop()
@@ -535,7 +571,47 @@ describe('LSP', function()
       }
     end)
 
-    it('_text_document_did_save_handler sends didSave including text if server capability is set', function()
+    it('saveas sends didOpen if filename changed', function()
+      local expected_handlers = {
+        { NIL, {}, { method = 'shutdown', client_id = 1 } },
+        { NIL, {}, { method = 'start', client_id = 1 } },
+      }
+      local client
+      test_rpc_server({
+        test_name = 'text_document_save_did_open',
+        on_init = function(c)
+          client = c
+        end,
+        on_exit = function(code, signal)
+          eq(0, code, 'exit code')
+          eq(0, signal, 'exit signal')
+        end,
+        on_handler = function(err, result, ctx)
+          eq(table.remove(expected_handlers), { err, result, ctx }, 'expected handler')
+          if ctx.method == 'start' then
+            local tmpfile_old = helpers.tmpname()
+            local tmpfile_new = helpers.tmpname()
+            os.remove(tmpfile_new)
+            exec_lua(
+              [=[
+              local oldname, newname = ...
+              BUFFER = vim.api.nvim_get_current_buf()
+              vim.api.nvim_buf_set_name(BUFFER, oldname)
+              vim.api.nvim_buf_set_lines(BUFFER, 0, -1, true, {"help me"})
+              lsp.buf_attach_client(BUFFER, TEST_RPC_CLIENT_ID)
+              vim.api.nvim_buf_call(BUFFER, function() vim.cmd('saveas ' .. newname) end)
+            ]=],
+              tmpfile_old,
+              tmpfile_new
+            )
+          else
+            client.stop()
+          end
+        end,
+      })
+    end)
+
+    it('BufWritePost sends didSave including text if server capability is set', function()
       local expected_handlers = {
         {NIL, {}, {method="shutdown", client_id=1}};
         {NIL, {}, {method="start", client_id=1}};
@@ -557,7 +633,7 @@ describe('LSP', function()
               BUFFER = vim.api.nvim_get_current_buf()
               vim.api.nvim_buf_set_lines(BUFFER, 0, -1, true, {"help me"})
               lsp.buf_attach_client(BUFFER, TEST_RPC_CLIENT_ID)
-              lsp._text_document_did_save_handler(BUFFER)
+              vim.api.nvim_exec_autocmds('BufWritePost', { buffer = BUFFER, modeline = false })
             ]=])
           else
             client.stop()
@@ -3139,6 +3215,80 @@ describe('LSP', function()
           end
         end,
       }
+    end)
+    it('format formats range in visual mode', function()
+      local result = exec_lua([[
+        local messages = {}
+        local server = function(dispatchers)
+          local closing = false
+          return {
+            request = function(method, params, callback)
+              table.insert(messages, {
+                method = method,
+                params = params,
+              })
+              if method == 'initialize' then
+                callback(nil, {
+                  capabilities = {
+                    documentFormattingProvider = true,
+                    documentRangeFormattingProvider = true,
+                  }
+                })
+              end
+            end,
+            notify = function(...)
+            end,
+            is_closing = function()
+              return closing
+            end,
+            terminate = function()
+              closing = true
+            end
+          }
+        end
+        local bufnr = vim.api.nvim_get_current_buf()
+        local client_id = vim.lsp.start({ name = 'dummy', cmd = server })
+        vim.api.nvim_win_set_buf(0, bufnr)
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, true, {'foo', 'bar'})
+        vim.api.nvim_win_set_cursor(0, { 1, 0 })
+        vim.cmd.normal('v')
+        vim.api.nvim_win_set_cursor(0, { 2, 3 })
+        vim.lsp.buf.format({ bufnr = bufnr, false })
+        return messages
+      ]])
+      eq("textDocument/rangeFormatting", result[2].method)
+      local expected_range = {
+        start = { line = 0, character = 0 },
+        ['end'] = { line = 1, character = 4 },
+      }
+      eq(expected_range, result[2].params.range)
+    end)
+  end)
+  describe('cmd', function()
+    it('can connect to lsp server via rpc.connect', function()
+      local result = exec_lua [[
+        local uv = vim.loop
+        local server = uv.new_tcp()
+        local init = nil
+        server:bind('127.0.0.1', 0)
+        server:listen(127, function(err)
+          assert(not err, err)
+          local socket = uv.new_tcp()
+          server:accept(socket)
+          socket:read_start(require('vim.lsp.rpc').create_read_loop(function(body)
+            init = body
+            socket:close()
+          end))
+        end)
+        local port = server:getsockname().port
+        vim.lsp.start({ name = 'dummy', cmd = vim.lsp.rpc.connect('127.0.0.1', port) })
+        vim.wait(1000, function() return init ~= nil end)
+        assert(init, "server must receive `initialize` request")
+        server:close()
+        server:shutdown()
+        return vim.json.decode(init)
+      ]]
+      eq(result.method, "initialize")
     end)
   end)
 end)

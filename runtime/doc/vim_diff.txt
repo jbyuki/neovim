@@ -52,6 +52,8 @@ centralized reference of the differences.
 - 'langremap' is disabled
 - 'laststatus' defaults to 2 (statusline is always shown)
 - 'listchars' defaults to "tab:> ,trail:-,nbsp:+"
+- 'mouse' defaults to "nvi"
+- 'mousemodel' defaults to "popup_setpos"
 - 'nrformats' defaults to "bin,hex"
 - 'ruler' is enabled
 - 'sessionoptions' includes "unix,slash", excludes "options"
@@ -71,12 +73,36 @@ centralized reference of the differences.
 - 'wildmenu' is enabled
 - 'wildoptions' defaults to "pum,tagfile"
 
-- |man.vim| plugin is enabled, so |:Man| is available by default.
+- |man.lua| plugin is enabled, so |:Man| is available by default.
 - |matchit| plugin is enabled. To disable it in your config: >
     :let loaded_matchit = 1
 
 - |g:vimsyn_embed| defaults to "l" to enable Lua highlighting
 
+
+Default Mouse ~
+						*default-mouse* *disable-mouse*
+By default the mouse is enabled.  The right button click opens |popup-menu|
+with standard actions, such as "Cut", "Copy" and "Paste".
+
+If you don't like this you can add to your |config| any of the following:
+
+- ignore mouse completely >
+  set mouse=
+<
+- no |popup-menu| but the right button extends selection >
+  set mousemodel=extend
+>
+- pressing ALT+LeftMouse releases mouse until main cursor moves  >
+  nnoremap <M-LeftMouse> <Cmd>
+    \ set mouse=<Bar>
+    \ echo 'mouse OFF until next cursor-move'<Bar>
+    \ autocmd CursorMoved * ++once set mouse&<Bar>
+    \ echo 'mouse ON'<CR>
+<
+Also, mouse is not in use in |command-mode| or at |more-prompt|.  So if you
+need to copy/paste with your terminal then just pressing ':' makes Nvim to
+release the mouse cursor temporarily.
 
 Default Mappings ~
 							*default-mappings*
@@ -89,6 +115,7 @@ of these in your config by simply removing the mapping, e.g. ":unmap Y".
 	inoremap <C-W> <C-G>u<C-W>
 	xnoremap * y/\V<C-R>"<CR>
 	xnoremap # y?\V<C-R>"<CR>
+	nnoremap & :&&<CR>
 <
 Default Autocommands ~
 							*default-autocmds*
@@ -180,9 +207,8 @@ Commands:
   |:checkhealth|
   |:drop| is always available
   |:Man| is available by default, with many improvements such as completion
-  |:sign-define| accepts a `numhl` argument, to highlight the line number
   |:match| can be invoked before highlight group is defined
-  |:source| works with Lua and anonymous (no file) scripts
+  |:source| works with Lua
   User commands can support |:command-preview| to show results as you type
 
 Events:
@@ -223,7 +249,7 @@ Input/Mappings:
   <M-1>, <M-BS>, <M-Del>, <M-Ins>, <M-/>, <M-\>, <M-Space>, <M-Enter>, etc.
   Case-sensitive: <M-a> and <M-A> are two different keycodes.
 
-  ALT behaves like <Esc> if not mapped. |i_ALT| |v_ALT| |c_ALT|
+  ALT may behave like <Esc> if not mapped. |i_ALT| |v_ALT| |c_ALT|
 
 Normal commands:
   |gO| shows a filetype-defined "outline" of the current buffer.
@@ -244,7 +270,6 @@ Options:
   'signcolumn'  supports up to 9 dynamic/fixed columns
   'statusline'  supports unlimited alignment sections
   'tabline'     %@Func@foo%X can call any function on mouse-click
-  'wildoptions' "pum" flag to use popupmenu for wildmode completion
   'winblend'    pseudo-transparency in floating windows |api-floatwin|
   'winhighlight' window-local highlights
 
@@ -346,11 +371,16 @@ Lua interface (|lua.txt|):
 
 Commands:
   |:doautocmd| does not warn about "No matching autocommands".
+  |:wincmd| accepts a count.
+
+Command line completion:
+  The meanings of arrow keys do not change depending on 'wildoptions'.
 
 Functions:
   |input()| and |inputdialog()| support for each other’s features (return on
   cancel and completion respectively) via dictionary argument (replaces all
-  other arguments if used).
+  other arguments if used), and "cancelreturn" can have any type if passed in
+  a dictionary.
   |input()| and |inputdialog()| support user-defined cmdline highlighting.
 
 Highlight groups:
@@ -360,6 +390,9 @@ Highlight groups:
   using |n| or |N|
   |hl-CursorLine| is low-priority unless foreground color is set
   |hl-VertSplit| superseded by |hl-WinSeparator|
+  Highlight groups names are allowed to contain the characters `.` and `@`.
+  It is an error to define a highlight group with a name that doesn't match
+  the regexp `[a-zA-Z0-9_.@]*` (see |group-name|).
 
 Macro/|recording| behavior
   Replay of a macro recorded during :lmap produces the same actions as when it
