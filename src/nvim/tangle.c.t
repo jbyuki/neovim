@@ -313,7 +313,7 @@ char_u *saved_line;
 #include "nvim/cursor.h"
 
 @save_current_line_open+=
-saved_line = vim_strsave(get_cursor_line_ptr());
+saved_line = xstrdup(get_cursor_line_ptr());
 
 @open_line_free+=
 xfree(saved_line);

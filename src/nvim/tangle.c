@@ -255,7 +255,7 @@ int open_line_tangle(int dir, int flags, int second_line_indent, bool *did_do_co
   old_cursor = curwin->w_cursor;
 
 
-  saved_line = vim_strsave(get_cursor_line_ptr());
+  saved_line = xstrdup(get_cursor_line_ptr());
 
   if ((State & MODE_INSERT) && (State & VREPLACE_FLAG) == 0) {
     p_extra = saved_line + curwin->w_cursor.col;
@@ -323,7 +323,7 @@ int open_line_tangle(int dir, int flags, int second_line_indent, bool *did_do_co
   old_cursor = curwin->w_cursor;
 
 
-  saved_line = vim_strsave(get_cursor_line_ptr());
+  saved_line = xstrdup(get_cursor_line_ptr());
 
   if ((State & MODE_INSERT) && (State & VREPLACE_FLAG) == 0) {
     p_extra = saved_line + curwin->w_cursor.col;

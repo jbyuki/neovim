@@ -828,6 +828,8 @@ EXTERN int p_cdh;               // 'cdhome'
 
 EXTERN int p_force_on;          ///< options that cannot be turned off.
 EXTERN int p_force_off;         ///< options that cannot be turned on.
+                                ///
+EXTERN int p_tgl;              ///< 'tangle'
 
 //
 // "indir" values for buffer-local options.
