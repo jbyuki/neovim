@@ -41,6 +41,7 @@ void attach_tangle(buf_T *buf)
 {
   semsg(_("Tangle activated!"));
   @create_tangle_buffer
+  @copy_current_buffer_to_tangle_buffer
   @set_tangle_buffer
 }
 
@@ -155,12 +156,18 @@ if (!p_ri || (State & REPLACE_FLAG)) {
 #include "nvim/option.h"
 
 @create_tangle_buffer+=
-buf_T* tangle_view = buflist_new(NULL, NULL, (linenr_T)1, BLN_LISTED);
+buf_T* tangle_view = buflist_new(NULL, NULL, (linenr_T)1, BLN_NEW);
+ml_open(tangle_view);
 
-buf_T* save_buf = curbuf;
-curbuf = tangle_view;
-set_option_value("ft", 0L, "help", OPT_LOCAL);
-curbuf = save_buf;
+@copy_current_buffer_to_tangle_buffer+=
+for(int i=0; i<buf->b_ml.ml_line_count; ++i) {
+  char* line = ml_get(i+1);
+  if(i == 0) {
+    ml_replace_buf(tangle_view, 1, line, true);
+  } else {
+    ml_append_buf(tangle_view, i, line, (colnr_T)STRLEN(line) + 1, false);
+  }
+}
 
 @set_tangle_buffer+=
 buf->tangle_view = tangle_view;
@@ -181,7 +188,6 @@ int del_bytes_tangle(colnr_T count, bool fixpos, bool use_delcombine)
   @replace_line_buffer_delete
 
   @mark_buffer_as_deleted
-
 
   buf_T* save_buf = curbuf;
   curbuf = curbuf->tangle_view;
