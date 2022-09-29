@@ -474,6 +474,10 @@ Array string_to_array(const String input, bool crlf)
 /// @return true unless `err` was set
 bool buf_collect_lines(buf_T *buf, size_t n, int64_t start, bool replace_nl, Array *l, Error *err)
 {
+  if(buf->tangle_view) {
+    buf = buf->tangle_view;
+  }
+
   for (size_t i = 0; i < n; i++) {
     int64_t lnum = start + (int64_t)i;
 

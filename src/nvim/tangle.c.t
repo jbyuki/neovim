@@ -161,7 +161,11 @@ ml_open(tangle_view);
 
 @copy_current_buffer_to_tangle_buffer+=
 for(int i=0; i<buf->b_ml.ml_line_count; ++i) {
-  char* line = ml_get(i+1);
+  int lnum = i+1;
+  // swap first line and second line
+  if(lnum == 1) { lnum = 2; }
+  else if(lnum == 2) { lnum = 1; }
+  char* line = ml_get(lnum);
   if(i == 0) {
     ml_replace_buf(tangle_view, 1, line, true);
   } else {
