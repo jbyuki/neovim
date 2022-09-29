@@ -122,7 +122,7 @@ static char *mpack_array_dyn16(char **buf)
 static void mpack_str(char **buf, const char *str)
 {
   assert(sizeof(schar_T) - 1 < 0x20);
-  size_t len = STRLEN(str);
+  size_t len = strlen(str);
   mpack_w(buf, 0xa0 | len);
   memcpy(*buf, str, len);
   *buf += len;
@@ -453,7 +453,7 @@ void nvim_ui_try_resize_grid(uint64_t channel_id, Integer grid, Integer width, I
   }
 }
 
-/// Tells Nvim the number of elements displaying in the popumenu, to decide
+/// Tells Nvim the number of elements displaying in the popupmenu, to decide
 /// <PageUp> and <PageDown> movement.
 ///
 /// @param channel_id
@@ -483,7 +483,7 @@ void nvim_ui_pum_set_height(uint64_t channel_id, Integer height, Error *err)
   ui->pum_nlines = (int)height;
 }
 
-/// Tells Nvim the geometry of the popumenu, to align floating windows with an
+/// Tells Nvim the geometry of the popupmenu, to align floating windows with an
 /// external popup menu.
 ///
 /// Note that this method is not to be confused with |nvim_ui_pum_set_height()|,
@@ -845,7 +845,7 @@ static void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startc
     for (size_t i = 0; i < ncells; i++) {
       repeat++;
       if (i == ncells - 1 || attrs[i] != attrs[i + 1]
-          || STRCMP(chunk[i], chunk[i + 1])) {
+          || strcmp(chunk[i], chunk[i + 1])) {
         if (UI_BUF_SIZE - BUF_POS(data) < 2 * (1 + 2 + sizeof(schar_T) + 5 + 5)) {
           // close to overflowing the redraw buffer. finish this event,
           // flush, and start a new "grid_line" event at the current position.

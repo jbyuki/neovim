@@ -548,9 +548,9 @@ static void free_efm_list(efm_T **efm_first)
 /// a regular expression pattern.
 static size_t efm_regpat_bufsz(char *efm)
 {
-  size_t sz = (FMT_PATTERNS * 3) + (STRLEN(efm) << 2);
+  size_t sz = (FMT_PATTERNS * 3) + (strlen(efm) << 2);
   for (int i = FMT_PATTERNS - 1; i >= 0;) {
-    sz += STRLEN(fmt_pat[i--].pattern);
+    sz += strlen(fmt_pat[i--].pattern);
   }
 #ifdef BACKSLASH_IN_FILENAME
   sz += 12;  // "%f" can become twelve chars longer (see efm_to_regpat)
@@ -652,7 +652,7 @@ static int qf_get_next_str_line(qfstate_T *state)
   }
 
   char *p = vim_strchr(p_str, '\n');
-  size_t len = (p != NULL) ? (size_t)(p - p_str) + 1 : STRLEN(p_str);
+  size_t len = (p != NULL) ? (size_t)(p - p_str) + 1 : strlen(p_str);
 
   if (len > IOSIZE - 2) {
     state->linebuf = qf_grow_linebuf(state, len);
@@ -688,7 +688,7 @@ static int qf_get_next_list_line(qfstate_T *state)
     return QF_END_OF_INPUT;
   }
 
-  size_t len = STRLEN(TV_LIST_ITEM_TV(p_li)->vval.v_string);
+  size_t len = strlen(TV_LIST_ITEM_TV(p_li)->vval.v_string);
   if (len > IOSIZE - 2) {
     state->linebuf = qf_grow_linebuf(state, len);
   } else {
@@ -713,7 +713,7 @@ static int qf_get_next_buf_line(qfstate_T *state)
   char *p_buf = ml_get_buf(state->buf, state->buflnum, false);
   state->buflnum += 1;
 
-  size_t len = STRLEN(p_buf);
+  size_t len = strlen(p_buf);
   if (len > IOSIZE - 2) {
     state->linebuf = qf_grow_linebuf(state, len);
   } else {
@@ -738,7 +738,7 @@ retry:
   }
 
   bool discard = false;
-  state->linelen = STRLEN(IObuff);
+  state->linelen = strlen(IObuff);
   if (state->linelen == IOSIZE - 1
       && !(IObuff[state->linelen - 1] == '\n')) {
     // The current line exceeds IObuff, continue reading using growbuf
@@ -761,7 +761,7 @@ retry:
         }
         break;
       }
-      state->linelen = STRLEN(state->growbuf + growbuflen);
+      state->linelen = strlen(state->growbuf + growbuflen);
       growbuflen += state->linelen;
       if (state->growbuf[growbuflen - 1] == '\n') {
         break;
@@ -786,7 +786,7 @@ retry:
         }
         break;
       }
-      if (STRLEN(IObuff) < IOSIZE - 1 || IObuff[IOSIZE - 2] == '\n') {
+      if (strlen(IObuff) < IOSIZE - 1 || IObuff[IOSIZE - 2] == '\n') {
         break;
       }
     }
@@ -1098,7 +1098,7 @@ static int qf_init_ext(qf_info_T *qi, int qf_idx, const char *restrict efile, bu
 
   // If the errorformat didn't change between calls, then reuse the previously
   // parsed values.
-  if (last_efm == NULL || (STRCMP(last_efm, efm) != 0)) {
+  if (last_efm == NULL || (strcmp(last_efm, efm) != 0)) {
     // free the previously parsed data
     XFREE_CLEAR(last_efm);
     free_efm_list(&fmt_first);
@@ -1175,7 +1175,7 @@ static void qf_store_title(qf_list_T *qfl, const char *title)
   XFREE_CLEAR(qfl->qf_title);
 
   if (title != NULL) {
-    size_t len = STRLEN(title) + 1;
+    size_t len = strlen(title) + 1;
     char *p = xmallocz(len);
 
     qfl->qf_title = p;
@@ -1242,10 +1242,10 @@ static int qf_parse_fmt_f(regmatch_T *rmp, int midx, qffields_T *fields, int pre
   }
 
   // Expand ~/file and $HOME/file to full path.
-  char c = (char)(*rmp->endp[midx]);
+  char c = *rmp->endp[midx];
   *rmp->endp[midx] = NUL;
-  expand_env((char *)rmp->startp[midx], fields->namebuf, CMDBUFFSIZE);
-  *rmp->endp[midx] = (char_u)c;
+  expand_env(rmp->startp[midx], fields->namebuf, CMDBUFFSIZE);
+  *rmp->endp[midx] = c;
 
   // For separate filename patterns (%O, %P and %Q), the specified file
   // should exist.
@@ -1264,7 +1264,7 @@ static int qf_parse_fmt_n(regmatch_T *rmp, int midx, qffields_T *fields)
   if (rmp->startp[midx] == NULL) {
     return QF_FAIL;
   }
-  fields->enr = (int)atol((char *)rmp->startp[midx]);
+  fields->enr = (int)atol(rmp->startp[midx]);
   return QF_OK;
 }
 
@@ -1275,7 +1275,7 @@ static int qf_parse_fmt_l(regmatch_T *rmp, int midx, qffields_T *fields)
   if (rmp->startp[midx] == NULL) {
     return QF_FAIL;
   }
-  fields->lnum = (linenr_T)atol((char *)rmp->startp[midx]);
+  fields->lnum = (linenr_T)atol(rmp->startp[midx]);
   return QF_OK;
 }
 
@@ -1286,7 +1286,7 @@ static int qf_parse_fmt_e(regmatch_T *rmp, int midx, qffields_T *fields)
   if (rmp->startp[midx] == NULL) {
     return QF_FAIL;
   }
-  fields->end_lnum = (linenr_T)atol((char *)rmp->startp[midx]);
+  fields->end_lnum = (linenr_T)atol(rmp->startp[midx]);
   return QF_OK;
 }
 
@@ -1297,7 +1297,7 @@ static int qf_parse_fmt_c(regmatch_T *rmp, int midx, qffields_T *fields)
   if (rmp->startp[midx] == NULL) {
     return QF_FAIL;
   }
-  fields->col = (int)atol((char *)rmp->startp[midx]);
+  fields->col = (int)atol(rmp->startp[midx]);
   return QF_OK;
 }
 
@@ -1308,7 +1308,7 @@ static int qf_parse_fmt_k(regmatch_T *rmp, int midx, qffields_T *fields)
   if (rmp->startp[midx] == NULL) {
     return QF_FAIL;
   }
-  fields->end_col = (int)atol((char *)rmp->startp[midx]);
+  fields->end_col = (int)atol(rmp->startp[midx]);
   return QF_OK;
 }
 
@@ -1319,7 +1319,7 @@ static int qf_parse_fmt_t(regmatch_T *rmp, int midx, qffields_T *fields)
   if (rmp->startp[midx] == NULL) {
     return QF_FAIL;
   }
-  fields->type = (char)(*rmp->startp[midx]);
+  fields->type = *rmp->startp[midx];
   return QF_OK;
 }
 
@@ -1360,7 +1360,7 @@ static int qf_parse_fmt_r(regmatch_T *rmp, int midx, char **tail)
   if (rmp->startp[midx] == NULL) {
     return QF_FAIL;
   }
-  *tail = (char *)rmp->startp[midx];
+  *tail = rmp->startp[midx];
   return QF_OK;
 }
 
@@ -1372,7 +1372,7 @@ static int qf_parse_fmt_p(regmatch_T *rmp, int midx, qffields_T *fields)
     return QF_FAIL;
   }
   fields->col = 0;
-  for (char *match_ptr = (char *)rmp->startp[midx]; (char_u *)match_ptr != rmp->endp[midx];
+  for (char *match_ptr = rmp->startp[midx]; match_ptr != rmp->endp[midx];
        match_ptr++) {
     fields->col++;
     if (*match_ptr == TAB) {
@@ -1392,7 +1392,7 @@ static int qf_parse_fmt_v(regmatch_T *rmp, int midx, qffields_T *fields)
   if (rmp->startp[midx] == NULL) {
     return QF_FAIL;
   }
-  fields->col = (int)atol((char *)rmp->startp[midx]);
+  fields->col = (int)atol(rmp->startp[midx]);
   fields->use_viscol = true;
   return QF_OK;
 }
@@ -1409,7 +1409,7 @@ static int qf_parse_fmt_s(regmatch_T *rmp, int midx, qffields_T *fields)
     len = CMDBUFFSIZE - 5;
   }
   STRCPY(fields->pattern, "^\\V");
-  STRLCAT(fields->pattern, rmp->startp[midx], len + 4);
+  xstrlcat(fields->pattern, rmp->startp[midx], len + 4);
   fields->pattern[len + 3] = '\\';
   fields->pattern[len + 4] = '$';
   fields->pattern[len + 5] = NUL;
@@ -1424,11 +1424,11 @@ static int qf_parse_fmt_o(regmatch_T *rmp, int midx, qffields_T *fields)
     return QF_FAIL;
   }
   size_t len = (size_t)(rmp->endp[midx] - rmp->startp[midx]);
-  size_t dsize = STRLEN(fields->module) + len + 1;
+  size_t dsize = strlen(fields->module) + len + 1;
   if (dsize > CMDBUFFSIZE) {
     dsize = CMDBUFFSIZE;
   }
-  STRLCAT(fields->module, rmp->startp[midx], dsize);
+  xstrlcat(fields->module, rmp->startp[midx], dsize);
   return QF_OK;
 }
 
@@ -1609,8 +1609,8 @@ static int qf_parse_multiline_pfx(int idx, qf_list_T *qfl, qffields_T *fields)
       return QF_FAIL;
     }
     if (*fields->errmsg) {
-      size_t textlen = STRLEN(qfprev->qf_text);
-      size_t errlen  = STRLEN(fields->errmsg);
+      size_t textlen = strlen(qfprev->qf_text);
+      size_t errlen  = strlen(fields->errmsg);
       qfprev->qf_text = xrealloc(qfprev->qf_text, textlen + errlen + 2);
       qfprev->qf_text[textlen] = '\n';
       STRCPY(qfprev->qf_text + textlen + 1, fields->errmsg);
@@ -2085,7 +2085,7 @@ static int qf_get_fnum(qf_list_T *qfl, char *directory, char *fname)
   }
 
   if (qf_last_bufname != NULL
-      && STRCMP(bufname, qf_last_bufname) == 0
+      && strcmp(bufname, qf_last_bufname) == 0
       && bufref_valid(&qf_last_bufref)) {
     buf = qf_last_bufref.br_buf;
     xfree(ptr);
@@ -2791,7 +2791,7 @@ static void qf_jump_print_msg(qf_info_T *qi, int qf_index, qfline_T *qf_ptr, buf
            qf_ptr->qf_cleared ? _(" (line deleted)") : "",
            qf_types(qf_ptr->qf_type, qf_ptr->qf_nr));
   // Add the message, skipping leading whitespace and newlines.
-  int len = (int)STRLEN(IObuff);
+  int len = (int)strlen(IObuff);
   qf_fmt_text(skipwhite(qf_ptr->qf_text), (char *)IObuff + len, IOSIZE - len);
 
   // Output the message.  Overwrite to avoid scrolling when the 'O'
@@ -3064,7 +3064,7 @@ static void qf_list_entry(qfline_T *qfp, int qf_idx, bool cursel)
   } else {
     qf_range_text(qfp, (char *)IObuff, IOSIZE);
   }
-  vim_snprintf((char *)IObuff + STRLEN(IObuff), IOSIZE, "%s", qf_types(qfp->qf_type, qfp->qf_nr));
+  vim_snprintf((char *)IObuff + strlen(IObuff), IOSIZE, "%s", qf_types(qfp->qf_type, qfp->qf_nr));
   msg_puts_attr((const char *)IObuff, qfLineAttr);
   msg_puts_attr(":", qfSepAttr);
   if (qfp->qf_pattern != NULL) {
@@ -3074,9 +3074,9 @@ static void qf_list_entry(qfline_T *qfp, int qf_idx, bool cursel)
   }
   msg_puts(" ");
 
-  char_u *tbuf = IObuff;
+  char *tbuf = IObuff;
   size_t tbuflen = IOSIZE;
-  size_t len = STRLEN(qfp->qf_text) + 3;
+  size_t len = strlen(qfp->qf_text) + 3;
 
   if (len > IOSIZE) {
     tbuf = xmalloc(len);
@@ -3088,8 +3088,8 @@ static void qf_list_entry(qfline_T *qfp, int qf_idx, bool cursel)
   // with ^^^^.
   qf_fmt_text((fname != NULL || qfp->qf_lnum != 0)
               ? skipwhite(qfp->qf_text) : qfp->qf_text,
-              (char *)tbuf, (int)tbuflen);
-  msg_prt_line((char *)tbuf, false);
+              tbuf, (int)tbuflen);
+  msg_prt_line(tbuf, false);
 
   if (tbuf != IObuff) {
     xfree(tbuf);
@@ -3198,18 +3198,18 @@ static void qf_fmt_text(const char *restrict text, char *restrict buf, int bufsi
 static void qf_range_text(const qfline_T *qfp, char *buf, int bufsize)
 {
   vim_snprintf(buf, (size_t)bufsize, "%" PRIdLINENR, qfp->qf_lnum);
-  int len = (int)STRLEN(buf);
+  int len = (int)strlen(buf);
 
   if (qfp->qf_end_lnum > 0 && qfp->qf_lnum != qfp->qf_end_lnum) {
     vim_snprintf(buf + len, (size_t)(bufsize - len), "-%" PRIdLINENR, qfp->qf_end_lnum);
-    len += (int)STRLEN(buf + len);
+    len += (int)strlen(buf + len);
   }
   if (qfp->qf_col > 0) {
     vim_snprintf(buf + len, (size_t)(bufsize - len), " col %d", qfp->qf_col);
-    len += (int)STRLEN(buf + len);
+    len += (int)strlen(buf + len);
     if (qfp->qf_end_col > 0 && qfp->qf_col != qfp->qf_end_col) {
       vim_snprintf(buf + len, (size_t)(bufsize - len), "-%d", qfp->qf_end_col);
-      len += (int)STRLEN(buf + len);
+      len += (int)strlen(buf + len);
     }
   }
   buf[len] = NUL;
@@ -3230,13 +3230,13 @@ static void qf_msg(qf_info_T *qi, int which, char *lead)
                count);
 
   if (title != NULL) {
-    size_t len = STRLEN(buf);
+    size_t len = strlen(buf);
 
     if (len < 34) {
       memset(buf + len, ' ', 34 - len);
       buf[34] = NUL;
     }
-    STRLCAT(buf, title, IOSIZE);
+    xstrlcat(buf, title, IOSIZE);
   }
   trunc_string(buf, buf, Columns - 1, IOSIZE);
   msg(buf);
@@ -3915,7 +3915,7 @@ static int qf_buf_add_line(qf_list_T *qfl, buf_T *buf, linenr_T lnum, const qfli
     int len;
     if (qfp->qf_module != NULL) {
       STRLCPY(IObuff, qfp->qf_module, IOSIZE);
-      len = (int)STRLEN(IObuff);
+      len = (int)strlen(IObuff);
     } else if (qfp->qf_fnum != 0
                && (errbuf = buflist_findnr(qfp->qf_fnum)) != NULL
                && errbuf->b_fname != NULL) {
@@ -3935,7 +3935,7 @@ static int qf_buf_add_line(qf_list_T *qfl, buf_T *buf, linenr_T lnum, const qfli
         }
         STRLCPY(IObuff, errbuf->b_fname, IOSIZE);
       }
-      len = (int)STRLEN(IObuff);
+      len = (int)strlen(IObuff);
     } else {
       len = 0;
     }
@@ -3944,14 +3944,14 @@ static int qf_buf_add_line(qf_list_T *qfl, buf_T *buf, linenr_T lnum, const qfli
     }
     if (qfp->qf_lnum > 0) {
       qf_range_text(qfp, (char *)IObuff + len, IOSIZE - len);
-      len += (int)STRLEN(IObuff + len);
+      len += (int)strlen(IObuff + len);
 
       snprintf((char *)IObuff + len, (size_t)(IOSIZE - len), "%s", qf_types(qfp->qf_type,
                                                                             qfp->qf_nr));
-      len += (int)STRLEN(IObuff + len);
+      len += (int)strlen(IObuff + len);
     } else if (qfp->qf_pattern != NULL) {
       qf_fmt_text(qfp->qf_pattern, (char *)IObuff + len, IOSIZE - len);
-      len += (int)STRLEN(IObuff + len);
+      len += (int)strlen(IObuff + len);
     }
     if (len < IOSIZE - 2) {
       IObuff[len++] = '|';
@@ -3965,7 +3965,7 @@ static int qf_buf_add_line(qf_list_T *qfl, buf_T *buf, linenr_T lnum, const qfli
                 (char *)IObuff + len, IOSIZE - len);
   }
 
-  if (ml_append_buf(buf, lnum, IObuff,
+  if (ml_append_buf(buf, lnum, (char_u *)IObuff,
                     (colnr_T)STRLEN(IObuff) + 1, false) == FAIL) {
     return FAIL;
   }
@@ -4180,8 +4180,7 @@ int grep_internal(cmdidx_T cmdidx)
           || cmdidx == CMD_lgrep
           || cmdidx == CMD_grepadd
           || cmdidx == CMD_lgrepadd)
-         && STRCMP("internal",
-                   *curbuf->b_p_gp == NUL ? p_gp : (char_u *)curbuf->b_p_gp) == 0;
+         && strcmp("internal", *curbuf->b_p_gp == NUL ? p_gp : curbuf->b_p_gp) == 0;
 }
 
 // Return the make/grep autocmd name.
@@ -4211,9 +4210,9 @@ static char *make_get_auname(cmdidx_T cmdidx)
 static char *make_get_fullcmd(const char *makecmd, const char *fname)
   FUNC_ATTR_NONNULL_ALL FUNC_ATTR_NONNULL_RET
 {
-  size_t len = STRLEN(p_shq) * 2 + STRLEN(makecmd) + 1;
+  size_t len = STRLEN(p_shq) * 2 + strlen(makecmd) + 1;
   if (*p_sp != NUL) {
-    len += STRLEN(p_sp) + STRLEN(fname) + 3;
+    len += strlen(p_sp) + strlen(fname) + 3;
   }
   char *const cmd = xmalloc(len);
   snprintf(cmd, len, "%s%s%s", (char *)p_shq, (char *)makecmd, (char *)p_shq);
@@ -4343,9 +4342,9 @@ static char *get_mef_name(void)
     } else {
       off += 19;
     }
-    name = xmalloc(STRLEN(p_mef) + 30);
+    name = xmalloc(strlen(p_mef) + 30);
     STRCPY(name, p_mef);
-    snprintf(name + (p - p_mef), STRLEN(name), "%d%d", start, off);
+    snprintf(name + (p - p_mef), strlen(name), "%d%d", start, off);
     STRCAT(name, p + 2);
     // Don't accept a symbolic link, it's a security risk.
     FileInfo file_info;
@@ -5138,7 +5137,7 @@ static bool vgr_match_buflines(qf_list_T *qfl, char *fname, buf_T *buf, char *sp
   FUNC_ATTR_NONNULL_ARG(1, 3, 4, 5, 6)
 {
   bool found_match = false;
-  const size_t pat_len = STRLEN(spat);
+  const size_t pat_len = strlen(spat);
 
   for (linenr_T lnum = 1; lnum <= buf->b_ml.ml_line_count && *tomatch > 0; lnum++) {
     colnr_T col = 0;
@@ -5175,7 +5174,7 @@ static bool vgr_match_buflines(qf_list_T *qfl, char *fname, buf_T *buf, char *sp
           break;
         }
         col = regmatch->endpos[0].col + (col == regmatch->endpos[0].col);
-        if (col > (colnr_T)STRLEN(ml_get_buf(buf, lnum, false))) {
+        if (col > (colnr_T)strlen(ml_get_buf(buf, lnum, false))) {
           break;
         }
       }
@@ -5218,7 +5217,7 @@ static bool vgr_match_buflines(qf_list_T *qfl, char *fname, buf_T *buf, char *sp
           break;
         }
         col = (colnr_T)matches[pat_len - 1] + col + 1;
-        if (col > (colnr_T)STRLEN(str)) {
+        if (col > (colnr_T)strlen(str)) {
           break;
         }
       }
@@ -5417,7 +5416,7 @@ static int vgr_process_files(win_T *wp, qf_info_T *qi, vgr_args_T *cmd_args, boo
           // directory we jumped to below.
           if (buf == *first_match_buf
               && *target_dir == NULL
-              && STRCMP(dirname_start, dirname_now) != 0) {
+              && strcmp(dirname_start, dirname_now) != 0) {
             *target_dir = xstrdup(dirname_now);
           }
 
@@ -5540,7 +5539,7 @@ static void restore_start_dir(char *dirname_start)
   char *dirname_now = xmalloc(MAXPATHL);
 
   os_dirname((char_u *)dirname_now, MAXPATHL);
-  if (STRCMP(dirname_start, dirname_now) != 0) {
+  if (strcmp(dirname_start, dirname_now) != 0) {
     // If the directory has changed, change it back by building up an
     // appropriate ex command and executing it.
     exarg_T ea = {
@@ -6498,7 +6497,7 @@ static int qf_setprop_curidx(qf_info_T *qi, qf_list_T *qfl, const dictitem_T *di
   // If the specified index is '$', then use the last entry
   if (di->di_tv.v_type == VAR_STRING
       && di->di_tv.vval.v_string != NULL
-      && STRCMP(di->di_tv.vval.v_string, "$") == 0) {
+      && strcmp(di->di_tv.vval.v_string, "$") == 0) {
     newidx = qfl->qf_count;
   } else {
     // Otherwise use the specified index
@@ -6949,11 +6948,11 @@ static void hgr_search_file(qf_list_T *qfl, char *fname, regmatch_T *p_regmatch)
   }
 
   linenr_T lnum = 1;
-  while (!vim_fgets(IObuff, IOSIZE, fd) && !got_int) {
+  while (!vim_fgets((char_u *)IObuff, IOSIZE, fd) && !got_int) {
     char *line = (char *)IObuff;
 
     if (vim_regexec(p_regmatch, line, (colnr_T)0)) {
-      int l = (int)STRLEN(line);
+      int l = (int)strlen(line);
 
       // remove trailing CR, LF, spaces, etc.
       while (l > 0 && line[l - 1] <= ' ') {
@@ -6968,8 +6967,8 @@ static void hgr_search_file(qf_list_T *qfl, char *fname, regmatch_T *p_regmatch)
                        line,
                        lnum,
                        0,
-                       (int)(p_regmatch->startp[0] - (char_u *)line) + 1,  // col
-                       (int)(p_regmatch->endp[0] - (char_u *)line)
+                       (int)(p_regmatch->startp[0] - line) + 1,  // col
+                       (int)(p_regmatch->endp[0] - line)
                        + 1,    // end_col
                        false,  // vis_col
                        NULL,   // search pattern
@@ -6978,13 +6977,13 @@ static void hgr_search_file(qf_list_T *qfl, char *fname, regmatch_T *p_regmatch)
                        true)    // valid
           == QF_FAIL) {
         got_int = true;
-        if ((char_u *)line != IObuff) {
+        if (line != IObuff) {
           xfree(line);
         }
         break;
       }
     }
-    if ((char_u *)line != IObuff) {
+    if (line != IObuff) {
       xfree(line);
     }
     lnum++;
@@ -7010,9 +7009,9 @@ static void hgr_search_files_in_dir(qf_list_T *qfl, char *dirname, regmatch_T *p
     for (int fi = 0; fi < fcount && !got_int; fi++) {
       // Skip files for a different language.
       if (lang != NULL
-          && STRNICMP(lang, fnames[fi] + STRLEN(fnames[fi]) - 3, 2) != 0
+          && STRNICMP(lang, fnames[fi] + strlen(fnames[fi]) - 3, 2) != 0
           && !(STRNICMP(lang, "en", 2) == 0
-               && STRNICMP("txt", fnames[fi] + STRLEN(fnames[fi]) - 3, 3)
+               && STRNICMP("txt", fnames[fi] + strlen(fnames[fi]) - 3, 3)
                == 0)) {
         continue;
       }

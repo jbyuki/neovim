@@ -1775,7 +1775,7 @@ void truncate_spaces(char *line)
   int i;
 
   // find start of trailing white space
-  for (i = (int)STRLEN(line) - 1; i >= 0 && ascii_iswhite(line[i]); i--) {
+  for (i = (int)strlen(line) - 1; i >= 0 && ascii_iswhite(line[i]); i--) {
     if (State & REPLACE_FLAG) {
       replace_join(0);              // remove a NUL from the replace stack
     }
@@ -2678,7 +2678,7 @@ int stuff_inserted(int c, long count, int no_esc)
   // when the last char is either "0" or "^" it will be quoted if no ESC
   // comes after it OR if it will inserted more than once and "ptr"
   // starts with ^D.  -- Acevedo
-  last_ptr = (esc_ptr ? esc_ptr : ptr + STRLEN(ptr)) - 1;
+  last_ptr = (esc_ptr ? esc_ptr : ptr + strlen(ptr)) - 1;
   if (last_ptr >= ptr && (*last_ptr == '0' || *last_ptr == '^')
       && (no_esc || (*ptr == Ctrl_D && count > 1))) {
     last = *last_ptr;
@@ -2940,7 +2940,7 @@ static void replace_do_bs(int limit_col)
     }
     (void)del_char_after_col(limit_col);
     if (l_State & VREPLACE_FLAG) {
-      orig_len = (int)STRLEN(get_cursor_pos_ptr());
+      orig_len = (int)strlen(get_cursor_pos_ptr());
     }
     replace_push(cc);
     replace_pop_ins();
@@ -3858,7 +3858,7 @@ static bool ins_bs(int c, int mode, int *inserted_space_p)
         return false;
       }
       Insstart.lnum--;
-      Insstart.col = (colnr_T)STRLEN(ml_get(Insstart.lnum));
+      Insstart.col = (colnr_T)strlen(ml_get(Insstart.lnum));
     }
     // In replace mode:
     // cc < 0: NL was inserted, delete it
@@ -4676,7 +4676,7 @@ bool ins_eol(int c)
 
   // NL in reverse insert will always start in the end of current line.
   if (revins_on) {
-    curwin->w_cursor.col += (colnr_T)STRLEN(get_cursor_pos_ptr());
+    curwin->w_cursor.col += (colnr_T)strlen(get_cursor_pos_ptr());
   }
 
   AppendToRedobuff(NL_STR);
@@ -4960,7 +4960,7 @@ static char_u *do_insert_char_pre(int c)
     // Get the value of v:char.  It may be empty or more than one
     // character.  Only use it when changed, otherwise continue with the
     // original character to avoid breaking autoindent.
-    if (STRCMP(buf, get_vim_var_str(VV_CHAR)) != 0) {
+    if (strcmp(buf, get_vim_var_str(VV_CHAR)) != 0) {
       res = xstrdup(get_vim_var_str(VV_CHAR));
     }
   }

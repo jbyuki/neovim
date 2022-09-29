@@ -3,6 +3,7 @@
 
 #include <assert.h>
 
+#include "klib/kvec.h"
 #include "nvim/ascii.h"
 #include "nvim/autocmd.h"
 #include "nvim/drawscreen.h"
@@ -10,7 +11,6 @@
 #include "nvim/ex_docmd.h"
 #include "nvim/getchar.h"
 #include "nvim/insexpand.h"
-#include "nvim/lib/kvec.h"
 #include "nvim/log.h"
 #include "nvim/main.h"
 #include "nvim/option.h"
@@ -65,7 +65,7 @@ getkey:
       // Call `os_inchar` directly to block for events or user input without
       // consuming anything from `input_buffer`(os/input.c) or calling the
       // mapping engine.
-      (void)os_inchar(NULL, 0, -1, 0, main_loop.events);
+      (void)os_inchar(NULL, 0, -1, typebuf.tb_change_cnt, main_loop.events);
       // If an event was put into the queue, we send K_EVENT directly.
       if (!multiqueue_empty(main_loop.events)) {
         key = K_EVENT;
@@ -237,7 +237,7 @@ void may_trigger_modechanged(void)
   char pattern_buf[2 * MODE_MAX_LENGTH];
 
   get_mode(curr_mode);
-  if (STRCMP(curr_mode, last_mode) == 0) {
+  if (strcmp(curr_mode, last_mode) == 0) {
     return;
   }
 

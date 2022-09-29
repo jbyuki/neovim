@@ -302,7 +302,7 @@ end
 
 --- Merges recursively two or more map-like tables.
 ---
----@see |tbl_extend()|
+---@see |vim.tbl_extend()|
 ---
 ---@param behavior string Decides what to do if a key is found in more than one map:
 ---      - "error": raise an error
@@ -720,7 +720,7 @@ end
 ---
 --- They mimic defaultdict in python.
 ---
---- If @p create is @c nil, this will create a defaulttable whose constructor function is
+--- If {create} is `nil`, this will create a defaulttable whose constructor function is
 --- this function, effectively allowing to create nested tables on the fly:
 ---
 --- <pre>

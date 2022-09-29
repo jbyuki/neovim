@@ -113,7 +113,7 @@ static list_T *heredoc_get(exarg_T *eap, char *cmd)
         && STRNCMP(theline, *eap->cmdlinep, marker_indent_len) == 0) {
       mi = marker_indent_len;
     }
-    if (STRCMP(marker, theline + mi) == 0) {
+    if (strcmp(marker, theline + mi) == 0) {
       xfree(theline);
       break;
     }
@@ -710,7 +710,7 @@ static char *ex_let_one(char *arg, typval_T *const tv, const bool copy, const bo
         }
       }
       if (p != NULL) {
-        write_reg_contents(*arg == '@' ? '"' : *arg, p, (ssize_t)STRLEN(p), false);
+        write_reg_contents(*arg == '@' ? '"' : *arg, p, (ssize_t)strlen(p), false);
         arg_end = arg + 1;
       }
       xfree(ptofree);
@@ -1348,12 +1348,8 @@ void set_var_const(const char *name, const size_t name_len, typval_T *const tv, 
   }
 
   if (watched) {
-    if (oldtv.v_type == VAR_UNKNOWN) {
-      tv_dict_watcher_notify(dict, (char *)v->di_key, &v->di_tv, NULL);
-    } else {
-      tv_dict_watcher_notify(dict, (char *)v->di_key, &v->di_tv, &oldtv);
-      tv_clear(&oldtv);
-    }
+    tv_dict_watcher_notify(dict, (char *)v->di_key, &v->di_tv, &oldtv);
+    tv_clear(&oldtv);
   }
 
   if (is_const) {
@@ -1801,7 +1797,7 @@ void f_setbufvar(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
       // reset notion of buffer
       aucmd_restbuf(&aco);
     } else {
-      const size_t varname_len = STRLEN(varname);
+      const size_t varname_len = strlen(varname);
       char *const bufvarname = xmalloc(varname_len + 3);
       buf_T *const save_curbuf = curbuf;
       curbuf = buf;

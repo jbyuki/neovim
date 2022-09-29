@@ -2170,7 +2170,7 @@ int buflist_findpat(const char *pattern, const char *pattern_end, bool unlisted,
     if (pat == NULL) {
       return -1;
     }
-    patend = pat + STRLEN(pat) - 1;
+    patend = pat + strlen(pat) - 1;
     toggledollar = (patend > pat && *patend == '$');
 
     // First try finding a listed buffer.  If not found and "unlisted"
@@ -2284,7 +2284,7 @@ int ExpandBufnames(char *pat, int *num_file, char ***file, int options)
 
   // Make a copy of "pat" and change "^" to "\(^\|[\/]\)".
   if (*pat == '^') {
-    patc = xmalloc(STRLEN(pat) + 11);
+    patc = xmalloc(strlen(pat) + 11);
     STRCPY(patc, "\\(^\\|[\\/]\\)");
     STRCPY(patc + 11, pat + 1);
   } else {
@@ -2733,7 +2733,7 @@ void buflist_list(exarg_T *eap)
       IObuff[len++] = ' ';
     } while (--i > 0 && len < IOSIZE - 18);
     if (vim_strchr(eap->arg, 't') && buf->b_last_used) {
-      undo_fmt_time(IObuff + len, (size_t)(IOSIZE - len), buf->b_last_used);
+      undo_fmt_time((char_u *)IObuff + len, (size_t)(IOSIZE - len), buf->b_last_used);
     } else {
       vim_snprintf((char *)IObuff + len, (size_t)(IOSIZE - len), _("line %" PRId64),
                    buf == curbuf ? (int64_t)curwin->w_cursor.lnum : (int64_t)buflist_findlnum(buf));
@@ -2965,7 +2965,7 @@ static bool otherfile_buf(buf_T *buf, char *ffname, FileID *file_id_p, bool file
   if (ffname == NULL || *ffname == NUL || buf->b_ffname == NULL) {
     return true;
   }
-  if (FNAMECMP(ffname, buf->b_ffname) == 0) {
+  if (path_fnamecmp(ffname, buf->b_ffname) == 0) {
     return false;
   }
   {
@@ -3037,7 +3037,7 @@ void fileinfo(int fullname, int shorthelp, int dont_truncate)
 
   if (fullname > 1) {       // 2 CTRL-G: include buffer number
     vim_snprintf(buffer, IOSIZE, "buf %d: ", curbuf->b_fnum);
-    p = buffer + STRLEN(buffer);
+    p = buffer + strlen(buffer);
   } else {
     p = buffer;
   }
@@ -3096,7 +3096,7 @@ void fileinfo(int fullname, int shorthelp, int dont_truncate)
                      (int64_t)curbuf->b_ml.ml_line_count,
                      n);
     validate_virtcol();
-    len = STRLEN(buffer);
+    len = strlen(buffer);
     col_print(buffer + len, IOSIZE - len,
               (int)curwin->w_cursor.col + 1, (int)curwin->w_virtcol + 1);
   }
@@ -3305,7 +3305,7 @@ void maketitle(void)
       }
       *icon_str = NUL;
       // Truncate name at 100 bytes.
-      len = (int)STRLEN(buf_p);
+      len = (int)strlen(buf_p);
       if (len > 100) {
         len -= 100;
         len += utf_cp_tail_off(buf_p, buf_p + len) + 1;
@@ -3335,7 +3335,7 @@ static bool value_change(char *str, char **last)
   FUNC_ATTR_WARN_UNUSED_RESULT
 {
   if ((str == NULL) != (*last == NULL)
-      || (str != NULL && *last != NULL && STRCMP(str, *last) != 0)) {
+      || (str != NULL && *last != NULL && strcmp(str, *last) != 0)) {
     xfree(*last);
     if (str == NULL) {
       *last = NULL;
@@ -3412,7 +3412,7 @@ bool append_arg_number(win_T *wp, char *buf, int buflen, bool add_file)
     return false;
   }
 
-  char *p = buf + STRLEN(buf);  // go to the end of the buffer
+  char *p = buf + strlen(buf);  // go to the end of the buffer
 
   // Early out if the string is getting too long
   if (p - buf + 35 >= buflen) {
@@ -3448,7 +3448,7 @@ void fname_expand(buf_T *buf, char **ffname, char **sfname)
   }
   *ffname = fix_fname((*ffname));     // expand to full path
 
-#ifdef WIN32
+#ifdef MSWIN
   if (!buf->b_p_bin) {
     // If the file name is a shortcut file, use the file it links to.
     char *rfname = os_resolve_shortcut((const char *)(*ffname));
@@ -4159,7 +4159,7 @@ bool buf_contents_changed(buf_T *buf)
     if (buf->b_ml.ml_line_count == curbuf->b_ml.ml_line_count) {
       differ = false;
       for (linenr_T lnum = 1; lnum <= curbuf->b_ml.ml_line_count; lnum++) {
-        if (STRCMP(ml_get_buf(buf, lnum, false), ml_get(lnum)) != 0) {
+        if (strcmp(ml_get_buf(buf, lnum, false), ml_get(lnum)) != 0) {
           differ = true;
           break;
         }

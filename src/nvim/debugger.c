@@ -128,10 +128,15 @@ void do_debug(char *cmd)
       ignore_script = true;
     }
 
+    // don't debug any function call, e.g. from an expression mapping
+    n = debug_break_level;
+    debug_break_level = -1;
+
     xfree(cmdline);
     cmdline = getcmdline_prompt('>', NULL, 0, EXPAND_NOTHING, NULL,
                                 CALLBACK_NONE);
 
+    debug_break_level = n;
     if (typeahead_saved) {
       restore_typeahead(&typeaheadbuf);
       ignore_script = save_ignore_script;
@@ -646,7 +651,7 @@ void ex_breakdel(exarg_T *eap)
     for (int i = 0; i < gap->ga_len; i++) {
       bpi = &DEBUGGY(gap, i);
       if (bp->dbg_type == bpi->dbg_type
-          && STRCMP(bp->dbg_name, bpi->dbg_name) == 0
+          && strcmp(bp->dbg_name, bpi->dbg_name) == 0
           && (bp->dbg_lnum == bpi->dbg_lnum
               || (bp->dbg_lnum == 0
                   && (best_lnum == 0

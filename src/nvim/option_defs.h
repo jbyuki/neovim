@@ -97,7 +97,7 @@ typedef enum {
 // Default values for 'errorformat'.
 // The "%f|%l| %m" one is used for when the contents of the quickfix window is
 // written to a file.
-#ifdef WIN32
+#ifdef MSWIN
 # define DFLT_EFM \
   "%f(%l) \\=: %t%*\\D%n: %m,%*[^\"]\"%f\"%*\\D%l: %m,%f(%l) \\=: %m,%*[^ ] %f %l: %m,%f:%l:%c:%m,%f(%l):%m,%f:%l:%m,%f|%l| %m"
 #else
@@ -503,7 +503,7 @@ EXTERN int p_eb;                // 'errorbells'
 EXTERN char_u *p_ef;            // 'errorfile'
 EXTERN char *p_efm;             // 'errorformat'
 EXTERN char *p_gefm;            // 'grepformat'
-EXTERN char_u *p_gp;            // 'grepprg'
+EXTERN char *p_gp;              // 'grepprg'
 EXTERN int p_eol;               ///< 'endofline'
 EXTERN char *p_ei;              // 'eventignore'
 EXTERN int p_et;                ///< 'expandtab'
@@ -684,11 +684,11 @@ EXTERN unsigned ssop_flags;
 #define SSOP_TERMINAL          0x10000
 #define SSOP_SKIP_RTP          0x20000
 
-EXTERN char_u *p_sh;            // 'shell'
+EXTERN char *p_sh;              // 'shell'
 EXTERN char_u *p_shcf;          // 'shellcmdflag'
 EXTERN char *p_sp;              // 'shellpipe'
 EXTERN char_u *p_shq;           // 'shellquote'
-EXTERN char_u *p_sxq;           // 'shellxquote'
+EXTERN char *p_sxq;             // 'shellxquote'
 EXTERN char_u *p_sxe;           // 'shellxescape'
 EXTERN char *p_srr;             // 'shellredir'
 EXTERN int p_stmp;              // 'shelltemp'
@@ -992,5 +992,42 @@ typedef struct {
   sctx_T script_ctx;       /// script context where the option was last set
   uint64_t channel_id;     /// Only used when script_id is SID_API_CLIENT.
 } LastSet;
+
+// WV_ and BV_ values get typecasted to this for the "indir" field
+typedef enum {
+  PV_NONE = 0,
+  PV_MAXVAL = 0xffff,  // to avoid warnings for value out of range
+} idopt_T;
+
+typedef struct vimoption {
+  char *fullname;        // full option name
+  char *shortname;       // permissible abbreviation
+  uint32_t flags;               // see below
+  char_u *var;             // global option: pointer to variable;
+                           // window-local option: VAR_WIN;
+                           // buffer-local option: global value
+  idopt_T indir;                // global option: PV_NONE;
+                                // local option: indirect option index
+  char *def_val;         // default values for variable (neovim!!)
+  LastSet last_set;             // script in which the option was last set
+} vimoption_T;
+
+// The options that are local to a window or buffer have "indir" set to one of
+// these values.  Special values:
+// PV_NONE: global option.
+// PV_WIN is added: window-local option
+// PV_BUF is added: buffer-local option
+// PV_BOTH is added: global option which also has a local value.
+#define PV_BOTH 0x1000
+#define PV_WIN  0x2000
+#define PV_BUF  0x4000
+#define PV_MASK 0x0fff
+#define OPT_WIN(x)  (idopt_T)(PV_WIN + (int)(x))
+#define OPT_BUF(x)  (idopt_T)(PV_BUF + (int)(x))
+#define OPT_BOTH(x) (idopt_T)(PV_BOTH + (int)(x))
+
+// Options local to a window have a value local to a buffer and global to all
+// buffers.  Indicate this by setting "var" to VAR_WIN.
+#define VAR_WIN ((char_u *)-1)
 
 #endif  // NVIM_OPTION_DEFS_H

@@ -1809,7 +1809,7 @@ bool do_mouse(oparg_T *oap, int c, int dir, long count, bool fixindent)
         return false;
       }
       jump_flags = 0;
-      if (STRCMP(p_mousem, "popup_setpos") == 0) {
+      if (strcmp(p_mousem, "popup_setpos") == 0) {
         // First set the cursor position before showing the popup
         // menu.
         if (VIsual_active) {
@@ -2754,7 +2754,7 @@ bool add_to_showcmd(int c)
     STRCPY(p, "<20>");
   }
   size_t old_len = STRLEN(showcmd_buf);
-  size_t extra_len = STRLEN(p);
+  size_t extra_len = strlen(p);
   size_t limit = ui_has(kUIMessages) ? SHOWCMD_BUFLEN - 1 : SHOWCMD_COLS;
   if (old_len + extra_len > limit) {
     size_t overflow = old_len + extra_len - limit;
@@ -2819,7 +2819,8 @@ void pop_showcmd(void)
 
 static void display_showcmd(void)
 {
-  if (!ui_has_messages()) {
+  if (p_ch == 0 && !ui_has(kUIMessages)) {
+    // TODO(bfredl): would be nice to show in global statusline, perhaps
     return;
   }
 
@@ -4059,7 +4060,7 @@ static void nv_colon(cmdarg_T *cap)
     } else if (cap->oap->op_type != OP_NOP
                && (cap->oap->start.lnum > curbuf->b_ml.ml_line_count
                    || cap->oap->start.col >
-                   (colnr_T)STRLEN(ml_get(cap->oap->start.lnum))
+                   (colnr_T)strlen(ml_get(cap->oap->start.lnum))
                    || did_emsg)) {
       // The start of the operator has become invalid by the Ex command.
       clearopbeep(cap->oap);
@@ -4166,7 +4167,7 @@ void do_nv_ident(int c1, int c2)
 
 /// 'K' normal-mode command. Get the command to lookup the keyword under the
 /// cursor.
-static size_t nv_K_getcmd(cmdarg_T *cap, char_u *kp, bool kp_help, bool kp_ex, char **ptr_arg,
+static size_t nv_K_getcmd(cmdarg_T *cap, char *kp, bool kp_help, bool kp_ex, char **ptr_arg,
                           size_t n, char *buf, size_t buf_size)
 {
   if (kp_help) {
@@ -4203,8 +4204,8 @@ static size_t nv_K_getcmd(cmdarg_T *cap, char_u *kp, bool kp_help, bool kp_ex, c
 
   // When a count is given, turn it into a range.  Is this
   // really what we want?
-  bool isman = (STRCMP(kp, "man") == 0);
-  bool isman_s = (STRCMP(kp, "man -s") == 0);
+  bool isman = (strcmp(kp, "man") == 0);
+  bool isman_s = (strcmp(kp, "man -s") == 0);
   if (cap->count0 != 0 && !(isman || isman_s)) {
     snprintf(buf, buf_size, ".,.+%" PRId64, (int64_t)(cap->count0 - 1));
   }
@@ -4218,7 +4219,7 @@ static size_t nv_K_getcmd(cmdarg_T *cap, char_u *kp, bool kp_help, bool kp_ex, c
   }
   STRCAT(buf, " ");
   if (cap->count0 != 0 && (isman || isman_s)) {
-    snprintf(buf + STRLEN(buf), buf_size - STRLEN(buf), "%" PRId64,
+    snprintf(buf + strlen(buf), buf_size - strlen(buf), "%" PRId64,
              (int64_t)cap->count0);
     STRCAT(buf, " ");
   }
@@ -4236,12 +4237,12 @@ static size_t nv_K_getcmd(cmdarg_T *cap, char_u *kp, bool kp_help, bool kp_ex, c
 static void nv_ident(cmdarg_T *cap)
 {
   char *ptr = NULL;
-  char_u *p;
+  char *p;
   size_t n = 0;                 // init for GCC
   int cmdchar;
   bool g_cmd;                   // "g" command
   bool tag_cmd = false;
-  char_u *aux_ptr;
+  char *aux_ptr;
 
   if (cap->cmdchar == 'g') {    // "g*", "g#", "g]" and "gCTRL-]"
     cmdchar = cap->nchar;
@@ -4277,14 +4278,14 @@ static void nv_ident(cmdarg_T *cap)
   // Allocate buffer to put the command in.  Inserting backslashes can
   // double the length of the word.  p_kp / curbuf->b_p_kp could be added
   // and some numbers.
-  char_u *kp = *curbuf->b_p_kp == NUL ? p_kp : (char_u *)curbuf->b_p_kp;  // 'keywordprg'
-  bool kp_help = (*kp == NUL || STRCMP(kp, ":he") == 0 || STRCMP(kp, ":help") == 0);
+  char *kp = *curbuf->b_p_kp == NUL ? (char *)p_kp : curbuf->b_p_kp;  // 'keywordprg'
+  bool kp_help = (*kp == NUL || strcmp(kp, ":he") == 0 || strcmp(kp, ":help") == 0);
   if (kp_help && *skipwhite(ptr) == NUL) {
     emsg(_(e_noident));   // found white space only
     return;
   }
   bool kp_ex = (*kp == ':');  // 'keywordprg' is an ex command
-  size_t buf_size = n * 2 + 30 + STRLEN(kp);
+  size_t buf_size = n * 2 + 30 + strlen(kp);
   char *buf = xmalloc(buf_size);
   buf[0] = NUL;
 
@@ -4338,45 +4339,45 @@ static void nv_ident(cmdarg_T *cap)
     ptr = xstrnsave(ptr, n);
     if (kp_ex) {
       // Escape the argument properly for an Ex command
-      p = (char_u *)vim_strsave_fnameescape((const char *)ptr, VSE_NONE);
+      p = vim_strsave_fnameescape((const char *)ptr, VSE_NONE);
     } else {
       // Escape the argument properly for a shell command
-      p = vim_strsave_shellescape((char_u *)ptr, true, true);
+      p = (char *)vim_strsave_shellescape((char_u *)ptr, true, true);
     }
     xfree(ptr);
-    char *newbuf = xrealloc(buf, STRLEN(buf) + STRLEN(p) + 1);
+    char *newbuf = xrealloc(buf, strlen(buf) + strlen(p) + 1);
     buf = newbuf;
     STRCAT(buf, p);
     xfree(p);
   } else {
     if (cmdchar == '*') {
-      aux_ptr = (char_u *)(p_magic ? "/.*~[^$\\" : "/^$\\");
+      aux_ptr = (p_magic ? "/.*~[^$\\" : "/^$\\");
     } else if (cmdchar == '#') {
-      aux_ptr = (char_u *)(p_magic ? "/?.*~[^$\\" : "/?^$\\");
+      aux_ptr = (p_magic ? "/?.*~[^$\\" : "/?^$\\");
     } else if (tag_cmd) {
       if (curbuf->b_help) {
         // ":help" handles unescaped argument
-        aux_ptr = (char_u *)"";
+        aux_ptr = "";
       } else {
-        aux_ptr = (char_u *)"\\|\"\n[";
+        aux_ptr = "\\|\"\n[";
       }
     } else {
-      aux_ptr = (char_u *)"\\|\"\n*?[";
+      aux_ptr = "\\|\"\n*?[";
     }
 
-    p = (char_u *)buf + STRLEN(buf);
+    p = buf + STRLEN(buf);
     while (n-- > 0) {
       // put a backslash before \ and some others
-      if (vim_strchr((char *)aux_ptr, *ptr) != NULL) {
+      if (vim_strchr(aux_ptr, *ptr) != NULL) {
         *p++ = '\\';
       }
       // When current byte is a part of multibyte character, copy all
       // bytes of that character.
       const size_t len = (size_t)(utfc_ptr2len(ptr) - 1);
       for (size_t i = 0; i < len && n > 0; i++, n--) {
-        *p++ = (char_u)(*ptr++);
+        *p++ = *ptr++;
       }
-      *p++ = (char_u)(*ptr++);
+      *p++ = *ptr++;
     }
     *p = NUL;
   }
@@ -4428,7 +4429,7 @@ bool get_visual_text(cmdarg_T *cap, char **pp, size_t *lenp)
   }
   if (VIsual_mode == 'V') {
     *pp = get_cursor_line_ptr();
-    *lenp = STRLEN(*pp);
+    *lenp = strlen(*pp);
   } else {
     if (lt(curwin->w_cursor, VIsual)) {
       *pp = (char *)ml_get_pos(&curwin->w_cursor);
@@ -6153,7 +6154,7 @@ static void nv_gi_cmd(cmdarg_T *cap)
   if (curbuf->b_last_insert.mark.lnum != 0) {
     curwin->w_cursor = curbuf->b_last_insert.mark;
     check_cursor_lnum();
-    int i = (int)STRLEN(get_cursor_line_ptr());
+    int i = (int)strlen(get_cursor_line_ptr());
     if (curwin->w_cursor.col > (colnr_T)i) {
       if (virtual_active()) {
         curwin->w_cursor.coladd += curwin->w_cursor.col - i;
@@ -6843,7 +6844,7 @@ bool unadjust_for_sel(void)
       mark_mb_adjustpos(curbuf, pp);
     } else if (pp->lnum > 1) {
       pp->lnum--;
-      pp->col = (colnr_T)STRLEN(ml_get(pp->lnum));
+      pp->col = (colnr_T)strlen(ml_get(pp->lnum));
       return true;
     }
   }
@@ -6980,7 +6981,7 @@ void set_cursor_for_append_to_line(void)
     coladvance(MAXCOL);
     State = save_State;
   } else {
-    curwin->w_cursor.col += (colnr_T)STRLEN(get_cursor_pos_ptr());
+    curwin->w_cursor.col += (colnr_T)strlen(get_cursor_pos_ptr());
   }
 }
 

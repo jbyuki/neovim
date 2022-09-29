@@ -727,6 +727,7 @@ function M.set(namespace, bufnr, diagnostics, opts)
   vim.api.nvim_exec_autocmds('DiagnosticChanged', {
     modeline = false,
     buffer = bufnr,
+    data = { diagnostics = diagnostics },
   })
 end
 
@@ -1425,6 +1426,7 @@ function M.reset(namespace, bufnr)
     vim.api.nvim_exec_autocmds('DiagnosticChanged', {
       modeline = false,
       buffer = iter_bufnr,
+      data = { diagnostics = {} },
     })
   end
 end

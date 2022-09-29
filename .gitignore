@@ -75,3 +75,4 @@ tags
 /vim-*.patch
 
 install/
+/CMakeUserPresets.json

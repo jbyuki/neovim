@@ -11,6 +11,8 @@
 #include <string.h>
 #include <uv.h>
 
+#include "klib/khash.h"
+#include "klib/kvec.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/ascii.h"
@@ -25,8 +27,6 @@
 #include "nvim/fileio.h"
 #include "nvim/garray.h"
 #include "nvim/globals.h"
-#include "nvim/lib/khash.h"
-#include "nvim/lib/kvec.h"
 #include "nvim/macros.h"
 #include "nvim/mark.h"
 #include "nvim/memory.h"
@@ -752,7 +752,7 @@ static int open_shada_file_for_reading(const char *const fname, ShaDaReadDef *sd
     return error;
   }
 
-  assert(STRCMP(p_enc, "utf-8") == 0);
+  assert(strcmp(p_enc, "utf-8") == 0);
 
   return 0;
 }
@@ -884,7 +884,7 @@ static const void *shada_hist_iter(const void *const iter, const uint8_t history
           .histtype = history_type,
           .string = hist_he.hisstr,
           .sep = (char)(history_type == HIST_SEARCH
-                        ? hist_he.hisstr[STRLEN(hist_he.hisstr) + 1]
+                        ? hist_he.hisstr[strlen(hist_he.hisstr) + 1]
                         : 0),
           .additional_elements = hist_he.additional_elements,
         }
@@ -1053,7 +1053,7 @@ static buf_T *find_buffer(khash_t(fnamebufs) *const fname_bufs, const char *cons
   kh_key(fname_bufs, k) = xstrdup(fname);
   FOR_ALL_BUFFERS(buf) {
     if (buf->b_ffname != NULL) {
-      if (FNAMECMP(fname, buf->b_ffname) == 0) {
+      if (path_fnamecmp(fname, buf->b_ffname) == 0) {
         kh_val(fname_bufs, k) = buf;
         return buf;
       }
@@ -1313,9 +1313,9 @@ static void shada_read(ShaDaReadDef *const sd_reader, const int flags)
         MERGE_JUMPS(curwin->w_jumplistlen, curwin->w_jumplist, xfmark_T,
                     fmark.timestamp, fmark.mark, cur_entry,
                     (buf == NULL
-                       ? (jl_entry.fname != NULL
-                          && STRCMP(fm.fname, jl_entry.fname) == 0)
-                       : fm.fmark.fnum == jl_entry.fmark.fnum),
+                     ? (jl_entry.fname != NULL
+                        && strcmp(fm.fname, jl_entry.fname) == 0)
+                     : fm.fmark.fnum == jl_entry.fmark.fnum),
                     free_xfmark, SDE_TO_XFMARK, ADJUST_IDX, DUMMY_AFTERFREE);
 #undef SDE_TO_XFMARK
 #undef ADJUST_IDX
@@ -3098,7 +3098,7 @@ shada_write_file_nomerge: {}
         }
       }
 #endif
-      if (vim_rename((char_u *)tempname, (char_u *)fname) == -1) {
+      if (vim_rename(tempname, fname) == -1) {
         semsg(_(RNERR "Can't rename ShaDa file from %s to %s!"),
               tempname, fname);
       } else {
@@ -4000,7 +4000,7 @@ static bool shada_removable(const char *name)
     (void)copy_option_part(&p, part, ARRAY_SIZE(part), ", ");
     if (part[0] == 'r') {
       home_replace(NULL, part + 1, (char *)NameBuff, MAXPATHL, true);
-      size_t n = STRLEN(NameBuff);
+      size_t n = strlen(NameBuff);
       if (mb_strnicmp(NameBuff, new_name, n) == 0) {
         retval = true;
         break;

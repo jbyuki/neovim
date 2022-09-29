@@ -37,7 +37,7 @@
 ///                          specified and two elements if both range items were specified.
 ///         - count: (number) Any |<count>| that was supplied to the command. -1 if command cannot
 ///                           take a count.
-///         - reg: (number) The optional command |<register>|, if specified. Empty string if not
+///         - reg: (string) The optional command |<register>|, if specified. Empty string if not
 ///                         specified or if command cannot take a register.
 ///         - bang: (boolean) Whether command contains a |<bang>| (!) modifier.
 ///         - args: (array) Command arguments.
@@ -105,7 +105,7 @@ Dictionary nvim_parse_cmd(String str, Dictionary opts, Error *err)
 
   // Parse arguments
   Array args = ARRAY_DICT_INIT;
-  size_t length = STRLEN(ea.arg);
+  size_t length = strlen(ea.arg);
 
   // For nargs = 1 or '?', pass the entire argument list as a single argument,
   // otherwise split arguments by whitespace.
@@ -165,9 +165,7 @@ Dictionary nvim_parse_cmd(String str, Dictionary opts, Error *err)
     PUT(result, "count", INTEGER_OBJ(-1));
   }
 
-  char reg[2];
-  reg[0] = (char)ea.regname;
-  reg[1] = '\0';
+  char reg[2] = { (char)ea.regname, NUL };
   PUT(result, "reg", CSTR_TO_OBJ(reg));
 
   PUT(result, "bang", BOOLEAN_OBJ(ea.forceit));
@@ -591,15 +589,15 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
 
       if (*mods.split.data.string.data == NUL) {
         // Empty string, do nothing.
-      } else if (STRCMP(mods.split.data.string.data, "aboveleft") == 0
-                 || STRCMP(mods.split.data.string.data, "leftabove") == 0) {
+      } else if (strcmp(mods.split.data.string.data, "aboveleft") == 0
+                 || strcmp(mods.split.data.string.data, "leftabove") == 0) {
         cmdinfo.cmdmod.cmod_split |= WSP_ABOVE;
-      } else if (STRCMP(mods.split.data.string.data, "belowright") == 0
-                 || STRCMP(mods.split.data.string.data, "rightbelow") == 0) {
+      } else if (strcmp(mods.split.data.string.data, "belowright") == 0
+                 || strcmp(mods.split.data.string.data, "rightbelow") == 0) {
         cmdinfo.cmdmod.cmod_split |= WSP_BELOW;
-      } else if (STRCMP(mods.split.data.string.data, "topleft") == 0) {
+      } else if (strcmp(mods.split.data.string.data, "topleft") == 0) {
         cmdinfo.cmdmod.cmod_split |= WSP_TOP;
-      } else if (STRCMP(mods.split.data.string.data, "botright") == 0) {
+      } else if (strcmp(mods.split.data.string.data, "botright") == 0) {
         cmdinfo.cmdmod.cmod_split |= WSP_BOT;
       } else {
         VALIDATION_ERROR("Invalid value for 'mods.split'");
@@ -832,13 +830,12 @@ static void build_cmdline_str(char **cmdlinep, exarg_T *eap, CmdParseInfo *cmdin
   // Replace, :make and :grep with 'makeprg' and 'grepprg'.
   char *p = replace_makeprg(eap, eap->arg, cmdlinep);
   if (p != eap->arg) {
-    // If replace_makeprg modified the cmdline string, correct the argument pointers.
+    // If replace_makeprg() modified the cmdline string, correct the eap->arg pointer.
     eap->arg = p;
-    // We can only know the position of the first argument because the argument list can be used
-    // multiple times in makeprg / grepprg.
-    if (argc >= 1) {
-      eap->args[0] = p;
-    }
+    // This cannot be a user command, so eap->args will not be used.
+    XFREE_CLEAR(eap->args);
+    XFREE_CLEAR(eap->arglens);
+    eap->argc = 0;
   }
 }
 
@@ -938,7 +935,7 @@ void nvim_buf_del_user_command(Buffer buffer, String name, Error *err)
 
   for (int i = 0; i < gap->ga_len; i++) {
     ucmd_T *cmd = USER_CMD_GA(gap, i);
-    if (!STRCMP(name.data, cmd->uc_name)) {
+    if (!strcmp(name.data, cmd->uc_name)) {
       free_ucmd(cmd);
 
       gap->ga_len -= 1;

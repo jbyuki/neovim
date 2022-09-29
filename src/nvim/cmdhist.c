@@ -91,7 +91,7 @@ static char *(history_names[]) = {
 char *get_history_arg(expand_T *xp, int idx)
 {
   const char *short_names = ":=@>?/";
-  const int short_names_count = (int)STRLEN(short_names);
+  const int short_names_count = (int)strlen(short_names);
   const int history_name_count = ARRAY_SIZE(history_names) - 1;
 
   if (idx < short_names_count) {
@@ -186,7 +186,7 @@ static inline void clear_hist_entry(histentry_T *hisptr)
 /// If 'move_to_front' is true, matching entry is moved to end of history.
 ///
 /// @param move_to_front  Move the entry to the front if it exists
-static int in_history(int type, char_u *str, int move_to_front, int sep)
+static int in_history(int type, char *str, int move_to_front, int sep)
 {
   int last_i = -1;
 
@@ -201,8 +201,8 @@ static int in_history(int type, char_u *str, int move_to_front, int sep)
 
     // For search history, check that the separator character matches as
     // well.
-    char_u *p = (char_u *)history[type][i].hisstr;
-    if (STRCMP(str, p) == 0
+    char *p = history[type][i].hisstr;
+    if (strcmp(str, p) == 0
         && (type != HIST_SEARCH || sep == p[STRLEN(p) + 1])) {
       if (!move_to_front) {
         return true;
@@ -217,7 +217,7 @@ static int in_history(int type, char_u *str, int move_to_front, int sep)
 
   if (last_i >= 0) {
     list_T *const list = history[type][i].additional_elements;
-    str = (char_u *)history[type][i].hisstr;
+    str = history[type][i].hisstr;
     while (i != hisidx[type]) {
       if (++i >= hislen) {
         i = 0;
@@ -227,7 +227,7 @@ static int in_history(int type, char_u *str, int move_to_front, int sep)
     }
     tv_list_unref(list);
     history[type][i].hisnum = ++hisnum[type];
-    history[type][i].hisstr = (char *)str;
+    history[type][i].hisstr = str;
     history[type][i].timestamp = os_time();
     history[type][i].additional_elements = NULL;
     return true;
@@ -304,7 +304,7 @@ void add_to_history(int histype, char *new_entry, int in_map, int sep)
     }
     last_maptick = -1;
   }
-  if (!in_history(histype, (char_u *)new_entry, true, sep)) {
+  if (!in_history(histype, new_entry, true, sep)) {
     if (++hisidx[histype] == hislen) {
       hisidx[histype] = 0;
     }
@@ -312,7 +312,7 @@ void add_to_history(int histype, char *new_entry, int in_map, int sep)
     hist_free_entry(hisptr);
 
     // Store the separator after the NUL of the string.
-    size_t len = STRLEN(new_entry);
+    size_t len = strlen(new_entry);
     hisptr->hisstr = xstrnsave(new_entry, len + 2);
     hisptr->timestamp = os_time();
     hisptr->additional_elements = NULL;
@@ -644,8 +644,8 @@ void ex_history(exarg_T *eap)
           snprintf((char *)IObuff, IOSIZE, "%c%6d  ", i == idx ? '>' : ' ',
                    hist[i].hisnum);
           if (vim_strsize(hist[i].hisstr) > Columns - 10) {
-            trunc_string(hist[i].hisstr, (char *)IObuff + STRLEN(IObuff),
-                         Columns - 10, IOSIZE - (int)STRLEN(IObuff));
+            trunc_string(hist[i].hisstr, (char *)IObuff + strlen(IObuff),
+                         Columns - 10, IOSIZE - (int)strlen(IObuff));
           } else {
             STRCAT(IObuff, hist[i].hisstr);
           }

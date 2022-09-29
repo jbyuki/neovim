@@ -592,9 +592,9 @@ static void diff_check_unchanged(tabpage_T *tp, diff_T *dp)
           break;
         }
 
-        if (diff_cmp((char_u *)line_org, (char_u *)ml_get_buf(tp->tp_diffbuf[i_new],
-                                                              dp->df_lnum[i_new] + off_new,
-                                                              false)) != 0) {
+        if (diff_cmp(line_org, ml_get_buf(tp->tp_diffbuf[i_new],
+                                          dp->df_lnum[i_new] + off_new,
+                                          false)) != 0) {
           break;
         }
       }
@@ -729,7 +729,7 @@ static int diff_write_buffer(buf_T *buf, diffin_T *din)
 
   // xdiff requires one big block of memory with all the text.
   for (linenr_T lnum = 1; lnum <= buf->b_ml.ml_line_count; lnum++) {
-    len += (long)STRLEN(ml_get_buf(buf, lnum, false)) + 1;
+    len += (long)strlen(ml_get_buf(buf, lnum, false)) + 1;
   }
   char_u *ptr = try_malloc((size_t)len);
   if (ptr == NULL) {
@@ -1128,7 +1128,7 @@ static int diff_file(diffio_T *dio)
     return diff_file_internal(dio);
   } else {
     const size_t len = (strlen(tmp_orig) + strlen(tmp_new) + strlen(tmp_diff)
-                        + STRLEN(p_srr) + 27);
+                        + strlen(p_srr) + 27);
     char *const cmd = xmalloc(len);
 
     // We don't want $DIFF_OPTIONS to get in the way.
@@ -1267,7 +1267,7 @@ void ex_diffpatch(exarg_T *eap)
     emsg(_("E816: Cannot read patch output"));
   } else {
     if (curbuf->b_fname != NULL) {
-      newname = xstrnsave(curbuf->b_fname, STRLEN(curbuf->b_fname) + 4);
+      newname = xstrnsave(curbuf->b_fname, strlen(curbuf->b_fname) + 4);
       STRCAT(newname, ".new");
     }
 
@@ -1429,7 +1429,7 @@ void diff_win_options(win_T *wp, int addbuf)
   free_string_option(wp->w_p_fdc);
   wp->w_p_fdc = xstrdup("2");
   assert(diff_foldcolumn >= 0 && diff_foldcolumn <= 9);
-  snprintf(wp->w_p_fdc, STRLEN(wp->w_p_fdc) + 1, "%d", diff_foldcolumn);
+  snprintf(wp->w_p_fdc, strlen(wp->w_p_fdc) + 1, "%d", diff_foldcolumn);
   wp->w_p_fen = true;
   wp->w_p_fdl = 0;
   foldUpdateAll(wp);
@@ -1923,8 +1923,8 @@ static bool diff_equal_entry(diff_T *dp, int idx1, int idx2)
     char *line = xstrdup(ml_get_buf(curtab->tp_diffbuf[idx1],
                                     dp->df_lnum[idx1] + i, false));
 
-    int cmp = diff_cmp((char_u *)line, (char_u *)ml_get_buf(curtab->tp_diffbuf[idx2],
-                                                            dp->df_lnum[idx2] + i, false));
+    int cmp = diff_cmp(line, ml_get_buf(curtab->tp_diffbuf[idx2],
+                                        dp->df_lnum[idx2] + i, false));
     xfree(line);
 
     if (cmp != 0) {
@@ -1968,23 +1968,23 @@ static bool diff_equal_char(const char_u *const p1, const char_u *const p2, int 
 /// @param s2 The second string
 ///
 /// @return on-zero if the two strings are different.
-static int diff_cmp(char_u *s1, char_u *s2)
+static int diff_cmp(char *s1, char *s2)
 {
   if ((diff_flags & DIFF_IBLANK)
-      && (*(char_u *)skipwhite((char *)s1) == NUL || *skipwhite((char *)s2) == NUL)) {
+      && (*(char_u *)skipwhite(s1) == NUL || *skipwhite(s2) == NUL)) {
     return 0;
   }
 
   if ((diff_flags & (DIFF_ICASE | ALL_WHITE_DIFF)) == 0) {
-    return STRCMP(s1, s2);
+    return strcmp(s1, s2);
   }
 
   if ((diff_flags & DIFF_ICASE) && !(diff_flags & ALL_WHITE_DIFF)) {
     return mb_stricmp((const char *)s1, (const char *)s2);
   }
 
-  char *p1 = (char *)s1;
-  char *p2 = (char *)s2;
+  char *p1 = s1;
+  char *p2 = s2;
 
   // Ignore white space changes and possibly ignore case.
   while (*p1 != NUL && *p2 != NUL) {
@@ -2356,8 +2356,8 @@ bool diff_find_change(win_T *wp, linenr_T lnum, int *startp, int *endp)
 
       // Search for end of difference, if any.
       if ((line_org[si_org] != NUL) || (line_new[si_new] != NUL)) {
-        ei_org = (int)STRLEN(line_org);
-        ei_new = (int)STRLEN(line_new);
+        ei_org = (int)strlen(line_org);
+        ei_new = (int)strlen(line_new);
 
         while (ei_org >= *startp
                && ei_new >= si_new
@@ -2564,7 +2564,7 @@ void ex_diffgetput(exarg_T *eap)
     }
   } else {
     // Buffer number or pattern given. Ignore trailing white space.
-    p = eap->arg + STRLEN(eap->arg);
+    p = eap->arg + strlen(eap->arg);
     while (p > eap->arg && ascii_iswhite(p[-1])) {
       p--;
     }

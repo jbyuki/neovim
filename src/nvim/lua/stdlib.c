@@ -60,8 +60,8 @@ static int regex_match(lua_State *lstate, regprog_T **prog, char_u *str)
   *prog = rm.regprog;
 
   if (match) {
-    lua_pushinteger(lstate, (lua_Integer)(rm.startp[0] - str));
-    lua_pushinteger(lstate, (lua_Integer)(rm.endp[0] - str));
+    lua_pushinteger(lstate, (lua_Integer)(rm.startp[0] - (char *)str));
+    lua_pushinteger(lstate, (lua_Integer)(rm.endp[0] - (char *)str));
     return 2;
   }
   return 0;
@@ -369,12 +369,19 @@ int nlua_setvar(lua_State *lstate)
     return 0;
   }
 
+  bool watched = tv_dict_is_watched(dict);
+
   if (del) {
     // Delete the key
     if (di == NULL) {
       // Doesn't exist, nothing to do
       return 0;
     } else {
+      // Notify watchers
+      if (watched) {
+        tv_dict_watcher_notify(dict, key.data, NULL, &di->di_tv);
+      }
+
       // Delete the entry
       tv_dict_item_remove(dict, di);
     }
@@ -388,17 +395,29 @@ int nlua_setvar(lua_State *lstate)
       return luaL_error(lstate, "Couldn't convert lua value");
     }
 
+    typval_T oldtv = TV_INITIAL_VALUE;
+
     if (di == NULL) {
       // Need to create an entry
       di = tv_dict_item_alloc_len(key.data, key.size);
       tv_dict_add(dict, di);
     } else {
+      if (watched) {
+        tv_copy(&di->di_tv, &oldtv);
+      }
       // Clear the old value
       tv_clear(&di->di_tv);
     }
 
     // Update the value
     tv_copy(&tv, &di->di_tv);
+
+    // Notify watchers
+    if (watched) {
+      tv_dict_watcher_notify(dict, key.data, &tv, &oldtv);
+      tv_clear(&oldtv);
+    }
+
     // Clear the temporary variable
     tv_clear(&tv);
   }
@@ -499,7 +518,7 @@ static int nlua_iconv(lua_State *lstate)
 
   vimconv_T vimconv;
   vimconv.vc_type = CONV_NONE;
-  convert_setup_ext(&vimconv, from, false, to, false);
+  convert_setup_ext(&vimconv, (char *)from, false, (char *)to, false);
 
   char_u *ret = (char_u *)string_convert(&vimconv, (char *)str, &str_len);
 

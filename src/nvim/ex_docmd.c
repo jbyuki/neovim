@@ -1302,7 +1302,7 @@ static void parse_register(exarg_T *eap)
         if (!eap->skip) {
           set_expr_line(xstrdup(eap->arg));
         }
-        eap->arg += STRLEN(eap->arg);
+        eap->arg += strlen(eap->arg);
       }
       eap->arg = skipwhite(eap->arg);
     }
@@ -1536,7 +1536,7 @@ static int execute_cmd0(int *retv, exarg_T *eap, char **errormsg, bool preview)
           || eap->cmdidx == CMD_bunload) {
         p = skiptowhite_esc(eap->arg);
       } else {
-        p = eap->arg + STRLEN(eap->arg);
+        p = eap->arg + strlen(eap->arg);
         while (p > eap->arg && ascii_iswhite(p[-1])) {
           p--;
         }
@@ -2824,7 +2824,7 @@ bool checkforcmd(char **pp, char *cmd, int len)
 /// invisible otherwise.
 static void append_command(char *cmd)
 {
-  size_t len = STRLEN(IObuff);
+  size_t len = strlen(IObuff);
   char *s = cmd;
   char *d;
 
@@ -2836,12 +2836,12 @@ static void append_command(char *cmd)
   }
   STRCAT(IObuff, ": ");
   d = (char *)IObuff + STRLEN(IObuff);
-  while (*s != NUL && (char_u *)d - IObuff + 5 < IOSIZE) {
+  while (*s != NUL && d - IObuff + 5 < IOSIZE) {
     if ((char_u)s[0] == 0xc2 && (char_u)s[1] == 0xa0) {
       s += 2;
       STRCPY(d, "<a0>");
       d += 4;
-    } else if ((char_u *)d - IObuff + utfc_ptr2len(s) + 1 >= IOSIZE) {
+    } else if (d - IObuff + utfc_ptr2len(s) + 1 >= IOSIZE) {
       break;
     } else {
       mb_copy_char((const char **)&s, &d);
@@ -3657,7 +3657,7 @@ char *replace_makeprg(exarg_T *eap, char *arg, char **cmdlinep)
   // Don't do it when ":vimgrep" is used for ":grep".
   if ((eap->cmdidx == CMD_make || eap->cmdidx == CMD_lmake || isgrep)
       && !grep_internal(eap->cmdidx)) {
-    const char *program = isgrep ? (*curbuf->b_p_gp == NUL ? (char *)p_gp : curbuf->b_p_gp)
+    const char *program = isgrep ? (*curbuf->b_p_gp == NUL ? p_gp : curbuf->b_p_gp)
                                  : (*curbuf->b_p_mp == NUL ? (char *)p_mp : curbuf->b_p_mp);
 
     arg = skipwhite(arg);
@@ -3666,7 +3666,7 @@ char *replace_makeprg(exarg_T *eap, char *arg, char **cmdlinep)
     // Replace $* by given arguments
     if ((new_cmdline = strrep(program, "$*", arg)) == NULL) {
       // No $* in arg, build "<makeprg> <arg>" instead
-      new_cmdline = xmalloc(STRLEN(program) + STRLEN(arg) + 2);
+      new_cmdline = xmalloc(strlen(program) + strlen(arg) + 2);
       STRCPY(new_cmdline, program);
       STRCAT(new_cmdline, " ");
       STRCAT(new_cmdline, arg);
@@ -3805,7 +3805,7 @@ int expand_filename(exarg_T *eap, char **cmdlinep, char **errormsgp)
         p = NULL;
       }
       if (p != NULL) {
-        (void)repl_cmdline(eap, eap->arg, STRLEN(eap->arg), p, cmdlinep);
+        (void)repl_cmdline(eap, eap->arg, strlen(eap->arg), p, cmdlinep);
       }
     }
 
@@ -3833,7 +3833,7 @@ int expand_filename(exarg_T *eap, char **cmdlinep, char **errormsgp)
       if (p == NULL) {
         return FAIL;
       }
-      (void)repl_cmdline(eap, eap->arg, STRLEN(eap->arg), p, cmdlinep);
+      (void)repl_cmdline(eap, eap->arg, strlen(eap->arg), p, cmdlinep);
       xfree(p);
     }
   }
@@ -3851,10 +3851,10 @@ static char *repl_cmdline(exarg_T *eap, char *src, size_t srclen, char *repl, ch
   // The new command line is build in new_cmdline[].
   // First allocate it.
   // Careful: a "+cmd" argument may have been NUL terminated.
-  size_t len = STRLEN(repl);
-  size_t i = (size_t)(src - *cmdlinep) + STRLEN(src + srclen) + len + 3;
+  size_t len = strlen(repl);
+  size_t i = (size_t)(src - *cmdlinep) + strlen(src + srclen) + len + 3;
   if (eap->nextcmd != NULL) {
-    i += STRLEN(eap->nextcmd);    // add space for next command
+    i += strlen(eap->nextcmd);    // add space for next command
   }
   char *new_cmdline = xmalloc(i);
   size_t offset = (size_t)(src - *cmdlinep);
@@ -3872,7 +3872,7 @@ static char *repl_cmdline(exarg_T *eap, char *src, size_t srclen, char *repl, ch
   src = new_cmdline + i;                // remember where to continue
 
   if (eap->nextcmd != NULL) {           // append next command
-    i = STRLEN(new_cmdline) + 1;
+    i = strlen(new_cmdline) + 1;
     STRCPY(new_cmdline + i, eap->nextcmd);
     eap->nextcmd = new_cmdline + i;
   }
@@ -3887,7 +3887,7 @@ static char *repl_cmdline(exarg_T *eap, char *src, size_t srclen, char *repl, ch
     } else {
       // Otherwise, argument gets shifted alongside the replaced text.
       // The amount of the shift is equal to the difference of the old and new string length.
-      eap->args[j] = new_cmdline + (eap->args[j] - *cmdlinep) + (len - srclen);
+      eap->args[j] = new_cmdline + ((eap->args[j] - *cmdlinep) + (ptrdiff_t)(len - srclen));
     }
   }
 
@@ -4114,9 +4114,9 @@ static int get_tabpage_arg(exarg_T *eap)
     tab_number = (int)getdigits(&p, false, tab_number);
 
     if (relative == 0) {
-      if (STRCMP(p, "$") == 0) {
+      if (strcmp(p, "$") == 0) {
         tab_number = LAST_TAB_NR;
-      } else if (STRCMP(p, "#") == 0) {
+      } else if (strcmp(p, "#") == 0) {
         if (valid_tabpage(lastused_tabpage)) {
           tab_number = tabpage_index(lastused_tabpage);
         } else {
@@ -4696,7 +4696,6 @@ void tabpage_close(int forceit)
 void tabpage_close_other(tabpage_T *tp, int forceit)
 {
   int done = 0;
-  int h = tabline_height();
   char prev_idx[NUMBUFLEN];
 
   // Limit to 1000 windows, autocommands may add a window while we close
@@ -4711,11 +4710,6 @@ void tabpage_close_other(tabpage_T *tp, int forceit)
     if (!valid_tabpage(tp) || tp->tp_lastwin == wp) {
       break;
     }
-  }
-
-  redraw_tabline = true;
-  if (h != tabline_height()) {
-    win_new_screen_rows();
   }
 }
 
@@ -4913,7 +4907,7 @@ void ex_splitview(exarg_T *eap)
   }
 
   if (eap->cmdidx == CMD_sfind || eap->cmdidx == CMD_tabfind) {
-    fname = (char *)find_file_in_path((char_u *)eap->arg, STRLEN(eap->arg),
+    fname = (char *)find_file_in_path((char_u *)eap->arg, strlen(eap->arg),
                                       FNAME_MESS, true, (char_u *)curbuf->b_ffname);
     if (fname == NULL) {
       goto theend;
@@ -5106,7 +5100,7 @@ static void ex_resize(exarg_T *eap)
 /// ":find [+command] <file>" command.
 static void ex_find(exarg_T *eap)
 {
-  char *fname = (char *)find_file_in_path((char_u *)eap->arg, STRLEN(eap->arg),
+  char *fname = (char *)find_file_in_path((char_u *)eap->arg, strlen(eap->arg),
                                           FNAME_MESS, true, (char_u *)curbuf->b_ffname);
   if (eap->addr_count > 0) {
     // Repeat finding the file "count" times.  This matters when it
@@ -5480,7 +5474,7 @@ bool changedir_func(char *new_dir, CdScope scope)
 
   char *pdir = NULL;
   // ":cd -": Change to previous directory
-  if (STRCMP(new_dir, "-") == 0) {
+  if (strcmp(new_dir, "-") == 0) {
     pdir = get_prevdir(scope);
     if (pdir == NULL) {
       emsg(_("E186: No previous directory"));
@@ -5873,7 +5867,7 @@ static void ex_undo(exarg_T *eap)
 {
   if (eap->addr_count != 1) {
     if (eap->forceit) {
-      u_undo_and_forget(1);         // :undo!
+      u_undo_and_forget(1, true);   // :undo!
     } else {
       u_undo(1);                    // :undo
     }
@@ -5900,7 +5894,7 @@ static void ex_undo(exarg_T *eap)
       emsg(_(e_undobang_cannot_redo_or_move_branch));
       return;
     }
-    u_undo_and_forget(count);
+    u_undo_and_forget(count, true);
   } else {                        // :undo 123
     undo_time(step, false, false, true);
   }
@@ -6089,14 +6083,22 @@ static void ex_redrawstatus(exarg_T *eap)
   int r = RedrawingDisabled;
   int p = p_lz;
 
-  RedrawingDisabled = 0;
-  p_lz = false;
   if (eap->forceit) {
     status_redraw_all();
   } else {
     status_redraw_curbuf();
   }
-  update_screen(VIsual_active ? UPD_INVERTED : 0);
+  if (msg_scrolled && !msg_use_msgsep() && (State & MODE_CMDLINE)) {
+    return;  // redraw later
+  }
+
+  RedrawingDisabled = 0;
+  p_lz = false;
+  if (State & MODE_CMDLINE) {
+    redraw_statuslines();
+  } else {
+    update_screen(VIsual_active ? UPD_INVERTED : 0);
+  }
   RedrawingDisabled = r;
   p_lz = p;
   ui_flush();
@@ -6292,7 +6294,7 @@ static void ex_normal(exarg_T *eap)
       }
     }
     if (len > 0) {
-      arg = xmalloc(STRLEN(eap->arg) + (size_t)len + 1);
+      arg = xmalloc(strlen(eap->arg) + (size_t)len + 1);
       len = 0;
       for (p = eap->arg; *p != NUL; p++) {
         arg[len++] = *p;
@@ -6471,7 +6473,7 @@ static void ex_findpat(exarg_T *eap)
     }
   }
   if (!eap->skip) {
-    find_pattern_in_path((char_u *)eap->arg, 0, STRLEN(eap->arg), whole, !eap->forceit,
+    find_pattern_in_path((char_u *)eap->arg, 0, strlen(eap->arg), whole, !eap->forceit,
                          *eap->cmd == 'd' ?  FIND_DEFINE : FIND_ANY,
                          n, action, eap->line1, eap->line2);
   }
@@ -6612,7 +6614,7 @@ ssize_t find_cmdline_var(const char_u *src, size_t *usedlen)
   };
 
   for (size_t i = 0; i < ARRAY_SIZE(spec_str); i++) {
-    size_t len = STRLEN(spec_str[i]);
+    size_t len = strlen(spec_str[i]);
     if (STRNCMP(src, spec_str[i], len) == 0) {
       *usedlen = len;
       assert(i <= SSIZE_MAX);
@@ -6712,7 +6714,7 @@ char_u *eval_vars(char_u *src, char_u *srcstart, size_t *usedlen, linenr_T *lnum
         valid = 0;                  // Must have ":p:h" to be valid
       } else {
         result = curbuf->b_fname;
-        tilde_file = STRCMP(result, "~") == 0;
+        tilde_file = strcmp(result, "~") == 0;
       }
       break;
 
@@ -6766,7 +6768,7 @@ char_u *eval_vars(char_u *src, char_u *srcstart, size_t *usedlen, linenr_T *lnum
           valid = 0;                        // Must have ":p:h" to be valid
         } else {
           result = buf->b_fname;
-          tilde_file = STRCMP(result, "~") == 0;
+          tilde_file = strcmp(result, "~") == 0;
         }
       }
       break;
@@ -6879,7 +6881,7 @@ char_u *eval_vars(char_u *src, char_u *srcstart, size_t *usedlen, linenr_T *lnum
     }
 
     // Length of new string.
-    resultlen = STRLEN(result);
+    resultlen = strlen(result);
     // Remove the file name extension.
     if (src[*usedlen] == '<') {
       (*usedlen)++;
@@ -6942,11 +6944,11 @@ char *expand_sfile(char *arg)
         p += srclen;
         continue;
       }
-      size_t len = STRLEN(result) - srclen + STRLEN(repl) + 1;
+      size_t len = strlen(result) - srclen + strlen(repl) + 1;
       char *newres = xmalloc(len);
       memmove(newres, result, (size_t)(p - result));
       STRCPY(newres + (p - result), repl);
-      len = STRLEN(newres);
+      len = strlen(newres);
       STRCAT(newres, p + srclen);
       xfree(repl);
       xfree(result);
@@ -6986,12 +6988,12 @@ void dialog_msg(char *buff, char *format, char *fname)
 /// ":behave {mswin,xterm}"
 static void ex_behave(exarg_T *eap)
 {
-  if (STRCMP(eap->arg, "mswin") == 0) {
+  if (strcmp(eap->arg, "mswin") == 0) {
     set_option_value_give_err("selection", 0L, "exclusive", 0);
     set_option_value_give_err("selectmode", 0L, "mouse,key", 0);
     set_option_value_give_err("mousemodel", 0L, "popup", 0);
     set_option_value_give_err("keymodel", 0L, "startsel,stopsel", 0);
-  } else if (STRCMP(eap->arg, "xterm") == 0) {
+  } else if (strcmp(eap->arg, "xterm") == 0) {
     set_option_value_give_err("selection", 0L, "inclusive", 0);
     set_option_value_give_err("selectmode", 0L, "", 0);
     set_option_value_give_err("mousemodel", 0L, "extend", 0);
@@ -7041,7 +7043,7 @@ static void ex_filetype(exarg_T *eap)
     }
     break;
   }
-  if (STRCMP(arg, "on") == 0 || STRCMP(arg, "detect") == 0) {
+  if (strcmp(arg, "on") == 0 || strcmp(arg, "detect") == 0) {
     if (*arg == 'o' || !filetype_detect) {
       source_runtime(FILETYPE_FILE, DIP_ALL);
       filetype_detect = kTrue;
@@ -7058,7 +7060,7 @@ static void ex_filetype(exarg_T *eap)
       (void)do_doautocmd("filetypedetect BufRead", true, NULL);
       do_modelines(0);
     }
-  } else if (STRCMP(arg, "off") == 0) {
+  } else if (strcmp(arg, "off") == 0) {
     if (plugin || indent) {
       if (plugin) {
         source_runtime(FTPLUGOF_FILE, DIP_ALL);
