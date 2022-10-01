@@ -1340,7 +1340,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	used.  The command-line will cover the last line of the screen when
 	shown.
 
-	WARNING: `cmdheight=0` is considered experimental. Except some
+	WARNING: `cmdheight=0` is considered experimental. Expect some
 	unwanted behaviour. Some 'shortmess' flags and similar
 	mechanism might fail to take effect, causing unwanted hit-enter
 	prompts.  Some informative messages, both from Nvim itself and
@@ -5357,7 +5357,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	To use PowerShell: >
 		let &shell = executable('pwsh') ? 'pwsh' : 'powershell'
 		let &shellcmdflag = '-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -Command [Console]::InputEncoding=[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;'
-		let &shellredir = '-RedirectStandardOutput %s -NoNewWindow -Wait'
+		let &shellredir = '2>&1 | Out-File -Encoding UTF8 %s; exit $LastExitCode'
 		let &shellpipe = '2>&1 | Out-File -Encoding UTF8 %s; exit $LastExitCode'
 		set shellquote= shellxquote=
 
