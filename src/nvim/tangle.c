@@ -6,6 +6,7 @@
 #include "nvim/tangle.h"
 #include "nvim/garray.h"
 
+
 #include "nvim/message.h"
 
 #include "nvim/state.h"
@@ -26,30 +27,110 @@
 
 #include <nvim/extmark.h>
 
+#include "nvim/tangle_utils.h"
+
+#include "nvim/map.h"
+
+#include <assert.h>
+
+#include "klib/kvec.h"
+
+
+typedef struct
+{
+  enum {
+    REFERENCE = 0,
+    TEXT,
+
+  } type;
+
+  union {
+    char* str;
+    char* name;
+  };
+  char* prefix;
+
+} Line;
+
+typedef struct section
+{
+  struct section* pnext;
+
+  char* name;
+
+  kvec_t(Line) lines;
+
+} Section;
+
+typedef struct
+{
+  Section* phead;
+  Section* ptail;
+
+} SectionList;
+
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "tangle.c.generated.h"
 #endif
 
+
+static SectionList* sectionlist_init()
+{
+  SectionList* list = (SectionList*)xmalloc(sizeof(SectionList));
+
+  list->phead = NULL;
+  list->ptail = NULL;
+  return list;
+}
+
+static void sectionlist_push_back(SectionList* list, Section* section) 
+{
+  if(!list->ptail) {
+    list->ptail = section;
+    list->phead = section;
+    return;
+  }
+
+  list->ptail->pnext = section;
+  list->ptail = section;
+}
+
+static void sectionlist_push_front(SectionList* list, Section* section) 
+{
+  if(!list->phead) {
+    list->phead = section;
+    list->ptail = section;
+    return;
+  }
+
+  section->pnext = list->phead;
+  list->phead = section;
+}
+
+static void sectionlist_clear(SectionList* list) 
+{
+  Section* pcopy = list->phead;
+  while(pcopy) {
+    Section* temp = pcopy;
+    pcopy = pcopy->pnext;
+    kv_destroy(temp->lines);
+
+    xfree(temp->name);
+    xfree(temp);
+  }
+
+  list->phead = NULL;
+  list->ptail = NULL;
+}
 void attach_tangle(buf_T *buf) 
 {
   semsg(_("Tangle activated!"));
   buf_T* tangle_view = buflist_new(NULL, NULL, (linenr_T)1, BLN_NEW);
   ml_open(tangle_view);
 
-  for(int i=0; i<buf->b_ml.ml_line_count; ++i) {
-    int lnum = i+1;
-    // swap first line and second line
-    if(lnum == 1) { lnum = 2; }
-    else if(lnum == 2) { lnum = 1; }
-    char* line = ml_get(lnum);
-    if(i == 0) {
-      ml_replace_buf(tangle_view, 1, line, true);
-    } else {
-      ml_append_buf(tangle_view, i, line, (colnr_T)STRLEN(line) + 1, false);
-    }
-  }
-
+  tangle_parse(buf, tangle_view);
+  // @copy_current_buffer_to_tangle_buffer
   buf->tangle_view = tangle_view;
 
 }
@@ -431,6 +512,7 @@ void del_lines_tangle(long nlines, bool undo)
 
   deleted_lines_mark(first, n);
 
+
   buf_T* save_buf = curbuf;
   curbuf = curbuf->tangle_view;
 
@@ -454,11 +536,127 @@ void del_lines_tangle(long nlines, bool undo)
 
   deleted_lines_mark(first, n);
 
+
   curbuf = save_buf;
 
   curwin->w_cursor.col = 0;
   check_cursor_lnum();
 
+}
+
+void tangle_parse(buf_T *buf, buf_T *tangle_view)
+{
+  PMap(cstr_t) sections = MAP_INIT;
+
+  Section* cur_section = NULL;
+
+  for(int i=1; i<=buf->b_ml.ml_line_count; ++i) {
+    char* line = ml_get(i);
+    char* fp = strnwfirst(line);
+    if(fp == NULL) {
+      continue;
+    }
+
+    if(*fp == '@') {
+      if(*(fp+1) != '@') {
+        char* lp = strnwlast(line);
+
+        if(*lp == '=') {
+          int op;
+          switch(*(lp-1)) {
+          case '+': op = 1; break;
+          case '-': op = 2; break;
+          default: op = 0; break;
+          }
+
+          size_t len = (op == 0 ? lp : lp-1) - (fp+1);
+          char* name = xmalloc(len + 1);
+          STRNCPY(name, fp+1, len);
+          name[len] = '\0';
+
+          Section* section = (Section*)xmalloc(sizeof(Section));
+
+          section->pnext = NULL;
+
+          section->name = name;
+
+          kv_init(section->lines);
+
+          if(op == 1 || op == 2) {
+            SectionList* list;
+          	if(!pmap_has(cstr_t)(&sections, name)) {
+              list = sectionlist_init();
+              pmap_put(cstr_t)(&sections, xstrdup(name), list);
+            } else {
+              list = pmap_get(cstr_t)(&sections, name);
+            }
+
+            if(op == 1) {
+              sectionlist_push_back(list, section);
+              cur_section = section;
+
+            } else { /* op == 2 */
+              sectionlist_push_front(list, section);
+              cur_section = section;
+
+            }
+          }
+
+          else {
+            SectionList* list; 
+            if(pmap_has(cstr_t)(&sections, name)) {
+              list = pmap_get(cstr_t)(&sections, name);
+            } else {
+              list = sectionlist_init();
+              pmap_put(cstr_t)(&sections, xstrdup(name), list);
+            }
+
+            sectionlist_clear(list);
+            sectionlist_push_back(list, section);
+          }
+
+
+        } else {
+          size_t len = fp - line;
+          char* prefix = xmalloc(len+1);
+          STRNCPY(prefix, line, len);
+          prefix[len] = '\0';
+
+          len = (lp+1)-(fp+1);
+          char* name = xmalloc(len+1);
+          STRNCPY(name, fp+1, len);
+          name[len] = '\0';
+
+          assert(cur_section != NULL);
+
+          Line l;
+          l.type = REFERENCE;
+          l.name = name;
+          l.prefix = prefix;
+
+          kv_push(cur_section->lines, l);
+
+
+        }
+      } else {
+    		Line l;
+    		l.type = TEXT;
+    		l.str = xstrdup(fp+1);
+
+    		kv_push(cur_section->lines, l);
+
+      }
+    }
+
+    else {
+    	Line l;
+    	l.type = TEXT;
+    	l.str = xstrdup(line);
+    	kv_push(cur_section->lines, l);
+
+    }
+
+  }
 }
 
 

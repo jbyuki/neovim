@@ -1,3 +1,4 @@
+##tangle
 @./tangle.h=
 #ifndef NVIM_TANGLE_H
 #define NVIM_TANGLE_H
@@ -25,12 +26,20 @@
 #include "nvim/tangle.h"
 #include "nvim/garray.h"
 
+
 @includes
+
+@line_struct
+@section_struct
+@section_list_struct
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "tangle.c.generated.h"
 #endif
 
+
+@global_variables
+@define_functions_linked_list
 @define_functions
 
 @includes+=
@@ -41,7 +50,8 @@ void attach_tangle(buf_T *buf)
 {
   semsg(_("Tangle activated!"));
   @create_tangle_buffer
-  @copy_current_buffer_to_tangle_buffer
+  @tangle_current_buffer_initial
+  // @copy_current_buffer_to_tangle_buffer
   @set_tangle_buffer
 }
 
@@ -480,3 +490,6 @@ check_cursor_lnum();
 
 @changed_lines_del_line+=
 deleted_lines_mark(first, n);
+
+@tangle_current_buffer_initial+=
+tangle_parse(buf, tangle_view);
