@@ -75,6 +75,8 @@ typedef struct
 #endif
 
 
+static PMap(cstr_t) is_root = MAP_INIT;
+
 static PMap(cstr_t) sections = MAP_INIT;
 static kvec_t(cstr_t) section_names = KV_INITIAL_VALUE;
 
@@ -550,18 +552,61 @@ void del_lines_tangle(long nlines, bool undo)
 
 void tangle_output(buf_T *tangle_view)
 {
+  for(int i=0; i<kv_size(section_names); ++i) {
+  	char* name = kv_A(section_names, i);
+  	bool root = pmap_has(cstr_t)(&is_root, name);
+
+  	if(root) {
+  		int line_num = 1;
+  		traverseNode(tangle_view, "", name, &line_num);
+
+  	}
+  }
+
 }
 
-// @traverse_node_and_output+=
-// for(auto& it : sections) {
-	// @check_if_root_node
-	// if(root) {
-		// @open_file_to_output
-		// @call_recursive_traverse_nodes_function
-	// }
-// }
+static void traverseNode(buf_T* tangle_view, char* prefix, char* name, int* line_num)
+{
+	if(!pmap_has(cstr_t)(&sections, name)) {
+	  return;
+	}
+
+	SectionList* list = pmap_get(cstr_t)(&sections, name);
+	for(Section* pcopy = list->phead; pcopy; pcopy = pcopy->pnext) {
+	  for(int i=0; i<kv_size(pcopy->lines); ++i) {
+	    Line l = kv_A(pcopy->lines, i);
+			switch(l.type) {
+			case TEXT: 
+			{
+			  size_t len = strlen(prefix) + strlen(l.str);
+			  char* line = (char*)xmalloc(len+1);
+			  STRCPY(line, prefix);
+			  STRCAT(line, l.str);
+
+			  ml_append(tangle_view, *line_num, line, len+1, false);
+			  line_num++;
+			  break;
+			}
+
+			case REFERENCE:
+			{
+			  size_t len = strlen(prefix) + strlen(l.prefix);
+			  char* new_prefix = (char*)xmalloc(len+1);
+			  traverseNode(tangle_view, new_prefix, l.str, line_num);
+			  xfree(new_prefix);
+			  break;
+			}
+			default: break;
+			}
+	  }
+	}
+
+}
+
 void tangle_parse(buf_T *buf)
 {
+  pmap_clear(cstr_t)(&is_root);
+
   pmap_clear(cstr_t)(&sections);
   kv_destroy(section_names);
   kv_init(section_names);
@@ -595,6 +640,10 @@ void tangle_parse(buf_T *buf)
           Section* section = (Section*)xmalloc(sizeof(Section));
 
           section->pnext = NULL;
+
+          if(op == 0) {
+            pmap_put(cstr_t)(&is_root, name, NULL);
+          }
 
           section->name = name;
 
