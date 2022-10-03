@@ -1,6 +1,6 @@
 ##tangle
 @define_functions+=
-void tangle_parse(buf_T *buf, buf_T *tangle_view)
+void tangle_parse(buf_T *buf)
 {
   @parse_variables
   for(int i=1; i<=buf->b_ml.ml_line_count; ++i) {
@@ -77,8 +77,14 @@ section->name = name;
 @includes+=
 #include "nvim/map.h"
 
+@global_variables+=
+static PMap(cstr_t) sections = MAP_INIT;
+static kvec_t(cstr_t) section_names = KV_INITIAL_VALUE;
+
 @parse_variables+=
-PMap(cstr_t) sections = MAP_INIT;
+pmap_clear(cstr_t)(&sections);
+kv_destroy(section_names);
+kv_init(section_names);
 
 @link_to_previous_section_if_needed+=
 if(op == 1 || op == 2) {
@@ -86,6 +92,7 @@ if(op == 1 || op == 2) {
 	if(!pmap_has(cstr_t)(&sections, name)) {
     list = sectionlist_init();
     pmap_put(cstr_t)(&sections, xstrdup(name), list);
+    kv_push(section_names, name);
   } else {
     list = pmap_get(cstr_t)(&sections, name);
   }
@@ -100,13 +107,14 @@ if(op == 1 || op == 2) {
 @parse_variables+=
 Section* cur_section = NULL;
 
+@create_new_section+=
+cur_section = section;
+
 @add_back_to_section+=
 sectionlist_push_back(list, section);
-cur_section = section;
 
 @add_front_to_section+=
 sectionlist_push_front(list, section);
-cur_section = section;
 
 @otherwise_just_save_section+=
 else {
@@ -116,6 +124,7 @@ else {
   } else {
     list = sectionlist_init();
     pmap_put(cstr_t)(&sections, xstrdup(name), list);
+    kv_push(section_names, name);
   }
 
   sectionlist_clear(list);

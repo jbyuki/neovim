@@ -75,6 +75,9 @@ typedef struct
 #endif
 
 
+static PMap(cstr_t) sections = MAP_INIT;
+static kvec_t(cstr_t) section_names = KV_INITIAL_VALUE;
+
 static SectionList* sectionlist_init()
 {
   SectionList* list = (SectionList*)xmalloc(sizeof(SectionList));
@@ -129,7 +132,8 @@ void attach_tangle(buf_T *buf)
   buf_T* tangle_view = buflist_new(NULL, NULL, (linenr_T)1, BLN_NEW);
   ml_open(tangle_view);
 
-  tangle_parse(buf, tangle_view);
+  tangle_parse(buf);
+  tangle_output(tangle_view);
   // @copy_current_buffer_to_tangle_buffer
   buf->tangle_view = tangle_view;
 
@@ -544,9 +548,23 @@ void del_lines_tangle(long nlines, bool undo)
 
 }
 
-void tangle_parse(buf_T *buf, buf_T *tangle_view)
+void tangle_output(buf_T *tangle_view)
 {
-  PMap(cstr_t) sections = MAP_INIT;
+}
+
+// @traverse_node_and_output+=
+// for(auto& it : sections) {
+	// @check_if_root_node
+	// if(root) {
+		// @open_file_to_output
+		// @call_recursive_traverse_nodes_function
+	// }
+// }
+void tangle_parse(buf_T *buf)
+{
+  pmap_clear(cstr_t)(&sections);
+  kv_destroy(section_names);
+  kv_init(section_names);
 
   Section* cur_section = NULL;
 
@@ -580,6 +598,8 @@ void tangle_parse(buf_T *buf, buf_T *tangle_view)
 
           section->name = name;
 
+          cur_section = section;
+
           kv_init(section->lines);
 
           if(op == 1 || op == 2) {
@@ -587,17 +607,16 @@ void tangle_parse(buf_T *buf, buf_T *tangle_view)
           	if(!pmap_has(cstr_t)(&sections, name)) {
               list = sectionlist_init();
               pmap_put(cstr_t)(&sections, xstrdup(name), list);
+              kv_push(section_names, name);
             } else {
               list = pmap_get(cstr_t)(&sections, name);
             }
 
             if(op == 1) {
               sectionlist_push_back(list, section);
-              cur_section = section;
 
             } else { /* op == 2 */
               sectionlist_push_front(list, section);
-              cur_section = section;
 
             }
           }
@@ -609,6 +628,7 @@ void tangle_parse(buf_T *buf, buf_T *tangle_view)
             } else {
               list = sectionlist_init();
               pmap_put(cstr_t)(&sections, xstrdup(name), list);
+              kv_push(section_names, name);
             }
 
             sectionlist_clear(list);

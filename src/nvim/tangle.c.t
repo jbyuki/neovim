@@ -492,4 +492,5 @@ check_cursor_lnum();
 deleted_lines_mark(first, n);
 
 @tangle_current_buffer_initial+=
-tangle_parse(buf, tangle_view);
+tangle_parse(buf);
+tangle_output(tangle_view);
