@@ -592,6 +592,8 @@ static void traverseNode(buf_T* tangle_view, char* prefix, char* name, int* line
 			{
 			  size_t len = strlen(prefix) + strlen(l.prefix);
 			  char* new_prefix = (char*)xmalloc(len+1);
+			  STRCPY(new_prefix, prefix);
+			  STRCAT(new_prefix, l.prefix);
 			  traverseNode(tangle_view, new_prefix, l.str, line_num);
 			  xfree(new_prefix);
 			  break;
