@@ -36,7 +36,7 @@ static void traverseNode(buf_T* tangle_view, char* prefix, char* name, int* line
 }
 
 @call_recursive_traverse_nodes_function+=
-int line_num = 1;
+int line_num = 0;
 traverseNode(tangle_view, "", name, &line_num);
 
 @get_section+=
@@ -64,7 +64,7 @@ case TEXT:
   STRCPY(line, prefix);
   STRCAT(line, l.str);
 
-  ml_append(tangle_view, *line_num, line, len+1, false);
+  ml_append_buf(tangle_view, *line_num, line, (colnr_T)0, false);
   line_num++;
   break;
 }

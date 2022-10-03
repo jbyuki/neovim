@@ -557,7 +557,7 @@ void tangle_output(buf_T *tangle_view)
   	bool root = pmap_has(cstr_t)(&is_root, name);
 
   	if(root) {
-  		int line_num = 1;
+  		int line_num = 0;
   		traverseNode(tangle_view, "", name, &line_num);
 
   	}
@@ -583,7 +583,7 @@ static void traverseNode(buf_T* tangle_view, char* prefix, char* name, int* line
 			  STRCPY(line, prefix);
 			  STRCAT(line, l.str);
 
-			  ml_append(tangle_view, *line_num, line, len+1, false);
+			  ml_append_buf(tangle_view, *line_num, line, (colnr_T)0, false);
 			  line_num++;
 			  break;
 			}
