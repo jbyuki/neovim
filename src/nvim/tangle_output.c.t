@@ -56,6 +56,9 @@ for(Section* pcopy = list->phead; pcopy; pcopy = pcopy->pnext) {
   }
 }
 
+@includes+=
+#include "nvim/vim.h"
+
 @output_line+=
 case TEXT: 
 {

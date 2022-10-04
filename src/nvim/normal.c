@@ -6518,15 +6518,11 @@ static void n_opencmd(cmdarg_T *cap)
                (linenr_T)(curwin->w_cursor.lnum +
                           (cap->cmdchar == 'o' ? 1 : 0))
                )) {
-      // if(curbuf->b_p_tgl == 0) {
-        open_line(cap->cmdchar == 'O' ? BACKWARD : FORWARD,
-                   has_format_option(FO_OPEN_COMS) ? OPENLINE_DO_COM : 0,
-                   0, NULL);
-      // } else {
-        // open_line_tangle(cap->cmdchar == 'O' ? BACKWARD : FORWARD,
-                   // has_format_option(FO_OPEN_COMS) ? OPENLINE_DO_COM : 0,
-                   // 0, NULL);
-      // }
+      if(curbuf->b_p_tgl == 1) {
+      }
+      open_line(cap->cmdchar == 'O' ? BACKWARD : FORWARD,
+                 has_format_option(FO_OPEN_COMS) ? OPENLINE_DO_COM : 0,
+                 0, NULL);
 
       if (win_cursorline_standout(curwin)) {
         // force redraw of cursorline

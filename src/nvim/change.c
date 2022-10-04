@@ -621,11 +621,10 @@ void ins_char(int c)
     buf[0] = '\n';
   }
 
-  // if(curbuf->b_p_tgl == 0) {
-    ins_char_bytes((char_u *)buf, n);
-  // } else {
-    // ins_char_bytes_tangle((char_u *)buf, n);
-  // }
+  if(curbuf->b_p_tgl == 1) {
+    // ins_char_bytes_tangle((char_u*)buf, n)
+  }
+  ins_char_bytes((char_u *)buf, n);
 }
 
 void ins_char_bytes(char *buf, size_t charlen)
@@ -787,11 +786,11 @@ int del_chars(long count, int fixpos)
     p += l;
   }
 
-  // if(curbuf->b_p_tgl == 0) {
-    return del_bytes(bytes, fixpos, true);
-  // } else {
-    // return del_bytes_tangle(bytes, fixpos, true);
-  // }
+  if(curbuf->b_p_tgl == 1) {
+
+  }
+
+  return del_bytes(bytes, fixpos, true);
 }
 
 /// Delete "count" bytes under the cursor.

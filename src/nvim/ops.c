@@ -1638,11 +1638,10 @@ int op_delete(oparg_T *oap)
         u_clearline();              // "U" command not possible after "2cc"
       }
     } else {
-      // if(curbuf->b_p_tgl == 0) {
-        del_lines(oap->line_count, true);
-      // } else {
-        // del_lines_tangle(oap->line_count, true);
-      // }
+      if(curbuf->b_p_tgl == 1) {
+      }
+      del_lines(oap->line_count, true);
+
       beginline(BL_WHITE | BL_FIX);
       u_clearline();            // "U" command not possible after "dd"
     }
@@ -1722,13 +1721,10 @@ int op_delete(oparg_T *oap)
         }
       }
 
-      // if(curbuf->b_p_tgl == 0) {
-        (void)del_bytes((colnr_T)n, !virtual_op,
-                        oap->op_type == OP_DELETE && !oap->is_VIsual);
-      // } else {
-        // (void)del_bytes_tangle((colnr_T)n, !virtual_op,
-                        // oap->op_type == OP_DELETE && !oap->is_VIsual);
-      // }
+      if(curbuf->b_p_tgl == 1) {
+      }
+      (void)del_bytes((colnr_T)n, !virtual_op,
+                      oap->op_type == OP_DELETE && !oap->is_VIsual);
     } else {
       // delete characters between lines
       pos_T curpos;

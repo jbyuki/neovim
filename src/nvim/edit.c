@@ -4681,15 +4681,14 @@ bool ins_eol(int c)
 
   AppendToRedobuff(NL_STR);
   bool i;
-  // if(curbuf->b_p_tgl == 0) {
-    i = open_line(FORWARD,
-          has_format_option(FO_RET_COMS) ? OPENLINE_DO_COM : 0,
-          old_indent, NULL);
-  // } else {
-    // i = open_line_tangle(FORWARD,
-          // has_format_option(FO_RET_COMS) ? OPENLINE_DO_COM : 0,
-          // old_indent, NULL);
-  // }
+  if(curbuf->b_p_tgl == 1) {
+
+  }
+
+  i = open_line(FORWARD,
+        has_format_option(FO_RET_COMS) ? OPENLINE_DO_COM : 0,
+        old_indent, NULL);
+
   old_indent = 0;
   can_cindent = true;
   // When inserting a line the cursor line must never be in a closed fold.
