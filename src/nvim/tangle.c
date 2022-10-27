@@ -132,6 +132,9 @@ void deattach_tangle(buf_T *buf)
   semsg(_("Tangle deactivated!"));
 }
 
+void ins_char_bytes_tangle(char *buf, size_t charlen)
+{
+}
 void tangle_output(buf_T *tangle_view)
 {
   for(int i=0; i<kv_size(section_names); ++i) {

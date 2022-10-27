@@ -622,7 +622,7 @@ void ins_char(int c)
   }
 
   if(curbuf->b_p_tgl == 1) {
-    // ins_char_bytes_tangle((char_u*)buf, n)
+    ins_char_bytes_tangle((char_u*)buf, n);
   }
   ins_char_bytes((char_u *)buf, n);
 }
