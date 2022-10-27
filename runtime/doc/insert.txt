@@ -650,9 +650,9 @@ When the popup menu is displayed there are a few more special keys, see
 |popupmenu-keys|.
 
 Note: The keys that are valid in CTRL-X mode are not mapped.  This allows for
-":map ^F ^X^F" to work (where ^F is CTRL-F and ^X is CTRL-X).  The key that
-ends CTRL-X mode (any key that is not a valid CTRL-X mode command) is mapped.
-Also, when doing completion with 'complete' mappings apply as usual.
+`:map <C-F> <C-X><C-F>` to work.  The key that ends CTRL-X mode (any key that
+is not a valid CTRL-X mode command) is mapped. Also, when doing completion
+with 'complete' mappings apply as usual.
 
 								*E565*
 Note: While completion is active Insert mode can't be used recursively and
@@ -661,10 +661,10 @@ will generate an E565 error.
 
 The following mappings are suggested to make typing the completion commands
 a bit easier (although they will hide other commands): >
-    :inoremap ^] ^X^]
-    :inoremap ^F ^X^F
-    :inoremap ^D ^X^D
-    :inoremap ^L ^X^L
+    :inoremap <C-]> <C-X><C-]>
+    :inoremap <C-F> <C-X><C-F>
+    :inoremap <C-D> <C-X><C-D>
+    :inoremap <C-L> <C-X><C-L>
 
 As a special case, typing CTRL-R to perform register insertion (see
 |i_CTRL-R|) will not exit CTRL-X mode.  This is primarily to allow the use of
@@ -1350,16 +1350,8 @@ Completion of C code requires a tags file.  You should use Universal/
 Exuberant ctags, because it adds extra information that is needed for
 completion.  You can find it here:
 	Universal Ctags: https://ctags.io
-	Exuberant Ctags: http://ctags.sourceforge.net
 
-Universal Ctags is preferred, Exuberant Ctags is no longer being developed.
-
-For Exuberant ctags, version 5.6 or later is recommended.  For version 5.5.4
-you should add a patch that adds the "typename:" field:
-	ftp://ftp.vim.org/pub/vim/unstable/patches/ctags-5.5.4.patch
-A compiled .exe for MS-Windows can be found at:
-	http://ctags.sourceforge.net/
-	https://github.com/universal-ctags/ctags-win32
+Universal Ctags is preferred, Exuberant Ctags is no longer maintained.
 
 If you want to complete system functions you can do something like this.  Use
 ctags to generate a tags file for all the system header files: >
@@ -1459,7 +1451,7 @@ DOM compatibility
 At the moment (beginning of 2006) there are two main browsers - MS Internet
 Explorer and Mozilla Firefox. These two applications are covering over 90% of
 market. Theoretically standards are created by W3C organisation
-(http://www.w3c.org) but they are not always followed/implemented.
+(https://www.w3.org/) but they are not always followed/implemented.
 
 		IE	FF	W3C  Omni completion ~
 		+/-	+/-	+    +		     ~
@@ -1480,7 +1472,6 @@ external files and for class aware completion. You should use Universal/
 Exuberant ctags version 5.5.4 or newer. You can find it here:
 
 	Universal Ctags: https://ctags.io
-	Exuberant Ctags: http://ctags.sourceforge.net
 
 Script completes:
 
@@ -1779,12 +1770,12 @@ DTD -> Vim							*dtd2vim*
 On |www| is the script |dtd2vim| which parses DTD and creates an XML data file
 for Vim XML omni completion.
 
-    dtd2vim: http://www.vim.org/scripts/script.php?script_id=1462
+    dtd2vim: https://www.vim.org/scripts/script.php?script_id=1462
 
 Check the beginning of that file for usage details.
 The script requires perl and:
 
-    perlSGML: http://savannah.nongnu.org/projects/perlsgml
+    perlSGML: https://savannah.nongnu.org/projects/perlsgml
 
 
 Commands

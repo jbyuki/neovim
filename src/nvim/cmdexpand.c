@@ -22,7 +22,6 @@
 #include "nvim/getchar.h"
 #include "nvim/help.h"
 #include "nvim/highlight_group.h"
-#include "nvim/if_cscope.h"
 #include "nvim/locale.h"
 #include "nvim/lua/executor.h"
 #include "nvim/mapping.h"
@@ -181,7 +180,7 @@ int nextwild(expand_T *xp, int type, int options, bool escape)
   assert(ccline->cmdpos >= i);
   xp->xp_pattern_len = (size_t)ccline->cmdpos - (size_t)i;
 
-  if (type == WILD_NEXT || type == WILD_PREV) {
+  if (type == WILD_NEXT || type == WILD_PREV || type == WILD_PUM_WANT) {
     // Get next/previous match for a previous expanded pattern.
     p2 = (char_u *)ExpandOne(xp, NULL, NULL, 0, type);
   } else {
@@ -291,8 +290,11 @@ static char *get_next_or_prev_match(int mode, expand_T *xp, int *p_findex, char 
       findex = xp->xp_numfiles;
     }
     findex--;
-  } else {  // mode == WILD_NEXT
+  } else if (mode == WILD_NEXT) {
     findex++;
+  } else {  // mode == WILD_PUM_WANT
+    assert(pum_want.active);
+    findex = pum_want.item;
   }
 
   // When wrapping around, return the original string, set findex to -1.
@@ -420,7 +422,7 @@ static char *find_longest_match(expand_T *xp, int options)
   return xstrndup(xp->xp_files[0], len);
 }
 
-/// Do wildcard expansion on the string 'str'.
+/// Do wildcard expansion on the string "str".
 /// Chars that should not be expanded must be preceded with a backslash.
 /// Return a pointer to allocated memory containing the new string.
 /// Return NULL for failure.
@@ -444,6 +446,7 @@ static char *find_longest_match(expand_T *xp, int options)
 ///                          popup menu and close the menu.
 /// mode = WILD_CANCEL:      cancel and close the cmdline completion popup and
 ///                          use the original text.
+/// mode = WILD_PUM_WANT:    use the match at index pum_want.item
 ///
 /// options = WILD_LIST_NOTFOUND:    list entries without a match
 /// options = WILD_HOME_REPLACE:     do home_replace() for buffer names
@@ -467,7 +470,7 @@ char *ExpandOne(expand_T *xp, char *str, char *orig, int options, int mode)
   int i;
 
   // first handle the case of using an old match
-  if (mode == WILD_NEXT || mode == WILD_PREV) {
+  if (mode == WILD_NEXT || mode == WILD_PREV || mode == WILD_PUM_WANT) {
     return get_next_or_prev_match(mode, xp, &findex, orig_save);
   }
 
@@ -1419,11 +1422,6 @@ static const char *set_context_by_cmdname(const char *cmd, cmdidx_T cmdidx, cons
   case CMD_highlight:
     set_context_in_highlight_cmd(xp, arg);
     break;
-  case CMD_cscope:
-  case CMD_lcscope:
-  case CMD_scscope:
-    set_context_in_cscope_cmd(xp, arg, cmdidx);
-    break;
   case CMD_sign:
     set_context_in_sign_cmd(xp, (char *)arg);
     break;
@@ -1882,7 +1880,7 @@ void set_cmd_context(expand_T *xp, char_u *str, int len, int col, int use_ccline
 /// @param col  position of cursor
 /// @param matchcount  return: nr of matches
 /// @param matches  return: array of pointers to matches
-int expand_cmdline(expand_T *xp, char_u *str, int col, int *matchcount, char ***matches)
+int expand_cmdline(expand_T *xp, const char_u *str, int col, int *matchcount, char ***matches)
 {
   char_u *file_str = NULL;
   int options = WILD_ADD_SLASH|WILD_SILENT;
@@ -2063,7 +2061,6 @@ static int ExpandOther(expand_T *xp, regmatch_T *rmp, int *num_file, char ***fil
     { EXPAND_HIGHLIGHT, (ExpandFunc)get_highlight_name, true, false },
     { EXPAND_EVENTS, expand_get_event_name, true, false },
     { EXPAND_AUGROUP, expand_get_augroup_name, true, false },
-    { EXPAND_CSCOPE, get_cscope_name, true, true },
     { EXPAND_SIGN, get_sign_name, true, true },
     { EXPAND_PROFILE, get_profile_name, true, true },
 #ifdef HAVE_WORKING_LIBINTL
@@ -2199,7 +2196,7 @@ static int ExpandFromContext(expand_T *xp, char_u *pat, int *num_file, char ***f
 
   if (xp->xp_context == EXPAND_LUA) {
     ILOG("PAT %s", pat);
-    return nlua_expand_pat(xp, pat, num_file, file);
+    return nlua_expand_pat(xp, (char *)pat, num_file, file);
   }
 
   regmatch.regprog = vim_regcomp((char *)pat, p_magic ? RE_MAGIC : 0);
@@ -2354,7 +2351,7 @@ static void expand_shellcmd(char *filepat, int *num_file, char ***file, int flag
   }
 
   // Go over all directories in $PATH.  Expand matches in that directory and
-  // collect them in "ga". When "." is not in $PATH also expaned for the
+  // collect them in "ga". When "." is not in $PATH also expand for the
   // current directory, to find "subdir/cmd".
   ga_init(&ga, (int)sizeof(char *), 10);
   hashtab_T found_ht;
@@ -2810,7 +2807,7 @@ void wildmenu_cleanup(CmdlineInfo *cclp)
     p_ls = save_p_ls;
     p_wmh = save_p_wmh;
     last_status(false);
-    update_screen(UPD_VALID);  // redraw the screen NOW
+    update_screen();  // redraw the screen NOW
     redrawcmd();
     save_p_ls = -1;
     wild_menu_showing = 0;
@@ -2880,11 +2877,6 @@ void f_getcompletion(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 
   if (xpc.xp_context == EXPAND_MENUS) {
     set_context_in_menu_cmd(&xpc, "menu", xpc.xp_pattern, false);
-    xpc.xp_pattern_len = strlen(xpc.xp_pattern);
-  }
-
-  if (xpc.xp_context == EXPAND_CSCOPE) {
-    set_context_in_cscope_cmd(&xpc, (const char *)xpc.xp_pattern, CMD_cscope);
     xpc.xp_pattern_len = strlen(xpc.xp_pattern);
   }
 

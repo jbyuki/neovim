@@ -199,8 +199,8 @@ EXTERN dict_T vimvardict;                   // Dictionary with v: variables
 EXTERN dict_T globvardict;                  // Dictionary with g: variables
 /// g: value
 #define globvarht globvardict.dv_hashtab
-EXTERN bool did_emsg;                       // set by emsg() when the message
-                                            // is displayed or thrown
+EXTERN int did_emsg;                        // incremented by emsg() when a
+                                            // message is displayed or thrown
 EXTERN bool called_vim_beep;                // set if vim_beep() is called
 EXTERN bool did_emsg_syntax;                // did_emsg set because of a
                                             // syntax error
@@ -997,8 +997,6 @@ EXTERN char e_luv_api_disabled[] INIT(= N_("E5560: %s must not be called in a lu
 EXTERN char e_floatonly[] INIT(= N_("E5601: Cannot close window, only floating window would remain"));
 EXTERN char e_floatexchange[] INIT(= N_("E5602: Cannot exchange or rotate float"));
 
-EXTERN char e_non_empty_string_required[] INIT(= N_("E1142: Non-empty string required"));
-
 EXTERN char e_cannot_define_autocommands_for_all_events[] INIT(= N_("E1155: Cannot define autocommands for ALL events"));
 
 EXTERN char e_resulting_text_too_long[] INIT(= N_("E1240: Resulting text too long"));
@@ -1070,5 +1068,12 @@ typedef enum {
 EXTERN char windowsVersion[20] INIT(= { 0 });
 
 EXTERN int exit_need_delay INIT(= 0);
+
+/// Skip win_fix_cursor() call for 'splitkeep' when cmdwin is closed.
+EXTERN bool skip_win_fix_cursor INIT(= false);
+/// Skip win_fix_scroll() call for 'splitkeep' when closing tab page.
+EXTERN bool skip_win_fix_scroll INIT(= false);
+/// Skip update_topline() call while executing win_fix_scroll().
+EXTERN bool skip_update_topline INIT(= false);
 
 #endif  // NVIM_GLOBALS_H

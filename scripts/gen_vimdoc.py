@@ -2,9 +2,7 @@
 """Generates Nvim :help docs from C/Lua docstrings, using Doxygen.
 
 Also generates *.mpack files. To inspect the *.mpack structure:
-
-    :new | put=v:lua.vim.inspect(msgpackparse(readfile('runtime/doc/api.mpack')))
-
+    :new | put=v:lua.vim.inspect(v:lua.vim.mpack.unpack(readfile('runtime/doc/api.mpack','B')))
 
 Flow:
     main
@@ -14,15 +12,10 @@ Flow:
             update_params_map /
               render_node
 
-This would be easier using lxml and XSLT, but:
+TODO: eliminate this script and use Lua+treesitter (requires parsers for C and
+Lua markdown-style docstrings).
 
-  1. This should avoid needing Python dependencies, especially ones that are
-     C modules that have library dependencies (lxml requires libxml and
-     libxslt).
-  2. I wouldn't know how to deal with nested indentation in <para> tags using
-     XSLT.
-
-Each function :help block is formatted as follows:
+The generated :help text for each function is formatted as follows:
 
   - Max width of 78 columns (`text_width`).
   - Indent with spaces (not tabs).
@@ -287,7 +280,7 @@ annotation_map = {
     'FUNC_API_FAST': '|api-fast|',
     'FUNC_API_CHECK_TEXTLOCK': 'not allowed when |textlock| is active',
     'FUNC_API_REMOTE_ONLY': '|RPC| only',
-    'FUNC_API_LUA_ONLY': '|vim.api| only',
+    'FUNC_API_LUA_ONLY': 'Lua |vim.api| only',
 }
 
 
@@ -673,7 +666,7 @@ def fmt_node_as_vimhelp(parent, width=text_width - indentation, indent='',
         max_name_len = max_name(m.keys()) + 4
         out = ''
         for name, desc in m.items():
-            name = '    {}'.format('{{{}}}'.format(name).ljust(max_name_len))
+            name = '  • {}'.format('{{{}}}'.format(name).ljust(max_name_len))
             out += '{}{}\n'.format(name, desc)
         return out.rstrip()
 

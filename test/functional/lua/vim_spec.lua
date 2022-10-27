@@ -24,6 +24,7 @@ local rmdir = helpers.rmdir
 local write_file = helpers.write_file
 local expect_exit = helpers.expect_exit
 local poke_eventloop = helpers.poke_eventloop
+local assert_alive = helpers.assert_alive
 
 describe('lua stdlib', function()
   before_each(clear)
@@ -429,6 +430,8 @@ describe('lua stdlib', function()
   it('vim.pesc', function()
     eq('foo%-bar', exec_lua([[return vim.pesc('foo-bar')]]))
     eq('foo%%%-bar', exec_lua([[return vim.pesc(vim.pesc('foo-bar'))]]))
+    -- pesc() returns one result. #20751
+    eq({'x'}, exec_lua([[return {vim.pesc('x')}]]))
 
     -- Validates args.
     matches('s: expected string, got number',
@@ -1015,11 +1018,11 @@ describe('lua stdlib', function()
     eq('hi', funcs.luaeval "vim.g.testing")
     eq(123, funcs.luaeval "vim.g.other")
     eq(5120.1, funcs.luaeval "vim.g.floaty")
-    eq(NIL, funcs.luaeval "vim.g.nonexistant")
+    eq(NIL, funcs.luaeval "vim.g.nonexistent")
     eq(NIL, funcs.luaeval "vim.g.nullvar")
     -- lost over RPC, so test locally:
     eq({false, true}, exec_lua [[
-      return {vim.g.nonexistant == vim.NIL, vim.g.nullvar == vim.NIL}
+      return {vim.g.nonexistent == vim.NIL, vim.g.nullvar == vim.NIL}
     ]])
 
     eq({hello="world"}, funcs.luaeval "vim.g.to_delete")
@@ -1122,12 +1125,12 @@ describe('lua stdlib', function()
     eq('bye', funcs.luaeval "vim.b[BUF].testing")
     eq(123, funcs.luaeval "vim.b.other")
     eq(5120.1, funcs.luaeval "vim.b.floaty")
-    eq(NIL, funcs.luaeval "vim.b.nonexistant")
-    eq(NIL, funcs.luaeval "vim.b[BUF].nonexistant")
+    eq(NIL, funcs.luaeval "vim.b.nonexistent")
+    eq(NIL, funcs.luaeval "vim.b[BUF].nonexistent")
     eq(NIL, funcs.luaeval "vim.b.nullvar")
     -- lost over RPC, so test locally:
     eq({false, true}, exec_lua [[
-      return {vim.b.nonexistant == vim.NIL, vim.b.nullvar == vim.NIL}
+      return {vim.b.nonexistent == vim.NIL, vim.b.nullvar == vim.NIL}
     ]])
 
     matches([[attempt to index .* nil value]],
@@ -1206,7 +1209,7 @@ describe('lua stdlib', function()
 
     eq(NIL, funcs.luaeval "vim.b.testing")
     eq(NIL, funcs.luaeval "vim.b.other")
-    eq(NIL, funcs.luaeval "vim.b.nonexistant")
+    eq(NIL, funcs.luaeval "vim.b.nonexistent")
   end)
 
   it('vim.w', function()
@@ -1225,8 +1228,8 @@ describe('lua stdlib', function()
     eq('hi', funcs.luaeval "vim.w.testing")
     eq('bye', funcs.luaeval "vim.w[WIN].testing")
     eq(123, funcs.luaeval "vim.w.other")
-    eq(NIL, funcs.luaeval "vim.w.nonexistant")
-    eq(NIL, funcs.luaeval "vim.w[WIN].nonexistant")
+    eq(NIL, funcs.luaeval "vim.w.nonexistent")
+    eq(NIL, funcs.luaeval "vim.w[WIN].nonexistent")
 
     matches([[attempt to index .* nil value]],
        pcall_err(exec_lua, 'return vim.w[WIN][0].testing'))
@@ -1304,7 +1307,7 @@ describe('lua stdlib', function()
 
     eq(NIL, funcs.luaeval "vim.w.testing")
     eq(NIL, funcs.luaeval "vim.w.other")
-    eq(NIL, funcs.luaeval "vim.w.nonexistant")
+    eq(NIL, funcs.luaeval "vim.w.nonexistent")
   end)
 
   it('vim.t', function()
@@ -1316,10 +1319,10 @@ describe('lua stdlib', function()
 
     eq('hi', funcs.luaeval "vim.t.testing")
     eq(123, funcs.luaeval "vim.t.other")
-    eq(NIL, funcs.luaeval "vim.t.nonexistant")
+    eq(NIL, funcs.luaeval "vim.t.nonexistent")
     eq('hi', funcs.luaeval "vim.t[0].testing")
     eq(123, funcs.luaeval "vim.t[0].other")
-    eq(NIL, funcs.luaeval "vim.t[0].nonexistant")
+    eq(NIL, funcs.luaeval "vim.t[0].nonexistent")
 
     matches([[attempt to index .* nil value]],
        pcall_err(exec_lua, 'return vim.t[0][0].testing'))
@@ -1386,7 +1389,7 @@ describe('lua stdlib', function()
 
     eq(NIL, funcs.luaeval "vim.t.testing")
     eq(NIL, funcs.luaeval "vim.t.other")
-    eq(NIL, funcs.luaeval "vim.t.nonexistant")
+    eq(NIL, funcs.luaeval "vim.t.nonexistent")
   end)
 
   it('vim.env', function()
@@ -2210,6 +2213,10 @@ describe('lua stdlib', function()
     eq({3,7}, exec_lua[[return {re1:match_line(0, 1, 1, 8)}]])
     eq({}, exec_lua[[return {re1:match_line(0, 1, 1, 7)}]])
     eq({0,3}, exec_lua[[return {re1:match_line(0, 1, 0, 7)}]])
+
+    -- vim.regex() error inside :silent! should not crash. #20546
+    command([[silent! lua vim.regex('\\z')]])
+    assert_alive()
   end)
 
   it('vim.defer_fn', function()
@@ -2222,13 +2229,19 @@ describe('lua stdlib', function()
     eq(true, exec_lua[[return vim.g.test]])
   end)
 
-  it('vim.region', function()
-    insert(helpers.dedent( [[
-    text tααt tααt text
-    text tαxt txtα tex
-    text tαxt tαxt
-    ]]))
-    eq({5,15}, exec_lua[[ return vim.region(0,{1,5},{1,14},'v',true)[1] ]])
+  describe('vim.region', function()
+    it('charwise', function()
+      insert(helpers.dedent( [[
+      text tααt tααt text
+      text tαxt txtα tex
+      text tαxt tαxt
+      ]]))
+      eq({5,15}, exec_lua[[ return vim.region(0,{1,5},{1,14},'v',true)[1] ]])
+    end)
+    it('blockwise', function()
+      insert([[αα]])
+      eq({0,5}, exec_lua[[ return vim.region(0,{0,0},{0,4},'3',true)[0] ]])
+    end)
   end)
 
   describe('vim.on_key', function()

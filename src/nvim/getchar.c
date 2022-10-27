@@ -170,15 +170,15 @@ static char_u *get_buffcont(buffheader_T *buffer, int dozero)
 /// K_SPECIAL in the returned string is escaped.
 char_u *get_recorded(void)
 {
-  char_u *p;
+  char *p;
   size_t len;
 
-  p = get_buffcont(&recordbuff, true);
+  p = (char *)get_buffcont(&recordbuff, true);
   free_buff(&recordbuff);
 
   // Remove the characters that were added the last time, these must be the
   // (possibly mapped) characters that stopped the recording.
-  len = STRLEN(p);
+  len = strlen(p);
   if (len >= last_recorded_len) {
     len -= last_recorded_len;
     p[len] = NUL;
@@ -190,7 +190,7 @@ char_u *get_recorded(void)
     p[len - 1] = NUL;
   }
 
-  return p;
+  return (char_u *)p;
 }
 
 /// Return the contents of the redo buffer as a single string.
@@ -509,7 +509,7 @@ void AppendToRedobuffLit(const char *str, int len)
       s--;
     }
     if (s > start) {
-      add_buff(&redobuff, start, (long)(s - start));
+      add_buff(&redobuff, start, s - start);
     }
 
     if (*s == NUL || (len >= 0 && s - str >= len)) {
@@ -1886,7 +1886,7 @@ static int check_simplify_modifier(int max_offset)
 /// - When there is no match yet, return map_result_nomatch, need to get more
 ///   typeahead.
 /// - On failure (out of memory) return map_result_fail.
-static int handle_mapping(int *keylenp, bool *timedout, int *mapdepth)
+static int handle_mapping(int *keylenp, const bool *timedout, int *mapdepth)
 {
   mapblock_T *mp = NULL;
   mapblock_T *mp2;
@@ -1959,16 +1959,28 @@ static int handle_mapping(int *keylenp, bool *timedout, int *mapdepth)
       if (mp->m_keys[0] == tb_c1 && (mp->m_mode & local_State)
           && ((mp->m_mode & MODE_LANGMAP) == 0 || typebuf.tb_maplen == 0)) {
         int nomap = nolmaplen;
-        int c2;
+        int modifiers = 0;
         // find the match length of this mapping
         for (mlen = 1; mlen < typebuf.tb_len; mlen++) {
-          c2 = typebuf.tb_buf[typebuf.tb_off + mlen];
+          int c2 = typebuf.tb_buf[typebuf.tb_off + mlen];
           if (nomap > 0) {
+            if (nomap == 2 && c2 == KS_MODIFIER) {
+              modifiers = 1;
+            } else if (nomap == 1 && modifiers == 1) {
+              modifiers = c2;
+            }
             nomap--;
-          } else if (c2 == K_SPECIAL) {
-            nomap = 2;
           } else {
-            LANGMAP_ADJUST(c2, true);
+            if (c2 == K_SPECIAL) {
+              nomap = 2;
+            } else if (merge_modifiers(c2, &modifiers) == c2) {
+              // Only apply 'langmap' if merging modifiers into
+              // the key will not result in another character,
+              // so that 'langmap' behaves consistently in
+              // different terminals and GUIs.
+              LANGMAP_ADJUST(c2, true);
+            }
+            modifiers = 0;
           }
           if (mp->m_keys[mlen] != c2) {
             break;
@@ -2237,7 +2249,7 @@ static int handle_mapping(int *keylenp, bool *timedout, int *mapdepth)
       // If this is a LANGMAP mapping, then we didn't record the keys
       // at the start of the function and have to record them now.
       if (keylen > typebuf.tb_maplen && (mp->m_mode & MODE_LANGMAP) != 0) {
-        gotchars((char_u *)map_str, STRLEN(map_str));
+        gotchars((char_u *)map_str, strlen(map_str));
       }
 
       if (save_m_noremap != REMAP_YES) {
@@ -2601,7 +2613,7 @@ static int vgetorpeek(bool advance)
         // input buffer (e.g., termresponse).
         if (((State & MODE_INSERT) != 0 || p_lz) && (State & MODE_CMDLINE) == 0
             && advance && must_redraw != 0 && !need_wait_return) {
-          update_screen(0);
+          update_screen();
           setcursor();  // put cursor back where it belongs
         }
 

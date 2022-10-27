@@ -1583,7 +1583,7 @@ static void foldAddMarker(buf_T *buf, pos_T pos, const char *marker, size_t mark
 
   // Allocate a new line: old-line + 'cms'-start + marker + 'cms'-end
   char *line = ml_get_buf(buf, lnum, false);
-  size_t line_len = STRLEN(line);
+  size_t line_len = strlen(line);
   size_t added = 0;
 
   if (u_save(lnum - 1, lnum + 1) == OK) {
@@ -3002,9 +3002,9 @@ static void foldlevelMarker(fline_T *flp)
 
   // cache a few values for speed
   char *startmarker = flp->wp->w_p_fmr;
-  int cstart = (unsigned char)(*startmarker);
+  char cstart = *startmarker;
   startmarker++;
-  int cend = (unsigned char)(*foldendmarker);
+  char cend = *foldendmarker;
 
   // Default: no start found, next level is same as current level
   flp->start = 0;
@@ -3032,8 +3032,8 @@ static void foldlevelMarker(fline_T *flp)
         flp->lvl_next++;
         flp->start++;
       }
-    } else if (*s == cend && STRNCMP(s + 1, foldendmarker + 1,
-                                     foldendmarkerlen - 1) == 0) {
+    } else if (*s == cend
+               && STRNCMP(s + 1, foldendmarker + 1, foldendmarkerlen - 1) == 0) {
       // found endmarker: set flp->lvl_next
       s += foldendmarkerlen;
       if (ascii_isdigit(*s)) {
@@ -3249,14 +3249,14 @@ void f_foldtext(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     }
 
     // Find interesting text in this line.
-    char_u *s = (char_u *)skipwhite(ml_get(lnum));
+    char *s = skipwhite(ml_get(lnum));
     // skip C comment-start
     if (s[0] == '/' && (s[1] == '*' || s[1] == '/')) {
-      s = (char_u *)skipwhite((char *)s + 2);
-      if (*skipwhite((char *)s) == NUL && lnum + 1 < foldend) {
-        s = (char_u *)skipwhite(ml_get(lnum + 1));
+      s = skipwhite(s + 2);
+      if (*skipwhite(s) == NUL && lnum + 1 < foldend) {
+        s = skipwhite(ml_get(lnum + 1));
         if (*s == '*') {
-          s = (char_u *)skipwhite((char *)s + 1);
+          s = skipwhite(s + 1);
         }
       }
     }
@@ -3265,7 +3265,7 @@ void f_foldtext(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     size_t len = strlen(txt)
                  + strlen(dashes)  // for %s
                  + 20              // for %3ld
-                 + STRLEN(s);      // concatenated
+                 + strlen(s);      // concatenated
     char *r = xmalloc(len);
     snprintf(r, len, txt, dashes, count);
     len = strlen(r);

@@ -191,7 +191,7 @@ registers. Nvim looks for these clipboard tools, in order of priority:
   - xclip (if $DISPLAY is set)
   - xsel (if $DISPLAY is set)
   - lemonade (for SSH) https://github.com/pocke/lemonade
-  - doitclient (for SSH) http://www.chiark.greenend.org.uk/~sgtatham/doit/
+  - doitclient (for SSH) https://www.chiark.greenend.org.uk/~sgtatham/doit/
   - win32yank (Windows)
   - termux (via termux-clipboard-set, termux-clipboard-set)
   - tmux (if $TMUX is set)
@@ -235,6 +235,22 @@ For example this configuration uses the g:foo variable as a fake clipboard: >
 The "copy" function stores a list of lines and the register type. The "paste"
 function returns the clipboard as a `[lines, regtype]` list, where `lines` is
 a list of lines and `regtype` is a register type conforming to |setreg()|.
+
+							      *clipboard-wsl*
+For Windows WSL, try this g:clipboard definition:
+>
+    let g:clipboard = {
+                \   'name': 'WslClipboard',
+                \   'copy': {
+                \      '+': 'clip.exe',
+                \      '*': 'clip.exe',
+                \    },
+                \   'paste': {
+                \      '+': 'powershell.exe -c [Console]::Out.Write($(Get-Clipboard -Raw).tostring().replace("`r", ""))',
+                \      '*': 'powershell.exe -c [Console]::Out.Write($(Get-Clipboard -Raw).tostring().replace("`r", ""))',
+                \   },
+                \   'cache_enabled': 0,
+                \ }
 
 ==============================================================================
 Paste 							*provider-paste* *paste*

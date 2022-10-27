@@ -138,7 +138,7 @@ bool ui_comp_should_draw(void)
 ///
 /// TODO(bfredl): later on the compositor should just use win_float_pos events,
 /// though that will require slight event order adjustment: emit the win_pos
-/// events in the beginning of  update_screen(0), rather than in ui_flush()
+/// events in the beginning of update_screen(), rather than in ui_flush()
 bool ui_comp_put_grid(ScreenGrid *grid, int row, int col, int height, int width, bool valid,
                       bool on_top)
 {
@@ -505,7 +505,7 @@ static void debug_delay(Integer lines)
   ui_call_flush();
   uint64_t wd = (uint64_t)labs(p_wd);
   uint64_t factor = (uint64_t)MAX(MIN(lines, 5), 1);
-  os_microdelay(factor * wd * 1000u, true);
+  os_microdelay(factor * wd * 1000U, true);
 }
 
 static void compose_area(Integer startrow, Integer endrow, Integer startcol, Integer endcol)

@@ -15,6 +15,7 @@
 #include "nvim/eval.h"
 #include "nvim/extmark.h"
 #include "nvim/indent.h"
+#include "nvim/indent_c.h"
 #include "nvim/mark.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
@@ -100,7 +101,7 @@ bool tabstop_set(char *var, long **array)
 /// Calculate the number of screen spaces a tab will occupy.
 /// If "vts" is set then the tab widths are taken from that array,
 /// otherwise the value of ts is used.
-int tabstop_padding(colnr_T col, long ts_arg, long *vts)
+int tabstop_padding(colnr_T col, long ts_arg, const long *vts)
 {
   long ts = ts_arg == 0 ? 8 : ts_arg;
   colnr_T tabcol = 0;
@@ -128,7 +129,7 @@ int tabstop_padding(colnr_T col, long ts_arg, long *vts)
 }
 
 /// Find the size of the tab that covers a particular column.
-int tabstop_at(colnr_T col, long ts, long *vts)
+int tabstop_at(colnr_T col, long ts, const long *vts)
 {
   colnr_T tabcol = 0;
   int t;
@@ -177,7 +178,7 @@ colnr_T tabstop_start(colnr_T col, long ts, long *vts)
 
 /// Find the number of tabs and spaces necessary to get from one column
 /// to another.
-void tabstop_fromto(colnr_T start_col, colnr_T end_col, long ts_arg, long *vts, int *ntabs,
+void tabstop_fromto(colnr_T start_col, colnr_T end_col, long ts_arg, const long *vts, int *ntabs,
                     int *nspcs)
 {
   int spaces = end_col - start_col;
@@ -241,7 +242,7 @@ void tabstop_fromto(colnr_T start_col, colnr_T end_col, long ts_arg, long *vts, 
 }
 
 /// See if two tabstop arrays contain the same values.
-bool tabstop_eq(long *ts1, long *ts2)
+bool tabstop_eq(const long *ts1, const long *ts2)
 {
   int t;
 
@@ -265,7 +266,7 @@ bool tabstop_eq(long *ts1, long *ts2)
 }
 
 /// Copy a tabstop array, allocating space for the new array.
-int *tabstop_copy(long *oldts)
+int *tabstop_copy(const long *oldts)
 {
   long *newts;
   int t;
@@ -434,10 +435,10 @@ int get_indent_str_vtab(const char *ptr, long ts, long *vts, bool list)
 // Returns true if the line was changed.
 int set_indent(int size, int flags)
 {
-  char_u *p;
-  char_u *newline;
-  char_u *oldline;
-  char_u *s;
+  char *p;
+  char *newline;
+  char *oldline;
+  char *s;
   int todo;
   int ind_len;  // Measured in characters.
   int line_len;
@@ -454,7 +455,7 @@ int set_indent(int size, int flags)
   // characters needed for the indent.
   todo = size;
   ind_len = 0;
-  p = oldline = (char_u *)get_cursor_line_ptr();
+  p = oldline = get_cursor_line_ptr();
 
   // Calculate the buffer size for the new indent, and check to see if it
   // isn't already set.
@@ -549,7 +550,7 @@ int set_indent(int size, int flags)
   if (flags & SIN_INSERT) {
     p = oldline;
   } else {
-    p = (char_u *)skipwhite((char *)p);
+    p = skipwhite(p);
   }
   line_len = (int)STRLEN(p) + 1;
 
@@ -631,7 +632,7 @@ int set_indent(int size, int flags)
         todo -= tab_pad;
         ind_done += tab_pad;
       }
-      p = (char_u *)skipwhite((char *)p);
+      p = skipwhite(p);
     }
 
     for (;;) {
@@ -659,7 +660,7 @@ int set_indent(int size, int flags)
     const colnr_T new_offset = (colnr_T)(s - newline);
 
     // this may free "newline"
-    ml_replace(curwin->w_cursor.lnum, (char *)newline, false);
+    ml_replace(curwin->w_cursor.lnum, newline, false);
     if (!(flags & SIN_NOMARK)) {
       extmark_splice_cols(curbuf,
                           (int)curwin->w_cursor.lnum - 1,
@@ -1130,17 +1131,59 @@ int get_lisp_indent(void)
 
 static int lisp_match(char_u *p)
 {
-  char_u buf[LSIZE];
+  char buf[LSIZE];
   int len;
   char *word = (char *)(*curbuf->b_p_lw != NUL ? (char_u *)curbuf->b_p_lw : p_lispwords);
 
   while (*word != NUL) {
-    (void)copy_option_part(&word, (char *)buf, LSIZE, ",");
-    len = (int)STRLEN(buf);
+    (void)copy_option_part(&word, buf, LSIZE, ",");
+    len = (int)strlen(buf);
 
-    if ((STRNCMP(buf, p, len) == 0) && (p[len] == ' ')) {
+    if ((STRNCMP(buf, p, len) == 0) && ascii_iswhite_or_nul(p[len])) {
       return true;
     }
   }
   return false;
+}
+
+/// Re-indent the current line, based on the current contents of it and the
+/// surrounding lines. Fixing the cursor position seems really easy -- I'm very
+/// confused what all the part that handles Control-T is doing that I'm not.
+/// "get_the_indent" should be get_c_indent, get_expr_indent or get_lisp_indent.
+void fixthisline(IndentGetter get_the_indent)
+{
+  int amount = get_the_indent();
+
+  if (amount >= 0) {
+    change_indent(INDENT_SET, amount, false, 0, true);
+    if (linewhite(curwin->w_cursor.lnum)) {
+      did_ai = true;  // delete the indent if the line stays empty
+    }
+  }
+}
+
+/// Return true if 'indentexpr' should be used for Lisp indenting.
+/// Caller may want to check 'autoindent'.
+bool use_indentexpr_for_lisp(void)
+{
+  return curbuf->b_p_lisp
+         && *curbuf->b_p_inde != NUL
+         && strcmp(curbuf->b_p_lop, "expr:1") == 0;
+}
+
+/// Fix indent for 'lisp' and 'cindent'.
+void fix_indent(void)
+{
+  if (p_paste) {
+    return;  // no auto-indenting when 'paste' is set
+  }
+  if (curbuf->b_p_lisp && curbuf->b_p_ai) {
+    if (use_indentexpr_for_lisp()) {
+      do_c_expr_indent();
+    } else {
+      fixthisline(get_lisp_indent);
+    }
+  } else if (cindent_on()) {
+    do_c_expr_indent();
+  }
 }

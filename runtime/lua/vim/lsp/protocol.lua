@@ -637,7 +637,7 @@ function protocol.make_client_capabilities()
         codeActionLiteralSupport = {
           codeActionKind = {
             valueSet = (function()
-              local res = vim.tbl_values(protocol.CodeActionKind)
+              local res = vim.tbl_values(constants.CodeActionKind)
               table.sort(res)
               return res
             end)(),
@@ -778,7 +778,7 @@ function protocol.make_client_capabilities()
         },
       },
       showDocument = {
-        support = false,
+        support = true,
       },
     },
   }

@@ -240,7 +240,7 @@ static int ses_arglist(FILE *fd, char *cmd, garray_T *gap, int fullname, unsigne
 }
 
 /// @return  the buffer name for `buf`.
-static char *ses_get_fname(buf_T *buf, unsigned *flagp)
+static char *ses_get_fname(buf_T *buf, const unsigned *flagp)
 {
   // Use the short file name if the current directory is known at the time
   // the session file will be sourced.
@@ -956,7 +956,7 @@ void ex_mkrc(exarg_T *eap)
   }
 
   // When using 'viewdir' may have to create the directory.
-  if (using_vdir && !os_isdir((char *)p_vdir)) {
+  if (using_vdir && !os_isdir(p_vdir)) {
     vim_mkdir_emsg((const char *)p_vdir, 0755);
   }
 
@@ -1095,7 +1095,7 @@ static char *get_view_file(int c)
       len++;
     }
   }
-  char *retval = xmalloc(strlen(sname) + len + STRLEN(p_vdir) + 9);
+  char *retval = xmalloc(strlen(sname) + len + strlen(p_vdir) + 9);
   STRCPY(retval, p_vdir);
   add_pathsep(retval);
   char *s = retval + strlen(retval);

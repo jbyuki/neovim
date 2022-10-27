@@ -5,7 +5,6 @@ local protocol = require('vim.lsp.protocol')
 local util = require('vim.lsp.util')
 local sync = require('vim.lsp.sync')
 
-local vim = vim
 local api = vim.api
 local nvim_err_writeln, nvim_buf_get_lines, nvim_command, nvim_buf_get_option, nvim_exec_autocmds =
   api.nvim_err_writeln,
@@ -825,23 +824,16 @@ end
 ---
 --- See |vim.lsp.start_client()| for all available options. The most important are:
 ---
---- `name` is an arbitrary name for the LSP client. It should be unique per
---- language server.
----
---- `cmd` the command as list - used to start the language server.
---- The command must be present in the `$PATH` environment variable or an
---- absolute path to the executable. Shell constructs like `~` are *NOT* expanded.
----
---- `root_dir` path to the project root.
---- By default this is used to decide if an existing client should be re-used.
---- The example above uses |vim.fs.find()| and |vim.fs.dirname()| to detect the
---- root by traversing the file system upwards starting
---- from the current directory until either a `pyproject.toml` or `setup.py`
---- file is found.
----
---- `workspace_folders` a list of { uri:string, name: string } tables.
---- The project root folders used by the language server.
---- If `nil` the property is derived from the `root_dir` for convenience.
+--- - `name` arbitrary name for the LSP client. Should be unique per language server.
+--- - `cmd` command (in list form) used to start the language server. Must be absolute, or found on
+---   `$PATH`. Shell constructs like `~` are not expanded.
+--- - `root_dir` path to the project root. By default this is used to decide if an existing client
+---   should be re-used. The example above uses |vim.fs.find()| and |vim.fs.dirname()| to detect the
+---   root by traversing the file system upwards starting from the current directory until either
+---   a `pyproject.toml` or `setup.py` file is found.
+--- - `workspace_folders` list of `{ uri:string, name: string }` tables specifying the project root
+---   folders used by the language server. If `nil` the property is derived from `root_dir` for
+---   convenience.
 ---
 --- Language servers use this information to discover metadata like the
 --- dependencies of your project and they tend to index the contents within the
@@ -860,6 +852,9 @@ end
 ---                            Used on all running clients.
 ---                            The default implementation re-uses a client if name
 ---                            and root_dir matches.
+---             - bufnr (number)
+---                     Buffer handle to attach to if starting or re-using a
+---                     client (0 for current).
 ---@return number|nil client_id
 function lsp.start(config, opts)
   opts = opts or {}
@@ -871,7 +866,10 @@ function lsp.start(config, opts)
   if not config.name and type(config.cmd) == 'table' then
     config.name = config.cmd[1] and vim.fs.basename(config.cmd[1]) or nil
   end
-  local bufnr = api.nvim_get_current_buf()
+  local bufnr = opts.bufnr
+  if bufnr == nil or bufnr == 0 then
+    bufnr = api.nvim_get_current_buf()
+  end
   for _, clients in ipairs({ uninitialized_clients, lsp.get_active_clients() }) do
     for _, client in pairs(clients) do
       if reuse_client(client, config) then

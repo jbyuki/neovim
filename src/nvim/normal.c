@@ -638,7 +638,7 @@ static void normal_redraw_mode_message(NormalState *s)
     // Showmode() will clear keep_msg, but we want to use it anyway.
     // First update w_topline.
     setcursor();
-    update_screen(0);
+    update_screen();
     // now reset it, otherwise it's put in the history again
     keep_msg = kmsg;
 
@@ -1134,6 +1134,7 @@ static int normal_execute(VimState *state, int key)
   if (s->need_flushbuf) {
     ui_flush();
   }
+
   if (s->ca.cmdchar != K_IGNORE && s->ca.cmdchar != K_EVENT) {
     did_cursorhold = false;
   }
@@ -1286,9 +1287,9 @@ static void normal_redraw(NormalState *s)
 
   if (VIsual_active) {
     redraw_curbuf_later(UPD_INVERTED);  // update inverted part
-    update_screen(0);
+    update_screen();
   } else if (must_redraw) {
-    update_screen(0);
+    update_screen();
   } else if (redraw_cmdline || clear_cmdline || redraw_mode) {
     showmode();
   }
@@ -1742,9 +1743,7 @@ bool do_mouse(oparg_T *oap, int c, int dir, long count, bool fixindent)
     }
 
     // click in a tab selects that tab page
-    if (is_click
-        && cmdwin_type == 0
-        && mouse_col < Columns) {
+    if (is_click && cmdwin_type == 0 && mouse_col < Columns) {
       in_tab_line = true;
       c1 = tab_page_click_defs[mouse_col].tabnr;
       switch (tab_page_click_defs[mouse_col].type) {
@@ -1823,10 +1822,17 @@ bool do_mouse(oparg_T *oap, int c, int dir, long count, bool fixindent)
           } else if (get_fpos_of_mouse(&m_pos) != IN_BUFFER) {
             jump_flags = MOUSE_MAY_STOP_VIS;
           } else {
-            if ((lt(curwin->w_cursor, VIsual)
-                 && (lt(m_pos, curwin->w_cursor) || lt(VIsual, m_pos)))
-                || (lt(VIsual, curwin->w_cursor)
-                    && (lt(m_pos, VIsual) || lt(curwin->w_cursor, m_pos)))) {
+            if (VIsual_mode == 'V') {
+              if ((curwin->w_cursor.lnum <= VIsual.lnum
+                   && (m_pos.lnum < curwin->w_cursor.lnum || VIsual.lnum < m_pos.lnum))
+                  || (VIsual.lnum < curwin->w_cursor.lnum
+                      && (m_pos.lnum < VIsual.lnum || curwin->w_cursor.lnum < m_pos.lnum))) {
+                jump_flags = MOUSE_MAY_STOP_VIS;
+              }
+            } else if ((ltoreq(curwin->w_cursor, VIsual)
+                        && (lt(m_pos, curwin->w_cursor) || lt(VIsual, m_pos)))
+                       || (lt(VIsual, curwin->w_cursor)
+                           && (lt(m_pos, VIsual) || lt(curwin->w_cursor, m_pos)))) {
               jump_flags = MOUSE_MAY_STOP_VIS;
             } else if (VIsual_mode == Ctrl_V) {
               getvcols(curwin, &curwin->w_cursor, &VIsual, &leftcol, &rightcol);
@@ -1843,7 +1849,7 @@ bool do_mouse(oparg_T *oap, int c, int dir, long count, bool fixindent)
       if (jump_flags) {
         jump_flags = jump_to_mouse(jump_flags, NULL, which_button);
         redraw_curbuf_later(VIsual_active ? UPD_INVERTED : UPD_VALID);
-        update_screen(0);
+        update_screen();
         setcursor();
         ui_flush();  // Update before showing popup menu
       }
@@ -2625,7 +2631,7 @@ void may_clear_cmdline(void)
 
 // Routines for displaying a partly typed command
 #define SHOWCMD_BUFLEN (SHOWCMD_COLS + 1 + 30)
-static char_u showcmd_buf[SHOWCMD_BUFLEN];
+static char showcmd_buf[SHOWCMD_BUFLEN];
 static char_u old_showcmd_buf[SHOWCMD_BUFLEN];    // For push_showcmd()
 static bool showcmd_is_clear = true;
 static bool showcmd_visual = false;
@@ -2665,10 +2671,10 @@ void clear_showcmd(void)
       getvcols(curwin, &curwin->w_cursor, &VIsual, &leftcol, &rightcol);
       p_sbr = saved_sbr;
       curwin->w_p_sbr = saved_w_sbr;
-      snprintf((char *)showcmd_buf, SHOWCMD_BUFLEN, "%" PRId64 "x%" PRId64,
+      snprintf(showcmd_buf, SHOWCMD_BUFLEN, "%" PRId64 "x%" PRId64,
                (int64_t)lines, (int64_t)rightcol - leftcol + 1);
     } else if (VIsual_mode == 'V' || VIsual.lnum != curwin->w_cursor.lnum) {
-      snprintf((char *)showcmd_buf, SHOWCMD_BUFLEN, "%" PRId64, (int64_t)lines);
+      snprintf(showcmd_buf, SHOWCMD_BUFLEN, "%" PRId64, (int64_t)lines);
     } else {
       char_u *s, *e;
       int l;
@@ -2694,9 +2700,9 @@ void clear_showcmd(void)
         s += l;
       }
       if (bytes == chars) {
-        sprintf((char *)showcmd_buf, "%d", chars);
+        snprintf(showcmd_buf, SHOWCMD_BUFLEN, "%d", chars);
       } else {
-        sprintf((char *)showcmd_buf, "%d-%d", chars, bytes);
+        snprintf(showcmd_buf, SHOWCMD_BUFLEN, "%d-%d", chars, bytes);
       }
     }
     int limit = ui_has(kUIMessages) ? SHOWCMD_BUFLEN - 1 : SHOWCMD_COLS;
@@ -2786,7 +2792,7 @@ static void del_from_showcmd(int len)
     return;
   }
 
-  old_len = (int)STRLEN(showcmd_buf);
+  old_len = (int)strlen(showcmd_buf);
   if (len > old_len) {
     len = old_len;
   }
@@ -2825,7 +2831,7 @@ static void display_showcmd(void)
   }
 
   int len;
-  len = (int)STRLEN(showcmd_buf);
+  len = (int)strlen(showcmd_buf);
   showcmd_is_clear = (len == 0);
 
   if (ui_has(kUIMessages)) {
@@ -2834,7 +2840,7 @@ static void display_showcmd(void)
     if (len > 0) {
       // placeholder for future highlight support
       ADD_C(chunk, INTEGER_OBJ(0));
-      ADD_C(chunk, STRING_OBJ(cstr_as_string((char *)showcmd_buf)));
+      ADD_C(chunk, STRING_OBJ(cstr_as_string(showcmd_buf)));
       ADD_C(content, ARRAY_OBJ(chunk));
     }
     ui_call_msg_showcmd(content);
@@ -2846,7 +2852,7 @@ static void display_showcmd(void)
   grid_puts_line_start(&msg_grid_adj, showcmd_row);
 
   if (!showcmd_is_clear) {
-    grid_puts(&msg_grid_adj, (char *)showcmd_buf, showcmd_row, sc_col,
+    grid_puts(&msg_grid_adj, showcmd_buf, showcmd_row, sc_col,
               HL_ATTR(HLF_MSG));
   }
 
@@ -3062,7 +3068,7 @@ static void nv_gd(oparg_T *oap, int nchar, int thisblock)
 
 /// @return true if line[offset] is not inside a C-style comment or string,
 ///         false otherwise.
-static bool is_ident(char_u *line, int offset)
+static bool is_ident(const char_u *line, int offset)
 {
   bool incomment = false;
   int instring = 0;
@@ -3517,6 +3523,7 @@ static bool nv_z_get_count(cmdarg_T *cap, int *nchar_arg)
     no_mapping--;
     allow_keys--;
     (void)add_to_showcmd(nchar);
+
     if (nchar == K_DEL || nchar == K_KDEL) {
       n /= 10;
     } else if (ascii_isdigit(nchar)) {
@@ -3557,6 +3564,7 @@ static int nv_zg_zw(cmdarg_T *cap, int nchar)
     no_mapping--;
     allow_keys--;
     (void)add_to_showcmd(nchar);
+
     if (vim_strchr("gGwW", nchar) == NULL) {
       clearopbeep(cap->oap);
       return OK;
@@ -4314,11 +4322,7 @@ static void nv_ident(cmdarg_T *cap)
 
   case ']':
     tag_cmd = true;
-    if (p_cst) {
-      STRCPY(buf, "cstag ");
-    } else {
-      STRCPY(buf, "ts ");
-    }
+    STRCPY(buf, "ts ");
     break;
 
   default:
@@ -4365,7 +4369,7 @@ static void nv_ident(cmdarg_T *cap)
       aux_ptr = "\\|\"\n*?[";
     }
 
-    p = buf + STRLEN(buf);
+    p = buf + strlen(buf);
     while (n-- > 0) {
       // put a backslash before \ and some others
       if (vim_strchr(aux_ptr, *ptr) != NULL) {
@@ -5300,7 +5304,7 @@ static void nv_kundo(cmdarg_T *cap)
 /// Handle the "r" command.
 static void nv_replace(cmdarg_T *cap)
 {
-  char_u *ptr;
+  char *ptr;
   int had_ctrl_v;
 
   if (checkclearop(cap->oap)) {
@@ -5363,9 +5367,9 @@ static void nv_replace(cmdarg_T *cap)
   }
 
   // Abort if not enough characters to replace.
-  ptr = (char_u *)get_cursor_pos_ptr();
-  if (STRLEN(ptr) < (unsigned)cap->count1
-      || (mb_charlen(ptr) < cap->count1)) {
+  ptr = get_cursor_pos_ptr();
+  if (strlen(ptr) < (unsigned)cap->count1
+      || (mb_charlen((char_u *)ptr) < cap->count1)) {
     clearopbeep(cap->oap);
     return;
   }
@@ -6923,10 +6927,7 @@ static void nv_esc(cmdarg_T *cap)
                && cap->oap->regname == 0);
 
   if (cap->arg) {               // true for CTRL-C
-    if (restart_edit == 0
-        && cmdwin_type == 0
-        && !VIsual_active
-        && no_reason) {
+    if (restart_edit == 0 && cmdwin_type == 0 && !VIsual_active && no_reason) {
       if (anyBufIsChanged()) {
         msg(_("Type  :qa!  and press <Enter> to abandon all changes"
               " and exit Nvim"));

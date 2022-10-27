@@ -111,9 +111,9 @@ struct terminal {
   //  - receive data from libvterm as a result of key presses.
   char textbuf[0x1fff];
 
-  ScrollbackLine **sb_buffer;       // Scrollback buffer storage for libvterm
-  size_t sb_current;                // number of rows pushed to sb_buffer
-  size_t sb_size;                   // sb_buffer size
+  ScrollbackLine **sb_buffer;       // Scrollback storage.
+  size_t sb_current;                // Lines stored in sb_buffer.
+  size_t sb_size;                   // Capacity of sb_buffer.
   // "virtual index" that points to the first sb_buffer row that we need to
   // push to the terminal buffer when refreshing the scrollback. When negative,
   // it actually points to entries that are no longer in sb_buffer (because the
@@ -154,7 +154,7 @@ static VTermScreenCallbacks vterm_screen_callbacks = {
   .movecursor  = term_movecursor,
   .settermprop = term_settermprop,
   .bell        = term_bell,
-  .sb_pushline = term_sb_push,
+  .sb_pushline = term_sb_push,  // Called before a line goes offscreen.
   .sb_popline  = term_sb_pop,
 };
 
@@ -428,7 +428,7 @@ bool terminal_enter(void)
   long save_w_p_so = curwin->w_p_so;
   long save_w_p_siso = curwin->w_p_siso;
   if (curwin->w_p_cul && curwin->w_p_culopt_flags & CULOPT_NBR) {
-    if (strcmp(curwin->w_p_culopt, "number")) {
+    if (strcmp(curwin->w_p_culopt, "number") != 0) {
       save_w_p_culopt = curwin->w_p_culopt;
       curwin->w_p_culopt = xstrdup("number");
     }
@@ -522,7 +522,7 @@ static int terminal_check(VimState *state)
   terminal_check_cursor();
 
   if (must_redraw) {
-    update_screen(0);
+    update_screen();
   }
 
   if (need_maketitle) {  // Update title in terminal-mode. #7248
@@ -952,7 +952,10 @@ static int term_bell(void *data)
   return 1;
 }
 
-// Scrollback push handler (from pangoterm).
+/// Scrollback push handler: called just before a line goes offscreen (and libvterm will forget it),
+/// giving us a chance to store it.
+///
+/// Code adapted from pangoterm.
 static int term_sb_push(int cols, const VTermScreenCell *cells, void *data)
 {
   Terminal *term = data;

@@ -213,13 +213,13 @@ bool findpar(bool *pincl, int dir, long count, int what, bool both)
   }
   curwin->w_cursor.lnum = curr;
   if (curr == curbuf->b_ml.ml_line_count && what != '}') {
-    char_u *line = (char_u *)ml_get(curr);
+    char *line = ml_get(curr);
 
     // Put the cursor on the last character in the last line and make the
     // motion inclusive.
-    if ((curwin->w_cursor.col = (colnr_T)STRLEN(line)) != 0) {
+    if ((curwin->w_cursor.col = (colnr_T)strlen(line)) != 0) {
       curwin->w_cursor.col--;
-      curwin->w_cursor.col -= utf_head_off((char *)line, (char *)line + curwin->w_cursor.col);
+      curwin->w_cursor.col -= utf_head_off(line, line + curwin->w_cursor.col);
       *pincl = true;
     }
   } else {
@@ -229,7 +229,7 @@ bool findpar(bool *pincl, int dir, long count, int what, bool both)
 }
 
 /// check if the string 's' is a nroff macro that is in option 'opt'
-static bool inmacro(char_u *opt, char_u *s)
+static bool inmacro(char_u *opt, const char_u *s)
 {
   char_u *macro;
 

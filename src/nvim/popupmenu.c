@@ -264,12 +264,15 @@ void pum_display(pumitem_T *array, int size, int selected, bool array_changed, i
       pum_row = above_row;
       pum_height = pum_win_row - above_row;
     }
+
+    pum_array = array;
+    // Set "pum_size" before returning so that pum_set_event_info() gets the correct size.
+    pum_size = size;
+
     if (pum_external) {
       return;
     }
 
-    pum_array = array;
-    pum_size = size;
     pum_compute_size();
     int max_width = pum_base_width;
 
@@ -818,7 +821,7 @@ static bool pum_set_selected(int n, int repeat)
             // TODO(bfredl): can simplify, get rid of the flag munging?
             // or at least eliminate extra redraw before win_enter()?
             pum_is_visible = false;
-            update_screen(0);
+            update_screen();
             pum_is_visible = true;
 
             if (!resized && win_valid(curwin_save)) {
@@ -830,7 +833,7 @@ static bool pum_set_selected(int n, int repeat)
             // May need to update the screen again when there are
             // autocommands involved.
             pum_is_visible = false;
-            update_screen(0);
+            update_screen();
             pum_is_visible = true;
           }
         }
@@ -899,6 +902,17 @@ void pum_invalidate(void)
 void pum_recompose(void)
 {
   ui_comp_compose_grid(&pum_grid);
+}
+
+void pum_ext_select_item(int item, bool insert, bool finish)
+{
+  if (!pum_visible() || item < -1 || item >= pum_size) {
+    return;
+  }
+  pum_want.active = true;
+  pum_want.item = item;
+  pum_want.insert = insert;
+  pum_want.finish = finish;
 }
 
 /// Gets the height of the menu.

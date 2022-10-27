@@ -147,7 +147,7 @@ func Test_spell_file_missing()
   augroup TestSpellFileMissing
     autocmd! SpellFileMissing * bwipe
   augroup END
-  call assert_fails('set spell spelllang=ab_cd', 'E797:')
+  call assert_fails('set spell spelllang=ab_cd', 'E937:')
 
   " clean up
   augroup TestSpellFileMissing
@@ -472,6 +472,35 @@ func Test_spellsuggest_option_expr()
 
   set spell& spellsuggest& verbose&
   bwipe!
+endfunc
+
+" Test for 'spellsuggest' expr errrors
+func Test_spellsuggest_expr_errors()
+  " 'spellsuggest'
+  func MySuggest()
+    return range(3)
+  endfunc
+  set spell spellsuggest=expr:MySuggest()
+  call assert_equal([], spellsuggest('baord', 3))
+
+  " Test for 'spellsuggest' expression returning a non-list value
+  func! MySuggest2()
+    return 'good'
+  endfunc
+  set spellsuggest=expr:MySuggest2()
+  call assert_equal([], spellsuggest('baord'))
+
+  " Test for 'spellsuggest' expression returning a list with dict values
+  func! MySuggest3()
+    return [[{}, {}]]
+  endfunc
+  set spellsuggest=expr:MySuggest3()
+  call assert_fails("call spellsuggest('baord')", 'E728:')
+
+  set nospell spellsuggest&
+  delfunc MySuggest
+  delfunc MySuggest2
+  delfunc MySuggest3
 endfunc
 
 func Test_spellsuggest_timeout()

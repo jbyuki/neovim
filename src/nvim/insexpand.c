@@ -215,11 +215,11 @@ static bool compl_interrupted = false;
 
 static bool compl_restarting = false;   ///< don't insert match
 
-///< When the first completion is done "compl_started" is set.  When it's
-///< false the word to be completed must be located.
+/// When the first completion is done "compl_started" is set.  When it's
+/// false the word to be completed must be located.
 static bool compl_started = false;
 
-///< Which Ctrl-X mode are we in?
+/// Which Ctrl-X mode are we in?
 static int ctrl_x_mode = CTRL_X_NORMAL;
 
 static int compl_matches = 0;           ///< number of completion matches
@@ -572,7 +572,7 @@ bool ins_compl_accept_char(int c)
 
 /// Get the completed text by inferring the case of the originally typed text.
 /// If the result is in allocated memory "tofree" is set to it.
-static char_u *ins_compl_infercase_gettext(char_u *str, int char_len, int compl_char_len,
+static char_u *ins_compl_infercase_gettext(const char_u *str, int char_len, int compl_char_len,
                                            int min_len, char **tofree)
 {
   bool has_lower = false;
@@ -1228,7 +1228,7 @@ void ins_compl_show_pum(void)
   do_cmdline_cmd("if exists('g:loaded_matchparen')|3match none|endif");
 
   // Update the screen before drawing the popup menu over it.
-  update_screen(0);
+  update_screen();
 
   int cur = -1;
   bool array_changed = false;
@@ -1311,9 +1311,9 @@ static void ins_compl_dictionaries(char_u *dict_start, char_u *pat, int flags, i
   // to only match at the start of a line.  Otherwise just match the
   // pattern. Also need to double backslashes.
   if (ctrl_x_mode_line_or_eval()) {
-    char_u *pat_esc = vim_strsave_escaped(pat, (char_u *)"\\");
+    char *pat_esc = (char *)vim_strsave_escaped(pat, (char_u *)"\\");
 
-    size_t len = STRLEN(pat_esc) + 10;
+    size_t len = strlen(pat_esc) + 10;
     ptr = xmalloc(len);
     vim_snprintf((char *)ptr, len, "^\\s*\\zs\\V%s", pat_esc);
     regmatch.regprog = vim_regcomp((char *)ptr, RE_MAGIC);
@@ -1378,7 +1378,8 @@ theend:
 /// skipping the word at 'skip_word'.
 ///
 /// @return  OK on success.
-static int thesaurus_add_words_in_line(char *fname, char_u **buf_arg, int dir, char_u *skip_word)
+static int thesaurus_add_words_in_line(char *fname, char_u **buf_arg, int dir,
+                                       const char_u *skip_word)
 {
   int status = OK;
 
@@ -1433,7 +1434,7 @@ static void ins_compl_files(int count, char **files, int thesaurus, int flags, r
 
   for (i = 0; i < count && !got_int && !compl_interrupted; i++) {
     fp = os_fopen(files[i], "r");  // open dictionary file
-    if (flags != DICT_EXACT) {
+    if (flags != DICT_EXACT && !shortmess(SHM_COMPLETIONSCAN)) {
       msg_hist_off = true;  // reset in msg_trunc_attr()
       vim_snprintf((char *)IObuff, IOSIZE,
                    _("Scanning dictionary: %s"), files[i]);
@@ -1648,7 +1649,7 @@ int ins_compl_bs(void)
     ins_compl_restart();
   }
 
-  // ins_compl_restart() calls update_screen(0) which may invalidate the pointer
+  // ins_compl_restart() calls update_screen() which may invalidate the pointer
   // TODO(bfredl): get rid of random update_screen() calls deep inside completion logic
   line = get_cursor_line_ptr();
 
@@ -1759,7 +1760,7 @@ static void ins_compl_restart(void)
   // update screen before restart.
   // so if complete is blocked,
   // will stay to the last popup menu and reduce flicker
-  update_screen(0);
+  update_screen();  // TODO(bfredl): no.
   ins_compl_free();
   compl_started = false;
   compl_matches = 0;
@@ -1788,13 +1789,13 @@ static void ins_compl_set_original_text(char *str)
 /// matches.
 void ins_compl_addfrommatch(void)
 {
-  char_u *p;
+  char *p;
   int len = (int)curwin->w_cursor.col - (int)compl_col;
   int c;
   compl_T *cp;
   assert(compl_shown_match != NULL);
-  p = (char_u *)compl_shown_match->cp_str;
-  if ((int)STRLEN(p) <= len) {   // the match is too short
+  p = compl_shown_match->cp_str;
+  if ((int)strlen(p) <= len) {   // the match is too short
     // When still at the original match use the first entry that matches
     // the leader.
     if (!match_at_original_text(compl_shown_match)) {
@@ -1805,17 +1806,17 @@ void ins_compl_addfrommatch(void)
     for (cp = compl_shown_match->cp_next; cp != NULL
          && !is_first_match(cp); cp = cp->cp_next) {
       if (compl_leader == NULL
-          || ins_compl_equal(cp, (char_u *)compl_leader, STRLEN(compl_leader))) {
-        p = (char_u *)cp->cp_str;
+          || ins_compl_equal(cp, (char_u *)compl_leader, strlen(compl_leader))) {
+        p = cp->cp_str;
         break;
       }
     }
-    if (p == NULL || (int)STRLEN(p) <= len) {
+    if (p == NULL || (int)strlen(p) <= len) {
       return;
     }
   }
   p += len;
-  c = utf_ptr2char((char *)p);
+  c = utf_ptr2char(p);
   ins_compl_addleader(c);
 }
 
@@ -2008,17 +2009,17 @@ static bool ins_compl_stop(const int c, const int prev_mode, bool retval)
   // but only do this, if the Popup is still visible
   if (c == Ctrl_E) {
     ins_compl_delete();
-    char_u *p = NULL;
+    char *p = NULL;
     if (compl_leader != NULL) {
-      p = (char_u *)compl_leader;
+      p = compl_leader;
     } else if (compl_first_match != NULL) {
-      p = (char_u *)compl_orig_text;
+      p = compl_orig_text;
     }
     if (p != NULL) {
       const int compl_len = get_compl_len();
-      const int len = (int)STRLEN(p);
+      const int len = (int)strlen(p);
       if (len > compl_len) {
-        ins_bytes_len((char *)p + compl_len, (size_t)(len - compl_len));
+        ins_bytes_len(p + compl_len, (size_t)(len - compl_len));
       }
     }
     retval = true;
@@ -2048,7 +2049,7 @@ static bool ins_compl_stop(const int c, const int prev_mode, bool retval)
   if (c == Ctrl_C && cmdwin_type != 0) {
     // Avoid the popup menu remains displayed when leaving the
     // command line window.
-    update_screen(0);
+    update_screen();
   }
 
   // Indent now if a key was typed that is in 'cinkeys'.
@@ -2759,14 +2760,16 @@ static int process_next_cpt_value(ins_compl_next_state_T *st, int *compl_type_ar
       st->dict = (char_u *)st->ins_buf->b_fname;
       st->dict_f = DICT_EXACT;
     }
-    msg_hist_off = true;  // reset in msg_trunc_attr()
-    vim_snprintf((char *)IObuff, IOSIZE, _("Scanning: %s"),
-                 st->ins_buf->b_fname == NULL
-                 ? buf_spname(st->ins_buf)
-                 : st->ins_buf->b_sfname == NULL
-                 ? st->ins_buf->b_fname
-                 : st->ins_buf->b_sfname);
-    (void)msg_trunc_attr((char *)IObuff, true, HL_ATTR(HLF_R));
+    if (!shortmess(SHM_COMPLETIONSCAN)) {
+      msg_hist_off = true;  // reset in msg_trunc_attr()
+      vim_snprintf((char *)IObuff, IOSIZE, _("Scanning: %s"),
+                   st->ins_buf->b_fname == NULL
+                   ? buf_spname(st->ins_buf)
+                   : st->ins_buf->b_sfname == NULL
+                   ? st->ins_buf->b_fname
+                   : st->ins_buf->b_sfname);
+      (void)msg_trunc_attr((char *)IObuff, true, HL_ATTR(HLF_R));
+    }
   } else if (*st->e_cpt == NUL) {
     status = INS_COMPL_CPT_END;
   } else {
@@ -2787,10 +2790,12 @@ static int process_next_cpt_value(ins_compl_next_state_T *st, int *compl_type_ar
     } else if (*st->e_cpt == 'd') {
       compl_type = CTRL_X_PATH_DEFINES;
     } else if (*st->e_cpt == ']' || *st->e_cpt == 't') {
-      msg_hist_off = true;  // reset in msg_trunc_attr()
       compl_type = CTRL_X_TAGS;
-      vim_snprintf((char *)IObuff, IOSIZE, "%s", _("Scanning tags."));
-      (void)msg_trunc_attr((char *)IObuff, true, HL_ATTR(HLF_R));
+      if (!shortmess(SHM_COMPLETIONSCAN)) {
+        msg_hist_off = true;  // reset in msg_trunc_attr()
+        vim_snprintf((char *)IObuff, IOSIZE, "%s", _("Scanning tags."));
+        (void)msg_trunc_attr((char *)IObuff, true, HL_ATTR(HLF_R));
+      }
     } else {
       compl_type = -1;
     }
@@ -2925,33 +2930,33 @@ static char_u *ins_comp_get_next_word_or_line(buf_T *ins_buf, pos_T *cur_match_p
                                               bool *cont_s_ipos)
 {
   *match_len = 0;
-  char_u *ptr = (char_u *)ml_get_buf(ins_buf, cur_match_pos->lnum, false) + cur_match_pos->col;
+  char *ptr = ml_get_buf(ins_buf, cur_match_pos->lnum, false) + cur_match_pos->col;
   int len;
   if (ctrl_x_mode_line_or_eval()) {
     if (compl_status_adding()) {
       if (cur_match_pos->lnum >= ins_buf->b_ml.ml_line_count) {
         return NULL;
       }
-      ptr = (char_u *)ml_get_buf(ins_buf, cur_match_pos->lnum + 1, false);
+      ptr = ml_get_buf(ins_buf, cur_match_pos->lnum + 1, false);
       if (!p_paste) {
-        ptr = (char_u *)skipwhite((char *)ptr);
+        ptr = skipwhite(ptr);
       }
     }
-    len = (int)STRLEN(ptr);
+    len = (int)strlen(ptr);
   } else {
-    char_u *tmp_ptr = ptr;
+    char *tmp_ptr = ptr;
 
-    if (compl_status_adding() && compl_length <= (int)STRLEN(tmp_ptr)) {
+    if (compl_status_adding() && compl_length <= (int)strlen(tmp_ptr)) {
       tmp_ptr += compl_length;
       // Skip if already inside a word.
-      if (vim_iswordp(tmp_ptr)) {
+      if (vim_iswordp((char_u *)tmp_ptr)) {
         return NULL;
       }
       // Find start of next word.
-      tmp_ptr = find_word_start(tmp_ptr);
+      tmp_ptr = (char *)find_word_start((char_u *)tmp_ptr);
     }
     // Find end of this word.
-    tmp_ptr = find_word_end(tmp_ptr);
+    tmp_ptr = (char *)find_word_end((char_u *)tmp_ptr);
     len = (int)(tmp_ptr - ptr);
 
     if (compl_status_adding() && len == compl_length) {
@@ -2960,12 +2965,12 @@ static char_u *ins_comp_get_next_word_or_line(buf_T *ins_buf, pos_T *cur_match_p
         // normal command "J" was used. IOSIZE is always greater than
         // compl_length, so the next STRNCPY always works -- Acevedo
         STRNCPY(IObuff, ptr, len);  // NOLINT(runtime/printf)
-        ptr = (char_u *)ml_get_buf(ins_buf, cur_match_pos->lnum + 1, false);
-        tmp_ptr = ptr = (char_u *)skipwhite((char *)ptr);
+        ptr = ml_get_buf(ins_buf, cur_match_pos->lnum + 1, false);
+        tmp_ptr = ptr = skipwhite(ptr);
         // Find start of next word.
-        tmp_ptr = find_word_start(tmp_ptr);
+        tmp_ptr = (char *)find_word_start((char_u *)tmp_ptr);
         // Find end of next word.
-        tmp_ptr = find_word_end(tmp_ptr);
+        tmp_ptr = (char *)find_word_end((char_u *)tmp_ptr);
         if (tmp_ptr > ptr) {
           if (*ptr != ')' && IObuff[len - 1] != TAB) {
             if (IObuff[len - 1] != ' ') {
@@ -2988,7 +2993,7 @@ static char_u *ins_comp_get_next_word_or_line(buf_T *ins_buf, pos_T *cur_match_p
           *cont_s_ipos = true;
         }
         IObuff[len] = NUL;
-        ptr = (char_u *)IObuff;
+        ptr = IObuff;
       }
       if (len == compl_length) {
         return NULL;
@@ -2997,7 +3002,7 @@ static char_u *ins_comp_get_next_word_or_line(buf_T *ins_buf, pos_T *cur_match_p
   }
 
   *match_len = len;
-  return ptr;
+  return (char_u *)ptr;
 }
 
 /// Get the next set of words matching "compl_pattern" for default completion(s)
@@ -3281,7 +3286,7 @@ static int ins_compl_get_exp(pos_T *ini)
 static void ins_compl_update_shown_match(void)
 {
   while (!ins_compl_equal(compl_shown_match,
-                          (char_u *)compl_leader, STRLEN(compl_leader))
+                          (char_u *)compl_leader, strlen(compl_leader))
          && compl_shown_match->cp_next != NULL
          && !is_first_match(compl_shown_match->cp_next)) {
     compl_shown_match = compl_shown_match->cp_next;
@@ -3290,10 +3295,10 @@ static void ins_compl_update_shown_match(void)
   // If we didn't find it searching forward, and compl_shows_dir is
   // backward, find the last match.
   if (compl_shows_dir_backward()
-      && !ins_compl_equal(compl_shown_match, (char_u *)compl_leader, STRLEN(compl_leader))
+      && !ins_compl_equal(compl_shown_match, (char_u *)compl_leader, strlen(compl_leader))
       && (compl_shown_match->cp_next == NULL
           || is_first_match(compl_shown_match->cp_next))) {
-    while (!ins_compl_equal(compl_shown_match, (char_u *)compl_leader, STRLEN(compl_leader))
+    while (!ins_compl_equal(compl_shown_match, (char_u *)compl_leader, strlen(compl_leader))
            && compl_shown_match->cp_prev != NULL
            && !is_first_match(compl_shown_match->cp_prev)) {
       compl_shown_match = compl_shown_match->cp_prev;
@@ -3438,7 +3443,7 @@ static int find_next_completion_match(bool allow_get_expansion, int todo, bool a
     if (!match_at_original_text(compl_shown_match)
         && compl_leader != NULL
         && !ins_compl_equal(compl_shown_match,
-                            (char_u *)compl_leader, STRLEN(compl_leader))) {
+                            (char_u *)compl_leader, strlen(compl_leader))) {
       todo++;
     } else {
       // Remember a matching item.
@@ -3533,7 +3538,7 @@ static int ins_compl_next(bool allow_get_expansion, int count, bool insert_match
 
   if (!allow_get_expansion) {
     // redraw to show the user what was inserted
-    update_screen(0);
+    update_screen();  // TODO(bfredl): no!
 
     // display the updated popup menu
     ins_compl_show_pum();
@@ -3557,17 +3562,6 @@ static int ins_compl_next(bool allow_get_expansion, int count, bool insert_match
   }
 
   return num_matches;
-}
-
-void pum_ext_select_item(int item, bool insert, bool finish)
-{
-  if (!pum_visible() || item < -1 || item >= compl_match_arraysize) {
-    return;
-  }
-  pum_want.active = true;
-  pum_want.item = item;
-  pum_want.insert = insert;
-  pum_want.finish = finish;
 }
 
 /// Call this while finding completions, to check whether the user has hit a key
@@ -3717,17 +3711,17 @@ static int get_normal_compl_info(char *line, int startcol, colnr_T curs_col)
       compl_pattern = xstrnsave(line + compl_col, (size_t)compl_length);
     }
   } else if (compl_status_adding()) {
-    char_u *prefix = (char_u *)"\\<";
+    char *prefix = "\\<";
 
     // we need up to 2 extra chars for the prefix
     compl_pattern = xmalloc(quote_meta(NULL, (char_u *)line + compl_col, compl_length) + 2);
     if (!vim_iswordp((char_u *)line + compl_col)
         || (compl_col > 0
             && (vim_iswordp(mb_prevptr((char_u *)line, (char_u *)line + compl_col))))) {
-      prefix = (char_u *)"";
+      prefix = "";
     }
     STRCPY(compl_pattern, prefix);
-    (void)quote_meta((char_u *)compl_pattern + STRLEN(prefix),
+    (void)quote_meta((char_u *)compl_pattern + strlen(prefix),
                      (char_u *)line + compl_col, compl_length);
   } else if (--startcol < 0
              || !vim_iswordp(mb_prevptr((char_u *)line, (char_u *)line + startcol + 1))) {

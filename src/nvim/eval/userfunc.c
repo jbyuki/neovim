@@ -48,6 +48,8 @@ static char *e_funcexts = N_("E122: Function %s already exists, add ! to replace
 static char *e_funcdict = N_("E717: Dictionary entry already exists");
 static char *e_funcref = N_("E718: Funcref required");
 static char *e_nofunc = N_("E130: Unknown function: %s");
+static char e_no_white_space_allowed_before_str_str[]
+  = N_("E1068: No white space allowed before '%s': %s");
 
 void func_init(void)
 {
@@ -149,6 +151,15 @@ static int get_function_args(char **argp, char_u endchar, garray_T *newargs, int
         emsg(_("E989: Non-default argument follows default argument"));
         mustend = true;
       }
+
+      if (ascii_iswhite(*p) && *skipwhite(p) == ',') {
+        // Be tolerant when skipping
+        if (!skip) {
+          semsg(_(e_no_white_space_allowed_before_str_str), ",", p);
+          goto err_ret;
+        }
+        p = skipwhite(p);
+      }
       if (*p == ',') {
         p++;
       } else {
@@ -206,12 +217,12 @@ char_u *get_lambda_name(void)
   return name;
 }
 
-static void set_ufunc_name(ufunc_T *fp, char_u *name)
+static void set_ufunc_name(ufunc_T *fp, char *name)
 {
   STRCPY(fp->uf_name, name);
 
-  if (name[0] == K_SPECIAL) {
-    fp->uf_name_exp = xmalloc(STRLEN(name) + 3);
+  if ((uint8_t)name[0] == K_SPECIAL) {
+    fp->uf_name_exp = xmalloc(strlen(name) + 3);
     STRCPY(fp->uf_name_exp, "<SNR>");
     STRCAT(fp->uf_name_exp, fp->uf_name + 3);
   }
@@ -275,9 +286,9 @@ int get_lambda_tv(char **arg, typval_T *rettv, bool evaluate)
     char_u *p;
     garray_T newlines;
 
-    char_u *name = get_lambda_name();
+    char *name = (char *)get_lambda_name();
 
-    fp = xcalloc(1, offsetof(ufunc_T, uf_name) + STRLEN(name) + 1);
+    fp = xcalloc(1, offsetof(ufunc_T, uf_name) + strlen(name) + 1);
     pt = xcalloc(1, sizeof(partial_T));
 
     ga_init(&newlines, (int)sizeof(char_u *), 1);
@@ -378,9 +389,9 @@ char_u *deref_func_name(const char *name, int *lenp, partial_T **const partialp,
     if (partialp != NULL) {
       *partialp = pt;
     }
-    char_u *s = (char_u *)partial_name(pt);
-    *lenp = (int)STRLEN(s);
-    return s;
+    char *s = partial_name(pt);
+    *lenp = (int)strlen(s);
+    return (char_u *)s;
   }
 
   return (char_u *)name;
@@ -1193,7 +1204,7 @@ void call_user_func(ufunc_T *fp, int argcount, typval_T *argvars, typval_T *rett
 /// For the first we only count the name stored in func_hashtab as a reference,
 /// using function() does not count as a reference, because the function is
 /// looked up by name.
-static bool func_name_refcount(char_u *name)
+static bool func_name_refcount(const char_u *name)
 {
   return isdigit(*name) || *name == '<';
 }
@@ -1335,10 +1346,10 @@ void free_all_functions(void)
 /// @param[in]   len    length of "name", or -1 for NUL terminated.
 ///
 /// @return true if "name" looks like a builtin function name: starts with a
-/// lower case letter and doesn't contain AUTOLOAD_CHAR.
+/// lower case letter and doesn't contain AUTOLOAD_CHAR or ':'.
 static bool builtin_function(const char *name, int len)
 {
-  if (!ASCII_ISLOWER(name[0])) {
+  if (!ASCII_ISLOWER(name[0]) || name[1] == ':') {
     return false;
   }
 
@@ -1877,6 +1888,36 @@ theend:
 
 #define MAX_FUNC_NESTING 50
 
+/// List functions.
+///
+/// @param regmatch  When NULL, all of them.
+///                  Otherwise functions matching "regmatch".
+static void list_functions(regmatch_T *regmatch)
+{
+  const size_t used = func_hashtab.ht_used;
+  size_t todo = used;
+  const hashitem_T *const ht_array = func_hashtab.ht_array;
+
+  for (const hashitem_T *hi = ht_array; todo > 0 && !got_int; hi++) {
+    if (!HASHITEM_EMPTY(hi)) {
+      ufunc_T *fp = HI2UF(hi);
+      todo--;
+      if ((fp->uf_flags & FC_DEAD) == 0
+          && (regmatch == NULL
+              ? (!message_filtered((char *)fp->uf_name)
+                 && !func_name_refcount(fp->uf_name))
+              : (!isdigit(*fp->uf_name)
+                 && vim_regexec(regmatch, (char *)fp->uf_name, 0)))) {
+        list_func_head(fp, false, false);
+        if (used != func_hashtab.ht_used || ht_array != func_hashtab.ht_array) {
+          emsg(_("E454: function list was modified"));
+          return;
+        }
+      }
+    }
+  }
+}
+
 /// ":function"
 void ex_function(exarg_T *eap)
 {
@@ -1903,7 +1944,6 @@ void ex_function(exarg_T *eap)
   static int func_nr = 0;           // number for nameless function
   int paren;
   hashtab_T *ht;
-  int todo;
   hashitem_T *hi;
   linenr_T sourcing_lnum_off;
   linenr_T sourcing_lnum_top;
@@ -1916,19 +1956,7 @@ void ex_function(exarg_T *eap)
   // ":function" without argument: list functions.
   if (ends_excmd(*eap->arg)) {
     if (!eap->skip) {
-      todo = (int)func_hashtab.ht_used;
-      for (hi = func_hashtab.ht_array; todo > 0 && !got_int; hi++) {
-        if (!HASHITEM_EMPTY(hi)) {
-          todo--;
-          fp = HI2UF(hi);
-          if (message_filtered((char *)fp->uf_name)) {
-            continue;
-          }
-          if (!func_name_refcount(fp->uf_name)) {
-            list_func_head(fp, false, false);
-          }
-        }
-      }
+      list_functions(NULL);
     }
     eap->nextcmd = check_nextcmd(eap->arg);
     return;
@@ -1946,18 +1974,7 @@ void ex_function(exarg_T *eap)
       *p = c;
       if (regmatch.regprog != NULL) {
         regmatch.rm_ic = p_ic;
-
-        todo = (int)func_hashtab.ht_used;
-        for (hi = func_hashtab.ht_array; todo > 0 && !got_int; hi++) {
-          if (!HASHITEM_EMPTY(hi)) {
-            todo--;
-            fp = HI2UF(hi);
-            if (!isdigit(*fp->uf_name)
-                && vim_regexec(&regmatch, (char *)fp->uf_name, 0)) {
-              list_func_head(fp, false, false);
-            }
-          }
-        }
+        list_functions(&regmatch);
         vim_regfree(regmatch.regprog);
       }
     }
@@ -1983,7 +2000,14 @@ void ex_function(exarg_T *eap)
   // s:func      script-local function name
   // g:func      global function name, same as "func"
   p = eap->arg;
-  name = (char *)trans_function_name(&p, eap->skip, TFN_NO_AUTOLOAD, &fudi, NULL);
+  if (strncmp(p, "<lambda>", 8) == 0) {
+    p += 8;
+    (void)getdigits(&p, false, 0);
+    name = xstrndup(eap->arg, (size_t)(p - eap->arg));
+    CLEAR_FIELD(fudi);
+  } else {
+    name = (char *)trans_function_name(&p, eap->skip, TFN_NO_AUTOLOAD, &fudi, NULL);
+  }
   paren = (vim_strchr(p, '(') != NULL);
   if (name == NULL && (fudi.fd_dict == NULL || !paren) && !eap->skip) {
     // Return on an invalid expression in braces, unless the expression
@@ -2469,8 +2493,8 @@ void ex_function(exarg_T *eap)
       if (SOURCING_NAME != NULL) {
         scriptname = (char_u *)autoload_name((const char *)name, strlen(name));
         p = vim_strchr((char *)scriptname, '/');
-        plen = (int)STRLEN(p);
-        slen = (int)STRLEN(SOURCING_NAME);
+        plen = (int)strlen(p);
+        slen = (int)strlen(SOURCING_NAME);
         if (slen > plen && path_fnamecmp(p, SOURCING_NAME + slen - plen) == 0) {
           j = OK;
         }
@@ -2506,7 +2530,7 @@ void ex_function(exarg_T *eap)
     }
 
     // insert the new function in the function list
-    set_ufunc_name(fp, (char_u *)name);
+    set_ufunc_name(fp, name);
     if (overwrite) {
       hi = hash_find(&func_hashtab, name);
       hi->hi_key = UF2HIKEY(fp);
@@ -2680,6 +2704,13 @@ void ex_delfunction(exarg_T *eap)
     *p = NUL;
   }
 
+  if (isdigit(*name) && fudi.fd_dict == NULL) {
+    if (!eap->skip) {
+      semsg(_(e_invarg2), eap->arg);
+    }
+    xfree(name);
+    return;
+  }
   if (!eap->skip) {
     fp = find_func(name);
   }
@@ -2880,7 +2911,7 @@ void ex_call(exarg_T *eap)
   char_u *arg = (char_u *)eap->arg;
   char_u *startarg;
   char_u *name;
-  char_u *tofree;
+  char *tofree;
   int len;
   typval_T rettv;
   linenr_T lnum;
@@ -2901,7 +2932,7 @@ void ex_call(exarg_T *eap)
     return;
   }
 
-  tofree = trans_function_name((char **)&arg, false, TFN_INT, &fudi, &partial);
+  tofree = (char *)trans_function_name((char **)&arg, false, TFN_INT, &fudi, &partial);
   if (fudi.fd_newkey != NULL) {
     // Still need to give an error message for missing key.
     semsg(_(e_dictkey), fudi.fd_newkey);
@@ -2920,9 +2951,8 @@ void ex_call(exarg_T *eap)
   // If it is the name of a variable of type VAR_FUNC or VAR_PARTIAL use its
   // contents. For VAR_PARTIAL get its partial, unless we already have one
   // from trans_function_name().
-  len = (int)STRLEN(tofree);
-  name = deref_func_name((const char *)tofree, &len,
-                         partial != NULL ? NULL : &partial, false);
+  len = (int)strlen(tofree);
+  name = deref_func_name(tofree, &len, partial != NULL ? NULL : &partial, false);
 
   // Skip white space to allow ":call func ()".  Not good, but required for
   // backward compatibility.
@@ -3549,8 +3579,8 @@ bool set_ref_in_func(char_u *name, ufunc_T *fp_in, int copyID)
 /// Registers a luaref as a lambda.
 char_u *register_luafunc(LuaRef ref)
 {
-  char_u *name = get_lambda_name();
-  ufunc_T *fp = xcalloc(1, offsetof(ufunc_T, uf_name) + STRLEN(name) + 1);
+  char *name = (char *)get_lambda_name();
+  ufunc_T *fp = xcalloc(1, offsetof(ufunc_T, uf_name) + strlen(name) + 1);
 
   fp->uf_refcount = 1;
   fp->uf_varargs = true;

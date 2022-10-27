@@ -429,7 +429,7 @@ func Test_menu_special()
   nunmenu Test.Sign
 endfunc
 
-" Test for "icon=filname" in a toolbar
+" Test for "icon=filename" in a toolbar
 func Test_menu_icon()
   CheckFeature toolbar
   nmenu icon=myicon.xpm Toolbar.Foo  :echo "Foo"<CR>
@@ -479,6 +479,35 @@ func Test_popup_menu()
   menu enable PopUp.bar
   call assert_equal(v:true, "PopUp.bar"->menu_info().enabled)
   unmenu PopUp
+endfunc
+
+" Test for MenuPopup autocommand
+func Test_autocmd_MenuPopup()
+  CheckNotGui
+
+  set mouse=a
+  set mousemodel=popup
+  aunmenu *
+  autocmd MenuPopup * exe printf(
+    \ 'anoremenu PopUp.Foo <Cmd>let g:res = ["%s", "%s"]<CR>',
+    \ expand('<afile>'), expand('<amatch>'))
+
+  call feedkeys("\<RightMouse>\<Down>\<CR>", 'tnix')
+  call assert_equal(['n', 'n'], g:res)
+
+  call feedkeys("v\<RightMouse>\<Down>\<CR>\<Esc>", 'tnix')
+  call assert_equal(['v', 'v'], g:res)
+
+  call feedkeys("gh\<RightMouse>\<Down>\<CR>\<Esc>", 'tnix')
+  call assert_equal(['s', 's'], g:res)
+
+  call feedkeys("i\<RightMouse>\<Down>\<CR>\<Esc>", 'tnix')
+  call assert_equal(['i', 'i'], g:res)
+
+  autocmd! MenuPopup
+  aunmenu PopUp.Foo
+  unlet g:res
+  set mouse& mousemodel&
 endfunc
 
 " Test for listing the menus using the :menu command

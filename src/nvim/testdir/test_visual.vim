@@ -474,6 +474,18 @@ func Test_visual_block_put()
   bw!
 endfunc
 
+func Test_visual_block_put_invalid()
+  enew!
+  behave mswin
+  norm yy
+  norm v)Ps/^/	
+  " this was causing the column to become negative
+  silent norm ggv)P
+
+  bwipe!
+  behave xterm
+endfunc
+
 " Visual modes (v V CTRL-V) followed by an operator; count; repeating
 func Test_visual_mode_op()
   new
@@ -1269,7 +1281,7 @@ func Test_visual_block_with_virtualedit()
 endfunc
 
 func Test_visual_block_ctrl_w_f()
-  " Emtpy block selected in new buffer should not result in an error.
+  " Empty block selected in new buffer should not result in an error.
   au! BufNew foo sil norm f
   edit foo
 
@@ -1491,6 +1503,5 @@ func Test_switch_buffer_ends_visual_mode()
   bwipe!
   exe 'bwipe!' buf2
 endfunc
-
 
 " vim: shiftwidth=2 sts=2 expandtab

@@ -166,7 +166,7 @@ if(NOT "${MIN_LOG_LEVEL}" MATCHES "^$")
   add_definitions(-DMIN_LOG_LEVEL=${MIN_LOG_LEVEL})
 endif()
 
-if(DEBUG OR CLANG_ASAN_UBSAN OR CLANG_MSAN OR CLANG_TSAN)
+if(CLANG_ASAN_UBSAN OR CLANG_MSAN OR CLANG_TSAN)
   add_definitions(-DEXITFREE)
 endif()
 
@@ -206,9 +206,7 @@ add_custom_target(update_version_stamp
     -DNVIM_VERSION_PATCH=${NVIM_VERSION_PATCH}
     -DNVIM_VERSION_PRERELEASE=${NVIM_VERSION_PRERELEASE}
     -DOUTPUT=${NVIM_VERSION_GIT_H}
-    -DCMAKE_MESSAGE_LOG_LEVEL=${CMAKE_MESSAGE_LOG_LEVEL}
     -P ${PROJECT_SOURCE_DIR}/cmake/GenerateVersion.cmake
-  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
   BYPRODUCTS ${NVIM_VERSION_GIT_H})
 
 # NVIM_GENERATED_FOR_HEADERS: generated headers to be included in headers
@@ -446,6 +444,15 @@ set(NVIM_EXEC_LINK_LIBRARIES ${NVIM_LINK_LIBRARIES} ${LUA_PREFERRED_LIBRARIES})
 add_executable(nvim ${NVIM_GENERATED_FOR_SOURCES} ${NVIM_GENERATED_FOR_HEADERS}
   ${NVIM_GENERATED_SOURCES} ${NVIM_SOURCES} ${NVIM_HEADERS}
   ${EXTERNAL_SOURCES} ${EXTERNAL_HEADERS})
+
+set_target_properties(nvim
+  PROPERTIES
+  EXPORT_COMPILE_COMMANDS ON)
+
+if(${CMAKE_VERSION} VERSION_LESS 3.20)
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+endif()
+
 target_link_libraries(nvim ${NVIM_EXEC_LINK_LIBRARIES})
 install_helper(TARGETS nvim)
 if(MSVC)
@@ -564,7 +571,10 @@ file(MAKE_DIRECTORY ${BINARY_LIB_DIR})
 
 # install treesitter parser if bundled
 if(EXISTS ${DEPS_PREFIX}/lib/nvim/parser)
-  file(COPY ${DEPS_PREFIX}/lib/nvim/parser DESTINATION ${BINARY_LIB_DIR})
+  glob_wrapper(TREESITTER_PARSERS ${DEPS_PREFIX}/lib/nvim/parser/*)
+  foreach(parser_lib ${TREESITTER_PARSERS})
+    file(COPY ${parser_lib} DESTINATION ${BINARY_LIB_DIR}/parser)
+  endforeach()
 endif()
 
 install(DIRECTORY ${BINARY_LIB_DIR}

@@ -186,8 +186,15 @@ func Test_changing_cmdheight()
 
   let lines =<< trim END
       set cmdheight=1 laststatus=2
+      func EchoTwo()
+        set laststatus=2
+        set cmdheight=5
+        echo 'foo'
+        echo 'bar'
+        set cmdheight=1
+      endfunc
   END
-  call writefile(lines, 'XTest_cmdheight')
+  call writefile(lines, 'XTest_cmdheight', 'D')
 
   let buf = RunVimInTerminal('-S XTest_cmdheight', {'rows': 8})
   call term_sendkeys(buf, ":resize -3\<CR>")
@@ -205,14 +212,27 @@ func Test_changing_cmdheight()
   call term_sendkeys(buf, ":set cmdheight-=2\<CR>")
   call VerifyScreenDump(buf, 'Test_changing_cmdheight_4', {})
 
-  " reducing window size and then setting cmdheight
+  " reducing window size and then setting cmdheight 
   call term_sendkeys(buf, ":resize -1\<CR>")
   call term_sendkeys(buf, ":set cmdheight=1\<CR>")
   call VerifyScreenDump(buf, 'Test_changing_cmdheight_5', {})
 
+  " setting 'cmdheight' works after outputting two messages
+  call term_sendkeys(buf, ":call EchoTwo()\<CR>")
+  call VerifyScreenDump(buf, 'Test_changing_cmdheight_6', {})
+
   " clean up
   call StopVimInTerminal(buf)
-  call delete('XTest_cmdheight')
+endfunc
+
+func Test_cmdheight_tabline()
+  CheckScreendump
+
+  let buf = RunVimInTerminal('-c "set ls=2" -c "set stal=2" -c "set cmdheight=1"', {'rows': 6})
+  call VerifyScreenDump(buf, 'Test_cmdheight_tabline_1', {})
+
+  " clean up
+  call StopVimInTerminal(buf)
 endfunc
 
 func Test_map_completion()
@@ -327,35 +347,6 @@ func Test_highlight_completion()
   call assert_equal(['Anders'], getcompletion('A', 'highlight'))
   hi clear Anders
   call assert_equal([], getcompletion('A', 'highlight'))
-endfunc
-
-func Test_expr_completion()
-  if !has('cmdline_compl')
-    return
-  endif
-  for cmd in [
-	\ 'let a = ',
-	\ 'const a = ',
-	\ 'if',
-	\ 'elseif',
-	\ 'while',
-	\ 'for',
-	\ 'echo',
-	\ 'echon',
-	\ 'execute',
-	\ 'echomsg',
-	\ 'echoerr',
-	\ 'call',
-	\ 'return',
-	\ 'cexpr',
-	\ 'caddexpr',
-	\ 'cgetexpr',
-	\ 'lexpr',
-	\ 'laddexpr',
-	\ 'lgetexpr']
-    call feedkeys(":" . cmd . " getl\<Tab>\<Home>\"\<CR>", 'xt')
-    call assert_equal('"' . cmd . ' getline(', getreg(':'))
-  endfor
 endfunc
 
 func Test_getcompletion()
@@ -863,7 +854,7 @@ func Test_cmdline_complete_bang()
   endif
 endfunc
 
-funct Test_cmdline_complete_languages()
+func Test_cmdline_complete_languages()
   let lang = substitute(execute('language time'), '.*"\(.*\)"$', '\1', '')
   call assert_equal(lang, v:lc_time)
 
@@ -900,10 +891,8 @@ endfunc
 
 func Test_cmdline_complete_env_variable()
   let $X_VIM_TEST_COMPLETE_ENV = 'foo'
-
   call feedkeys(":edit $X_VIM_TEST_COMPLETE_E\<C-A>\<C-B>\"\<CR>", 'tx')
   call assert_match('"edit $X_VIM_TEST_COMPLETE_ENV', @:)
-
   unlet $X_VIM_TEST_COMPLETE_ENV
 endfunc
 
@@ -1083,9 +1072,25 @@ func Test_cmdline_complete_various()
   call feedkeys(":e `a1b2c\t\<C-B>\"\<CR>", 'xt')
   call assert_equal('"e `a1b2c', @:)
 
-  " completion for the expression register
-  call feedkeys(":\"\<C-R>=float2\t\"\<C-B>\"\<CR>", 'xt')
-  call assert_equal('"float2nr("', @=)
+  " completion for :language command with an invalid argument
+  call feedkeys(":language dummy \t\<C-B>\"\<CR>", 'xt')
+  call assert_equal("\"language dummy \t", @:)
+
+  " completion for commands after a :global command
+  call feedkeys(":g/a\\xb/clearj\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"g/a\xb/clearjumps', @:)
+
+  " completion with ambiguous user defined commands
+  com TCmd1 echo 'TCmd1'
+  com TCmd2 echo 'TCmd2'
+  call feedkeys(":TCmd \t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"TCmd ', @:)
+  delcom TCmd1
+  delcom TCmd2
+
+  " completion after a range followed by a pipe (|) character
+  call feedkeys(":1,10 | chist\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"1,10 | chistory', @:)
 endfunc
 
 func Test_cmdline_write_alternatefile()
@@ -1691,16 +1696,16 @@ func Test_wildmode()
   " Test for wildmode=longest with 'fileignorecase' set
   set wildmode=longest
   set fileignorecase
-  argadd AA AAA AAAA
-  call feedkeys(":buffer \t\<C-B>\"\<CR>", 'xt')
-  call assert_equal('"buffer AA', @:)
+  argadd AAA AAAA AAAAA
+  call feedkeys(":buffer a\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"buffer AAA', @:)
   set fileignorecase&
 
   " Test for listing files with wildmode=list
   set wildmode=list
   let g:Sline = ''
   call feedkeys(":b A\t\t\<F2>\<C-B>\"\<CR>", 'xt')
-  call assert_equal('AA    AAA   AAAA', g:Sline)
+  call assert_equal('AAA    AAAA   AAAAA', g:Sline)
   call assert_equal('"b A', @:)
 
   %argdelete

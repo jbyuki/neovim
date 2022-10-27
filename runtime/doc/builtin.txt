@@ -4,7 +4,9 @@
 		  VIM REFERENCE MANUAL	  by Bram Moolenaar
 
 
-Builtin functions				*builtin-functions*
+Builtin functions		*vimscript-functions* *builtin-functions*
+
+For functions grouped by what they are used for see |function-list|.
 
 				      Type |gO| to see the table of contents.
 
@@ -94,8 +96,6 @@ cos({expr})			Float	cosine of {expr}
 cosh({expr})			Float	hyperbolic cosine of {expr}
 count({comp}, {expr} [, {ic} [, {start}]])
 				Number	count how many {expr} are in {comp}
-cscope_connection([{num}, {dbpath} [, {prepend}]])
-				Number	checks existence of cscope connection
 ctxget([{index}])		Dict	return the |context| dict at {index}
 ctxpop()			none	pop and restore |context| from the
 					|context-stack|
@@ -1434,47 +1434,6 @@ count({comp}, {expr} [, {ic} [, {start}]])			*count()*
 		Can also be used as a |method|: >
 			mylist->count(val)
 <
-							*cscope_connection()*
-cscope_connection([{num} , {dbpath} [, {prepend}]])
-		Checks for the existence of a |cscope| connection.  If no
-		parameters are specified, then the function returns:
-			0, if there are no cscope connections;
-			1, if there is at least one cscope connection.
-
-		If parameters are specified, then the value of {num}
-		determines how existence of a cscope connection is checked:
-
-		{num}	Description of existence check
-		-----	------------------------------
-		0	Same as no parameters (e.g., "cscope_connection()").
-		1	Ignore {prepend}, and use partial string matches for
-			{dbpath}.
-		2	Ignore {prepend}, and use exact string matches for
-			{dbpath}.
-		3	Use {prepend}, use partial string matches for both
-			{dbpath} and {prepend}.
-		4	Use {prepend}, use exact string matches for both
-			{dbpath} and {prepend}.
-
-		Note: All string comparisons are case sensitive!
-
-		Examples.  Suppose we had the following (from ":cs show"): >
-
-  # pid    database name			prepend path
-  0 27664  cscope.out				/usr/local
-<
-		Invocation					Return Val ~
-		----------					---------- >
-		cscope_connection()					1
-		cscope_connection(1, "out")				1
-		cscope_connection(2, "out")				0
-		cscope_connection(3, "out")				0
-		cscope_connection(3, "out", "local")			1
-		cscope_connection(4, "out")				0
-		cscope_connection(4, "out", "local")			0
-		cscope_connection(4, "cscope.out", "/usr/local")	1
-<
-
 ctxget([{index}])					*ctxget()*
 		Returns a |Dictionary| representing the |context| at {index}
 		from the top of the |context-stack| (see |context-dict|).
@@ -1517,9 +1476,10 @@ cursor({list})
 		|setcursorcharpos()|.
 
 		Does not change the jumplist.
+		{lnum} is used like with |getline()|, except that if {lnum} is
+		zero, the cursor will stay in the current line.
 		If {lnum} is greater than the number of lines in the buffer,
 		the cursor will be positioned at the last line in the buffer.
-		If {lnum} is zero, the cursor will stay in the current line.
 		If {col} is greater than the number of bytes in the line,
 		the cursor will be positioned at the last character in the
 		line.
@@ -2978,7 +2938,6 @@ getcompletion({pat}, {type} [, {filtered}])		*getcompletion()*
 		color		color schemes
 		command		Ex command
 		compiler	compilers
-		cscope		|:cscope| suboptions
 		diff_buffer     |:diffget| and |:diffput| completion
 		dir		directory names
 		environment	environment variable names
@@ -3804,15 +3763,15 @@ has({feature})	Returns 1 if {feature} is supported, 0 otherwise.  The
 		{feature} argument is a feature name like "nvim-0.2.1" or
 		"win32", see below.  See also |exists()|.
 
-		If the code has a syntax error, then Nvim may skip the rest
-		of the line and miss |:endif|. >
-	if has('feature') | let x = this->breaks->without->the->feature | endif
-<
-		Put |:if| and |:endif| on separate lines to avoid the
-		syntax error. >
-	if has('feature')
-	  let x = this->breaks->without->the->feature
-	endif
+		To get the system name use |vim.loop|.os_uname() in Lua: >
+			:lua print(vim.loop.os_uname().sysname)
+
+<		If the code has a syntax error then Vimscript may skip the
+		rest of the line.  Put |:if| and |:endif| on separate lines to
+		avoid the syntax error: >
+			if has('feature')
+			  let x = this->breaks->without->the->feature
+			endif
 <
 		Vim's compile-time feature-names (prefixed with "+") are not
 		recognized because Nvim is always compiled with all possible
@@ -5010,7 +4969,7 @@ matchadd({group}, {pattern} [, {priority} [, {id} [, {dict}]]])
 		respectively.  3 is reserved for use by the |matchparen|
 		plugin.
 		If the {id} argument is not specified or -1, |matchadd()|
-		automatically chooses a free ID.
+		automatically chooses a free ID, which is at least 1000.
 
 		The optional {dict} argument allows for further custom
 		values. Currently this is used to specify a match specific
@@ -5067,8 +5026,6 @@ matchaddpos({group}, {pos} [, {priority} [, {id} [, {dict}]]])
 		Entries with zero and negative line numbers are silently
 		ignored, as well as entries with negative column numbers and
 		lengths.
-
-		The maximum number of positions in {pos} is 8.
 
 		Returns -1 on error.
 
@@ -6170,7 +6127,9 @@ reg_recording()						*reg_recording()*
 		Returns the single letter name of the register being recorded.
 		Returns an empty string when not recording.  See |q|.
 
-reltime([{start} [, {end}]])				*reltime()*
+reltime()
+reltime({start})
+reltime({start}, {end})					*reltime()*
 		Return an item that represents a time value.  The item is a
 		list with items that depend on the system.
 		The item can be passed to |reltimestr()| to convert it to a
@@ -6224,7 +6183,8 @@ reltimestr({time})				*reltimestr()*
 		Can also be used as a |method|: >
 			reltime(start)->reltimestr()
 <
-remove({list}, {idx} [, {end}])				*remove()*
+remove({list}, {idx})
+remove({list}, {idx}, {end})				*remove()*
 		Without {end}: Remove the item at {idx} from |List| {list} and
 		return the item.
 		With {end}: Remove items from {idx} to {end} (inclusive) and
@@ -6242,7 +6202,8 @@ remove({list}, {idx} [, {end}])				*remove()*
 		Can also be used as a |method|: >
 			mylist->remove(idx)
 
-remove({blob}, {idx} [, {end}])
+remove({blob}, {idx})
+remove({blob}, {idx}, {end})
 		Without {end}: Remove the byte at {idx} from |Blob| {blob} and
 		return the byte.
 		With {end}: Remove bytes from {idx} to {end} (inclusive) and
@@ -6829,18 +6790,24 @@ serverstart([{address}])				*serverstart()*
 		|RPC| messages. Clients can send |API| commands to the
 		returned address to control Nvim.
 
-		Returns the address string (may differ from the requested
-		{address}).
-		 
-		- If {address} contains a colon ":" it is interpreted as
-		  a TCP/IPv4/IPv6 address where the last ":" separates host
-		  and port (empty or zero assigns a random port).
-		- Else it is interpreted as a named pipe or Unix domain socket
-		  path. If there are no slashes it is treated as a name and
-		  appended to a generated path.
-		- If {address} is empty it generates a path.
+		Returns the address string (which may differ from the
+		{address} argument, see below).
 
-		Example named pipe: >
+		- If {address} has a colon (":") it is a TCP/IPv4/IPv6 address
+		  where the last ":" separates host and port (empty or zero
+		  assigns a random port).
+		- Else {address} is the path to a named pipe (except on Windows).
+		  - If {address} has no slashes ("/") it is treated as the
+		    "name" part of a generated path in this format: >
+			stdpath("run").."/{name}.{pid}.{counter}"
+<		  - If {address} is omitted the name is "nvim". >
+			:echo serverstart()
+			=> /tmp/nvim.bram/oknANW/nvim.15430.5
+
+<		Example bash command to list all Nvim servers: >
+			ls ${XDG_RUNTIME_DIR:-${TMPDIR}nvim.${USER}}/*/nvim.*.0
+
+<		Example named pipe: >
 			if has('win32')
 			  echo serverstart('\\.\pipe\nvim-pipe-1234')
 			else
@@ -7718,7 +7685,7 @@ sqrt({expr})						*sqrt()*
 			:echo sqrt(100)
 <			10.0 >
 			:echo sqrt(-4.01)
-<			str2float('nan')
+<			str2float("nan")
 		NaN may be different, it depends on system libraries.
 
 		Can also be used as a |method|: >
@@ -7779,7 +7746,7 @@ stdpath({what})					*stdpath()* *E6100*
 		run          String  Run directory: temporary, local storage
 				     for sockets, named pipes, etc.
 		state        String  Session state directory: storage for file
-				     drafts, undo, |shada|, etc.
+				     drafts, swap, undo, |shada|.
 
 		Example: >
 			:echo stdpath("config")

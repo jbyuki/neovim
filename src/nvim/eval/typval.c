@@ -43,7 +43,7 @@
 static char e_string_required_for_argument_nr[]
   = N_("E1174: String required for argument %d");
 static char e_non_empty_string_required_for_argument_nr[]
-  = N_("E1142: Non-empty string required for argument %d");
+  = N_("E1175: Non-empty string required for argument %d");
 static char e_number_required_for_argument_nr[]
   = N_("E1210: Number required for argument %d");
 
@@ -1094,7 +1094,9 @@ static int item_compare2(const void *s1, const void *s2, bool keep_zero)
   tv_clear(&argv[1]);
 
   if (res == FAIL) {
+    // XXX: ITEM_COMPARE_FAIL is unused
     res = ITEM_COMPARE_FAIL;
+    sortinfo->item_compare_func_err = true;
   } else {
     res = (int)tv_get_number_chk(&rettv, &sortinfo->item_compare_func_err);
     if (res > 0) {
@@ -1257,7 +1259,7 @@ static void do_sort_uniq(typval_T *argvars, typval_T *rettv, bool sort)
         } else {
           li = TV_LIST_ITEM_NEXT(l, li);
         }
-        if (info.item_compare_func_err) {  // -V547
+        if (info.item_compare_func_err) {
           emsg(_("E882: Uniq compare function failed"));
           break;
         }
@@ -1361,7 +1363,7 @@ void tv_list_reverse(list_T *const l)
 ///               true list will not be modified. Must be initialized to false
 ///               by the caller.
 void tv_list_item_sort(list_T *const l, ListSortItem *const ptrs,
-                       const ListSorter item_compare_func, bool *errp)
+                       const ListSorter item_compare_func, const bool *errp)
   FUNC_ATTR_NONNULL_ARG(3, 4)
 {
   const int len = tv_list_len(l);
@@ -2488,10 +2490,14 @@ bool tv_dict_equal(dict_T *const d1, dict_T *const d2, const bool ic, const bool
   if (d1 == d2) {
     return true;
   }
-  if (d1 == NULL || d2 == NULL) {
+  if (tv_dict_len(d1) != tv_dict_len(d2)) {
     return false;
   }
-  if (tv_dict_len(d1) != tv_dict_len(d2)) {
+  if (tv_dict_len(d1) == 0) {
+    // empty and NULL dicts are considered equal
+    return true;
+  }
+  if (d1 == NULL || d2 == NULL) {
     return false;
   }
 
@@ -3750,9 +3756,11 @@ varnumber_T tv_get_number_chk(const typval_T *const tv, bool *const ret_error)
 linenr_T tv_get_lnum(const typval_T *const tv)
   FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT
 {
+  const int did_emsg_before = did_emsg;
   linenr_T lnum = (linenr_T)tv_get_number_chk(tv, NULL);
-  if (lnum == 0) {  // No valid number, try using same function as line() does.
+  if (lnum <= 0 && did_emsg_before == did_emsg && tv->v_type != VAR_NUMBER) {
     int fnum;
+    // No valid number, try using same function as line() does.
     pos_T *const fp = var2fpos(tv, true, &fnum, false);
     if (fp != NULL) {
       lnum = fp->lnum;

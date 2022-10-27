@@ -75,6 +75,7 @@ static char *(p_ssop_values[]) = { "buffers", "winpos", "resize", "winsize", "lo
 // Keep in sync with SWB_ flags in option_defs.h
 static char *(p_swb_values[]) = { "useopen", "usetab", "split", "newtab", "vsplit", "uselast",
                                   NULL };
+static char *(p_spk_values[]) = { "cursor", "screen", "topline", NULL };
 static char *(p_tc_values[]) = { "followic", "ignore", "match", "followscs", "smart", NULL };
 static char *(p_ve_values[]) = { "block", "insert", "all", "onemore", "none", "NONE", NULL };
 static char *(p_wop_values[]) = { "tagfile", "pum", NULL };
@@ -117,7 +118,8 @@ static char *(p_rdb_values[]) = { "compositor", "nothrottle", "invalid", "nodelt
 static char SHM_ALL[] = { SHM_RO, SHM_MOD, SHM_FILE, SHM_LAST, SHM_TEXT, SHM_LINES, SHM_NEW,
                           SHM_WRI, SHM_ABBREVIATIONS, SHM_WRITE, SHM_TRUNC, SHM_TRUNCALL,
                           SHM_OVER, SHM_OVERALL, SHM_SEARCH, SHM_ATTENTION, SHM_INTRO,
-                          SHM_COMPLETIONMENU, SHM_RECORDING, SHM_FILEINFO, SHM_SEARCHCOUNT, 0, };
+                          SHM_COMPLETIONMENU, SHM_COMPLETIONSCAN, SHM_RECORDING, SHM_FILEINFO,
+                          SHM_SEARCHCOUNT, 0, };
 
 /// After setting various option values: recompute variables that depend on
 /// option values.
@@ -226,6 +228,7 @@ void check_buf_options(buf_T *buf)
   check_string_option(&buf->b_p_cink);
   check_string_option(&buf->b_p_cino);
   parse_cino(buf);
+  check_string_option(&buf->b_p_lop);
   check_string_option(&buf->b_p_ft);
   check_string_option(&buf->b_p_cinw);
   check_string_option(&buf->b_p_cinsd);
@@ -1095,6 +1098,10 @@ char *did_set_string_option(int opt_idx, char **varp, char *oldval, char *errbuf
     if (opt_strings_flags(p_swb, p_swb_values, &swb_flags, true) != OK) {
       errmsg = e_invarg;
     }
+  } else if (varp == &p_spk) {  // 'splitkeep'
+    if (check_opt_strings(p_spk, p_spk_values, false) != OK) {
+      errmsg = e_invarg;
+    }
   } else if (varp == &p_debug) {  // 'debug'
     if (check_opt_strings(p_debug, p_debug_values, true) != OK) {
       errmsg = e_invarg;
@@ -1369,26 +1376,13 @@ char *did_set_string_option(int opt_idx, char **varp, char *oldval, char *errbuf
         coladvance(curwin->w_virtcol);
       }
     }
-  } else if (varp == &p_csqf) {
-    if (p_csqf != NULL) {
-      p = p_csqf;
-      while (*p != NUL) {
-        if (vim_strchr(CSQF_CMDS, *p) == NULL
-            || p[1] == NUL
-            || vim_strchr(CSQF_FLAGS, p[1]) == NULL
-            || (p[2] != NUL && p[2] != ',')) {
-          errmsg = e_invarg;
-          break;
-        } else if (p[2] == NUL) {
-          break;
-        } else {
-          p += 3;
-        }
-      }
-    }
   } else if (gvarp == &p_cino) {  // 'cinoptions'
     // TODO(vim): recognize errors
     parse_cino(curbuf);
+  } else if (gvarp == &p_lop) {  // 'lispoptions'
+    if (**varp != NUL && strcmp(*varp, "expr:0") != 0 && strcmp(*varp, "expr:1") != 0) {
+      errmsg = e_invarg;
+    }
   } else if (varp == &p_icm) {  // 'inccommand'
     if (check_opt_strings(p_icm, p_icm_values, false) != OK) {
       errmsg = e_invarg;

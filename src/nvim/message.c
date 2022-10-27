@@ -153,8 +153,7 @@ void msg_grid_set_pos(int row, bool scrolled)
 
 bool msg_use_grid(void)
 {
-  return default_grid.chars && msg_use_msgsep()
-         && !ui_has(kUIMessages);
+  return default_grid.chars && !ui_has(kUIMessages);
 }
 
 void msg_grid_validate(void)
@@ -172,19 +171,17 @@ void msg_grid_validate(void)
     xfree(msg_grid.dirty_col);
     msg_grid.dirty_col = xcalloc((size_t)Rows, sizeof(*msg_grid.dirty_col));
 
-    // Tricky: allow resize while pager is active
-    int pos = msg_scrolled ? msg_grid_pos : max_rows;
+    // Tricky: allow resize while pager or ex mode is active
+    int pos = MAX(max_rows - msg_scrolled, 0);
+    msg_grid.throttled = false;  // don't throttle in 'cmdheight' area
+    msg_grid_set_pos(pos, msg_scrolled);
     ui_comp_put_grid(&msg_grid, pos, 0, msg_grid.rows, msg_grid.cols,
                      false, true);
     ui_call_grid_resize(msg_grid.handle, msg_grid.cols, msg_grid.rows);
 
-    msg_grid.throttled = false;  // don't throttle in 'cmdheight' area
     msg_scrolled_at_flush = msg_scrolled;
     msg_grid.focusable = false;
     msg_grid_adj.target = &msg_grid;
-    if (!msg_scrolled) {
-      msg_grid_set_pos(max_rows, false);
-    }
   } else if (!should_alloc && msg_grid.chars) {
     ui_comp_remove_grid(&msg_grid);
     grid_free(&msg_grid);
@@ -269,12 +266,12 @@ void msg_multiattr(HlMessage hl_msg, const char *kind, bool history)
   msg_start();
   msg_clr_eos();
   bool need_clear = false;
+  msg_ext_set_kind(kind);
   for (uint32_t i = 0; i < kv_size(hl_msg); i++) {
     HlMessageChunk chunk = kv_A(hl_msg, i);
     msg_multiline_attr((const char *)chunk.text.data, chunk.attr,
                        true, &need_clear);
   }
-  msg_ext_set_kind(kind);
   if (history && kv_size(hl_msg)) {
     add_msg_hist_multiattr(NULL, 0, 0, true, hl_msg);
   }
@@ -321,7 +318,7 @@ bool msg_attr_keep(const char *s, int attr, bool keep, bool multiline)
       || (*s != '<'
           && last_msg_hist != NULL
           && last_msg_hist->msg != NULL
-          && strcmp(s, last_msg_hist->msg))) {
+          && strcmp(s, last_msg_hist->msg) != 0)) {
     add_msg_hist(s, -1, attr, multiline);
   }
 
@@ -661,7 +658,7 @@ static bool emsg_multiline(const char *s, bool multiline)
     // interrupt message).
     if (cause_errthrow(s, severe, &ignore)) {
       if (!ignore) {
-        did_emsg = true;
+        did_emsg++;
       }
       return true;
     }
@@ -724,7 +721,7 @@ static bool emsg_multiline(const char *s, bool multiline)
     } else {
       flush_buffers(FLUSH_MINIMAL);  // flush internal buffers
     }
-    did_emsg = true;               // flag for DoOneCmd()
+    did_emsg++;               // flag for DoOneCmd()
   }
 
   emsg_on_display = true;     // remember there is an error message
@@ -1159,10 +1156,6 @@ void wait_return(int redraw)
     c = CAR;                    // no need for a return in ex mode
     got_int = false;
   } else {
-    // Make sure the hit-return prompt is on screen when 'guioptions' was
-    // just changed.
-    screenalloc();
-
     State = MODE_HITRETURN;
     setmouse();
     cmdline_row = msg_row;
@@ -2340,13 +2333,6 @@ int msg_scrollsize(void)
   return msg_scrolled + (int)p_ch + ((p_ch > 0 || msg_scrolled > 1) ? 1 : 0);
 }
 
-bool msg_use_msgsep(void)
-{
-  // the full-screen scroll behavior doesn't really make sense with
-  // 'ext_multigrid'
-  return (dy_flags & DY_MSGSEP) || p_ch == 0 || ui_has(kUIMultigrid);
-}
-
 bool msg_do_throttle(void)
 {
   return msg_use_grid() && !(rdb_flags & RDB_NOTHROTTLE);
@@ -2359,23 +2345,19 @@ void msg_scroll_up(bool may_throttle, bool zerocmd)
     msg_grid.throttled = true;
   }
   msg_did_scroll = true;
-  if (msg_use_msgsep()) {
-    if (msg_grid_pos > 0) {
-      msg_grid_set_pos(msg_grid_pos - 1, !zerocmd);
+  if (msg_grid_pos > 0) {
+    msg_grid_set_pos(msg_grid_pos - 1, !zerocmd);
 
-      // When displaying the first line with cmdheight=0, we need to draw over
-      // the existing last line of the screen.
-      if (zerocmd && msg_grid.chars) {
-        grid_clear_line(&msg_grid, msg_grid.line_offset[0], msg_grid.cols, false);
-      }
-    } else {
-      grid_del_lines(&msg_grid, 0, 1, msg_grid.rows, 0, msg_grid.cols);
-      memmove(msg_grid.dirty_col, msg_grid.dirty_col + 1,
-              (size_t)(msg_grid.rows - 1) * sizeof(*msg_grid.dirty_col));
-      msg_grid.dirty_col[msg_grid.rows - 1] = 0;
+    // When displaying the first line with cmdheight=0, we need to draw over
+    // the existing last line of the screen.
+    if (zerocmd && msg_grid.chars) {
+      grid_clear_line(&msg_grid, msg_grid.line_offset[0], msg_grid.cols, false);
     }
   } else {
-    grid_del_lines(&msg_grid_adj, 0, 1, Rows, 0, Columns);
+    grid_del_lines(&msg_grid, 0, 1, msg_grid.rows, 0, msg_grid.cols);
+    memmove(msg_grid.dirty_col, msg_grid.dirty_col + 1,
+            (size_t)(msg_grid.rows - 1) * sizeof(*msg_grid.dirty_col));
+    msg_grid.dirty_col[msg_grid.rows - 1] = 0;
   }
 
   grid_fill(&msg_grid_adj, Rows - 1, Rows, 0, Columns, ' ', ' ', HL_ATTR(HLF_MSG));
@@ -2440,21 +2422,17 @@ void msg_reset_scroll(void)
   }
   // TODO(bfredl): some duplicate logic with update_screen(). Later on
   // we should properly disentangle message clear with full screen redraw.
-  if (msg_use_grid()) {
-    msg_grid.throttled = false;
-    // TODO(bfredl): risk for extra flicker i e with
-    // "nvim -o has_swap also_has_swap"
-    msg_grid_set_pos(Rows - (int)p_ch, false);
-    clear_cmdline = true;
-    if (msg_grid.chars) {
-      // non-displayed part of msg_grid is considered invalid.
-      for (int i = 0; i < MIN(msg_scrollsize(), msg_grid.rows); i++) {
-        grid_clear_line(&msg_grid, msg_grid.line_offset[i],
-                        msg_grid.cols, false);
-      }
+  msg_grid.throttled = false;
+  // TODO(bfredl): risk for extra flicker i e with
+  // "nvim -o has_swap also_has_swap"
+  msg_grid_set_pos(Rows - (int)p_ch, false);
+  clear_cmdline = true;
+  if (msg_grid.chars) {
+    // non-displayed part of msg_grid is considered invalid.
+    for (int i = 0; i < MIN(msg_scrollsize(), msg_grid.rows); i++) {
+      grid_clear_line(&msg_grid, msg_grid.line_offset[i],
+                      msg_grid.cols, false);
     }
-  } else {
-    redraw_all_later(UPD_NOT_VALID);
   }
   msg_scrolled = 0;
   msg_scrolled_at_flush = 0;

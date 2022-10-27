@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 #
+# https://github.com/cpplint/cpplint
+#
 # Copyright (c) 2009 Google Inc. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -29,15 +31,9 @@
 
 """Lints C files in the Neovim source tree.
 
-The goal of this script is to identify places in the code that *may*
-be in non-compliance with Neovim style.  It does not attempt to fix
-up these problems -- the point is to educate.  It does also not
-attempt to find all problems, or to ensure that everything it does
-find is legitimately a problem.
-
-In particular, we can get very confused by /* and // inside strings!
-We do a small hack, which is to ignore //'s with "'s after them on the
-same line, but it is far from perfect (in either direction).
+This can get very confused by /* and // inside strings! We do a small hack,
+which is to ignore //'s with "'s after them on the same line, but it is far
+from perfect (in either direction).
 """
 
 
@@ -61,25 +57,10 @@ Syntax: clint.py [--verbose=#] [--output=vs7] [--filter=-x,+y,...]
         <file> [file] ...
 
   The style guidelines this tries to follow are those in
-    http://neovim.io/develop/style-guide.xml
+    https://neovim.io/doc/user/dev_style.html#dev-style
 
-  Note: This is Google's cpplint.py modified for use with the Neovim project,
-  which follows the Google C++ coding convention except with the following
-  modifications:
-
-   * Function names are lower_case.
-   * Struct and enum names that are not typedef-ed are struct lower_case and
-     enum lower_case.
-   * The opening brace for functions appear on the next line.
-   * All control structures must always use braces.
-
-  Neovim is a C project. As a result, for .c and .h files, the following rules
-  are suppressed:
-
-   * [whitespace/braces] { should almost always be at the end of the previous
-     line
-   * [build/include] Include the directory when naming .h files
-   * [runtime/int] Use int16_t/int64_t/etc, rather than the C type.
+  Note: This is Google's https://github.com/cpplint/cpplint modified for use
+  with the Neovim project.
 
   Every problem is given a confidence score from 1-5, with 5 meaning we are
   certain of the problem, and 1 meaning it could be a legitimate construct.
@@ -2566,22 +2547,9 @@ def CheckStyle(filename, clean_lines, linenum, error):
     # if(match(prev, " +for \\(")) complain = 0;
     # if(prevodd && match(prevprev, " +for \\(")) complain = 0;
     initial_spaces = 0
-    cleansed_line = clean_lines.elided[linenum]
 
     while initial_spaces < len(line) and line[initial_spaces] == ' ':
         initial_spaces += 1
-
-    if (cleansed_line.count(';') > 1 and
-        # for loops are allowed two ;'s (and may run over two lines).
-        cleansed_line.find('for') == -1 and
-        (GetPreviousNonBlankLine(clean_lines, linenum)[0].find('for') == -1 or
-         GetPreviousNonBlankLine(clean_lines, linenum)[0].find(';') != -1) and
-        # It's ok to have many commands in a switch case that fits in 1 line
-        not ((cleansed_line.find('case ') != -1 or
-              cleansed_line.find('default:') != -1) and
-             cleansed_line.find('break;') != -1)):
-        error(filename, linenum, 'whitespace/newline', 0,
-              'More than one command on the same line')
 
     # Some more style checks
     CheckBraces(filename, clean_lines, linenum, error)

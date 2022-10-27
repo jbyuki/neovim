@@ -11,7 +11,7 @@
 hi clear
 let g:colors_name = 'lunaperche'
 
-let s:t_Co = exists('&t_Co') && !has('gui_running') ? (&t_Co ? &t_Co : 0) : -1
+let s:t_Co = &t_Co
 
 hi! link helpVim Title
 hi! link helpHeader Title
@@ -119,6 +119,10 @@ hi! link PopupNotification Todo
 if &background ==# 'dark'
   if (has('termguicolors') && &termguicolors) || has('gui_running')
     let g:terminal_ansi_colors = ['#000000', '#af5f5f', '#5faf5f', '#af875f', '#5f87af', '#d787d7', '#5fafaf', '#c6c6c6', '#767676', '#ff5f5f', '#5fd75f', '#ffd787', '#5fafff', '#ff87ff', '#5fd7d7', '#ffffff']
+    " Nvim uses g:terminal_color_{0-15} instead
+    for i in range(g:terminal_ansi_colors->len())
+      let g:terminal_color_{i} = g:terminal_ansi_colors[i]
+    endfor
   endif
   hi Normal guifg=#c6c6c6 guibg=#000000 gui=NONE cterm=NONE
   hi Statusline guifg=#c6c6c6 guibg=#000000 gui=bold,reverse cterm=bold,reverse
@@ -205,6 +209,10 @@ else
   " Light background
   if (has('termguicolors') && &termguicolors) || has('gui_running')
     let g:terminal_ansi_colors = ['#000000', '#af0000', '#008700', '#af5f00', '#005fd7', '#af00af', '#005f5f', '#808080', '#767676', '#d70000', '#87d787', '#ffd787', '#0087d7', '#ff00ff', '#008787', '#ffffff']
+    " Nvim uses g:terminal_color_{0-15} instead
+    for i in range(g:terminal_ansi_colors->len())
+      let g:terminal_color_{i} = g:terminal_ansi_colors[i]
+    endfor
   endif
   hi Normal guifg=#000000 guibg=#ffffff gui=NONE cterm=NONE
   hi Statusline guifg=#ffffff guibg=#000000 gui=bold cterm=bold

@@ -881,7 +881,7 @@ void do_autocmd(char *arg_in, int forceit)
     }
   } else {
     if (*arg == '*' || *arg == NUL || *arg == '|') {
-      if (!forceit && *cmd != NUL) {
+      if (*cmd != NUL) {
         emsg(_(e_cannot_define_autocommands_for_all_events));
       } else {
         do_all_autocmd_events(pat, once, nested, cmd, forceit, group);
@@ -1743,17 +1743,18 @@ bool apply_autocmds_group(event_T event, char *fname, char *fname_io, bool force
     sfname = xstrdup(fname);
     // Don't try expanding the following events.
     if (event == EVENT_CMDLINECHANGED || event == EVENT_CMDLINEENTER
-        || event == EVENT_CMDLINELEAVE || event == EVENT_CMDWINENTER
-        || event == EVENT_CMDWINLEAVE || event == EVENT_CMDUNDEFINED
+        || event == EVENT_CMDLINELEAVE || event == EVENT_CMDUNDEFINED
+        || event == EVENT_CMDWINENTER || event == EVENT_CMDWINLEAVE
         || event == EVENT_COLORSCHEME || event == EVENT_COLORSCHEMEPRE
         || event == EVENT_DIRCHANGED || event == EVENT_DIRCHANGEDPRE
         || event == EVENT_FILETYPE || event == EVENT_FUNCUNDEFINED
-        || event == EVENT_MODECHANGED || event == EVENT_OPTIONSET
-        || event == EVENT_QUICKFIXCMDPOST || event == EVENT_QUICKFIXCMDPRE
-        || event == EVENT_REMOTEREPLY || event == EVENT_SPELLFILEMISSING
-        || event == EVENT_SYNTAX || event == EVENT_SIGNAL
-        || event == EVENT_TABCLOSED || event == EVENT_USER
-        || event == EVENT_WINCLOSED || event == EVENT_WINSCROLLED) {
+        || event == EVENT_MENUPOPUP || event == EVENT_MODECHANGED
+        || event == EVENT_OPTIONSET || event == EVENT_QUICKFIXCMDPOST
+        || event == EVENT_QUICKFIXCMDPRE || event == EVENT_REMOTEREPLY
+        || event == EVENT_SIGNAL || event == EVENT_SPELLFILEMISSING
+        || event == EVENT_SYNTAX || event == EVENT_TABCLOSED
+        || event == EVENT_USER || event == EVENT_WINCLOSED
+        || event == EVENT_WINSCROLLED) {
       fname = xstrdup(fname);
     } else {
       fname = FullName_save(fname, false);
@@ -2720,7 +2721,7 @@ static void do_autocmd_focusgained(bool gained)
       redrawcmdline();
     } else if ((State & MODE_NORMAL) || (State & MODE_INSERT)) {
       if (must_redraw != 0) {
-        update_screen(0);
+        update_screen();
       }
 
       setcursor();

@@ -44,7 +44,6 @@
 #include "nvim/hardcopy.h"
 #include "nvim/help.h"
 #include "nvim/highlight_group.h"
-#include "nvim/if_cscope.h"
 #include "nvim/input.h"
 #include "nvim/keycodes.h"
 #include "nvim/locale.h"
@@ -254,7 +253,7 @@ void do_exmode(void)
   RedrawingDisabled--;
   no_wait_return--;
   redraw_all_later(UPD_NOT_VALID);
-  update_screen(UPD_NOT_VALID);
+  update_screen();
   need_wait_return = false;
   msg_scroll = save_msg_scroll;
 }
@@ -1060,7 +1059,7 @@ static int current_tab_nr(tabpage_T *tab)
 #define LAST_TAB_NR current_tab_nr(NULL)
 
 /// Figure out the address type for ":wincmd".
-static void get_wincmd_addr_type(char *arg, exarg_T *eap)
+static void get_wincmd_addr_type(const char *arg, exarg_T *eap)
 {
   switch (*arg) {
   case 'S':
@@ -2838,7 +2837,7 @@ theend:
 /// @param pp   start of command
 /// @param cmd  name of command
 /// @param len  required length
-bool checkforcmd(char **pp, char *cmd, int len)
+bool checkforcmd(char **pp, const char *cmd, int len)
 {
   int i;
 
@@ -2870,7 +2869,7 @@ static void append_command(char *cmd)
     STRCPY(d, "...");
   }
   STRCAT(IObuff, ": ");
-  d = (char *)IObuff + STRLEN(IObuff);
+  d = IObuff + strlen(IObuff);
   while (*s != NUL && d - IObuff + 5 < IOSIZE) {
     if ((char_u)s[0] == 0xc2 && (char_u)s[1] == 0xa0) {
       s += 2;
@@ -5655,7 +5654,7 @@ void do_sleep(long msec)
 {
   ui_flush();  // flush before waiting
   for (long left = msec; !got_int && left > 0; left -= 1000L) {
-    int next = left > 1000l ? 1000 : (int)left;
+    int next = left > 1000L ? 1000 : (int)left;
     LOOP_PROCESS_EVENTS_UNTIL(&main_loop, main_loop.events, (int)next, got_int);
     os_breakcheck();
   }
@@ -6090,9 +6089,10 @@ static void ex_redraw(exarg_T *eap)
   if (eap->forceit) {
     redraw_all_later(UPD_NOT_VALID);
     redraw_cmdline = true;
+  } else if (VIsual_active) {
+    redraw_curbuf_later(UPD_INVERTED);
   }
-  update_screen(eap->forceit ? UPD_NOT_VALID
-                : VIsual_active ? UPD_INVERTED : 0);
+  update_screen();
   if (need_maketitle) {
     maketitle();
   }
@@ -6123,16 +6123,16 @@ static void ex_redrawstatus(exarg_T *eap)
   } else {
     status_redraw_curbuf();
   }
-  if (msg_scrolled && !msg_use_msgsep() && (State & MODE_CMDLINE)) {
-    return;  // redraw later
-  }
 
   RedrawingDisabled = 0;
   p_lz = false;
   if (State & MODE_CMDLINE) {
     redraw_statuslines();
   } else {
-    update_screen(VIsual_active ? UPD_INVERTED : 0);
+    if (VIsual_active) {
+      redraw_curbuf_later(UPD_INVERTED);
+    }
+    update_screen();
   }
   RedrawingDisabled = r;
   p_lz = p;
@@ -6559,7 +6559,7 @@ static void ex_tag(exarg_T *eap)
   ex_tag_cmd(eap, cmdnames[eap->cmdidx].cmd_name);
 }
 
-static void ex_tag_cmd(exarg_T *eap, char *name)
+static void ex_tag_cmd(exarg_T *eap, const char *name)
 {
   int cmd;
 
@@ -6588,10 +6588,6 @@ static void ex_tag_cmd(exarg_T *eap, char *name)
     cmd = DT_LAST;              // ":tlast"
     break;
   default:                              // ":tag"
-    if (p_cst && *eap->arg != NUL) {
-      ex_cstag(eap);
-      return;
-    }
     cmd = DT_TAG;
     break;
   }
@@ -6689,8 +6685,8 @@ ssize_t find_cmdline_var(const char_u *src, size_t *usedlen)
 /// @return          an allocated string if a valid match was found.
 ///                  Returns NULL if no match was found.  "usedlen" then still contains the
 ///                  number of characters to skip.
-char_u *eval_vars(char_u *src, char_u *srcstart, size_t *usedlen, linenr_T *lnump, char **errormsg,
-                  int *escaped, bool empty_is_error)
+char_u *eval_vars(char_u *src, const char_u *srcstart, size_t *usedlen, linenr_T *lnump,
+                  char **errormsg, int *escaped, bool empty_is_error)
 {
   char *result;
   char *resultbuf = NULL;
@@ -7270,7 +7266,7 @@ static void ex_terminal(exarg_T *eap)
 
 void verify_command(char *cmd)
 {
-  if (strcmp("smile", cmd)) {
+  if (strcmp("smile", cmd) != 0) {
     return;  // acceptable non-existing command
   }
   msg(" #xxn`          #xnxx`        ,+x@##@Mz;`        .xxx"

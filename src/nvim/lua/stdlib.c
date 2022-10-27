@@ -111,14 +111,14 @@ static int regex_match_line(lua_State *lstate)
     return luaL_error(lstate, "invalid row");
   }
 
-  char_u *line = (char_u *)ml_get_buf(buf, rownr + 1, false);
-  size_t len = STRLEN(line);
+  char *line = ml_get_buf(buf, rownr + 1, false);
+  size_t len = strlen(line);
 
   if (start < 0 || (size_t)start > len) {
     return luaL_error(lstate, "invalid start");
   }
 
-  char_u save = NUL;
+  char save = NUL;
   if (end >= 0) {
     if ((size_t)end > len || end < start) {
       return luaL_error(lstate, "invalid end");
@@ -127,7 +127,7 @@ static int regex_match_line(lua_State *lstate)
     line[end] = NUL;
   }
 
-  int nret = regex_match(lstate, prog, line + start);
+  int nret = regex_match(lstate, prog, (char_u *)line + start);
 
   if (end >= 0) {
     line[end] = save;
@@ -304,8 +304,10 @@ int nlua_regex(lua_State *lstate)
     nlua_push_errstr(lstate, "couldn't parse regex: %s", err.msg);
     api_clear_error(&err);
     return lua_error(lstate);
+  } else if (prog == NULL) {
+    nlua_push_errstr(lstate, "couldn't parse regex");
+    return lua_error(lstate);
   }
-  assert(prog);
 
   regprog_T **p = lua_newuserdata(lstate, sizeof(regprog_T *));
   *p = prog;

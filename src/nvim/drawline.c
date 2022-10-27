@@ -1570,7 +1570,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, bool nochange, 
         // Non-BMP character : display as ? or fullwidth ?.
         transchar_hex((char *)extra, mb_c);
         if (wp->w_p_rl) {  // reverse
-          rl_mirror(extra);
+          rl_mirror((char *)extra);
         }
 
         p_extra = extra;
@@ -2063,7 +2063,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, bool nochange, 
             n_extra = byte2cells(c) - 1;
           }
           if ((dy_flags & DY_UHEX) && wp->w_p_rl) {
-            rl_mirror(p_extra);                 // reverse "<12>"
+            rl_mirror((char *)p_extra);                 // reverse "<12>"
           }
           c_extra = NUL;
           c_final = NUL;
@@ -2212,7 +2212,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, bool nochange, 
       // flag to indicate whether prevcol equals startcol of search_hl or
       // one of the matches
       bool prevcol_hl_flag = get_prevcol_hl_flag(wp, &screen_search_hl,
-                                                 (long)(ptr - line) - 1);
+                                                 (long)(ptr - line) - 1);  // NOLINT(google-readability-casting)
 
       // Invert at least one char, used for Visual and empty line or
       // highlight match at end of line. If it's beyond the last
@@ -2248,7 +2248,10 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, bool nochange, 
         if (area_attr == 0 && !has_fold) {
           // Use attributes from match with highest priority among
           // 'search_hl' and the match list.
-          get_search_match_hl(wp, &screen_search_hl, (long)(ptr - line), &char_attr);
+          get_search_match_hl(wp,
+                              &screen_search_hl,
+                              (long)(ptr - line),  // NOLINT(google-readability-casting)
+                              &char_attr);
         }
 
         int eol_attr = char_attr;

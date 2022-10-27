@@ -266,13 +266,12 @@ void ex_align(exarg_T *eap)
   }
 
   for (curwin->w_cursor.lnum = eap->line1;
-       curwin->w_cursor.lnum <= eap->line2; ++curwin->w_cursor.lnum) {
+       curwin->w_cursor.lnum <= eap->line2; curwin->w_cursor.lnum++) {
     if (eap->cmdidx == CMD_left) {              // left align
       new_indent = indent;
     } else {
       has_tab = false;          // avoid uninit warnings
-      len = linelen(eap->cmdidx == CMD_right ? &has_tab
-                                             : NULL) - get_indent();
+      len = linelen(eap->cmdidx == CMD_right ? &has_tab : NULL) - get_indent();
 
       if (len <= 0) {                           // skip blank lines
         continue;
@@ -3240,7 +3239,7 @@ void sub_set_replacement(SubReplacementString sub)
 /// @param[in]  save Save pattern to options, history
 ///
 /// @returns true if :substitute can be replaced with a join command
-static bool sub_joining_lines(exarg_T *eap, char *pat, char *sub, char *cmd, bool save)
+static bool sub_joining_lines(exarg_T *eap, char *pat, const char *sub, const char *cmd, bool save)
   FUNC_ATTR_NONNULL_ARG(1, 3, 4)
 {
   // TODO(vim): find a generic solution to make line-joining operations more
@@ -3410,6 +3409,30 @@ static int check_regexp_delim(int c)
 /// @return 0, 1 or 2. See show_cmdpreview() for more information on what the return value means.
 static int do_sub(exarg_T *eap, proftime_T timeout, long cmdpreview_ns, handle_T cmdpreview_bufnr)
 {
+#define ADJUST_SUB_FIRSTLNUM() \
+  do { \
+    /* For a multi-line match, make a copy of the last matched */ \
+    /* line and continue in that one. */ \
+    if (nmatch > 1) { \
+      sub_firstlnum += (linenr_T)nmatch - 1; \
+      xfree(sub_firstline); \
+      sub_firstline = xstrdup(ml_get(sub_firstlnum)); \
+      /* When going beyond the last line, stop substituting. */ \
+      if (sub_firstlnum <= line2) { \
+        do_again = true; \
+      } else { \
+        subflags.do_all = false; \
+      } \
+    } \
+    if (skip_match) { \
+      /* Already hit end of the buffer, sub_firstlnum is one */ \
+      /* less than what it ought to be. */ \
+      xfree(sub_firstline); \
+      sub_firstline = xstrdup(""); \
+      copycol = 0; \
+    } \
+  } while (0)
+
   long i = 0;
   regmmatch_T regmatch;
   static subflags_T subflags = {
@@ -3876,7 +3899,8 @@ static int do_sub(exarg_T *eap, proftime_T timeout, long cmdpreview_ns, handle_T
 
               update_topline(curwin);
               validate_cursor();
-              update_screen(UPD_SOME_VALID);
+              redraw_later(curwin, UPD_SOME_VALID);
+              update_screen();
               highlight_match = false;
               redraw_later(curwin, UPD_SOME_VALID);
 
@@ -3979,30 +4003,6 @@ static int do_sub(exarg_T *eap, proftime_T timeout, long cmdpreview_ns, handle_T
           current_match.end.lnum = sub_firstlnum + (linenr_T)nmatch;
           skip_match = true;
         }
-
-#define ADJUST_SUB_FIRSTLNUM() \
-  do { \
-    /* For a multi-line match, make a copy of the last matched */ \
-    /* line and continue in that one. */ \
-    if (nmatch > 1) { \
-      sub_firstlnum += (linenr_T)nmatch - 1; \
-      xfree(sub_firstline); \
-      sub_firstline = xstrdup(ml_get(sub_firstlnum)); \
-      /* When going beyond the last line, stop substituting. */ \
-      if (sub_firstlnum <= line2) { \
-        do_again = true; \
-      } else { \
-        subflags.do_all = false; \
-      } \
-    } \
-    if (skip_match) { \
-      /* Already hit end of the buffer, sub_firstlnum is one */ \
-      /* less than what it ought to be. */ \
-      xfree(sub_firstline); \
-      sub_firstline = xstrdup(""); \
-      copycol = 0; \
-    } \
-  } while (0)
 
         // Save the line numbers for the preview buffer
         // NOTE: If the pattern matches a final newline, the next line will

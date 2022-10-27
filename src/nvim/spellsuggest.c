@@ -533,7 +533,7 @@ void spell_suggest(int count)
       }
       vim_snprintf((char *)IObuff, IOSIZE, "%2d", i + 1);
       if (cmdmsg_rl) {
-        rl_mirror((char_u *)IObuff);
+        rl_mirror(IObuff);
       }
       msg_puts((const char *)IObuff);
 
@@ -559,7 +559,7 @@ void spell_suggest(int count)
         }
         if (cmdmsg_rl) {
           // Mirror the numbers, but keep the leading space.
-          rl_mirror((char_u *)IObuff + 1);
+          rl_mirror(IObuff + 1);
         }
         msg_advance(30);
         msg_puts((const char *)IObuff);
@@ -2250,7 +2250,7 @@ static void suggest_trie_walk(suginfo_T *su, langp_T *lp, char_u *fword, bool so
         ftp = (fromto_T *)gap->ga_data + sp->ts_curi++;
         if (*ftp->ft_from != *p) {
           // past possible matching entries
-          sp->ts_curi = (char_u)gap->ga_len;
+          sp->ts_curi = (int16_t)gap->ga_len;
           break;
         }
         if (STRNCMP(ftp->ft_from, p, STRLEN(ftp->ft_from)) == 0
@@ -3530,7 +3530,7 @@ static int soundalike_score(char *goodstart, char *badstart)
 /// The implementation of the algorithm comes from Aspell editdist.cpp,
 /// edit_distance().  It has been converted from C++ to C and modified to
 /// support multi-byte characters.
-static int spell_edit_score(slang_T *slang, char_u *badword, char_u *goodword)
+static int spell_edit_score(slang_T *slang, const char_u *badword, const char_u *goodword)
 {
   int *cnt;
   int j, i;
@@ -3635,7 +3635,8 @@ static int spell_edit_score_limit(slang_T *slang, char_u *badword, char_u *goodw
 
 /// Multi-byte version of spell_edit_score_limit().
 /// Keep it in sync with the above!
-static int spell_edit_score_limit_w(slang_T *slang, char_u *badword, char_u *goodword, int limit)
+static int spell_edit_score_limit_w(slang_T *slang, const char_u *badword, const char_u *goodword,
+                                    int limit)
 {
   limitscore_T stack[10];               // allow for over 3 * 2 edits
   int stackidx;

@@ -19,8 +19,8 @@
 -- types: bool, number, string
 -- lists: (nil), comma, onecomma, flags, flagscomma
 -- scopes: global, buffer, window
--- redraw options: statuslines, current_window, curent_window_only,
---                 current_buffer, all_windows, everything, curswant
+-- redraw options: statuslines, tabline, current_window, curent_window_only,
+--                 current_buffer, all_windows, curswant
 -- defaults: {condition=#if condition, if_true=default, if_false=default}
 -- #if condition:
 --    string: #ifdef string
@@ -128,7 +128,6 @@ return {
       full_name='background', abbreviation='bg',
       short_desc=N_("\"dark\" or \"light\", used for highlight colors"),
       type='string', scope={'global'},
-      redraw={'all_windows'},
       varname='p_bg',
       defaults={if_true="dark"}
     },
@@ -395,7 +394,6 @@ return {
       short_desc=N_("number of columns in the display"),
       type='number', scope={'global'},
       no_mkrc=true,
-      redraw={'everything'},
       varname='p_columns',
       defaults={if_true=macros('DFLT_COLS')}
     },
@@ -422,7 +420,6 @@ return {
       full_name='compatible', abbreviation='cp',
       short_desc=N_("No description"),
       type='bool', scope={'global'},
-      redraw={'all_windows'},
       varname='p_force_off',
       -- pri_mkrc isn't needed here, optval_default()
       -- always returns TRUE for 'compatible'
@@ -497,58 +494,6 @@ return {
       redraw={'all_windows'},
       varname='p_cpo',
       defaults={if_true=macros('CPO_VIM')}
-    },
-    {
-      full_name='cscopepathcomp', abbreviation='cspc',
-      short_desc=N_("how many components of the path to show"),
-      type='number', scope={'global'},
-      varname='p_cspc',
-      defaults={if_true=0}
-    },
-    {
-      full_name='cscopeprg', abbreviation='csprg',
-      short_desc=N_("command to execute cscope"),
-      type='string', scope={'global'},
-      secure=true,
-      expand=true,
-      varname='p_csprg',
-      defaults={if_true="cscope"}
-    },
-    {
-      full_name='cscopequickfix', abbreviation='csqf',
-      short_desc=N_("use quickfix window for cscope results"),
-      type='string', list='onecomma', scope={'global'},
-      deny_duplicates=true,
-      varname='p_csqf',
-      defaults={if_true=""}
-    },
-    {
-      full_name='cscoperelative', abbreviation='csre',
-      short_desc=N_("Use cscope.out path basename as prefix"),
-      type='bool', scope={'global'},
-      varname='p_csre',
-      defaults={if_true=0}
-    },
-    {
-      full_name='cscopetag', abbreviation='cst',
-      short_desc=N_("use cscope for tag commands"),
-      type='bool', scope={'global'},
-      varname='p_cst',
-      defaults={if_true=0}
-    },
-    {
-      full_name='cscopetagorder', abbreviation='csto',
-      short_desc=N_("determines \":cstag\" search order"),
-      type='number', scope={'global'},
-      varname='p_csto',
-      defaults={if_true=0}
-    },
-    {
-      full_name='cscopeverbose', abbreviation='csverb',
-      short_desc=N_("give messages when adding a cscope database"),
-      type='bool', scope={'global'},
-      varname='p_csverbose',
-      defaults={if_true=1}
     },
     {
       full_name='cursorbind', abbreviation='crb',
@@ -663,7 +608,7 @@ return {
       deny_duplicates=true,
       redraw={'all_windows'},
       varname='p_dy',
-      defaults={if_true="lastline,msgsep"}
+      defaults={if_true="lastline"}
     },
     {
       full_name='eadirection', abbreviation='ead',
@@ -708,7 +653,6 @@ return {
       full_name='equalalways', abbreviation='ea',
       short_desc=N_("windows are automatically made the same size"),
       type='bool', scope={'global'},
-      redraw={'all_windows'},
       varname='p_ea',
       defaults={if_true=true}
     },
@@ -1051,7 +995,6 @@ return {
       full_name='guioptions', abbreviation='go',
       short_desc=N_("GUI: Which components and options are used"),
       type='string', list='flags', scope={'global'},
-      redraw={'all_windows'},
       enable_if=false,
     },
     {
@@ -1195,7 +1138,6 @@ return {
       full_name='inccommand', abbreviation='icm',
       short_desc=N_("Live preview of substitution"),
       type='string', scope={'global'},
-      redraw={'all_windows'},
       varname='p_icm',
       defaults={if_true="nosplit"}
     },
@@ -1403,7 +1345,6 @@ return {
       short_desc=N_("of lines in the display"),
       type='number', scope={'global'},
       no_mkrc=true,
-      redraw={'everything'},
       varname='p_lines',
       defaults={if_true=macros('DFLT_ROWS')}
     },
@@ -1421,6 +1362,14 @@ return {
       type='bool', scope={'buffer'},
       varname='p_lisp',
       defaults={if_true=false}
+    },
+    {
+      full_name='lispoptions', abbreviation='lop',
+      short_desc=N_("options for lisp indenting"),
+      type='string', list='onecomma', scope={'buffer'},
+      deny_duplicates=true,
+      varname='p_lop', pv_name='p_lop',
+      defaults={if_true=''}
     },
     {
       full_name='lispwords', abbreviation='lw',
@@ -2023,7 +1972,6 @@ return {
       full_name='scrolloff', abbreviation='so',
       short_desc=N_("minimum nr. of lines above and below cursor"),
       type='number', scope={'global', 'window'},
-      redraw={'all_windows'},
       varname='p_so',
       defaults={if_true=0}
     },
@@ -2260,7 +2208,6 @@ return {
       full_name='sidescrolloff', abbreviation='siso',
       short_desc=N_("min. nr. of columns to left and right of cursor"),
       type='number', scope={'global', 'window'},
-      redraw={'all_windows'},
       varname='p_siso',
       defaults={if_true=0}
     },
@@ -2366,6 +2313,13 @@ return {
       defaults={if_true=false}
     },
     {
+      full_name='splitkeep', abbreviation='spk',
+      short_desc=N_("determines scroll behavior for split windows"),
+      type='string', scope={'global'},
+      varname='p_spk',
+      defaults={if_true='cursor'}
+    },
+    {
       full_name='splitright', abbreviation='spr',
       short_desc=N_("new window is put right of the current one"),
       type='bool', scope={'global'},
@@ -2453,7 +2407,7 @@ return {
       short_desc=N_("custom format for the console tab pages line"),
       type='string', scope={'global'},
       modelineexpr=true,
-      redraw={'all_windows'},
+      redraw={'tabline'},
       varname='p_tal',
       defaults={if_true=""}
     },

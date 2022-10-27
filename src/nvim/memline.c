@@ -169,7 +169,7 @@ struct block0 {
   char_u b0_fname[B0_FNAME_SIZE_ORG];        // name of file being edited
   long b0_magic_long;           // check for byte order of long
   int b0_magic_int;             // check for byte order of int
-  short b0_magic_short;         // check for byte order of short
+  int16_t b0_magic_short;       // check for byte order of short
   char_u b0_magic_char;         // check for last char
 };
 
@@ -272,7 +272,7 @@ int ml_open(buf_T *buf)
   b0p->b0_id[1] = BLOCK0_ID1;
   b0p->b0_magic_long = B0_MAGIC_LONG;
   b0p->b0_magic_int = (int)B0_MAGIC_INT;
-  b0p->b0_magic_short = (short)B0_MAGIC_SHORT;
+  b0p->b0_magic_short = (int16_t)B0_MAGIC_SHORT;
   b0p->b0_magic_char = B0_MAGIC_CHAR;
   xstrlcpy(xstpcpy((char *)b0p->b0_version, "VIM "), Version, 6);
   long_to_char((long)mfp->mf_page_size, b0p->b0_page_size);
@@ -437,7 +437,7 @@ void ml_open_file(buf_T *buf)
   if (buf->b_spell) {
     char *fname = vim_tempname();
     if (fname != NULL) {
-      (void)mf_open_file(mfp, (char *)fname);           // consumes fname!
+      (void)mf_open_file(mfp, fname);           // consumes fname!
     }
     buf->b_may_swap = false;
     return;
@@ -1193,7 +1193,7 @@ int recover_names(char_u *fname, int list, int nr, char **fname_out)
     // Isolate a directory name from *dirp and put it in dir_name (we know
     // it is large enough, so use 31000 for length).
     // Advance dirp to next directory name.
-    (void)copy_option_part(&dirp, (char *)dir_name, 31000, ",");
+    (void)copy_option_part(&dirp, dir_name, 31000, ",");
 
     if (dir_name[0] == '.' && dir_name[1] == NUL) {     // check current dir
       if (fname == NULL) {
@@ -1208,24 +1208,24 @@ int recover_names(char_u *fname, int list, int nr, char **fname_out)
       }
     } else {                      // check directory dir_name
       if (fname == NULL) {
-        names[0] = concat_fnames((char *)dir_name, "*.sw?", true);
+        names[0] = concat_fnames(dir_name, "*.sw?", true);
         // For Unix names starting with a dot are special.  MS-Windows
         // supports this too, on some file systems.
-        names[1] = concat_fnames((char *)dir_name, ".*.sw?", true);
-        names[2] = concat_fnames((char *)dir_name, ".sw?", true);
+        names[1] = concat_fnames(dir_name, ".*.sw?", true);
+        names[2] = concat_fnames(dir_name, ".sw?", true);
         num_names = 3;
       } else {
         int len = (int)STRLEN(dir_name);
         p = dir_name + len;
-        if (after_pathsep((char *)dir_name, (char *)p)
+        if (after_pathsep(dir_name, p)
             && len > 1
             && p[-1] == p[-2]) {
           // Ends with '//', Use Full path for swap name
-          tail = (char_u *)make_percent_swname((char *)dir_name,
+          tail = (char_u *)make_percent_swname(dir_name,
                                                (char *)fname_res);
         } else {
           tail = (char_u *)path_tail((char *)fname_res);
-          tail = (char_u *)concat_fnames((char *)dir_name, (char *)tail, true);
+          tail = (char_u *)concat_fnames(dir_name, (char *)tail, true);
         }
         num_names = recov_file_names(names, (char *)tail, false);
         xfree(tail);
@@ -1262,7 +1262,7 @@ int recover_names(char_u *fname, int list, int nr, char **fname_out)
       for (int i = 0; i < num_files; i++) {
         // Do not expand wildcards, on Windows would try to expand
         // "%tmp%" in "%tmp%file"
-        if (path_full_compare((char *)p, files[i], true, false) & kEqualFiles) {
+        if (path_full_compare(p, files[i], true, false) & kEqualFiles) {
           // Remove the name from files[i].  Move further entries
           // down.  When the array becomes empty free it here, since
           // FreeWild() won't be called below.
@@ -1292,7 +1292,7 @@ int recover_names(char_u *fname, int list, int nr, char **fname_out)
         }
       } else {
         msg_puts(_("   In directory "));
-        msg_home_replace((char *)dir_name);
+        msg_home_replace(dir_name);
         msg_puts(":\n");
       }
 
@@ -3376,7 +3376,7 @@ static int b0_magic_wrong(ZERO_BL *b0p)
 {
   return b0p->b0_magic_long != B0_MAGIC_LONG
          || b0p->b0_magic_int != (int)B0_MAGIC_INT
-         || b0p->b0_magic_short != (short)B0_MAGIC_SHORT
+         || b0p->b0_magic_short != (int16_t)B0_MAGIC_SHORT
          || b0p->b0_magic_char != B0_MAGIC_CHAR;
 }
 
@@ -3485,7 +3485,7 @@ static void long_to_char(long n, char_u *s)
   s[3] = (char_u)(n & 0xff);
 }
 
-static long char_to_long(char_u *s)
+static long char_to_long(const char_u *s)
 {
   long retval;
 

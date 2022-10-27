@@ -5,6 +5,7 @@ local command = helpers.command
 local feed = helpers.feed
 local feed_command = helpers.feed_command
 local exec = helpers.exec
+local meths = helpers.meths
 local pesc = helpers.pesc
 
 describe('cmdline', function()
@@ -173,35 +174,24 @@ describe('cmdline', function()
     ]])
   end)
 
-  -- oldtest: Test_redrawstatus_in_autocmd()
-  it(':redrawstatus in cmdline mode', function()
+  it("setting 'cmdheight' works after outputting two messages vim-patch:9.0.0665", function()
     local screen = Screen.new(60, 8)
     screen:set_default_attr_ids({
       [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
-      [1] = {bold = true, reverse = true},  -- MsgSeparator, StatusLine
+      [1] = {bold = true, reverse = true},  -- StatusLine
     })
     screen:attach()
     exec([[
-      set laststatus=2
-      set statusline=%=:%{getcmdline()}
-      autocmd CmdlineChanged * redrawstatus
-      set display-=msgsep
+      set cmdheight=1 laststatus=2
+      func EchoTwo()
+        set laststatus=2
+        set cmdheight=5
+        echo 'foo'
+        echo 'bar'
+        set cmdheight=1
+      endfunc
     ]])
-    -- :redrawstatus is postponed if messages have scrolled
-    feed([[:echo "one\ntwo\nthree\nfour"<CR>]])
-    feed(':foobar')
-    screen:expect([[
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {1:                               :echo "one\ntwo\nthree\nfour"}|
-      one                                                         |
-      two                                                         |
-      three                                                       |
-      four                                                        |
-      :foobar^                                                     |
-    ]])
-    -- it is not postponed if messages have not scrolled
-    feed('<Esc>:for in in range(3)')
+    feed(':call EchoTwo()')
     screen:expect([[
                                                                   |
       {0:~                                                           }|
@@ -209,44 +199,44 @@ describe('cmdline', function()
       {0:~                                                           }|
       {0:~                                                           }|
       {0:~                                                           }|
-      {1:                                         :for in in range(3)}|
-      :for in in range(3)^                                         |
+      {1:[No Name]                                                   }|
+      :call EchoTwo()^                                             |
     ]])
-    -- with cmdheight=1 messages have scrolled when typing :endfor
-    feed('<CR>:endfor')
+    feed('<CR>')
     screen:expect([[
+      ^                                                            |
       {0:~                                                           }|
       {0:~                                                           }|
       {0:~                                                           }|
       {0:~                                                           }|
       {0:~                                                           }|
-      {1:                                         :for in in range(3)}|
-      :for in in range(3)                                         |
-      :  :endfor^                                                  |
-    ]])
-    feed('<CR>:set cmdheight=2<CR>')
-    -- with cmdheight=2 messages haven't scrolled when typing :for or :endfor
-    feed(':for in in range(3)')
-    screen:expect([[
-                                                                  |
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {1:                                         :for in in range(3)}|
-      :for in in range(3)^                                         |
+      {1:[No Name]                                                   }|
                                                                   |
     ]])
-    feed('<CR>:endfor')
+  end)
+
+  -- oldtest: Test_cmdheight_tabline()
+  it("changing 'cmdheight' when there is a tabline", function()
+    local screen = Screen.new(60, 8)
+    screen:set_default_attr_ids({
+      [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
+      [1] = {bold = true, reverse = true},  -- StatusLine
+      [2] = {bold = true},  -- TabLineSel
+      [3] = {reverse = true},  -- TabLineFill
+    })
+    screen:attach()
+    meths.set_option('laststatus', 2)
+    meths.set_option('showtabline', 2)
+    meths.set_option('cmdheight', 1)
     screen:expect([[
+      {2: [No Name] }{3:                                                 }|
+      ^                                                            |
+      {0:~                                                           }|
+      {0:~                                                           }|
+      {0:~                                                           }|
+      {0:~                                                           }|
+      {1:[No Name]                                                   }|
                                                                   |
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {1:                                                    ::endfor}|
-      :for in in range(3)                                         |
-      :  :endfor^                                                  |
     ]])
   end)
 end)
