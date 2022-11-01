@@ -6,7 +6,6 @@
 #include "nvim/tangle.h"
 #include "nvim/garray.h"
 
-
 #include "nvim/message.h"
 
 #include "nvim/buffer.h"

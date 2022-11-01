@@ -705,9 +705,5 @@ TUI:
   at how the terminal is sending CSI.  Nvim does not issue such a sequence and
   always uses 7-bit control sequences.
 
-Cscope:
-                                                                      *cscope*
-  Cscope support has been removed in favour of LSP based solutions.
-
 ==============================================================================
  vim:tw=78:ts=8:sw=2:et:ft=help:norl:

@@ -133,8 +133,7 @@ static struct vimvar {
   char *vv_name;  ///< Name of the variable, without v:.
   TV_DICTITEM_STRUCT(VIMVAR_KEY_LEN + 1) vv_di;  ///< Value and name for key (max 16 chars).
   char vv_flags;  ///< Flags: #VV_COMPAT, #VV_RO, #VV_RO_SBX.
-} vimvars[] =
-{
+} vimvars[] = {
   // VV_ tails differing from upcased string literals:
   // VV_CC_FROM "charconvert_from"
   // VV_CC_TO "charconvert_to"
@@ -1444,7 +1443,7 @@ char *get_lval(char *const name, typval_T *const rettv, lval_T *const lp, const 
         }
         wrong = ((lp->ll_dict->dv_scope == VAR_DEF_SCOPE
                   && tv_is_func(*rettv)
-                  && !var_check_func_name((const char *)key, lp->ll_di == NULL))
+                  && var_wrong_func_name((const char *)key, lp->ll_di == NULL))
                  || !valid_varname((const char *)key));
         if (len != -1) {
           key[len] = prevval;

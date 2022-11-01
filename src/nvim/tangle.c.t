@@ -26,7 +26,6 @@
 #include "nvim/tangle.h"
 #include "nvim/garray.h"
 
-
 @includes
 
 @line_struct

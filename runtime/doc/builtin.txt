@@ -220,6 +220,7 @@ gettabvar({nr}, {varname} [, {def}])
 gettabwinvar({tabnr}, {winnr}, {name} [, {def}])
 				any	{name} in {winnr} in tab page {tabnr}
 gettagstack([{nr}])		Dict	get the tag stack of window {nr}
+gettext({text})			String	lookup translation of {text}
 getwininfo([{winid}])		List	list of info about each window
 getwinpos([{timeout}])		List	X and Y coord in pixels of the Vim window
 getwinposx()			Number	X coord in pixels of Vim window
@@ -348,6 +349,7 @@ pyxeval({expr})			any	evaluate |python_x| expression
 rand([{expr}])			Number	get pseudo-random number
 range({expr} [, {max} [, {stride}]])
 				List	items from {expr} to {max}
+readblob({fname})		Blob	read a |Blob| from {fname}
 readdir({dir} [, {expr}])	List	file names in {dir} selected by {expr}
 readfile({fname} [, {type} [, {max}]])
 				List	get list of lines from file {fname}
@@ -1197,11 +1199,9 @@ col({expr})	The result is a Number, which is the byte index of the column
 		buffer.
 		For the cursor position, when 'virtualedit' is active, the
 		column is one higher if the cursor is after the end of the
-		line.  This can be used to obtain the column in Insert mode: >
-			:imap <F2> <C-O>:let save_ve = &ve<CR>
-				\<C-O>:set ve=all<CR>
-				\<C-O>:echo col(".") .. "\n" <Bar>
-				\let &ve = save_ve<CR>
+		line.  Also, when using a <Cmd> mapping the cursor isn't
+		moved, this can be used to obtain the column in Insert mode: >
+			:imap <F2> <Cmd>echo col(".")<CR>
 
 <		Can also be used as a |method|: >
 			GetPos()->col()
@@ -3583,6 +3583,19 @@ gettagstack([{winnr}])					*gettagstack()*
 
 		Can also be used as a |method|: >
 			GetWinnr()->gettagstack()
+
+
+gettext({text})						*gettext()*
+		Translate String {text} if possible.
+		This is mainly for use in the distributed Vim scripts.  When
+		generating message translations the {text} is extracted by
+		xgettext, the translator can add the translated message in the
+		.po file and Vim will lookup the translation when gettext() is
+		called.
+		For {text} double quoted strings are preferred, because
+		xgettext does not understand escaping in single quoted
+		strings.
+
 
 getwininfo([{winid}])					*getwininfo()*
 		Returns information about windows as a |List| with Dictionaries.
@@ -6024,6 +6037,14 @@ rand([{expr}])						*rand()*
 		Can also be used as a |method|: >
 			seed->rand()
 <
+
+readblob({fname})					*readblob()*
+		Read file {fname} in binary mode and return a |Blob|.
+		When the file can't be opened an error message is given and
+		the result is an empty |Blob|.
+		Also see |readfile()| and |writefile()|.
+
+
 							*readdir()*
 readdir({directory} [, {expr}])
 		Return a list with file and directory names in {directory}.
@@ -6058,6 +6079,7 @@ readdir({directory} [, {expr}])
 		Can also be used as a |method|: >
 			GetDirName()->readdir()
 <
+
 							*readfile()*
 readfile({fname} [, {type} [, {max}]])
 		Read file {fname} and return a |List|, each line of the file
@@ -6069,8 +6091,6 @@ readfile({fname} [, {type} [, {max}]])
 		- When the last line ends in a NL an extra empty list item is
 		  added.
 		- No CR characters are removed.
-		When {type} contains "B" a |Blob| is returned with the binary
-		data of the file unmodified.
 		Otherwise:
 		- CR characters that appear before a NL are removed.
 		- Whether the last line ends in a NL or not does not matter.
@@ -6087,6 +6107,9 @@ readfile({fname} [, {type} [, {max}]])
 		Note that without {max} the whole file is read into memory.
 		Also note that there is no recognition of encoding.  Read a
 		file into a buffer if you need to.
+		Deprecated (use |readblob()| instead): When {type} contains
+		"B" a |Blob| is returned with the binary data of the file
+		unmodified.
 		When the file can't be opened an error message is given and
 		the result is an empty list.
 		Also see |writefile()|.
@@ -8895,7 +8918,12 @@ win_execute({id}, {command} [, {silent}])		*win_execute()*
 		have unexpected side effects.  Use |:noautocmd| if needed.
 		Example: >
 			call win_execute(winid, 'syntax enable')
-<
+<		Doing the same with `setwinvar()` would not trigger
+		autocommands and not actually show syntax highlighting.
+
+		When window {id} does not exist then no error is given and
+		an empty string is returned.
+
 		Can also be used as a |method|, the base is passed as the
 		second argument: >
 			GetCommand()->win_execute(winid)
