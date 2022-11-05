@@ -900,6 +900,8 @@ struct diffblock_S {
   diff_T *df_next;
   linenr_T df_lnum[DB_COUNT];           // line number in buffer
   linenr_T df_count[DB_COUNT];          // nr of inserted/changed lines
+  bool is_linematched;  // has the linematch algorithm ran on this diff hunk to divide it into
+                        // smaller diff hunks?
 };
 
 #define SNAP_HELP_IDX   0
@@ -967,7 +969,8 @@ struct frame_S {
                             // for first
   // fr_child and fr_win are mutually exclusive
   frame_T *fr_child;        // first contained frame
-  win_T *fr_win;          // window that fills this frame
+  win_T *fr_win;        // window that fills this frame; for a snapshot
+                        // set to the current window
 };
 
 #define FR_LEAF 0       // frame is a leaf
@@ -1344,6 +1347,7 @@ struct window_S {
   int w_briopt_shift;               // additional shift for breakindent
   bool w_briopt_sbr;                // sbr in 'briopt'
   int w_briopt_list;                // additional indent for lists
+  int w_briopt_vcol;                // indent for specific column
 
   // transform a pointer to a "onebuf" option into a "allbuf" option
 #define GLOBAL_WO(p)    ((char *)(p) + sizeof(winopt_T))

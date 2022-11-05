@@ -460,7 +460,7 @@ int get_func_tv(const char_u *name, int len, typval_T *rettv, char **arg, funcex
     int i = 0;
 
     if (get_vim_var_nr(VV_TESTING)) {
-      // Prepare for calling garbagecollect_for_testing(), need to know
+      // Prepare for calling test_garbagecollect_now(), need to know
       // what variables are used on the call stack.
       if (funcargs.ga_itemsize == 0) {
         ga_init(&funcargs, (int)sizeof(typval_T *), 50);
@@ -1964,7 +1964,7 @@ void ex_function(exarg_T *eap)
 
   // ":function /pat": list functions matching pattern.
   if (*eap->arg == '/') {
-    p = skip_regexp(eap->arg + 1, '/', true, NULL);
+    p = skip_regexp(eap->arg + 1, '/', true);
     if (!eap->skip) {
       regmatch_T regmatch;
 

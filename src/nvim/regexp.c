@@ -97,20 +97,24 @@ static int toggle_Magic(int x)
 
 #define MAX_LIMIT       (32767L << 16L)
 
-static char_u e_missingbracket[] = N_("E769: Missing ] after %s[");
-static char_u e_reverse_range[] = N_("E944: Reverse range in character class");
-static char_u e_large_class[] = N_("E945: Range too large in character class");
-static char_u e_unmatchedpp[] = N_("E53: Unmatched %s%%(");
-static char_u e_unmatchedp[] = N_("E54: Unmatched %s(");
-static char_u e_unmatchedpar[] = N_("E55: Unmatched %s)");
-static char_u e_z_not_allowed[] = N_("E66: \\z( not allowed here");
-static char_u e_z1_not_allowed[] = N_("E67: \\z1 - \\z9 not allowed here");
-static char_u e_missing_sb[] = N_("E69: Missing ] after %s%%[");
-static char_u e_empty_sb[] = N_("E70: Empty %s%%[]");
-static char_u e_recursive[] = N_("E956: Cannot use pattern recursively");
-static char_u e_regexp_number_after_dot_pos_search[]
+static char e_missingbracket[] = N_("E769: Missing ] after %s[");
+static char e_reverse_range[] = N_("E944: Reverse range in character class");
+static char e_large_class[] = N_("E945: Range too large in character class");
+static char e_unmatchedpp[] = N_("E53: Unmatched %s%%(");
+static char e_unmatchedp[] = N_("E54: Unmatched %s(");
+static char e_unmatchedpar[] = N_("E55: Unmatched %s)");
+static char e_z_not_allowed[] = N_("E66: \\z( not allowed here");
+static char e_z1_not_allowed[] = N_("E67: \\z1 - \\z9 not allowed here");
+static char e_missing_sb[] = N_("E69: Missing ] after %s%%[");
+static char e_empty_sb[] = N_("E70: Empty %s%%[]");
+static char e_recursive[] = N_("E956: Cannot use pattern recursively");
+static char e_regexp_number_after_dot_pos_search_chr[]
   = N_("E1204: No Number allowed after .: '\\%%%c'");
-static char_u e_substitute_nesting_too_deep[] = N_("E1290: substitute nesting too deep");
+static char e_nfa_regexp_missing_value_in_chr[]
+  = N_("E1273: (NFA regexp) missing value in '\\%%%c'");
+static char e_atom_engine_must_be_at_start_of_pattern[]
+  = N_("E1281: Atom '\\%%#=%c' must be at the start of the pattern");
+static char e_substitute_nesting_too_deep[] = N_("E1290: substitute nesting too deep");
 
 #define NOT_MULTI       0
 #define MULTI_ONE       1
@@ -481,13 +485,33 @@ static char_u *skip_anyof(char *p)
 }
 
 /// Skip past regular expression.
-/// Stop at end of "startp" or where "dirc" is found ('/', '?', etc).
+/// Stop at end of "startp" or where "delim" is found ('/', '?', etc).
 /// Take care of characters with a backslash in front of it.
 /// Skip strings inside [ and ].
+char *skip_regexp(char *startp, int delim, int magic)
+{
+  return skip_regexp_ex(startp, delim, magic, NULL, NULL);
+}
+
+/// Call skip_regexp() and when the delimiter does not match give an error and
+/// return NULL.
+char *skip_regexp_err(char *startp, int delim, int magic)
+{
+  char *p = skip_regexp(startp, delim, magic);
+
+  if (*p != delim) {
+    semsg(_("E654: missing delimiter after search pattern: %s"), startp);
+    return NULL;
+  }
+  return p;
+}
+
+/// skip_regexp() with extra arguments:
 /// When "newp" is not NULL and "dirc" is '?', make an allocated copy of the
 /// expression and change "\?" to "?".  If "*newp" is not NULL the expression
 /// is changed in-place.
-char *skip_regexp(char *startp, int dirc, int magic, char **newp)
+/// If a "\?" is changed to "?" then "dropped" is incremented, unless NULL.
+char *skip_regexp_ex(char *startp, int dirc, int magic, char **newp, int *dropped)
 {
   int mymagic;
   char *p = startp;
@@ -515,6 +539,9 @@ char *skip_regexp(char *startp, int dirc, int magic, char **newp)
         if (*newp == NULL) {
           *newp = xstrdup(startp);
           p = *newp + (p - startp);
+        }
+        if (dropped != NULL) {
+          (*dropped)++;
         }
         STRMOVE(p, p + 1);
       } else {
