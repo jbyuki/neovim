@@ -7,6 +7,7 @@
 #include "nvim/garray.h"
 #include "nvim/pos.h"
 #include "nvim/types.h"
+#include "nvim/bitree.h"
 
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS

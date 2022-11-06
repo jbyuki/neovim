@@ -9,6 +9,7 @@
 #include "nvim/garray.h"
 #include "nvim/pos.h"
 #include "nvim/types.h"
+#include "nvim/bitree.h"
 
 @define_struct
 
@@ -36,7 +37,6 @@
 # include "tangle.c.generated.h"
 #endif
 
-
 @global_variables
 @define_functions_linked_list
 @define_functions
@@ -48,9 +48,7 @@
 void attach_tangle(buf_T *buf) 
 {
   semsg(_("Tangle activated!"));
-  @create_tangle_buffer
   @tangle_current_buffer_initial
-  @set_tangle_buffer
 }
 
 void deattach_tangle(buf_T *buf) 
@@ -62,13 +60,5 @@ void deattach_tangle(buf_T *buf)
 #include "nvim/buffer.h"
 #include "nvim/option.h"
 
-@create_tangle_buffer+=
-buf_T* tangle_view = buflist_new(NULL, NULL, (linenr_T)1, BLN_NEW);
-ml_open(tangle_view);
-
 @tangle_current_buffer_initial+=
 tangle_parse(buf);
-tangle_output(tangle_view);
-
-@set_tangle_buffer+=
-buf->tangle_view = tangle_view;

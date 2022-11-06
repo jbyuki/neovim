@@ -24,7 +24,6 @@ if(NOT LANGUAGES)
     pl.UTF-8
     pt_BR
     ru
-    sk
     sv
     tr
     uk

@@ -31,6 +31,7 @@ if(*fp == '@') {
     }
   } else {
 		@create_text_line_without_at
+		@add_line_to_btree
 		@add_line_to_current_section
   }
 }
@@ -53,6 +54,9 @@ case '-': op = 2; break;
 default: op = 0; break;
 }
 
+@includes+=
+#include "nvim/vim.h"
+
 @parse_section_name+=
 size_t len = (op == 0 ? lp : lp-1) - (fp+1);
 char* name = xmalloc(len + 1);
@@ -67,12 +71,6 @@ typedef struct section
 
 @create_new_section-=
 Section* section = (Section*)xmalloc(sizeof(Section));
-
-@section_data+=
-char* name;
-
-@create_new_section+=
-section->name = name;
 
 @includes+=
 #include "nvim/map.h"
@@ -135,6 +133,7 @@ else {
 @get_whitespace_before
 @get_reference_name
 @create_line_reference
+@add_line_to_btree
 @add_line_to_current_section
 
 @get_whitespace_before+=
@@ -154,56 +153,56 @@ assert(cur_section != NULL);
 @includes+=
 #include <assert.h>
 
-@line_struct+=
-typedef struct
-{
-  enum {
-    REFERENCE = 0,
-    @line_type
-  } type;
-
-  @line_data
-} Line;
-
-@line_data+=
-union {
-  char* str;
-  char* name;
-};
-char* prefix;
-
 @create_line_reference+=
 Line l;
 l.type = REFERENCE;
 l.name = name;
 l.prefix = prefix;
+l.pnext = NULL;
+l.pprev = NULL;
 
 @includes+=
 #include "klib/kvec.h"
 
 @section_data+=
-kvec_t(Line) lines;
+Line* head, *tail;
 
 @create_new_section+=
-kv_init(section->lines);
+section->head = NULL;
+section->tail = NULL;
 
 @free_section+=
-kv_destroy(temp->lines);
+temp->head = NULL;
+temp->tail = NULL;
+
+@define_functions+=
+static inline void add_to_section(Section* section, Line* pl)
+	FUNC_ATTR_ALWAYS_INLINE
+{
+	if(!section->tail) {
+		section->head = pl;
+		section->tail = pl;
+	} else {
+		section->tail->pnext = pl;
+		pl->pprev = section->tail;
+		section->tail = pl;
+	}
+}
 
 @add_line_to_current_section+=
-kv_push(cur_section->lines, l);
-
-@line_type+=
-TEXT,
+add_to_section(cur_section, pl);
 
 @create_text_line_without_at+=
 Line l;
 l.type = TEXT;
 l.str = xstrdup(fp+1);
+l.pnext = NULL;
+l.pprev = NULL;
 
 @otherwise_add_to_section+=
 else {
 	@create_text_line
+	@add_line_to_btree
 	@add_line_to_current_section
 }
 
@@ -211,3 +210,20 @@ else {
 Line l;
 l.type = TEXT;
 l.str = xstrdup(line);
+l.pnext = NULL;
+l.pprev = NULL;
+
+@includes+=
+#include "nvim/bitree.h"
+
+@global_variables+=
+static bptree* tree = NULL;
+
+@parse_variables+=
+if(tree) {
+	destroy_tree(tree);
+}
+tree = create_tree();
+
+@add_line_to_btree+=
+Line* pl = tree_insert(tree, tree->total, &l);

@@ -3,10 +3,6 @@
 // Based on B+ trees, this allows to do
 // all operations in logarithmic time and
 // with efficient cache usage.
-// Bitree designates that there are two
-// trees linked together where one is for
-// the untangled code and the other is for
-// the tangled code.
 
 #include <inttypes.h>
 #include <string.h>
@@ -27,14 +23,20 @@
 #include "bitree.c.generated.h"
 #endif
 
+bpnode* create_node()
+{
+	bpnode* node = (bpnode*)malloc(sizeof(bpnode));
+	node->leaf = true;
+	node->n = 0;
+	node->parent = NULL;
+	return node;
+}
+
 bptree* create_tree()
 {
 	bptree* tree = (bptree*)malloc(sizeof(bptree));
 	tree->total = 0;
-	tree->root = (bpnode*)malloc(sizeof(bpnode));
-	tree->root->leaf = true;
-	tree->root->n = 0;
-	tree->root->parent = NULL;
+	tree->root = create_node();
 	return tree;
 }
 
@@ -55,15 +57,14 @@ void destroy_node(bpnode* node)
 	free(node);
 }
 
-void tree_insert(bptree* tree, int index, int value)
+Line* tree_insert(bptree* tree, int index, Line* value)
 {
 	if(tree->root->n == 2*T) {
-		bpnode* new_root = (bpnode*)malloc(sizeof(bpnode));
+		bpnode* new_root = create_node();
 		new_root->leaf = false;
 		new_root->children[0] = tree->root;
 		new_root->counts[0] = tree->total;
 		new_root->n = 1;
-		new_root->parent = NULL;
 		tree->root->parent = new_root;
 
 		tree->root = new_root;
@@ -71,18 +72,20 @@ void tree_insert(bptree* tree, int index, int value)
 		node_split(new_root->children[0], 0, NULL);
 
 	}
-	node_insert_nonfull(tree, tree->root, index, value);
 	tree->total++;
+	return node_insert_nonfull(tree, tree->root, index, value);
 }
 
-void node_insert_nonfull(bptree* tree, bpnode* node, int index, int value)
+Line* node_insert_nonfull(bptree* tree, bpnode* node, int index, Line* value)
 {
 	if(node->leaf) {
 		for(int j=node->n; j>index; --j) {
+			fix_line_links(&node->keys[j], &node->keys[j-1]);
 			node->keys[j] = node->keys[j-1];
 		}
-		node->keys[index] = value;
+		node->keys[index] = *value;
 		node->n++;
+		return &node->keys[index];
 
 	} else {
 		int j=0;
@@ -103,21 +106,33 @@ void node_insert_nonfull(bptree* tree, bpnode* node, int index, int value)
 		}
 		node->counts[j]++;
 
-		node_insert_nonfull(tree, node->children[j], index, value);
+		return node_insert_nonfull(tree, node->children[j], index, value);
 
+	}
+}
+
+static inline void fix_line_links(Line* to, Line* from)
+	FUNC_ATTR_ALWAYS_INLINE
+{
+	if(from->pprev) {
+		from->pprev->pnext = to;
+	}
+
+	if(from->pnext) {
+		from->pnext->pprev = to;
 	}
 }
 
 void node_split(bpnode* child, int j, bpnode** pright)
 {
-	bpnode* right = (bpnode*)malloc(sizeof(bpnode));
-	right->n = 0;
+	bpnode* right = create_node();
 	right->parent = child->parent;
 	right->leaf = child->leaf;
 
 	int right_count;
 	if(child->leaf) {
 		for(int i=0; i<T; ++i) {
+			fix_line_links(&right->keys[i], &child->keys[i+T]);
 			right->keys[i] = child->keys[i+T];
 		}
 		right->n = T;
@@ -185,7 +200,7 @@ void print_node(bpnode* node, int indent)
 			for(int j=0; j<indent; ++j) {
 				printf(" ");
 			}
-			printf("%d\n", node->keys[i]);
+			printf("key\n");
 		}
 	} else {
 		for(int j=0; j<indent; ++j) {
@@ -213,7 +228,9 @@ void tree_delete(bptree* tree, int index)
 void delete_node_nonmin(bptree* tree, bpnode* node, int index)
 {
 	if(node->leaf) {
+		delete_key(&node->keys[index]);
 		for(int i=index; i<node->n-1; ++i) {
+			fix_line_links(&node->keys[i], &node->keys[i+1]);
 			node->keys[i] = node->keys[i+1];
 		}
 		node->n--;
@@ -238,8 +255,11 @@ void delete_node_nonmin(bptree* tree, bpnode* node, int index)
 
 				if(right->leaf) {
 					for(int i=right->n-1; i>=0; --i) {
+						fix_line_links(&right->keys[i+1], &right->keys[i]);
 						right->keys[i+1] = right->keys[i];
 					}
+
+					fix_line_links(&right->keys[0], &left->keys[left->n-1]);
 					right->keys[0] = left->keys[left->n-1];
 				} else {
 					for(int i=right->n-1; i>=0; --i) {
@@ -263,8 +283,10 @@ void delete_node_nonmin(bptree* tree, bpnode* node, int index)
 				bpnode* right = node->children[j+1];
 
 				if(left->leaf) {
+					fix_line_links(&left->keys[left->n], &right->keys[0]);
 					left->keys[left->n] = right->keys[0];
 					for(int i=0; i<right->n-1; ++i) {
+						fix_line_links(&right->keys[i], &right->keys[i+1]);
 						right->keys[i] = right->keys[i+1];
 					}
 				} else {
@@ -289,6 +311,7 @@ void delete_node_nonmin(bptree* tree, bpnode* node, int index)
 					int right_count = 0;
 					if(right->leaf) {
 						for(int i=0; i<right->n; ++i) {
+							fix_line_links(&left->keys[i+T], &right->keys[i]);
 							left->keys[i+T] = right->keys[i];
 						}
 						right_count = T;
@@ -322,6 +345,7 @@ void delete_node_nonmin(bptree* tree, bpnode* node, int index)
 					int right_count = 0;
 					if(right->leaf) {
 						for(int i=0; i<right->n; ++i) {
+							fix_line_links(&left->keys[i+T], &right->keys[i]);
 							left->keys[i+T] = right->keys[i];
 						}
 						right_count = T;
@@ -354,6 +378,46 @@ void delete_node_nonmin(bptree* tree, bpnode* node, int index)
 					return;
 				}
 
+				// @define+=
+				// int tree_lookup(bptree* tree, int index)
+				// {
+					// return node_lookup(tree->root, index);
+				// }
+
+				// @define+=
+				// int node_lookup(bpnode* node, int index)
+				// {
+					// if(node->leaf) {
+						// return node->keys[index];
+					// } else {
+						// int j=0;
+						// while(index >= node->counts[j] && j < node->n) {
+							// index -= node->counts[j];
+							// j++;
+						// }
+						// return node_lookup(node->children[j], index);
+					// }
+				// }
+
+
+				// @define+=
+				// int tree_reverse_lookup(bpnode* node, int offset)
+				// {
+					// if(!node->parent) {
+						// return offset;
+					// }
+
+					// else {
+						// bpnode* parent = node->parent;
+						// for(int i=0; i<parent->n; ++i) {
+							// if(parent->children[i] == node) {
+								// break;
+							// }
+							// offset += parent->counts[i];
+						// }
+						// return tree_reverse_lookup(parent, offset);
+					// }
+				// }
 			}
 		}
 
@@ -364,41 +428,15 @@ void delete_node_nonmin(bptree* tree, bpnode* node, int index)
 
 }
 
-int tree_lookup(bptree* tree, int index)
+static inline void delete_key(Line* line)
+	FUNC_ATTR_ALWAYS_INLINE
 {
-	return node_lookup(tree->root, index);
-}
-
-int node_lookup(bpnode* node, int index)
-{
-	if(node->leaf) {
-		return node->keys[index];
-	} else {
-		int j=0;
-		while(index >= node->counts[j] && j < node->n) {
-			index -= node->counts[j];
-			j++;
-		}
-		return node_lookup(node->children[j], index);
-	}
-}
-
-
-int tree_reverse_lookup(bpnode* node, int offset)
-{
-	if(!node->parent) {
-		return offset;
+	if(line->pprev) {
+		line->pprev->pnext = line->pnext;
 	}
 
-	else {
-		bpnode* parent = node->parent;
-		for(int i=0; i<parent->n; ++i) {
-			if(parent->children[i] == node) {
-				break;
-			}
-			offset += parent->counts[i];
-		}
-		return tree_reverse_lookup(parent, offset);
+	if(line->pnext) {
+		line->pnext->pprev = line->pprev;
 	}
 }
 

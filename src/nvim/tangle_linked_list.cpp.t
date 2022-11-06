@@ -20,10 +20,11 @@ static SectionList* sectionlist_init()
 }
 
 @section_data+=
-struct section* pnext;
+struct section* pnext, *pprev;
 
 @create_new_section+=
 section->pnext = NULL;
+section->pprev = NULL;
 
 @define_functions_linked_list+=
 static void sectionlist_push_back(SectionList* list, Section* section) 
@@ -34,6 +35,7 @@ static void sectionlist_push_back(SectionList* list, Section* section)
     return;
   }
 
+	section->pprev = list->ptail;
   list->ptail->pnext = section;
   list->ptail = section;
 }
@@ -47,6 +49,7 @@ static void sectionlist_push_front(SectionList* list, Section* section)
   }
 
   section->pnext = list->phead;
+	list->phead->pprev = section;
   list->phead = section;
 }
 
@@ -58,7 +61,6 @@ static void sectionlist_clear(SectionList* list)
     Section* temp = pcopy;
     pcopy = pcopy->pnext;
     @free_section
-    xfree(temp->name);
     xfree(temp);
   }
 

@@ -9,10 +9,12 @@
 #include "nvim/garray.h"
 #include "nvim/pos.h"
 #include "nvim/types.h"
+#include "nvim/tangle_line.h"
 
 @define_constants
 @declare_struct
 @struct
+@define_inline
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "bitree.h.generated.h"
@@ -25,10 +27,6 @@
 // Based on B+ trees, this allows to do
 // all operations in logarithmic time and
 // with efficient cache usage.
-// Bitree designates that there are two
-// trees linked together where one is for
-// the untangled code and the other is for
-// the tangled code.
 
 #include <inttypes.h>
 #include <string.h>
@@ -45,7 +43,7 @@
 @define
 
 @define_constants+=
-#define BTREE_T 20
+#define BTREE_T 32
 
 @variables+=
 #define T BTREE_T
@@ -62,15 +60,12 @@ struct bpnode_s
 	bool leaf;
 	bpnode* children[2*BTREE_T];
 	bpnode* parent;
-	int n;
+	uint8_t n;
 
 	union {
 		int counts[2*BTREE_T];
-		int keys[2*BTREE_T];
+		Line keys[2*BTREE_T];
 	};
-
-	sectionheader* pheader;
-	bpnode* prev;
 };
 
 typedef struct 
@@ -80,14 +75,21 @@ typedef struct
 } bptree;
 
 @define+=
+bpnode* create_node()
+{
+	bpnode* node = (bpnode*)malloc(sizeof(bpnode));
+	node->leaf = true;
+	node->n = 0;
+	node->parent = NULL;
+	return node;
+}
+
+@define+=
 bptree* create_tree()
 {
 	bptree* tree = (bptree*)malloc(sizeof(bptree));
 	tree->total = 0;
-	tree->root = (bpnode*)malloc(sizeof(bpnode));
-	tree->root->leaf = true;
-	tree->root->n = 0;
-	tree->root->parent = NULL;
+	tree->root = create_node();
 	return tree;
 }
 
@@ -113,18 +115,18 @@ void destroy_node(bpnode* node)
 destroy_node(tree->root);
 
 @define+=
-void tree_insert(bptree* tree, int index, int value)
+Line* tree_insert(bptree* tree, int index, Line* value)
 {
 	if(tree->root->n == 2*T) {
 		@create_new_root
 		@split_root
 	}
-	node_insert_nonfull(tree, tree->root, index, value);
 	tree->total++;
+	return node_insert_nonfull(tree, tree->root, index, value);
 }
 
 @define+=
-void node_insert_nonfull(bptree* tree, bpnode* node, int index, int value)
+Line* node_insert_nonfull(bptree* tree, bpnode* node, int index, Line* value)
 {
 	if(node->leaf) {
 		@insert_at_i
@@ -138,12 +140,27 @@ void node_insert_nonfull(bptree* tree, bpnode* node, int index, int value)
 	}
 }
 
+@define+=
+static inline void fix_line_links(Line* to, Line* from)
+	FUNC_ATTR_ALWAYS_INLINE
+{
+	if(from->pprev) {
+		from->pprev->pnext = to;
+	}
+
+	if(from->pnext) {
+		from->pnext->pprev = to;
+	}
+}
+
 @insert_at_i+=
 for(int j=node->n; j>index; --j) {
+	fix_line_links(&node->keys[j], &node->keys[j-1]);
 	node->keys[j] = node->keys[j-1];
 }
-node->keys[index] = value;
+node->keys[index] = *value;
 node->n++;
+return &node->keys[index];
 
 @search_for_children_node_to_insert+=
 int j=0;
@@ -168,14 +185,14 @@ void node_split(bpnode* child, int j, bpnode** pright)
 #include <assert.h>
 
 @create_right_sibling+=
-bpnode* right = (bpnode*)malloc(sizeof(bpnode));
-right->n = 0;
+bpnode* right = create_node();
 right->parent = child->parent;
 right->leaf = child->leaf;
 
 @copy_keys_if_leaf+=
 if(child->leaf) {
 	for(int i=0; i<T; ++i) {
+		fix_line_links(&right->keys[i], &child->keys[i+T]);
 		right->keys[i] = child->keys[i+T];
 	}
 	right->n = T;
@@ -233,15 +250,14 @@ if(index >= T) {
 node->counts[j]++;
 
 @recurse_on_children_insert+=
-node_insert_nonfull(tree, node->children[j], index, value);
+return node_insert_nonfull(tree, node->children[j], index, value);
 
 @create_new_root+=
-bpnode* new_root = (bpnode*)malloc(sizeof(bpnode));
+bpnode* new_root = create_node();
 new_root->leaf = false;
 new_root->children[0] = tree->root;
 new_root->counts[0] = tree->total;
 new_root->n = 1;
-new_root->parent = NULL;
 tree->root->parent = new_root;
 
 tree->root = new_root;
@@ -276,7 +292,7 @@ void print_node(bpnode* node, int indent)
 			for(int j=0; j<indent; ++j) {
 				printf(" ");
 			}
-			printf("%d\n", node->keys[i]);
+			printf("key\n");
 		}
 	} else {
 		for(int j=0; j<indent; ++j) {
@@ -309,9 +325,24 @@ void delete_node_nonmin(bptree* tree, bpnode* node, int index)
 	@otherwise_in_which_children_to_delete
 }
 
+@define+=
+static inline void delete_key(Line* line)
+	FUNC_ATTR_ALWAYS_INLINE
+{
+	if(line->pprev) {
+		line->pprev->pnext = line->pnext;
+	}
+
+	if(line->pnext) {
+		line->pnext->pprev = line->pprev;
+	}
+}
+
 @if_leaf_delete_key+=
 if(node->leaf) {
+	delete_key(&node->keys[index]);
 	for(int i=index; i<node->n-1; ++i) {
+		fix_line_links(&node->keys[i], &node->keys[i+1]);
 		node->keys[i] = node->keys[i+1];
 	}
 	node->n--;
@@ -356,8 +387,11 @@ if(j > 0 && node->children[j-1]->n > T) {
 
 	if(right->leaf) {
 		for(int i=right->n-1; i>=0; --i) {
+			fix_line_links(&right->keys[i+1], &right->keys[i]);
 			right->keys[i+1] = right->keys[i];
 		}
+
+		fix_line_links(&right->keys[0], &left->keys[left->n-1]);
 		right->keys[0] = left->keys[left->n-1];
 	} else {
 		for(int i=right->n-1; i>=0; --i) {
@@ -382,8 +416,10 @@ else if(j+1 < node->n && node->children[j+1]->n > T) {
 	bpnode* right = node->children[j+1];
 
 	if(left->leaf) {
+		fix_line_links(&left->keys[left->n], &right->keys[0]);
 		left->keys[left->n] = right->keys[0];
 		for(int i=0; i<right->n-1; ++i) {
+			fix_line_links(&right->keys[i], &right->keys[i+1]);
 			right->keys[i] = right->keys[i+1];
 		}
 	} else {
@@ -414,6 +450,7 @@ if(j > 0) {
 int right_count = 0;
 if(right->leaf) {
 	for(int i=0; i<right->n; ++i) {
+		fix_line_links(&left->keys[i+T], &right->keys[i]);
 		left->keys[i+T] = right->keys[i];
 	}
 	right_count = T;
@@ -466,54 +503,43 @@ if(node->n == 1) {
 	return;
 }
 
-@define+=
-int tree_lookup(bptree* tree, int index)
-{
-	return node_lookup(tree->root, index);
-}
+// @define+=
+// int tree_lookup(bptree* tree, int index)
+// {
+	// return node_lookup(tree->root, index);
+// }
 
-@define+=
-int node_lookup(bpnode* node, int index)
-{
-	if(node->leaf) {
-		return node->keys[index];
-	} else {
-		int j=0;
-		while(index >= node->counts[j] && j < node->n) {
-			index -= node->counts[j];
-			j++;
-		}
-		return node_lookup(node->children[j], index);
-	}
-}
+// @define+=
+// int node_lookup(bpnode* node, int index)
+// {
+	// if(node->leaf) {
+		// return node->keys[index];
+	// } else {
+		// int j=0;
+		// while(index >= node->counts[j] && j < node->n) {
+			// index -= node->counts[j];
+			// j++;
+		// }
+		// return node_lookup(node->children[j], index);
+	// }
+// }
 
 
-@define+=
-int tree_reverse_lookup(bpnode* node, int offset)
-{
-	if(!node->parent) {
-		return offset;
-	}
+// @define+=
+// int tree_reverse_lookup(bpnode* node, int offset)
+// {
+	// if(!node->parent) {
+		// return offset;
+	// }
 
-	else {
-		bpnode* parent = node->parent;
-		for(int i=0; i<parent->n; ++i) {
-			if(parent->children[i] == node) {
-				break;
-			}
-			offset += parent->counts[i];
-		}
-		return tree_reverse_lookup(parent, offset);
-	}
-}
-
-@declare_struct+=
-typedef struct sectionheader_s sectionheader;
-
-@struct+=
-struct sectionheader_s 
-{
-	int size;
-	sectionheader* prev, *next;
-	bpnode* first;
-};
+	// else {
+		// bpnode* parent = node->parent;
+		// for(int i=0; i<parent->n; ++i) {
+			// if(parent->children[i] == node) {
+				// break;
+			// }
+			// offset += parent->counts[i];
+		// }
+		// return tree_reverse_lookup(parent, offset);
+	// }
+// }
