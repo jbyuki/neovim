@@ -49,6 +49,7 @@ void attach_tangle(buf_T *buf)
 {
   semsg(_("Tangle activated!"));
   @parse_tangle_initial
+	@update_loc_data_tangle
 	@create_dummy_buffer_foreach_roots
 }
 
@@ -71,3 +72,4 @@ for(int i=0; i<buf->root_names.size; ++i) {
 	kv_push(buf->tgl_bufs, view_buf->handle);
 	view_buf->parent_tgl = buf;
 }
+

@@ -26,6 +26,8 @@
 
 typedef struct section
 {
+  int n;
+
   struct section* pnext, *pprev;
 
   Line* head, *tail;
@@ -34,6 +36,8 @@ typedef struct section
 
 typedef struct
 {
+  int n;
+
   Section* phead;
   Section* ptail;
 
@@ -47,6 +51,8 @@ typedef struct
 static SectionList* sectionlist_init()
 {
   SectionList* list = (SectionList*)xmalloc(sizeof(SectionList));
+	list->n = -1;
+
 
   list->phead = NULL;
   list->ptail = NULL;
@@ -99,12 +105,15 @@ void attach_tangle(buf_T *buf)
   semsg(_("Tangle activated!"));
   tangle_parse(buf);
 
+	tangle_update(buf);
+
 	for(int i=0; i<buf->root_names.size; ++i) {
 		const char* name = buf->root_names.items[i];
 		buf_T* view_buf = buflist_new(NULL, name, 1L, BLN_DUMMY);
 		kv_push(buf->tgl_bufs, view_buf->handle);
 		view_buf->parent_tgl = buf;
 	}
+
 }
 
 void deattach_tangle(buf_T *buf) 
@@ -112,9 +121,58 @@ void deattach_tangle(buf_T *buf)
   semsg(_("Tangle deactivated!"));
 }
 
+int tangle_get_line_count(buf_T* buf, const char* root)
+{
+	assert(pmap_has(cstr_t)(&buf->sections, root));
+
+	SectionList* list; 
+	list = pmap_get(cstr_t)(&buf->sections, root);
+	return 0;
+}
 void ins_char_bytes_tangle(char *buf, size_t charlen)
 {
 }
+void tangle_update(buf_T* buf)
+{
+	const char* name;
+	SectionList* list;
+  map_foreach(&buf->sections, name, list, {
+		tangle_get_count(buf, name);
+  });
+}
+
+int tangle_get_count(buf_T* buf, const char* name)
+{
+	if(!pmap_has(cstr_t)(&buf->sections, name)) {
+		return 0;
+	}
+
+	SectionList* list = pmap_get(cstr_t)(&buf->sections, name);
+	if(list->n != -1) {
+		return list->n;
+	}
+
+	list->n = 0;
+	Section* section = list->phead;
+	while(section) {
+		section->n = 0;
+		Line* line = section->head;
+		while(line) {
+			if(line->type == TEXT) {
+				section->n++;
+			} else if(line->type == REFERENCE) {
+				section->n += tangle_get_count(buf, line->name);
+			}
+			line = line->pnext;
+		}
+
+		list->n += section->n;
+		section = section->pnext;
+	}
+
+	return list->n;
+}
+
 void tangle_parse(buf_T *buf)
 {
   pmap_clear(cstr_t)(&buf->sections);

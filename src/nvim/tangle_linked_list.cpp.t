@@ -13,6 +13,7 @@ Section* ptail;
 static SectionList* sectionlist_init()
 {
   SectionList* list = (SectionList*)xmalloc(sizeof(SectionList));
+	@init_section_list
 
   list->phead = NULL;
   list->ptail = NULL;

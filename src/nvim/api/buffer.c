@@ -282,7 +282,7 @@ ArrayOf(String) nvim_buf_get_lines(uint64_t channel_id,
   }
 
   // return sentinel value if the buffer isn't loaded
-  if (buf->b_ml.ml_mfp == NULL) {
+  if (buf->b_ml.ml_mfp == NULL && buf->parent_tgl == NULL) {
     return rv;
   }
 
