@@ -27,7 +27,7 @@ set(GENERATED_PACKAGE_TAGS)
 foreach(PACKAGE ${PACKAGES})
   get_filename_component(PACKNAME ${PACKAGE} NAME)
   glob_wrapper("${PACKNAME}_DOC_FILES" ${PACKAGE}/doc/*.txt)
-  if(${PACKNAME}_DOC_FILES)
+	if(${PACKNAME}_DOC_FILES AND FALSE)
     file(MAKE_DIRECTORY ${GENERATED_PACKAGE_DIR}/${PACKNAME})
     add_custom_command(OUTPUT "${GENERATED_PACKAGE_DIR}/${PACKNAME}/doc/tags"
       COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -62,17 +62,17 @@ foreach(DF ${DOCFILES})
   list(APPEND BUILDDOCFILES ${GENERATED_RUNTIME_DIR}/doc/${F})
 endforeach()
 
-add_custom_command(OUTPUT ${GENERATED_HELP_TAGS}
-  COMMAND ${CMAKE_COMMAND} -E remove doc/*
-  COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${PROJECT_SOURCE_DIR}/runtime/doc doc
-  COMMAND "${PROJECT_BINARY_DIR}/bin/nvim"
-    -u NONE -i NONE -e --headless -c "helptags ++t doc" -c quit
-  DEPENDS
-    nvim
-    nvim_runtime_deps
-  WORKING_DIRECTORY "${GENERATED_RUNTIME_DIR}"
-)
+# add_custom_command(OUTPUT ${GENERATED_HELP_TAGS}
+  # COMMAND ${CMAKE_COMMAND} -E remove doc/*
+  # COMMAND ${CMAKE_COMMAND} -E copy_directory
+    # ${PROJECT_SOURCE_DIR}/runtime/doc doc
+  # COMMAND "${PROJECT_BINARY_DIR}/bin/nvim"
+    # -u NONE -i NONE -e --headless -c "helptags ++t doc" -c quit
+  # DEPENDS
+    # nvim
+    # nvim_runtime_deps
+  # WORKING_DIRECTORY "${GENERATED_RUNTIME_DIR}"
+# )
 
 
 # TODO: This doesn't work. wait for "nvim -l" to land?

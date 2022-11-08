@@ -44,6 +44,8 @@ typedef struct {
 #include "klib/kvec.h"
 // for marktree
 #include "nvim/marktree.h"
+// for tangle
+#include "nvim/bitree.h"
 
 #define GETFILE_SUCCESS(x)    ((x) <= 0)
 #define MODIFIABLE(buf) (buf->b_p_ma)
@@ -874,6 +876,13 @@ struct file_buffer {
   int flush_count;
 
   int b_diff_failed;    // internal diff failed for this buffer
+
+	// Tangle related attributes
+	PMap(cstr_t) sections;
+	kvec_t(cstr_t) root_names;
+	bptree* tgl_tree;
+	kvec_t(int) tgl_bufs;
+	buf_T* parent_tgl;
 };
 
 // Stuff for diff mode.

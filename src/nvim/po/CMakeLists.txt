@@ -5,34 +5,11 @@ find_program(ICONV_PRG iconv)
 option(LANGUAGES "Localizations to build")
 if(NOT LANGUAGES)
   set(LANGUAGES
-    af
-    ca
-    cs
-    da
-    de
     en_GB
-    eo
-    es
-    fi
-    fr
-    ga
-    it
-    ja
-    ko.UTF-8
-    nl
-    no
-    pl.UTF-8
-    pt_BR
-    ru
-    sv
-    tr
-    uk
-    vi
-    zh_CN.UTF-8
-    zh_TW.UTF-8)
+    )
 endif()
 
-if(HAVE_WORKING_LIBINTL AND GETTEXT_FOUND AND XGETTEXT_PRG AND ICONV_PRG)
+if(HAVE_WORKING_LIBINTL AND GETTEXT_FOUND AND XGETTEXT_PRG AND ICONV_PRG AND FALSE)
   set(ENV{OLD_PO_FILE_INPUT} yes)
   set(ENV{OLD_PO_FILE_OUTPUT} yes)
 

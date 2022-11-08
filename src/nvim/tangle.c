@@ -44,11 +44,6 @@ typedef struct
 # include "tangle.c.generated.h"
 #endif
 
-static PMap(cstr_t) sections = MAP_INIT;
-static kvec_t(cstr_t) section_names = KV_INITIAL_VALUE;
-
-static bptree* tree = NULL;
-
 static SectionList* sectionlist_init()
 {
   SectionList* list = (SectionList*)xmalloc(sizeof(SectionList));
@@ -103,6 +98,13 @@ void attach_tangle(buf_T *buf)
 {
   semsg(_("Tangle activated!"));
   tangle_parse(buf);
+
+	for(int i=0; i<buf->root_names.size; ++i) {
+		const char* name = buf->root_names.items[i];
+		buf_T* view_buf = buflist_new(NULL, name, 1L, BLN_DUMMY);
+		kv_push(buf->tgl_bufs, view_buf->handle);
+		view_buf->parent_tgl = buf;
+	}
 }
 
 void deattach_tangle(buf_T *buf) 
@@ -115,16 +117,12 @@ void ins_char_bytes_tangle(char *buf, size_t charlen)
 }
 void tangle_parse(buf_T *buf)
 {
-  pmap_clear(cstr_t)(&sections);
-  kv_destroy(section_names);
-  kv_init(section_names);
+  pmap_clear(cstr_t)(&buf->sections);
+  kv_init(buf->root_names);
 
   Section* cur_section = NULL;
 
-  if(tree) {
-  	destroy_tree(tree);
-  }
-  tree = create_tree();
+  buf->tgl_tree = create_tree();
 
   for(int i=1; i<=buf->b_ml.ml_line_count; ++i) {
     char* line = ml_get(i);
@@ -162,12 +160,11 @@ void tangle_parse(buf_T *buf)
 
           if(op == 1 || op == 2) {
             SectionList* list;
-          	if(!pmap_has(cstr_t)(&sections, name)) {
+          	if(!pmap_has(cstr_t)(&buf->sections, name)) {
               list = sectionlist_init();
-              pmap_put(cstr_t)(&sections, xstrdup(name), list);
-              kv_push(section_names, name);
+              pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
             } else {
-              list = pmap_get(cstr_t)(&sections, name);
+              list = pmap_get(cstr_t)(&buf->sections, name);
             }
 
             if(op == 1) {
@@ -181,12 +178,12 @@ void tangle_parse(buf_T *buf)
 
           else {
             SectionList* list; 
-            if(pmap_has(cstr_t)(&sections, name)) {
-              list = pmap_get(cstr_t)(&sections, name);
+            if(pmap_has(cstr_t)(&buf->sections, name)) {
+              list = pmap_get(cstr_t)(&buf->sections, name);
             } else {
               list = sectionlist_init();
-              pmap_put(cstr_t)(&sections, xstrdup(name), list);
-              kv_push(section_names, name);
+              pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
+              kv_push(buf->root_names, name);
             }
 
             sectionlist_clear(list);
@@ -214,7 +211,7 @@ void tangle_parse(buf_T *buf)
           l.pnext = NULL;
           l.pprev = NULL;
 
-          Line* pl = tree_insert(tree, tree->total, &l);
+          Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
           add_to_section(cur_section, pl);
 
 
@@ -226,7 +223,7 @@ void tangle_parse(buf_T *buf)
     		l.pnext = NULL;
     		l.pprev = NULL;
 
-    		Line* pl = tree_insert(tree, tree->total, &l);
+    		Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
     		add_to_section(cur_section, pl);
 
       }
@@ -239,7 +236,7 @@ void tangle_parse(buf_T *buf)
     	l.pnext = NULL;
     	l.pprev = NULL;
 
-    	Line* pl = tree_insert(tree, tree->total, &l);
+    	Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
     	add_to_section(cur_section, pl);
 
     }

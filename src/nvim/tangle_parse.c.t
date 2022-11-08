@@ -75,24 +75,18 @@ Section* section = (Section*)xmalloc(sizeof(Section));
 @includes+=
 #include "nvim/map.h"
 
-@global_variables+=
-static PMap(cstr_t) sections = MAP_INIT;
-static kvec_t(cstr_t) section_names = KV_INITIAL_VALUE;
-
 @parse_variables+=
-pmap_clear(cstr_t)(&sections);
-kv_destroy(section_names);
-kv_init(section_names);
+pmap_clear(cstr_t)(&buf->sections);
+kv_init(buf->root_names);
 
 @link_to_previous_section_if_needed+=
 if(op == 1 || op == 2) {
   SectionList* list;
-	if(!pmap_has(cstr_t)(&sections, name)) {
+	if(!pmap_has(cstr_t)(&buf->sections, name)) {
     list = sectionlist_init();
-    pmap_put(cstr_t)(&sections, xstrdup(name), list);
-    kv_push(section_names, name);
+    pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
   } else {
-    list = pmap_get(cstr_t)(&sections, name);
+    list = pmap_get(cstr_t)(&buf->sections, name);
   }
 
   if(op == 1) {
@@ -117,12 +111,12 @@ sectionlist_push_front(list, section);
 @otherwise_just_save_section+=
 else {
   SectionList* list; 
-  if(pmap_has(cstr_t)(&sections, name)) {
-    list = pmap_get(cstr_t)(&sections, name);
+  if(pmap_has(cstr_t)(&buf->sections, name)) {
+    list = pmap_get(cstr_t)(&buf->sections, name);
   } else {
     list = sectionlist_init();
-    pmap_put(cstr_t)(&sections, xstrdup(name), list);
-    kv_push(section_names, name);
+    pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
+    kv_push(buf->root_names, name);
   }
 
   sectionlist_clear(list);
@@ -216,14 +210,8 @@ l.pprev = NULL;
 @includes+=
 #include "nvim/bitree.h"
 
-@global_variables+=
-static bptree* tree = NULL;
-
 @parse_variables+=
-if(tree) {
-	destroy_tree(tree);
-}
-tree = create_tree();
+buf->tgl_tree = create_tree();
 
 @add_line_to_btree+=
-Line* pl = tree_insert(tree, tree->total, &l);
+Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);

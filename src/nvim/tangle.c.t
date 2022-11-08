@@ -48,7 +48,8 @@
 void attach_tangle(buf_T *buf) 
 {
   semsg(_("Tangle activated!"));
-  @tangle_current_buffer_initial
+  @parse_tangle_initial
+	@create_dummy_buffer_foreach_roots
 }
 
 void deattach_tangle(buf_T *buf) 
@@ -60,5 +61,13 @@ void deattach_tangle(buf_T *buf)
 #include "nvim/buffer.h"
 #include "nvim/option.h"
 
-@tangle_current_buffer_initial+=
+@parse_tangle_initial+=
 tangle_parse(buf);
+
+@create_dummy_buffer_foreach_roots+=
+for(int i=0; i<buf->root_names.size; ++i) {
+	const char* name = buf->root_names.items[i];
+	buf_T* view_buf = buflist_new(NULL, name, 1L, BLN_DUMMY);
+	kv_push(buf->tgl_bufs, view_buf->handle);
+	view_buf->parent_tgl = buf;
+}
