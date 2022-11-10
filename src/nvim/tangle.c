@@ -109,7 +109,7 @@ void attach_tangle(buf_T *buf)
 
 	for(int i=0; i<buf->root_names.size; ++i) {
 		const char* name = buf->root_names.items[i];
-		buf_T* view_buf = buflist_new(NULL, name, 1L, BLN_DUMMY);
+		buf_T* view_buf = buflist_new(name, NULL, 1L, BLN_DUMMY);
 		kv_push(buf->tgl_bufs, view_buf->handle);
 		view_buf->parent_tgl = buf;
 	}
@@ -121,14 +121,49 @@ void deattach_tangle(buf_T *buf)
   semsg(_("Tangle deactivated!"));
 }
 
-int tangle_get_line_count(buf_T* buf, const char* root)
+int tangle_convert_lnum_to_untangled(buf_T* buf, const char* root, int lnum)
 {
-	assert(pmap_has(cstr_t)(&buf->sections, root));
+	int new_lnum;
+	Line* line = get_line_at_lnum_tangled(buf, root, lnum);
+	assert(line);
 
-	SectionList* list; 
-	list = pmap_get(cstr_t)(&buf->sections, root);
-	return 0;
+	new_lnum = tree_reverse_lookup(line);
+	return new_lnum;
 }
+
+Line* get_line_at_lnum_tangled(buf_T* buf, const char* name, int lnum)
+{
+	assert(pmap_has(cstr_t)(&buf->sections, name));
+
+	SectionList* list = pmap_get(cstr_t)(&buf->sections, name);
+	Section* section = list->phead;
+	while(section) {
+		if(lnum < section->n) {
+			Line* line = section->head;
+			while(line) {
+				if(line->type == TEXT) {
+					if(lnum == 0) {
+						return line;
+					}
+					lnum--;
+				} else if(line->type == REFERENCE) {
+					int count = tangle_get_count(buf, line->name);
+					if(lnum < count) {
+						return get_line_at_lnum_tangled(buf, line->name, lnum);
+					}
+					lnum -= count;
+				}
+				line = line->pnext;
+			}
+
+		}
+		lnum -= section->n;
+		section = section->pnext;
+	}
+
+	return NULL;
+}
+
 void ins_char_bytes_tangle(char *buf, size_t charlen)
 {
 }
@@ -249,6 +284,16 @@ void tangle_parse(buf_T *buf)
           }
 
 
+          Line l;
+          l.type = SECTION;
+          l.name = name;
+          l.pnext = NULL;
+          l.pprev = NULL;
+
+          Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
+
+
+
         } else {
           size_t len = fp - line;
           char* prefix = xmalloc(len+1);
@@ -270,6 +315,8 @@ void tangle_parse(buf_T *buf)
           l.pprev = NULL;
 
           Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
+
+
           add_to_section(cur_section, pl);
 
 
@@ -282,6 +329,8 @@ void tangle_parse(buf_T *buf)
     		l.pprev = NULL;
 
     		Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
+
+
     		add_to_section(cur_section, pl);
 
       }
@@ -295,6 +344,8 @@ void tangle_parse(buf_T *buf)
     	l.pprev = NULL;
 
     	Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
+
+
     	add_to_section(cur_section, pl);
 
     }

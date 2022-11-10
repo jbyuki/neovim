@@ -3,14 +3,12 @@
 
 #include <stdio.h>
 
+#include "nvim/tangle_line.h"
 #include "nvim/garray.h"
 #include "nvim/pos.h"
 #include "nvim/types.h"
-#include "nvim/tangle_line.h"
 
 #define BTREE_T 32
-
-typedef struct bpnode_s bpnode;
 
 struct bpnode_s
 {

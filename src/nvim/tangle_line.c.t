@@ -29,6 +29,7 @@
 
 @line_struct+=
 typedef struct Line_s Line;
+typedef struct bpnode_s bpnode;
 
 struct Line_s
 {
@@ -48,3 +49,4 @@ union {
 char* prefix;
 
 Line* pnext, *pprev;
+bpnode* parent;

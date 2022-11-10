@@ -34,6 +34,7 @@
 #include "nvim/version.h"
 #include "nvim/vim.h"
 #include "nvim/window.h"
+#include "nvim/tangle.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "api/private/funcs_metadata.generated.h"
@@ -484,7 +485,15 @@ bool buf_collect_lines(buf_T *buf, size_t n, int64_t start, bool replace_nl, Arr
       return false;
     }
 
-    const char *bufstr = ml_get_buf(buf, (linenr_T)lnum, false);
+		const char *bufstr;
+		if(buf->parent_tgl == NULL) {
+			bufstr = ml_get_buf(buf, (linenr_T)lnum, false);
+		} else {
+			// Convert tangle lnum to untangled one
+			lnum = tangle_convert_lnum_to_untangled(buf->parent_tgl, buf->b_fname, lnum-1)+1;
+			bufstr = ml_get_buf(buf->parent_tgl, (linenr_T)lnum, false);
+		}
+
     Object str = STRING_OBJ(cstr_to_string(bufstr));
 
     if (replace_nl) {

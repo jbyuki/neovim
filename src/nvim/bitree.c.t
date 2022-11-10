@@ -5,11 +5,10 @@
 
 #include <stdio.h>
 
-#include "nvim/buffer_defs.h"
+#include "nvim/tangle_line.h"
 #include "nvim/garray.h"
 #include "nvim/pos.h"
 #include "nvim/types.h"
-#include "nvim/tangle_line.h"
 
 @define_constants
 @declare_struct
@@ -47,9 +46,6 @@
 
 @variables+=
 #define T BTREE_T
-
-@declare_struct+=
-typedef struct bpnode_s bpnode;
 
 @includes+=
 #include <stdbool.h>
@@ -159,6 +155,7 @@ for(int j=node->n; j>index; --j) {
 	node->keys[j] = node->keys[j-1];
 }
 node->keys[index] = *value;
+node->keys[index].parent = node;
 node->n++;
 return &node->keys[index];
 
@@ -194,6 +191,7 @@ if(child->leaf) {
 	for(int i=0; i<T; ++i) {
 		fix_line_links(&right->keys[i], &child->keys[i+T]);
 		right->keys[i] = child->keys[i+T];
+		right->keys[i].parent = right;
 	}
 	right->n = T;
 	child->n = T;
@@ -393,6 +391,7 @@ if(j > 0 && node->children[j-1]->n > T) {
 
 		fix_line_links(&right->keys[0], &left->keys[left->n-1]);
 		right->keys[0] = left->keys[left->n-1];
+		right->keys[0].parent = right;
 	} else {
 		for(int i=right->n-1; i>=0; --i) {
 			right->children[i+1] = right->children[i];
@@ -418,6 +417,7 @@ else if(j+1 < node->n && node->children[j+1]->n > T) {
 	if(left->leaf) {
 		fix_line_links(&left->keys[left->n], &right->keys[0]);
 		left->keys[left->n] = right->keys[0];
+		left->keys[left->n].parent = left;
 		for(int i=0; i<right->n-1; ++i) {
 			fix_line_links(&right->keys[i], &right->keys[i+1]);
 			right->keys[i] = right->keys[i+1];
@@ -452,6 +452,7 @@ if(right->leaf) {
 	for(int i=0; i<right->n; ++i) {
 		fix_line_links(&left->keys[i+T], &right->keys[i]);
 		left->keys[i+T] = right->keys[i];
+		left->keys[i+T].parent = left;
 	}
 	right_count = T;
 } else {
@@ -525,21 +526,33 @@ if(node->n == 1) {
 // }
 
 
-// @define+=
-// int tree_reverse_lookup(bpnode* node, int offset)
-// {
-	// if(!node->parent) {
-		// return offset;
-	// }
+@define+=
+int tree_reverse_lookup(Line* line)
+{
+	bpnode* parent = line->parent;
+	assert(parent);
 
-	// else {
-		// bpnode* parent = node->parent;
-		// for(int i=0; i<parent->n; ++i) {
-			// if(parent->children[i] == node) {
-				// break;
-			// }
-			// offset += parent->counts[i];
-		// }
-		// return tree_reverse_lookup(parent, offset);
-	// }
-// }
+	int offset = line - &parent->keys[0];
+	assert(offset < parent->n);
+
+	return node_reverse_lookup(parent, offset);
+}
+
+@define+=
+int node_reverse_lookup(bpnode* node, int offset)
+{
+	if(!node->parent) {
+		return offset;
+	}
+
+	else {
+		bpnode* parent = node->parent;
+		for(int i=0; i<parent->n; ++i) {
+			if(parent->children[i] == node) {
+				break;
+			}
+			offset += parent->counts[i];
+		}
+		return node_reverse_lookup(parent, offset);
+	}
+}

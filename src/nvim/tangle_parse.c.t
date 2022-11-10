@@ -45,6 +45,8 @@ char* lp = strnwlast(line);
 @create_new_section
 @link_to_previous_section_if_needed
 @otherwise_just_save_section
+@create_line_section
+@add_line_to_btree
 
 @parse_operator+=
 int op;
@@ -122,6 +124,14 @@ else {
   sectionlist_clear(list);
   sectionlist_push_back(list, section);
 }
+
+
+@create_line_section+=
+Line l;
+l.type = SECTION;
+l.name = name;
+l.pnext = NULL;
+l.pprev = NULL;
 
 @parse_reference+=
 @get_whitespace_before
@@ -215,3 +225,5 @@ buf->tgl_tree = create_tree();
 
 @add_line_to_btree+=
 Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
+
+

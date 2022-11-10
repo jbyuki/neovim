@@ -32,6 +32,7 @@
 #include "nvim/undo.h"
 #include "nvim/vim.h"
 #include "nvim/window.h"
+#include "nvim/tangle.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "api/buffer.c.generated.h"
@@ -1373,8 +1374,14 @@ static void fix_cursor(linenr_T lo, linenr_T hi, linenr_T extra)
 // Normalizes 0-based indexes to buffer line numbers
 static int64_t normalize_index(buf_T *buf, int64_t index, bool end_exclusive, bool *oob)
 {
-  assert(buf->b_ml.ml_line_count > 0);
-  int64_t max_index = buf->b_ml.ml_line_count + (int)end_exclusive - 1;
+	int64_t max_index;
+	if(buf->parent_tgl == NULL) {
+		assert(buf->b_ml.ml_line_count > 0);
+		max_index = buf->b_ml.ml_line_count + (int)end_exclusive - 1;
+	} else {
+		max_index = tangle_get_count(buf->parent_tgl, buf->b_fname) + (int)end_exclusive - 1;
+	}
+
   // Fix if < 0
   index = index < 0 ? max_index + index + 1 : index;
 

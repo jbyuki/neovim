@@ -68,7 +68,7 @@ tangle_parse(buf);
 @create_dummy_buffer_foreach_roots+=
 for(int i=0; i<buf->root_names.size; ++i) {
 	const char* name = buf->root_names.items[i];
-	buf_T* view_buf = buflist_new(NULL, name, 1L, BLN_DUMMY);
+	buf_T* view_buf = buflist_new(name, NULL, 1L, BLN_DUMMY);
 	kv_push(buf->tgl_bufs, view_buf->handle);
 	view_buf->parent_tgl = buf;
 }

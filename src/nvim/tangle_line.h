@@ -4,12 +4,14 @@
 #include <stdio.h>
 
 typedef struct Line_s Line;
+typedef struct bpnode_s bpnode;
 
 struct Line_s
 {
   enum {
     REFERENCE = 0,
 		TEXT,
+		SECTION,
   } type;
 
   union {
@@ -19,6 +21,7 @@ struct Line_s
   char* prefix;
 
   Line* pnext, *pprev;
+  bpnode* parent;
 };
 
 
