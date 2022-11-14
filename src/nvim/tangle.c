@@ -24,24 +24,30 @@
 #include "nvim/bitree.h"
 
 
-typedef struct section
+typedef struct SectionList_s SectionList;
+
+struct Section_s
 {
   int n;
 
-  struct section* pnext, *pprev;
+  Section* pnext, *pprev;
+
+  SectionList* parent;
 
   Line* head, *tail;
 
-} Section;
+};
 
-typedef struct
+struct SectionList_s
 {
   int n;
 
   Section* phead;
   Section* ptail;
 
-} SectionList;
+  kvec_t(Section*) refs;
+
+};
 
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -50,7 +56,7 @@ typedef struct
 
 static SectionList* sectionlist_init()
 {
-  SectionList* list = (SectionList*)xmalloc(sizeof(SectionList));
+  SectionList* list = (SectionList*)xcalloc(1, sizeof(SectionList));
 	list->n = -1;
 
 
@@ -68,6 +74,7 @@ static void sectionlist_push_back(SectionList* list, Section* section)
   }
 
 	section->pprev = list->ptail;
+	section->parent = list;
   list->ptail->pnext = section;
   list->ptail = section;
 }
@@ -81,6 +88,7 @@ static void sectionlist_push_front(SectionList* list, Section* section)
   }
 
   section->pnext = list->phead;
+	section->parent = list;
 	list->phead->pprev = section;
   list->phead = section;
 }
@@ -97,6 +105,7 @@ static void sectionlist_clear(SectionList* list)
     xfree(temp);
   }
 
+	kv_destroy(list->refs);
   list->phead = NULL;
   list->ptail = NULL;
 }
@@ -164,9 +173,89 @@ Line* get_line_at_lnum_tangled(buf_T* buf, const char* name, int lnum)
 	return NULL;
 }
 
-void ins_char_bytes_tangle(char *buf, size_t charlen)
+Line* get_current_tangle_line()
 {
+	size_t col = (size_t)curwin->w_cursor.col;
+	linenr_T lnum = curwin->w_cursor.lnum;
+
+	Line* line = tree_lookup(curbuf->tgl_tree, lnum-1);
+
+	return line;
 }
+
+void update_current_tangle_line(Line* old_line, char* buf, size_t charlen)
+{
+	size_t col = (size_t)curwin->w_cursor.col;
+	linenr_T lnum = curwin->w_cursor.lnum;
+
+	char *line = ml_get(lnum);
+	size_t linelen = strlen(line) + 1;  // length of old line including NUL
+
+	char* fp = strnwfirst(line);
+	char* lp = strnwlast(line);
+
+	Line new_line = *old_line;
+	if(fp == NULL) {
+		new_line.type = TEXT;
+	} else if(*fp == '@') {
+	  if(*(fp+1) != '@') {
+	    if(*lp == '=') {
+				new_line.type = SECTION;
+	    } else {
+				new_line.type = REFERENCE;
+	    }
+	  } else {
+			new_line.type = TEXT;
+	  }
+	} else {
+		new_line.type = TEXT;
+	}
+
+
+	if(old_line->type == TEXT) {
+		if(new_line.type == REFERENCE) {
+			size_t len = fp - line;
+			char* prefix = xmalloc(len+1);
+			STRNCPY(prefix, line, len);
+			prefix[len] = '\0';
+
+			len = (lp+1)-(fp+1);
+			char* name = xmalloc(len+1);
+			STRNCPY(name, fp+1, len);
+			name[len] = '\0';
+
+
+			new_line.name = name;
+			new_line.prefix = prefix;
+
+			int delta = -1 + tangle_get_count(buf, name);
+			update_count_recursively(old_line->parent_section, delta);
+
+			SectionList* list = get_section_list(&curbuf->sections, name);
+			kv_push(list->refs, old_line->parent_section);
+
+		}
+		else if(new_line.type == SECTION) {
+		}
+	}
+
+
+	*old_line = new_line;
+
+}
+
+void update_count_recursively(Section* section, int delta)
+{
+	section->n += delta;
+	SectionList* list = section->parent;
+	list->n += delta;
+
+	for (size_t i = 0; i < kv_size(list->refs); i++) {
+		Section* ref = kv_A(list->refs, i);
+		update_count_recursively(ref, delta);
+	}
+}
+
 void tangle_update(buf_T* buf)
 {
 	const char* name;
@@ -252,13 +341,7 @@ void tangle_parse(buf_T *buf)
           section->tail = NULL;
 
           if(op == 1 || op == 2) {
-            SectionList* list;
-          	if(!pmap_has(cstr_t)(&buf->sections, name)) {
-              list = sectionlist_init();
-              pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
-            } else {
-              list = pmap_get(cstr_t)(&buf->sections, name);
-            }
+            SectionList* list = get_section_list(&buf->sections, name);
 
             if(op == 1) {
               sectionlist_push_back(list, section);
@@ -292,8 +375,6 @@ void tangle_parse(buf_T *buf)
 
           Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
 
-
-
         } else {
           size_t len = fp - line;
           char* prefix = xmalloc(len+1);
@@ -305,8 +386,6 @@ void tangle_parse(buf_T *buf)
           STRNCPY(name, fp+1, len);
           name[len] = '\0';
 
-          assert(cur_section != NULL);
-
           Line l;
           l.type = REFERENCE;
           l.name = name;
@@ -315,9 +394,10 @@ void tangle_parse(buf_T *buf)
           l.pprev = NULL;
 
           Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
-
-
           add_to_section(cur_section, pl);
+
+          SectionList* list = get_section_list(&buf->sections, name);
+          kv_push(list->refs, cur_section);
 
 
         }
@@ -329,8 +409,6 @@ void tangle_parse(buf_T *buf)
     		l.pprev = NULL;
 
     		Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
-
-
     		add_to_section(cur_section, pl);
 
       }
@@ -344,13 +422,23 @@ void tangle_parse(buf_T *buf)
     	l.pprev = NULL;
 
     	Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
-
-
     	add_to_section(cur_section, pl);
 
     }
 
   }
+}
+
+static SectionList* get_section_list(PMap(cstr_t)* sections, const char* name)
+{
+	SectionList* list;
+	if(!pmap_has(cstr_t)(sections, name)) {
+    list = sectionlist_init();
+    pmap_put(cstr_t)(sections, xstrdup(name), list);
+  } else {
+    list = pmap_get(cstr_t)(sections, name);
+  }
+	return list;
 }
 
 static inline void add_to_section(Section* section, Line* pl)
@@ -364,6 +452,7 @@ static inline void add_to_section(Section* section, Line* pl)
 		pl->pprev = section->tail;
 		section->tail = pl;
 	}
+	pl->parent_section = section;
 }
 
 

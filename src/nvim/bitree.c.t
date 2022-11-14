@@ -504,26 +504,26 @@ if(node->n == 1) {
 	return;
 }
 
-// @define+=
-// int tree_lookup(bptree* tree, int index)
-// {
-	// return node_lookup(tree->root, index);
-// }
+@define+=
+Line* tree_lookup(bptree* tree, int index)
+{
+	return node_lookup(tree->root, index);
+}
 
-// @define+=
-// int node_lookup(bpnode* node, int index)
-// {
-	// if(node->leaf) {
-		// return node->keys[index];
-	// } else {
-		// int j=0;
-		// while(index >= node->counts[j] && j < node->n) {
-			// index -= node->counts[j];
-			// j++;
-		// }
-		// return node_lookup(node->children[j], index);
-	// }
-// }
+@define+=
+Line* node_lookup(bpnode* node, int index)
+{
+	if(node->leaf) {
+		return &node->keys[index];
+	} else {
+		int j=0;
+		while(index >= node->counts[j] && j < node->n) {
+			index -= node->counts[j];
+			j++;
+		}
+		return node_lookup(node->children[j], index);
+	}
+}
 
 
 @define+=

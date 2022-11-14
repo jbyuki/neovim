@@ -1,9 +1,12 @@
 ##tangle
+@declare_struct+=
+typedef struct SectionList_s SectionList;
+
 @section_list_struct+=
-typedef struct
+struct SectionList_s
 {
   @section_list_data
-} SectionList;
+};
 
 @section_list_data+=
 Section* phead;
@@ -12,7 +15,7 @@ Section* ptail;
 @define_functions_linked_list+=
 static SectionList* sectionlist_init()
 {
-  SectionList* list = (SectionList*)xmalloc(sizeof(SectionList));
+  SectionList* list = (SectionList*)xcalloc(1, sizeof(SectionList));
 	@init_section_list
 
   list->phead = NULL;
@@ -21,11 +24,14 @@ static SectionList* sectionlist_init()
 }
 
 @section_data+=
-struct section* pnext, *pprev;
+Section* pnext, *pprev;
 
 @create_new_section+=
 section->pnext = NULL;
 section->pprev = NULL;
+
+@section_data+=
+SectionList* parent;
 
 @define_functions_linked_list+=
 static void sectionlist_push_back(SectionList* list, Section* section) 
@@ -37,6 +43,7 @@ static void sectionlist_push_back(SectionList* list, Section* section)
   }
 
 	section->pprev = list->ptail;
+	section->parent = list;
   list->ptail->pnext = section;
   list->ptail = section;
 }
@@ -50,6 +57,7 @@ static void sectionlist_push_front(SectionList* list, Section* section)
   }
 
   section->pnext = list->phead;
+	section->parent = list;
 	list->phead->pprev = section;
   list->phead = section;
 }
@@ -65,6 +73,7 @@ static void sectionlist_clear(SectionList* list)
     xfree(temp);
   }
 
+	kv_destroy(list->refs);
   list->phead = NULL;
   list->ptail = NULL;
 }

@@ -29,7 +29,7 @@
 
 @includes
 
-@line_struct
+@declare_struct
 @section_struct
 @section_list_struct
 

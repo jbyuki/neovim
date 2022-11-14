@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 typedef struct Line_s Line;
+typedef struct Section_s Section;
 typedef struct bpnode_s bpnode;
 
 struct Line_s
@@ -11,7 +12,7 @@ struct Line_s
   enum {
     REFERENCE = 0,
 		TEXT,
-		SECTION,
+		SECTION
   } type;
 
   union {
@@ -22,6 +23,7 @@ struct Line_s
 
   Line* pnext, *pprev;
   bpnode* parent;
+  Section* parent_section;
 };
 
 

@@ -30,6 +30,7 @@
 #include "nvim/ui.h"
 #include "nvim/undo.h"
 #include "nvim/tangle.h"
+#include "nvim/tangle_line.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "change.c.generated.h"
@@ -624,9 +625,12 @@ void ins_char(int c)
   }
 
   if(curbuf->b_p_tgl == 1) {
-    ins_char_bytes_tangle((char_u*)buf, n);
-  }
-  ins_char_bytes((char_u *)buf, n);
+		Line* line = get_current_tangle_line();
+		ins_char_bytes((char_u *)buf, n);
+		update_current_tangle_line(line, (char_u*)buf, n);
+  } else {
+		ins_char_bytes((char_u *)buf, n);
+	}
 }
 
 void ins_char_bytes(char *buf, size_t charlen)

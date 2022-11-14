@@ -66,10 +66,10 @@ STRNCPY(name, fp+1, len);
 name[len] = '\0';
 
 @section_struct+=
-typedef struct section
+struct Section_s
 {
   @section_data
-} Section;
+};
 
 @create_new_section-=
 Section* section = (Section*)xmalloc(sizeof(Section));
@@ -81,15 +81,22 @@ Section* section = (Section*)xmalloc(sizeof(Section));
 pmap_clear(cstr_t)(&buf->sections);
 kv_init(buf->root_names);
 
+@define_functions+=
+static SectionList* get_section_list(PMap(cstr_t)* sections, const char* name)
+{
+	SectionList* list;
+	if(!pmap_has(cstr_t)(sections, name)) {
+    list = sectionlist_init();
+    pmap_put(cstr_t)(sections, xstrdup(name), list);
+  } else {
+    list = pmap_get(cstr_t)(sections, name);
+  }
+	return list;
+}
+
 @link_to_previous_section_if_needed+=
 if(op == 1 || op == 2) {
-  SectionList* list;
-	if(!pmap_has(cstr_t)(&buf->sections, name)) {
-    list = sectionlist_init();
-    pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
-  } else {
-    list = pmap_get(cstr_t)(&buf->sections, name);
-  }
+  SectionList* list = get_section_list(&buf->sections, name);
 
   if(op == 1) {
     @add_back_to_section
@@ -139,6 +146,7 @@ l.pprev = NULL;
 @create_line_reference
 @add_line_to_btree
 @add_line_to_current_section
+@add_reference_to_section_list
 
 @get_whitespace_before+=
 size_t len = fp - line;
@@ -151,8 +159,6 @@ len = (lp+1)-(fp+1);
 char* name = xmalloc(len+1);
 STRNCPY(name, fp+1, len);
 name[len] = '\0';
-
-assert(cur_section != NULL);
 
 @includes+=
 #include <assert.h>
@@ -191,10 +197,18 @@ static inline void add_to_section(Section* section, Line* pl)
 		pl->pprev = section->tail;
 		section->tail = pl;
 	}
+	pl->parent_section = section;
 }
 
 @add_line_to_current_section+=
 add_to_section(cur_section, pl);
+
+@section_list_data+=
+kvec_t(Section*) refs;
+
+@add_reference_to_section_list+=
+SectionList* list = get_section_list(&buf->sections, name);
+kv_push(list->refs, cur_section);
 
 @create_text_line_without_at+=
 Line l;
@@ -225,5 +239,3 @@ buf->tgl_tree = create_tree();
 
 @add_line_to_btree+=
 Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
-
-
