@@ -11,8 +11,6 @@
 #include "nvim/types.h"
 #include "nvim/bitree.h"
 
-@define_struct
-
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "tangle.h.generated.h"
 #endif
@@ -37,7 +35,6 @@
 # include "tangle.c.generated.h"
 #endif
 
-@global_variables
 @define_functions_linked_list
 @define_functions
 

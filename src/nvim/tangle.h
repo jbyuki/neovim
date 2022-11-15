@@ -9,7 +9,6 @@
 #include "nvim/types.h"
 #include "nvim/bitree.h"
 
-
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "tangle.h.generated.h"
 #endif

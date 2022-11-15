@@ -62,6 +62,8 @@ struct bpnode_s
 		int counts[2*BTREE_T];
 		Line keys[2*BTREE_T];
 	};
+
+	bpnode* left, *right;
 };
 
 typedef struct 
@@ -73,10 +75,8 @@ typedef struct
 @define+=
 bpnode* create_node()
 {
-	bpnode* node = (bpnode*)malloc(sizeof(bpnode));
+	bpnode* node = (bpnode*)calloc(1, sizeof(bpnode));
 	node->leaf = true;
-	node->n = 0;
-	node->parent = NULL;
 	return node;
 }
 
@@ -226,6 +226,10 @@ for(int k=parent->n; k>j+1; --k) {
 }
 
 parent->children[j+1] = right;
+
+right->left = child;
+right->right = child->right;
+child->right = right;
 
 parent->counts[j] = parent->counts[j] - right_count;
 parent->counts[j+1] = right_count;
@@ -474,6 +478,11 @@ index += node->counts[j-1];
 node->counts[j-1] += right_count;
 node->n--;
 
+left->right = right->right;
+if(right->right) {
+	right->right->left = left;
+}
+
 free(right);
 
 @otherwise_merge_with_right_sibling+=
@@ -492,6 +501,11 @@ for(int i=j+1; i<node->n-1; ++i) {
 }
 node->counts[j] += right_count;
 node->n--;
+
+left->right = right->right;
+if(right->right) {
+	right->right->left = left;
+}
 
 free(right);
 
@@ -556,3 +570,24 @@ int node_reverse_lookup(bpnode* node, int offset)
 		return node_reverse_lookup(parent, offset);
 	}
 }
+
+@define+=
+Line* next_line(Line* line)
+{
+	bpnode* parent = line->parent;
+	assert(parent);
+
+	int offset = line - &parent->keys[0];
+	offset++;
+	if(offset == parent->n) {
+		@get_line_directly_to_the_right
+	}
+	return &parent->keys[offset];
+}
+
+@get_line_directly_to_the_right+=
+bpnode* right = parent->right;
+if(right) {
+	return &right->keys[0];
+}
+return NULL;

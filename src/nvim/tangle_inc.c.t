@@ -153,3 +153,69 @@ static void remove_ref(SectionList* list, Section* ref)
 @compute_delta_reference_to_text_and_update+=
 int delta = -tangle_get_count(curbuf, old_line->name)+1;
 update_count_recursively(old_line->parent_section, delta);
+
+@insert_text_to_section+=
+buf_T* buf = curbuf;
+Section* cur_section;
+@parse_operator
+@parse_section_name
+@create_new_section
+@link_to_previous_section_if_needed
+@otherwise_just_save_section
+
+new_line.name = name;
+new_line.pnext = NULL;
+new_line.pprev = NULL;
+
+@update_subsequent_lines_parent_section
+@compute_removed_count_section
+@remove_and_add_references
+@compute_text_section_delta_count_and_update
+@compute_new_section_size_and_update
+@fix_section_linkedlist
+
+@update_subsequent_lines_parent_section+=
+Line* next_line = old_line->pnext;
+while(next_line) {
+	next_line->parent_section = section;
+	next_line = next_line->pnext;
+}
+
+@compute_removed_count_section+=
+next_line = old_line->pnext;
+
+int removed = 0;
+while(next_line) {
+	if(next_line->type == REFERENCE) {
+		removed += tangle_get_count(curbuf, next_line->name);
+	} else if(next_line->type == TEXT) {
+		removed++;
+	}
+	next_line = next_line->pnext;
+}
+
+@remove_and_add_references+=
+next_line = old_line->pnext;
+
+Section* old_section = old_line->parent_section;
+while(next_line) {
+	if(next_line->type == REFERENCE) {
+		SectionList* ref_list = get_section_list(&curbuf->sections, next_line->name);
+		remove_ref(ref_list, old_line->parent_section);
+		kv_push(ref_list->refs, section);
+	}
+	next_line = next_line->pnext;
+}
+
+@compute_text_section_delta_count_and_update+=
+int delta = -1 - removed;
+update_count_recursively(old_line->parent_section, delta);
+
+@compute_new_section_size_and_update+=
+delta = removed;
+update_count_recursively(section, delta);
+
+@fix_section_linkedlist+=
+section->head = old_line->pnext;
+section->tail = old_line->parent_section->tail;
+old_line->parent_section->tail = old_line->pprev;

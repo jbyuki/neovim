@@ -26,10 +26,6 @@ static SectionList* sectionlist_init()
 @section_data+=
 Section* pnext, *pprev;
 
-@create_new_section+=
-section->pnext = NULL;
-section->pprev = NULL;
-
 @section_data+=
 SectionList* parent;
 

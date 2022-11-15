@@ -25,10 +25,8 @@
 
 bpnode* create_node()
 {
-	bpnode* node = (bpnode*)malloc(sizeof(bpnode));
+	bpnode* node = (bpnode*)calloc(1, sizeof(bpnode));
 	node->leaf = true;
-	node->n = 0;
-	node->parent = NULL;
 	return node;
 }
 
@@ -169,6 +167,10 @@ void node_split(bpnode* child, int j, bpnode** pright)
 	}
 
 	parent->children[j+1] = right;
+
+	right->left = child;
+	right->right = child->right;
+	child->right = right;
 
 	parent->counts[j] = parent->counts[j] - right_count;
 	parent->counts[j+1] = right_count;
@@ -338,6 +340,11 @@ void delete_node_nonmin(bptree* tree, bpnode* node, int index)
 					node->counts[j-1] += right_count;
 					node->n--;
 
+					left->right = right->right;
+					if(right->right) {
+						right->right->left = left;
+					}
+
 					free(right);
 
 					j = j-1;
@@ -371,6 +378,11 @@ void delete_node_nonmin(bptree* tree, bpnode* node, int index)
 					}
 					node->counts[j] += right_count;
 					node->n--;
+
+					left->right = right->right;
+					if(right->right) {
+						right->right->left = left;
+					}
 
 					free(right);
 
@@ -454,4 +466,22 @@ int node_reverse_lookup(bpnode* node, int offset)
 		return node_reverse_lookup(parent, offset);
 	}
 }
+
+Line* next_line(Line* line)
+{
+	bpnode* parent = line->parent;
+	assert(parent);
+
+	int offset = line - &parent->keys[0];
+	offset++;
+	if(offset == parent->n) {
+		bpnode* right = parent->right;
+		if(right) {
+			return &right->keys[0];
+		}
+		return NULL;
+	}
+	return &parent->keys[offset];
+}
+
 

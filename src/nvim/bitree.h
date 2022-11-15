@@ -21,6 +21,8 @@ struct bpnode_s
 		int counts[2*BTREE_T];
 		Line keys[2*BTREE_T];
 	};
+
+	bpnode* left, *right;
 };
 
 typedef struct 

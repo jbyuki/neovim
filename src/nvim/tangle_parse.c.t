@@ -72,7 +72,7 @@ struct Section_s
 };
 
 @create_new_section-=
-Section* section = (Section*)xmalloc(sizeof(Section));
+Section* section = (Section*)xcalloc(1, sizeof(Section));
 
 @includes+=
 #include "nvim/map.h"
@@ -176,10 +176,6 @@ l.pprev = NULL;
 
 @section_data+=
 Line* head, *tail;
-
-@create_new_section+=
-section->head = NULL;
-section->tail = NULL;
 
 @free_section+=
 temp->head = NULL;
