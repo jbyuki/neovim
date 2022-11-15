@@ -36,6 +36,7 @@ SectionList* parent;
 @define_functions_linked_list+=
 static void sectionlist_push_back(SectionList* list, Section* section) 
 {
+	section->parent = list;
   if(!list->ptail) {
     list->ptail = section;
     list->phead = section;
@@ -43,13 +44,13 @@ static void sectionlist_push_back(SectionList* list, Section* section)
   }
 
 	section->pprev = list->ptail;
-	section->parent = list;
   list->ptail->pnext = section;
   list->ptail = section;
 }
 
 static void sectionlist_push_front(SectionList* list, Section* section) 
 {
+	section->parent = list;
   if(!list->phead) {
     list->phead = section;
     list->ptail = section;
@@ -57,7 +58,6 @@ static void sectionlist_push_front(SectionList* list, Section* section)
   }
 
   section->pnext = list->phead;
-	section->parent = list;
 	list->phead->pprev = section;
   list->phead = section;
 }

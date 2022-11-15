@@ -77,7 +77,7 @@ new_line.prefix = prefix;
 @append_text_ref_new_ref
 
 @compute_text_ref_delta_count_and_update+=
-int delta = -1 + tangle_get_count(buf, name);
+int delta = -1 + tangle_get_count(curbuf, name);
 update_count_recursively(old_line->parent_section, delta);
 
 @define_functions+=

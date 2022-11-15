@@ -67,6 +67,7 @@ static SectionList* sectionlist_init()
 
 static void sectionlist_push_back(SectionList* list, Section* section) 
 {
+	section->parent = list;
   if(!list->ptail) {
     list->ptail = section;
     list->phead = section;
@@ -74,13 +75,13 @@ static void sectionlist_push_back(SectionList* list, Section* section)
   }
 
 	section->pprev = list->ptail;
-	section->parent = list;
   list->ptail->pnext = section;
   list->ptail = section;
 }
 
 static void sectionlist_push_front(SectionList* list, Section* section) 
 {
+	section->parent = list;
   if(!list->phead) {
     list->phead = section;
     list->ptail = section;
@@ -88,7 +89,6 @@ static void sectionlist_push_front(SectionList* list, Section* section)
   }
 
   section->pnext = list->phead;
-	section->parent = list;
 	list->phead->pprev = section;
   list->phead = section;
 }
@@ -228,7 +228,7 @@ void update_current_tangle_line(Line* old_line, char* buf, size_t charlen)
 			new_line.name = name;
 			new_line.prefix = prefix;
 
-			int delta = -1 + tangle_get_count(buf, name);
+			int delta = -1 + tangle_get_count(curbuf, name);
 			update_count_recursively(old_line->parent_section, delta);
 
 			SectionList* list = get_section_list(&curbuf->sections, name);
