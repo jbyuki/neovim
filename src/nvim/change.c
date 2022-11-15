@@ -627,7 +627,7 @@ void ins_char(int c)
   if(curbuf->b_p_tgl == 1) {
 		Line* line = get_current_tangle_line();
 		ins_char_bytes((char_u *)buf, n);
-		update_current_tangle_line(line, (char_u*)buf, n);
+		update_current_tangle_line(line);
   } else {
 		ins_char_bytes((char_u *)buf, n);
 	}
@@ -793,10 +793,16 @@ int del_chars(long count, int fixpos)
   }
 
   if(curbuf->b_p_tgl == 1) {
-
   }
 
-  return del_bytes(bytes, fixpos, true);
+  if(curbuf->b_p_tgl == 1) {
+		Line* line = get_current_tangle_line();
+		int ret = del_bytes(bytes, fixpos, true);
+		update_current_tangle_line(line);
+		return ret;
+  } else {
+		return del_bytes(bytes, fixpos, true);
+	}
 }
 
 /// Delete "count" bytes under the cursor.

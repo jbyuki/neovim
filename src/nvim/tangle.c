@@ -183,7 +183,7 @@ Line* get_current_tangle_line()
 	return line;
 }
 
-void update_current_tangle_line(Line* old_line, char* buf, size_t charlen)
+void update_current_tangle_line(Line* old_line)
 {
 	size_t col = (size_t)curwin->w_cursor.col;
 	linenr_T lnum = curwin->w_cursor.lnum;
@@ -213,7 +213,10 @@ void update_current_tangle_line(Line* old_line, char* buf, size_t charlen)
 
 
 	if(old_line->type == TEXT) {
-		if(new_line.type == REFERENCE) {
+		if(new_line.type == TEXT) {
+			// Nothing to do
+			return;
+		} else if(new_line.type == REFERENCE) {
 			size_t len = fp - line;
 			char* prefix = xmalloc(len+1);
 			STRNCPY(prefix, line, len);
@@ -232,10 +235,41 @@ void update_current_tangle_line(Line* old_line, char* buf, size_t charlen)
 			update_count_recursively(old_line->parent_section, delta);
 
 			SectionList* list = get_section_list(&curbuf->sections, name);
-			kv_push(list->refs, old_line->parent_section);
+			kv_push(list->refs, new_line.parent_section);
 
+
+		} else if(new_line.type == SECTION) {
 		}
-		else if(new_line.type == SECTION) {
+	}
+
+	else if(old_line->type == REFERENCE) {
+		if(new_line.type == TEXT) {
+		} else if(new_line.type == REFERENCE) {
+			size_t len = fp - line;
+			char* prefix = xmalloc(len+1);
+			STRNCPY(prefix, line, len);
+			prefix[len] = '\0';
+
+			len = (lp+1)-(fp+1);
+			char* name = xmalloc(len+1);
+			STRNCPY(name, fp+1, len);
+			name[len] = '\0';
+
+
+			new_line.name = name;
+			new_line.prefix = prefix;
+
+			int delta = -tangle_get_count(curbuf, old_line->name) + tangle_get_count(curbuf, name);
+			update_count_recursively(old_line->parent_section, delta);
+
+			SectionList* old_list = get_section_list(&curbuf->sections, old_line->name);
+			remove_ref(old_list, old_line->parent_section);
+
+			SectionList* list = get_section_list(&curbuf->sections, name);
+			kv_push(list->refs, new_line.parent_section);
+
+
+		} else if(new_line.type == SECTION) {
 		}
 	}
 
@@ -256,6 +290,21 @@ void update_count_recursively(Section* section, int delta)
 	}
 }
 
+static void remove_ref(SectionList* list, Section* ref)
+{
+	int i = 0;
+	for(; i<kv_size(list->refs); ++i) {
+		if(kv_A(list->refs, i) == ref) {
+			break;
+		}
+	}
+	assert(i < kv_size(list->refs));
+
+	for(int j=i; j<kv_size(list->refs)-1; ++j) {
+		kv_A(list->refs, i) = kv_A(list->refs, i+1);
+	}
+	kv_pop(list->refs);
+}
 void tangle_update(buf_T* buf)
 {
 	const char* name;
