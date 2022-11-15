@@ -793,9 +793,6 @@ int del_chars(long count, int fixpos)
   }
 
   if(curbuf->b_p_tgl == 1) {
-  }
-
-  if(curbuf->b_p_tgl == 1) {
 		Line* line = get_current_tangle_line();
 		int ret = del_bytes(bytes, fixpos, true);
 		update_current_tangle_line(line);

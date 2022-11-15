@@ -1721,9 +1721,15 @@ int op_delete(oparg_T *oap)
       }
 
       if(curbuf->b_p_tgl == 1) {
-      }
-      (void)del_bytes((colnr_T)n, !virtual_op,
-                      oap->op_type == OP_DELETE && !oap->is_VIsual);
+				Line* line = get_current_tangle_line();
+				(void)del_bytes((colnr_T)n, !virtual_op,
+						oap->op_type == OP_DELETE && !oap->is_VIsual);
+				update_current_tangle_line(line);
+      } else {
+				(void)del_bytes((colnr_T)n, !virtual_op,
+						oap->op_type == OP_DELETE && !oap->is_VIsual);
+			}
+
     } else {
       // delete characters between lines
       pos_T curpos;

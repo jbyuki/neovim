@@ -145,3 +145,11 @@ static void remove_ref(SectionList* list, Section* ref)
 	}
 	kv_pop(list->refs);
 }
+
+@insert_reference_to_text+=
+@compute_delta_reference_to_text_and_update
+@remove_old_line_reference
+
+@compute_delta_reference_to_text_and_update+=
+int delta = -tangle_get_count(curbuf, old_line->name)+1;
+update_count_recursively(old_line->parent_section, delta);

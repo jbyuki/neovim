@@ -244,6 +244,12 @@ void update_current_tangle_line(Line* old_line)
 
 	else if(old_line->type == REFERENCE) {
 		if(new_line.type == TEXT) {
+			int delta = -tangle_get_count(curbuf, old_line->name)+1;
+			update_count_recursively(old_line->parent_section, delta);
+			SectionList* old_list = get_section_list(&curbuf->sections, old_line->name);
+			remove_ref(old_list, old_line->parent_section);
+
+
 		} else if(new_line.type == REFERENCE) {
 			size_t len = fp - line;
 			char* prefix = xmalloc(len+1);
@@ -305,6 +311,7 @@ static void remove_ref(SectionList* list, Section* ref)
 	}
 	kv_pop(list->refs);
 }
+
 void tangle_update(buf_T* buf)
 {
 	const char* name;
