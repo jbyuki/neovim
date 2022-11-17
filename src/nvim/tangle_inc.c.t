@@ -181,34 +181,43 @@ while(next_line) {
 	next_line = next_line->pnext;
 }
 
+@define_functions+=
+static int get_tangle_line_size(Line* line)
+{
+	if(line->type == REFERENCE) {
+		return tangle_get_count(curbuf, line->name);
+	} else if(line->type == TEXT) {
+		return 1;
+	}
+	return 0;
+}
+
 @compute_removed_count_section+=
 next_line = old_line->pnext;
 
 int removed = 0;
 while(next_line) {
-	if(next_line->type == REFERENCE) {
-		removed += tangle_get_count(curbuf, next_line->name);
-	} else if(next_line->type == TEXT) {
-		removed++;
-	}
+	removed += get_tangle_line_size(next_line);
 	next_line = next_line->pnext;
 }
 
 @remove_and_add_references+=
-next_line = old_line->pnext;
+next_line = old_line;
 
 Section* old_section = old_line->parent_section;
 while(next_line) {
 	if(next_line->type == REFERENCE) {
 		SectionList* ref_list = get_section_list(&curbuf->sections, next_line->name);
 		remove_ref(ref_list, old_line->parent_section);
-		kv_push(ref_list->refs, section);
+		if(next_line != old_line) {
+			kv_push(ref_list->refs, section);
+		}
 	}
 	next_line = next_line->pnext;
 }
 
 @compute_text_section_delta_count_and_update+=
-int delta = -1 - removed;
+int delta = -get_tangle_line_size(old_line) - removed;
 update_count_recursively(old_line->parent_section, delta);
 
 @compute_new_section_size_and_update+=
@@ -219,3 +228,23 @@ update_count_recursively(section, delta);
 section->head = old_line->pnext;
 section->tail = old_line->parent_section->tail;
 old_line->parent_section->tail = old_line->pprev;
+
+@insert_reference_to_section+=
+buf_T* buf = curbuf;
+Section* cur_section;
+@parse_operator
+@parse_section_name
+@create_new_section
+@link_to_previous_section_if_needed
+@otherwise_just_save_section
+
+new_line.name = name;
+new_line.pnext = NULL;
+new_line.pprev = NULL;
+
+@update_subsequent_lines_parent_section
+@compute_removed_count_section
+@remove_and_add_references
+@compute_text_section_delta_count_and_update
+@compute_new_section_size_and_update
+@fix_section_linkedlist
