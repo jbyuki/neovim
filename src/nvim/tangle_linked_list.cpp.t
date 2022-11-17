@@ -73,3 +73,23 @@ static void sectionlist_clear(SectionList* list)
   list->phead = NULL;
   list->ptail = NULL;
 }
+
+@define_functions_linked_list+=
+static void sectionlist_remove(Section* section)
+{
+	SectionList* list = section->parent;
+
+	if(section->pprev) {
+		section->pprev->pnext = section->pnext;
+	} else {
+		list->phead = list->phead->pnext;
+	}
+
+	if(section->pnext) {
+		section->pnext->pprev = section->pprev;
+	} else {
+		list->ptail = list->ptail->pprev;
+	}
+
+	xfree(section);
+}

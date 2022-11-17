@@ -480,6 +480,24 @@ Line* next_line(Line* line)
 			return &right->keys[0];
 		}
 		return NULL;
+
+	}
+	return &parent->keys[offset];
+}
+
+Line* prev_line(Line* line)
+{
+	bpnode* parent = line->parent;
+	assert(parent);
+
+	int offset = line - &parent->keys[0];
+	offset--;
+	if(offset < 0) {
+		bpnode* left = parent->left;
+		if(left) {
+			return &left->keys[left->n-1];
+		}
+		return NULL;
 	}
 	return &parent->keys[offset];
 }

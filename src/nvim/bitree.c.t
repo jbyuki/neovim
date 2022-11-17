@@ -591,3 +591,24 @@ if(right) {
 	return &right->keys[0];
 }
 return NULL;
+
+@define+=
+Line* prev_line(Line* line)
+{
+	bpnode* parent = line->parent;
+	assert(parent);
+
+	int offset = line - &parent->keys[0];
+	offset--;
+	if(offset < 0) {
+		@get_line_directly_to_the_left
+	}
+	return &parent->keys[offset];
+}
+
+@get_line_directly_to_the_left+=
+bpnode* left = parent->left;
+if(left) {
+	return &left->keys[left->n-1];
+}
+return NULL;

@@ -139,6 +139,7 @@ l.type = SECTION;
 l.name = name;
 l.pnext = NULL;
 l.pprev = NULL;
+l.parent_section = section;
 
 @parse_reference+=
 @get_whitespace_before

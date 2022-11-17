@@ -109,6 +109,25 @@ static void sectionlist_clear(SectionList* list)
   list->phead = NULL;
   list->ptail = NULL;
 }
+
+static void sectionlist_remove(Section* section)
+{
+	SectionList* list = section->parent;
+
+	if(section->pprev) {
+		section->pprev->pnext = section->pnext;
+	} else {
+		list->phead = list->phead->pnext;
+	}
+
+	if(section->pnext) {
+		section->pnext->pprev = section->pprev;
+	} else {
+		list->ptail = list->ptail->pprev;
+	}
+
+	xfree(section);
+}
 void attach_tangle(buf_T *buf) 
 {
   semsg(_("Tangle activated!"));
@@ -454,6 +473,58 @@ void update_current_tangle_line(Line* old_line)
 			section->tail = old_line->parent_section->tail;
 			old_line->parent_section->tail = old_line->pprev;
 
+
+		}
+	}
+
+	else if(old_line->type == SECTION) {
+		if(new_line.type == TEXT) {
+			Line* next_l = next_line(old_line);
+			Line* prev_l = prev_line(old_line);
+
+			Section* prev_section = prev_l->parent_section;
+
+			new_line.parent_section = prev_section;
+
+			Line* line_iter = next_l;
+			while(line_iter) {
+				line_iter->parent_section = prev_section;
+				line_iter = line_iter->pnext;
+			}
+
+
+			line_iter = next_l;
+			while(line_iter) {
+				if(line_iter->type == REFERENCE) {
+					SectionList* ref_list = get_section_list(&curbuf->sections, line_iter->name);
+					remove_ref(ref_list, old_line->parent_section);
+					kv_push(ref_list->refs, prev_section);
+				}
+				line_iter = line_iter->pnext;
+			}
+			Section* section = old_line->parent_section;
+			int delta = section->n;
+			update_count_recursively(section, -delta);
+			sectionlist_remove(section);
+
+			update_count_recursively(prev_section, delta+1);
+
+
+			new_line.pnext = next_l;
+			new_line.pprev = prev_l;
+
+			// actually pointing to new_line because 
+			// new_line content will be copied old_line location
+			if(prev_l) {
+				prev_l->pnext = old_line;
+			}
+
+			if(next_l) {
+				next_l->pprev = old_line;
+			}
+
+		} else if(new_line.type == REFERENCE) {
+		} else if(new_line.type == SECTION) {
 		}
 	}
 
@@ -610,6 +681,7 @@ void tangle_parse(buf_T *buf)
           l.name = name;
           l.pnext = NULL;
           l.pprev = NULL;
+          l.parent_section = section;
 
           Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
 

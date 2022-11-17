@@ -248,3 +248,68 @@ new_line.pprev = NULL;
 @compute_text_section_delta_count_and_update
 @compute_new_section_size_and_update
 @fix_section_linkedlist
+
+@if_old_line_was_section_insert+=
+else if(old_line->type == SECTION) {
+	if(new_line.type == TEXT) {
+		@insert_section_to_text
+	} else if(new_line.type == REFERENCE) {
+		@insert_section_to_reference
+	} else if(new_line.type == SECTION) {
+		@insert_section_to_section
+	}
+}
+
+@insert_section_to_text+=
+Line* next_l = next_line(old_line);
+Line* prev_l = prev_line(old_line);
+
+@update_subsequent_lines_parent_section_to_previous
+
+@move_references_to_previous_section
+@remove_section
+@update_count_section_text_previous_section
+
+new_line.pnext = next_l;
+new_line.pprev = prev_l;
+
+// actually pointing to new_line because 
+// new_line content will be copied old_line location
+if(prev_l) {
+	prev_l->pnext = old_line;
+}
+
+if(next_l) {
+	next_l->pprev = old_line;
+}
+
+@update_subsequent_lines_parent_section_to_previous+=
+Section* prev_section = prev_l->parent_section;
+
+new_line.parent_section = prev_section;
+
+Line* line_iter = next_l;
+while(line_iter) {
+	line_iter->parent_section = prev_section;
+	line_iter = line_iter->pnext;
+}
+
+@remove_section+=
+Section* section = old_line->parent_section;
+int delta = section->n;
+update_count_recursively(section, -delta);
+sectionlist_remove(section);
+
+@update_count_section_text_previous_section+=
+update_count_recursively(prev_section, delta+1);
+
+@move_references_to_previous_section+=
+line_iter = next_l;
+while(line_iter) {
+	if(line_iter->type == REFERENCE) {
+		SectionList* ref_list = get_section_list(&curbuf->sections, line_iter->name);
+		remove_ref(ref_list, old_line->parent_section);
+		kv_push(ref_list->refs, prev_section);
+	}
+	line_iter = line_iter->pnext;
+}
