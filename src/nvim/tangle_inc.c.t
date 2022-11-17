@@ -269,7 +269,9 @@ Line* prev_l = prev_line(old_line);
 @move_references_to_previous_section
 @remove_section
 @update_count_section_text_previous_section
+@append_line_to_previous_section
 
+@append_line_to_previous_section+=
 new_line.pnext = next_l;
 new_line.pprev = prev_l;
 
@@ -313,3 +315,31 @@ while(line_iter) {
 	}
 	line_iter = line_iter->pnext;
 }
+
+@insert_section_to_reference+=
+@get_whitespace_before
+@get_reference_name
+
+new_line.name = name;
+new_line.prefix = prefix;
+
+Line* next_l = next_line(old_line);
+Line* prev_l = prev_line(old_line);
+
+@update_subsequent_lines_parent_section_to_previous
+
+@move_references_to_previous_section
+@add_current_line_reference_to_previous_section
+@remove_section
+@update_count_section_reference_previous_section
+@append_line_to_previous_section
+
+@add_current_line_reference_to_previous_section+=
+SectionList* list = get_section_list(&curbuf->sections, name);
+kv_push(list->refs, prev_section);
+if(list->n < 0) {
+	list->n = 0;
+}
+
+@update_count_section_reference_previous_section+=
+update_count_recursively(prev_section, delta+list->n);

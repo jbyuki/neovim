@@ -502,13 +502,13 @@ void update_current_tangle_line(Line* old_line)
 				}
 				line_iter = line_iter->pnext;
 			}
+
 			Section* section = old_line->parent_section;
 			int delta = section->n;
 			update_count_recursively(section, -delta);
 			sectionlist_remove(section);
 
 			update_count_recursively(prev_section, delta+1);
-
 
 			new_line.pnext = next_l;
 			new_line.pprev = prev_l;
@@ -523,7 +523,72 @@ void update_current_tangle_line(Line* old_line)
 				next_l->pprev = old_line;
 			}
 
+
 		} else if(new_line.type == REFERENCE) {
+			size_t len = fp - line;
+			char* prefix = xmalloc(len+1);
+			STRNCPY(prefix, line, len);
+			prefix[len] = '\0';
+
+			len = (lp+1)-(fp+1);
+			char* name = xmalloc(len+1);
+			STRNCPY(name, fp+1, len);
+			name[len] = '\0';
+
+
+			new_line.name = name;
+			new_line.prefix = prefix;
+
+			Line* next_l = next_line(old_line);
+			Line* prev_l = prev_line(old_line);
+
+			Section* prev_section = prev_l->parent_section;
+
+			new_line.parent_section = prev_section;
+
+			Line* line_iter = next_l;
+			while(line_iter) {
+				line_iter->parent_section = prev_section;
+				line_iter = line_iter->pnext;
+			}
+
+
+			line_iter = next_l;
+			while(line_iter) {
+				if(line_iter->type == REFERENCE) {
+					SectionList* ref_list = get_section_list(&curbuf->sections, line_iter->name);
+					remove_ref(ref_list, old_line->parent_section);
+					kv_push(ref_list->refs, prev_section);
+				}
+				line_iter = line_iter->pnext;
+			}
+
+			SectionList* list = get_section_list(&curbuf->sections, name);
+			kv_push(list->refs, prev_section);
+			if(list->n < 0) {
+				list->n = 0;
+			}
+
+			Section* section = old_line->parent_section;
+			int delta = section->n;
+			update_count_recursively(section, -delta);
+			sectionlist_remove(section);
+
+			update_count_recursively(prev_section, delta+list->n);
+			new_line.pnext = next_l;
+			new_line.pprev = prev_l;
+
+			// actually pointing to new_line because 
+			// new_line content will be copied old_line location
+			if(prev_l) {
+				prev_l->pnext = old_line;
+			}
+
+			if(next_l) {
+				next_l->pprev = old_line;
+			}
+
+
 		} else if(new_line.type == SECTION) {
 		}
 	}
