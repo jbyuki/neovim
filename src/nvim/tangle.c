@@ -308,13 +308,14 @@ void update_current_tangle_line(Line* old_line)
 			new_line.pnext = NULL;
 			new_line.pprev = NULL;
 
-			Line* next_line = old_line->pnext;
+			Line* next_l = old_line->pnext;
+			Line* next_line = next_l;
 			while(next_line) {
 				next_line->parent_section = section;
 				next_line = next_line->pnext;
 			}
 
-			next_line = old_line->pnext;
+			next_line = next_l;
 
 			int removed = 0;
 			while(next_line) {
@@ -322,16 +323,14 @@ void update_current_tangle_line(Line* old_line)
 				next_line = next_line->pnext;
 			}
 
-			next_line = old_line;
+			next_line = next_l;
 
 			Section* old_section = old_line->parent_section;
 			while(next_line) {
 				if(next_line->type == REFERENCE) {
 					SectionList* ref_list = get_section_list(&curbuf->sections, next_line->name);
 					remove_ref(ref_list, old_line->parent_section);
-					if(next_line != old_line) {
-						kv_push(ref_list->refs, section);
-					}
+					kv_push(ref_list->refs, section);
 				}
 				next_line = next_line->pnext;
 			}
@@ -434,14 +433,17 @@ void update_current_tangle_line(Line* old_line)
 			new_line.name = name;
 			new_line.pnext = NULL;
 			new_line.pprev = NULL;
+			new_line.parent_section = section;
 
-			Line* next_line = old_line->pnext;
+			Line* next_l = next_line(old_line);
+
+			Line* next_line = next_l;
 			while(next_line) {
 				next_line->parent_section = section;
 				next_line = next_line->pnext;
 			}
 
-			next_line = old_line->pnext;
+			next_line = next_l;
 
 			int removed = 0;
 			while(next_line) {
@@ -449,16 +451,17 @@ void update_current_tangle_line(Line* old_line)
 				next_line = next_line->pnext;
 			}
 
-			next_line = old_line;
+			SectionList* ref_list = get_section_list(&curbuf->sections, old_line->name);
+			remove_ref(ref_list, old_line->parent_section);
+
+			next_line = next_l;
 
 			Section* old_section = old_line->parent_section;
 			while(next_line) {
 				if(next_line->type == REFERENCE) {
 					SectionList* ref_list = get_section_list(&curbuf->sections, next_line->name);
 					remove_ref(ref_list, old_line->parent_section);
-					if(next_line != old_line) {
-						kv_push(ref_list->refs, section);
-					}
+					kv_push(ref_list->refs, section);
 				}
 				next_line = next_line->pnext;
 			}
@@ -503,10 +506,10 @@ void update_current_tangle_line(Line* old_line)
 				line_iter = line_iter->pnext;
 			}
 
-			Section* section = old_line->parent_section;
-			int delta = section->n;
-			update_count_recursively(section, -delta);
-			sectionlist_remove(section);
+			Section* old_s = old_line->parent_section;
+			int delta = old_s->n;
+			update_count_recursively(old_s, -delta);
+			sectionlist_remove(old_s);
 
 			update_count_recursively(prev_section, delta+1);
 
@@ -569,12 +572,13 @@ void update_current_tangle_line(Line* old_line)
 				list->n = 0;
 			}
 
-			Section* section = old_line->parent_section;
-			int delta = section->n;
-			update_count_recursively(section, -delta);
-			sectionlist_remove(section);
+			Section* old_s = old_line->parent_section;
+			int delta = old_s->n;
+			update_count_recursively(old_s, -delta);
+			sectionlist_remove(old_s);
 
 			update_count_recursively(prev_section, delta+list->n);
+
 			new_line.pnext = next_l;
 			new_line.pprev = prev_l;
 
@@ -590,6 +594,96 @@ void update_current_tangle_line(Line* old_line)
 
 
 		} else if(new_line.type == SECTION) {
+			buf_T* buf = curbuf;
+			Section* cur_section;
+			int op;
+			switch(*(lp-1)) {
+			case '+': op = 1; break;
+			case '-': op = 2; break;
+			default: op = 0; break;
+			}
+
+			size_t len = (op == 0 ? lp : lp-1) - (fp+1);
+			char* name = xmalloc(len + 1);
+			STRNCPY(name, fp+1, len);
+			name[len] = '\0';
+
+			Section* section = (Section*)xcalloc(1, sizeof(Section));
+
+			cur_section = section;
+
+			if(op == 1 || op == 2) {
+			  SectionList* list = get_section_list(&buf->sections, name);
+
+			  if(op == 1) {
+			    sectionlist_push_back(list, section);
+
+			  } else { /* op == 2 */
+			    sectionlist_push_front(list, section);
+
+			  }
+			}
+
+			else {
+			  SectionList* list; 
+			  if(pmap_has(cstr_t)(&buf->sections, name)) {
+			    list = pmap_get(cstr_t)(&buf->sections, name);
+			  } else {
+			    list = sectionlist_init();
+			    pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
+			    kv_push(buf->root_names, name);
+			  }
+
+			  sectionlist_clear(list);
+			  sectionlist_push_back(list, section);
+			}
+
+
+
+			new_line.name = name;
+			new_line.pnext = NULL;
+			new_line.pprev = NULL;
+			new_line.parent_section = section;
+
+			Line* next_l = next_line(old_line);
+			Line* last_l = old_line->parent_section->tail;
+
+			Line* next_line = next_l;
+			while(next_line) {
+				next_line->parent_section = section;
+				next_line = next_line->pnext;
+			}
+
+			next_line = next_l;
+
+			int removed = 0;
+			while(next_line) {
+				removed += get_tangle_line_size(next_line);
+				next_line = next_line->pnext;
+			}
+
+			next_line = next_l;
+
+			Section* old_section = old_line->parent_section;
+			while(next_line) {
+				if(next_line->type == REFERENCE) {
+					SectionList* ref_list = get_section_list(&curbuf->sections, next_line->name);
+					remove_ref(ref_list, old_line->parent_section);
+					kv_push(ref_list->refs, section);
+				}
+				next_line = next_line->pnext;
+			}
+
+			Section* old_s = old_line->parent_section;
+			int delta = old_s->n;
+			update_count_recursively(old_s, -delta);
+			sectionlist_remove(old_s);
+
+			update_count_recursively(section, delta);
+
+			section->head = next_l;
+			section->tail = last_l;
+
 		}
 	}
 
