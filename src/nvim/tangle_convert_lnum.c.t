@@ -27,8 +27,8 @@ Line* get_line_at_lnum_tangled(buf_T* buf, const char* name, int lnum)
 }
 
 @look_for_lnum_in_section+=
-Line* line = section->head;
-while(line) {
+Line* line = section->head.pnext;
+while(line != &section->tail) {
 	if(line->type == TEXT) {
 		if(lnum == 0) {
 			return line;

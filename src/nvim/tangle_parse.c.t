@@ -176,23 +176,29 @@ l.pprev = NULL;
 #include "klib/kvec.h"
 
 @section_data+=
-Line* head, *tail;
+// Making whole structs instead of pointer so
+// that during btree insertion, the pointers
+// are correctly adjusted.
+Line head, tail;
 
 @free_section+=
-temp->head = NULL;
-temp->tail = NULL;
+temp->head.pnext = NULL;
+temp->tail.pprev = NULL;
 
 @define_functions+=
 static inline void add_to_section(Section* section, Line* pl)
 	FUNC_ATTR_ALWAYS_INLINE
 {
-	if(!section->tail) {
-		section->head = pl;
-		section->tail = pl;
+	if(!section->tail.pprev) {
+		section->head.pnext = pl;
+		section->tail.pprev = pl;
+		pl->pnext = &section->tail;
+		pl->pprev = &section->head;
 	} else {
-		section->tail->pnext = pl;
-		pl->pprev = section->tail;
-		section->tail = pl;
+		section->tail.pprev->pnext = pl;
+		pl->pprev = section->tail.pprev;
+		pl->pnext = &section->tail;
+		section->tail.pprev = pl;
 	}
 	pl->parent_section = section;
 }
@@ -210,7 +216,6 @@ kv_push(list->refs, cur_section);
 @create_text_line_without_at+=
 Line l;
 l.type = TEXT;
-l.str = xstrdup(fp+1);
 l.pnext = NULL;
 l.pprev = NULL;
 
@@ -224,7 +229,6 @@ else {
 @create_text_line+=
 Line l;
 l.type = TEXT;
-l.str = xstrdup(line);
 l.pnext = NULL;
 l.pprev = NULL;
 

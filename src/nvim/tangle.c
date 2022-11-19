@@ -34,7 +34,10 @@ struct Section_s
 
   SectionList* parent;
 
-  Line* head, *tail;
+  // Making whole structs instead of pointer so
+  // that during btree insertion, the pointers
+  // are correctly adjusted.
+  Line head, tail;
 
 };
 
@@ -99,8 +102,8 @@ static void sectionlist_clear(SectionList* list)
   while(pcopy) {
     Section* temp = pcopy;
     pcopy = pcopy->pnext;
-    temp->head = NULL;
-    temp->tail = NULL;
+    temp->head.pnext = NULL;
+    temp->tail.pprev = NULL;
 
     xfree(temp);
   }
@@ -167,8 +170,8 @@ Line* get_line_at_lnum_tangled(buf_T* buf, const char* name, int lnum)
 	Section* section = list->phead;
 	while(section) {
 		if(lnum < section->n) {
-			Line* line = section->head;
-			while(line) {
+			Line* line = section->head.pnext;
+			while(line != &section->tail) {
 				if(line->type == TEXT) {
 					if(lnum == 0) {
 						return line;
@@ -341,9 +344,9 @@ void update_current_tangle_line(Line* old_line)
 			delta = removed;
 			update_count_recursively(section, delta);
 
-			section->head = old_line->pnext;
-			section->tail = old_line->parent_section->tail;
-			old_line->parent_section->tail = old_line->pprev;
+			section->head.pnext = old_line->pnext;
+			section->tail.pprev = old_line->parent_section->tail.pprev;
+			old_line->parent_section->tail.pprev = old_line->pprev;
 
 
 		}
@@ -472,9 +475,9 @@ void update_current_tangle_line(Line* old_line)
 			delta = removed;
 			update_count_recursively(section, delta);
 
-			section->head = old_line->pnext;
-			section->tail = old_line->parent_section->tail;
-			old_line->parent_section->tail = old_line->pprev;
+			section->head.pnext = old_line->pnext;
+			section->tail.pprev = old_line->parent_section->tail.pprev;
+			old_line->parent_section->tail.pprev = old_line->pprev;
 
 
 		}
@@ -646,7 +649,7 @@ void update_current_tangle_line(Line* old_line)
 			new_line.parent_section = section;
 
 			Line* next_l = next_line(old_line);
-			Line* last_l = old_line->parent_section->tail;
+			Line* last_l = old_line->parent_section->tail.pprev;
 
 			Line* next_line = next_l;
 			while(next_line) {
@@ -681,8 +684,9 @@ void update_current_tangle_line(Line* old_line)
 
 			update_count_recursively(section, delta);
 
-			section->head = next_l;
-			section->tail = last_l;
+			section->head.pnext = next_l;
+			section->tail.pprev = last_l;
+
 
 		}
 	}
@@ -730,6 +734,47 @@ static int get_tangle_line_size(Line* line)
 	return 0;
 }
 
+void tangle_open_line()
+{
+	size_t col = (size_t)curwin->w_cursor.col;
+	linenr_T lnum = curwin->w_cursor.lnum;
+
+	Line l;
+	l.type = TEXT;
+	l.pnext = NULL;
+	l.pprev = NULL;
+
+	Line* pl = tree_insert(curbuf->tgl_tree, lnum-1, &l);
+
+	Line* prev_l = prev_line(pl);
+	Line* next_l = next_line(pl);
+
+	insert_in_section(prev_l->parent_section, prev_l, next_l, pl);
+
+	update_count_recursively(pl->parent_section, 1);
+}
+
+void insert_in_section(Section* section, Line* prev_l, Line* next_l, Line* pl)
+{
+	if(prev_l && prev_l->type != SECTION) {
+		pl->pprev = prev_l;
+		prev_l->pnext = pl;
+	} else {
+		section->head.pnext = pl;
+		pl->pprev = &section->head;
+	}
+
+	if(next_l && next_l->type != SECTION) {
+		pl->pnext = next_l;
+		next_l->pprev = pl; 
+	} else {
+		section->tail.pprev = pl;
+		pl->pnext = &section->tail;
+	}
+
+	pl->parent_section = section;
+}
+
 void tangle_update(buf_T* buf)
 {
 	const char* name;
@@ -754,8 +799,8 @@ int tangle_get_count(buf_T* buf, const char* name)
 	Section* section = list->phead;
 	while(section) {
 		section->n = 0;
-		Line* line = section->head;
-		while(line) {
+		Line* line = section->head.pnext;
+		while(line != &section->tail) {
 			if(line->type == TEXT) {
 				section->n++;
 			} else if(line->type == REFERENCE) {
@@ -873,7 +918,6 @@ void tangle_parse(buf_T *buf)
       } else {
     		Line l;
     		l.type = TEXT;
-    		l.str = xstrdup(fp+1);
     		l.pnext = NULL;
     		l.pprev = NULL;
 
@@ -886,7 +930,6 @@ void tangle_parse(buf_T *buf)
     else {
     	Line l;
     	l.type = TEXT;
-    	l.str = xstrdup(line);
     	l.pnext = NULL;
     	l.pprev = NULL;
 
@@ -913,13 +956,16 @@ static SectionList* get_section_list(PMap(cstr_t)* sections, const char* name)
 static inline void add_to_section(Section* section, Line* pl)
 	FUNC_ATTR_ALWAYS_INLINE
 {
-	if(!section->tail) {
-		section->head = pl;
-		section->tail = pl;
+	if(!section->tail.pprev) {
+		section->head.pnext = pl;
+		section->tail.pprev = pl;
+		pl->pnext = &section->tail;
+		pl->pprev = &section->head;
 	} else {
-		section->tail->pnext = pl;
-		pl->pprev = section->tail;
-		section->tail = pl;
+		section->tail.pprev->pnext = pl;
+		pl->pprev = section->tail.pprev;
+		pl->pnext = &section->tail;
+		section->tail.pprev = pl;
 	}
 	pl->parent_section = section;
 }

@@ -224,9 +224,9 @@ delta = removed;
 update_count_recursively(section, delta);
 
 @fix_section_linkedlist+=
-section->head = old_line->pnext;
-section->tail = old_line->parent_section->tail;
-old_line->parent_section->tail = old_line->pprev;
+section->head.pnext = old_line->pnext;
+section->tail.pprev = old_line->parent_section->tail.pprev;
+old_line->parent_section->tail.pprev = old_line->pprev;
 
 @insert_reference_to_section+=
 buf_T* buf = curbuf;
@@ -366,7 +366,7 @@ new_line.pprev = NULL;
 new_line.parent_section = section;
 
 Line* next_l = next_line(old_line);
-Line* last_l = old_line->parent_section->tail;
+Line* last_l = old_line->parent_section->tail.pprev;
 
 @update_subsequent_lines_parent_section
 @compute_removed_count_section
@@ -379,5 +379,55 @@ Line* last_l = old_line->parent_section->tail;
 update_count_recursively(section, delta);
 
 @fix_section_linkedlist_new_section+=
-section->head = next_l;
-section->tail = last_l;
+section->head.pnext = next_l;
+section->tail.pprev = last_l;
+
+@define_functions+=
+void tangle_open_line()
+{
+	@get_cursor_position
+	@create_empty_text_line
+	@append_text_line_based_on_dir
+	@append_text_to_current_section
+	@update_count_for_current_section_append
+}
+
+@create_empty_text_line+=
+Line l;
+l.type = TEXT;
+l.pnext = NULL;
+l.pprev = NULL;
+
+@append_text_line_based_on_dir+=
+Line* pl = tree_insert(curbuf->tgl_tree, lnum-1, &l);
+
+@define_functions+=
+void insert_in_section(Section* section, Line* prev_l, Line* next_l, Line* pl)
+{
+	if(prev_l && prev_l->type != SECTION) {
+		pl->pprev = prev_l;
+		prev_l->pnext = pl;
+	} else {
+		section->head.pnext = pl;
+		pl->pprev = &section->head;
+	}
+
+	if(next_l && next_l->type != SECTION) {
+		pl->pnext = next_l;
+		next_l->pprev = pl; 
+	} else {
+		section->tail.pprev = pl;
+		pl->pnext = &section->tail;
+	}
+
+	pl->parent_section = section;
+}
+
+@append_text_to_current_section+=
+Line* prev_l = prev_line(pl);
+Line* next_l = next_line(pl);
+
+insert_in_section(prev_l->parent_section, prev_l, next_l, pl);
+
+@update_count_for_current_section_append+=
+update_count_recursively(pl->parent_section, 1);

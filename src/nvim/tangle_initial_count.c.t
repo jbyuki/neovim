@@ -50,8 +50,8 @@ while(section) {
 }
 
 @count_section+=
-Line* line = section->head;
-while(line) {
+Line* line = section->head.pnext;
+while(line != &section->tail) {
 	@count_line
 	line = line->pnext;
 }
