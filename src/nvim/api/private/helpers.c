@@ -470,50 +470,6 @@ Array string_to_array(const String input, bool crlf)
   return ret;
 }
 
-/// Collects `n` buffer lines into array `l`, optionally replacing newlines
-/// with NUL.
-///
-/// @param buf Buffer to get lines from
-/// @param n Number of lines to collect
-/// @param replace_nl Replace newlines ("\n") with NUL
-/// @param start Line number to start from
-/// @param[out] l Lines are copied here
-/// @param err[out] Error, if any
-/// @return true unless `err` was set
-bool buf_collect_lines(buf_T *buf, size_t n, int64_t start, bool replace_nl, Array *l, Error *err)
-{
-  for (size_t i = 0; i < n; i++) {
-    int64_t lnum = start + (int64_t)i;
-
-    if (lnum >= MAXLNUM) {
-      if (err != NULL) {
-        api_set_error(err, kErrorTypeValidation, "Line index is too high");
-      }
-      return false;
-    }
-
-		const char *bufstr;
-		if(buf->parent_tgl == NULL) {
-			bufstr = ml_get_buf(buf, (linenr_T)lnum, false);
-		} else {
-			// Convert tangle lnum to untangled one
-			lnum = tangle_convert_lnum_to_untangled(buf->parent_tgl, buf->b_fname, lnum-1)+1;
-			bufstr = ml_get_buf(buf->parent_tgl, (linenr_T)lnum, false);
-		}
-
-    Object str = STRING_OBJ(cstr_to_string(bufstr));
-
-    if (replace_nl) {
-      // Vim represents NULs as NLs, but this may confuse clients.
-      strchrsub(str.data.string.data, '\n', '\0');
-    }
-
-    l->items[i] = str;
-  }
-
-  return true;
-}
-
 /// Returns a substring of a buffer line
 ///
 /// @param buf          Buffer handle

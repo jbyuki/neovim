@@ -1489,7 +1489,15 @@ bool buf_collect_lines(buf_T *buf, size_t n, linenr_T start, int start_idx, bool
       return false;
     }
 
-    char *bufstr = ml_get_buf(buf, lnum, false);
+		const char *bufstr;
+		if(buf->parent_tgl == NULL) {
+			bufstr = ml_get_buf(buf, (linenr_T)lnum, false);
+		} else {
+			// Convert tangle lnum to untangled one
+			lnum = tangle_convert_lnum_to_untangled(buf->parent_tgl, buf->b_fname, lnum-1)+1;
+			bufstr = ml_get_buf(buf->parent_tgl, (linenr_T)lnum, false);
+		}
+
     push_linestr(lstate, l, bufstr, strlen(bufstr), start_idx + (int)i, replace_nl);
   }
 
