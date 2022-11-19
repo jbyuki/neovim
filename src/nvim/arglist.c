@@ -5,23 +5,36 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
 
+#include "auto/config.h"
 #include "nvim/arglist.h"
+#include "nvim/ascii.h"
 #include "nvim/buffer.h"
 #include "nvim/charset.h"
 #include "nvim/eval.h"
+#include "nvim/eval/typval.h"
+#include "nvim/eval/typval_defs.h"
 #include "nvim/ex_cmds.h"
 #include "nvim/ex_cmds2.h"
+#include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_getln.h"
 #include "nvim/fileio.h"
 #include "nvim/garray.h"
+#include "nvim/gettext.h"
 #include "nvim/globals.h"
+#include "nvim/macros.h"
 #include "nvim/mark.h"
+#include "nvim/memline_defs.h"
 #include "nvim/memory.h"
+#include "nvim/message.h"
+#include "nvim/option_defs.h"
 #include "nvim/os/input.h"
 #include "nvim/path.h"
+#include "nvim/pos.h"
 #include "nvim/regexp.h"
-#include "nvim/strings.h"
+#include "nvim/types.h"
 #include "nvim/undo.h"
 #include "nvim/version.h"
 #include "nvim/vim.h"
@@ -693,8 +706,17 @@ void ex_next(exarg_T *eap)
 void ex_argdedupe(exarg_T *eap FUNC_ATTR_UNUSED)
 {
   for (int i = 0; i < ARGCOUNT; i++) {
+    // Expand each argument to a full path to catch different paths leading
+    // to the same file.
+    char *firstFullname = FullName_save(ARGLIST[i].ae_fname, false);
+
     for (int j = i + 1; j < ARGCOUNT; j++) {
-      if (path_fnamecmp(ARGLIST[i].ae_fname, ARGLIST[j].ae_fname) == 0) {
+      char *secondFullname = FullName_save(ARGLIST[j].ae_fname, false);
+      bool areNamesDuplicate = path_fnamecmp(firstFullname, secondFullname) == 0;
+      xfree(secondFullname);
+
+      if (areNamesDuplicate) {
+        // remove one duplicate argument
         xfree(ARGLIST[j].ae_fname);
         memmove(ARGLIST + j, ARGLIST + j + 1,
                 (size_t)(ARGCOUNT - j - 1) * sizeof(aentry_T));
@@ -709,6 +731,8 @@ void ex_argdedupe(exarg_T *eap FUNC_ATTR_UNUSED)
         j--;
       }
     }
+
+    xfree(firstFullname);
   }
 }
 

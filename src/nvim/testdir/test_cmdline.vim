@@ -316,6 +316,8 @@ func Test_map_completion()
   unmap <Left>
   " set cpo-=k
 
+  call assert_fails('call feedkeys(":map \\\\%(\<Tab>\<Home>\"\<CR>", "xt")', 'E53:')
+
   unmap <Middle>x
   set cpo&vim
 endfunc
@@ -1511,6 +1513,7 @@ func Test_cmdline_expand_special()
   call assert_fails('e <afile>', 'E495:')
   call assert_fails('e <abuf>', 'E496:')
   call assert_fails('e <amatch>', 'E497:')
+
   call writefile([], 'Xfile.cpp')
   call writefile([], 'Xfile.java')
   new Xfile.cpp
@@ -1622,6 +1625,53 @@ func Test_cmd_bang_E135()
   augroup test_cmd_filter_E135
     au!
   augroup END
+  %bwipe!
+endfunc
+
+func Test_cmd_bang_args()
+  new
+  :.!
+  call assert_equal(0, v:shell_error)
+
+  " Note that below there is one space char after the '!'.  This caused a
+  " shell error in the past, see https://github.com/vim/vim/issues/11495.
+  :.! 
+  call assert_equal(0, v:shell_error)
+  bwipe!
+
+  CheckUnix
+  :.!pwd
+  call assert_equal(0, v:shell_error)
+  :.! pwd
+  call assert_equal(0, v:shell_error)
+
+  " Note there is one space after 'pwd'.
+  :.! pwd 
+  call assert_equal(0, v:shell_error)
+
+  " Note there are two spaces after 'pwd'.
+  :.!  pwd  
+  call assert_equal(0, v:shell_error)
+  :.!ls ~
+  call assert_equal(0, v:shell_error)
+
+  " Note there is one space char after '~'.
+  :.!ls  ~ 
+  call assert_equal(0, v:shell_error)
+
+  " Note there are two spaces after '~'.
+  :.!ls  ~  
+  call assert_equal(0, v:shell_error)
+
+  :.!echo "foo"
+  call assert_equal(getline('.'), "foo")
+  :.!echo "foo  "
+  call assert_equal(getline('.'), "foo  ")
+  :.!echo " foo  "
+  call assert_equal(getline('.'), " foo  ")
+  :.!echo  " foo  "
+  call assert_equal(getline('.'), " foo  ")
+
   %bwipe!
 endfunc
 
@@ -1798,6 +1848,11 @@ func Test_cmdline_expr()
   " Insert literal <CTRL-\> in the command line
   call feedkeys(":\"e \<C-\>\<C-Y>\<CR>", 'xt')
   call assert_equal("\"e \<C-\>\<C-Y>", @:)
+endfunc
+
+" This was making the insert position negative
+func Test_cmdline_expr_register()
+  exe "sil! norm! ?\<C-\>e0\<C-R>0\<Esc>?\<C-\>e0\<CR>"
 endfunc
 
 " Test for 'imcmdline' and 'imsearch'
@@ -2002,6 +2057,26 @@ func Test_recalling_cmdline()
 
   unlet g:cmdlines
   cunmap <Plug>(save-cmdline)
+endfunc
+
+" Test for the 'suffixes' option
+func Test_suffixes_opt()
+  call writefile([], 'Xfile')
+  call writefile([], 'Xfile.c')
+  call writefile([], 'Xfile.o')
+  set suffixes=
+  call feedkeys(":e Xfi*\<C-A>\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"e Xfile Xfile.c Xfile.o', @:)
+  set suffixes=.c
+  call feedkeys(":e Xfi*\<C-A>\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"e Xfile Xfile.o Xfile.c', @:)
+  set suffixes=,,
+  call feedkeys(":e Xfi*\<C-A>\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"e Xfile.c Xfile.o Xfile', @:)
+  set suffixes&
+  call delete('Xfile')
+  call delete('Xfile.c')
+  call delete('Xfile.o')
 endfunc
 
 " Test for using a popup menu for the command line completion matches

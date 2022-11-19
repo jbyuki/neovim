@@ -1,21 +1,29 @@
 // This is an open source non-commercial project. Dear PVS-Studio, please check
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
-#include <assert.h>
 #include <inttypes.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "nvim/ascii.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/charset.h"
 #include "nvim/cursor.h"
 #include "nvim/edit.h"
+#include "nvim/globals.h"
 #include "nvim/indent.h"
 #include "nvim/indent_c.h"
+#include "nvim/macros.h"
 #include "nvim/mark.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
 #include "nvim/option.h"
+#include "nvim/pos.h"
 #include "nvim/search.h"
 #include "nvim/strings.h"
+#include "nvim/types.h"
 #include "nvim/vim.h"
 
 // Find result cache for cpp_baseclass
@@ -458,9 +466,8 @@ bool cin_iscase(const char_u *s, bool strict)
         // JS etc.
         if (strict) {
           return false;                 // stop at string
-        } else {
-          return true;
         }
+        return true;
       }
     }
     return false;
@@ -2877,14 +2884,13 @@ int get_c_indent(void)
               // Line below current line is the one that starts a
               // (possibly broken) line ending in a comma.
               break;
-            } else {
-              amount = get_indent();
-              if (curwin->w_cursor.lnum - 1 == ourscope) {
-                // line above is start of the scope, thus current
-                // line is the one that stars a (possibly broken)
-                // line ending in a comma.
-                break;
-              }
+            }
+            amount = get_indent();
+            if (curwin->w_cursor.lnum - 1 == ourscope) {
+              // line above is start of the scope, thus current
+              // line is the one that stars a (possibly broken)
+              // line ending in a comma.
+              break;
             }
           }
 

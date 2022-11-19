@@ -2,48 +2,58 @@
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
 #include <assert.h>
-#include <errno.h>
 #include <inttypes.h>
-#include <msgpack.h>
+#include <msgpack/object.h>
+#include <msgpack/pack.h>
+#include <msgpack/sbuffer.h>
+#include <msgpack/unpack.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <uv.h>
 
+#include "auto/config.h"
 #include "klib/khash.h"
-#include "klib/kvec.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/ascii.h"
 #include "nvim/buffer.h"
-#include "nvim/buffer_defs.h"
 #include "nvim/cmdhist.h"
+#include "nvim/eval.h"
 #include "nvim/eval/decode.h"
 #include "nvim/eval/encode.h"
 #include "nvim/eval/typval.h"
+#include "nvim/eval/typval_defs.h"
 #include "nvim/ex_cmds.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/fileio.h"
 #include "nvim/garray.h"
+#include "nvim/gettext.h"
 #include "nvim/globals.h"
+#include "nvim/hashtab.h"
 #include "nvim/macros.h"
 #include "nvim/mark.h"
+#include "nvim/mbyte.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
 #include "nvim/msgpack_rpc/helpers.h"
+#include "nvim/normal.h"
 #include "nvim/ops.h"
 #include "nvim/option.h"
 #include "nvim/os/fileio.h"
+#include "nvim/os/fs_defs.h"
 #include "nvim/os/os.h"
 #include "nvim/os/time.h"
 #include "nvim/path.h"
 #include "nvim/pos.h"
-#include "nvim/quickfix.h"
 #include "nvim/regexp.h"
 #include "nvim/search.h"
 #include "nvim/shada.h"
 #include "nvim/strings.h"
+#include "nvim/types.h"
 #include "nvim/version.h"
 #include "nvim/vim.h"
 
@@ -287,8 +297,6 @@ typedef struct {
     } buffer_list;
   } data;
 } ShadaEntry;
-
-struct hm_llist_entry;
 
 /// One entry in sized linked list
 typedef struct hm_llist_entry {
@@ -3017,10 +3025,9 @@ shada_write_file_open: {}
           assert(sd_reader.close != NULL);
           sd_reader.close(&sd_reader);
           return FAIL;
-        } else {
-          (*wp)++;
-          goto shada_write_file_open;
         }
+        (*wp)++;
+        goto shada_write_file_open;
       } else {
         semsg(_(SERR "System error while opening temporary ShaDa file %s "
                 "for writing: %s"), tempname, os_strerror(error));
@@ -3079,32 +3086,37 @@ shada_write_file_nomerge: {}
     sd_reader.close(&sd_reader);
     bool did_remove = false;
     if (sw_ret == kSDWriteSuccessful) {
-#ifdef UNIX
-      // For Unix we check the owner of the file.  It's not very nice to
-      // overwrite a user’s viminfo file after a "su root", with a
-      // viminfo file that the user can't read.
       FileInfo old_info;
-      if (os_fileinfo(fname, &old_info)) {
-        if (getuid() == ROOT_UID) {
-          if (old_info.stat.st_uid != ROOT_UID
-              || old_info.stat.st_gid != getgid()) {
-            const uv_uid_t old_uid = (uv_uid_t)old_info.stat.st_uid;
-            const uv_gid_t old_gid = (uv_gid_t)old_info.stat.st_gid;
-            const int fchown_ret = os_fchown(file_fd(sd_writer.cookie),
-                                             old_uid, old_gid);
-            if (fchown_ret != 0) {
-              semsg(_(RNERR "Failed setting uid and gid for file %s: %s"),
-                    tempname, os_strerror(fchown_ret));
-              goto shada_write_file_did_not_remove;
-            }
+      if (!os_fileinfo(fname, &old_info)
+          || S_ISDIR(old_info.stat.st_mode)
+#ifdef UNIX
+          // For Unix we check the owner of the file.  It's not very nice
+          // to overwrite a user's viminfo file after a "su root", with a
+          // viminfo file that the user can't read.
+          || (getuid() != ROOT_UID
+              && !(old_info.stat.st_uid == getuid()
+                   ? (old_info.stat.st_mode & 0200)
+                   : (old_info.stat.st_gid == getgid()
+                      ? (old_info.stat.st_mode & 0020)
+                      : (old_info.stat.st_mode & 0002))))
+#endif
+          ) {
+        semsg(_("E137: ShaDa file is not writable: %s"), fname);
+        goto shada_write_file_did_not_remove;
+      }
+#ifdef UNIX
+      if (getuid() == ROOT_UID) {
+        if (old_info.stat.st_uid != ROOT_UID
+            || old_info.stat.st_gid != getgid()) {
+          const uv_uid_t old_uid = (uv_uid_t)old_info.stat.st_uid;
+          const uv_gid_t old_gid = (uv_gid_t)old_info.stat.st_gid;
+          const int fchown_ret = os_fchown(file_fd(sd_writer.cookie),
+                                           old_uid, old_gid);
+          if (fchown_ret != 0) {
+            semsg(_(RNERR "Failed setting uid and gid for file %s: %s"),
+                  tempname, os_strerror(fchown_ret));
+            goto shada_write_file_did_not_remove;
           }
-        } else if (!(old_info.stat.st_uid == getuid()
-                     ? (old_info.stat.st_mode & 0200)
-                     : (old_info.stat.st_gid == getgid()
-                        ? (old_info.stat.st_mode & 0020)
-                        : (old_info.stat.st_mode & 0002)))) {
-          semsg(_("E137: ShaDa file is not writable: %s"), fname);
-          goto shada_write_file_did_not_remove;
         }
       }
 #endif
@@ -3125,9 +3137,7 @@ shada_write_file_nomerge: {}
       }
     }
     if (!did_remove) {
-#ifdef UNIX
 shada_write_file_did_not_remove:
-#endif
       semsg(_(RNERR "Do not forget to remove %s or rename it manually to %s."),
             tempname, fname);
     }
@@ -3257,13 +3267,12 @@ static ShaDaReadResult fread_len(ShaDaReadDef *const sd_reader, char *const buff
       semsg(_(SERR "System error while reading ShaDa file: %s"),
             sd_reader->error);
       return kSDReadStatusReadError;
-    } else {
-      semsg(_(RCERR "Error while reading ShaDa file: "
-              "last entry specified that it occupies %" PRIu64 " bytes, "
-              "but file ended earlier"),
-            (uint64_t)length);
-      return kSDReadStatusNotShaDa;
     }
+    semsg(_(RCERR "Error while reading ShaDa file: "
+            "last entry specified that it occupies %" PRIu64 " bytes, "
+            "but file ended earlier"),
+          (uint64_t)length);
+    return kSDReadStatusNotShaDa;
   }
   return kSDReadStatusSuccess;
 }
@@ -3576,16 +3585,15 @@ shada_read_next_item_start:
         entry->type = kSDItemMissing;
       }
       return spm_ret;
-    } else {
-      entry->data.unknown_item.contents = xmalloc(length);
-      const ShaDaReadResult fl_ret =
-        fread_len(sd_reader, entry->data.unknown_item.contents, length);
-      if (fl_ret != kSDReadStatusSuccess) {
-        shada_free_shada_entry(entry);
-        entry->type = kSDItemMissing;
-      }
-      return fl_ret;
     }
+    entry->data.unknown_item.contents = xmalloc(length);
+    const ShaDaReadResult fl_ret =
+      fread_len(sd_reader, entry->data.unknown_item.contents, length);
+    if (fl_ret != kSDReadStatusSuccess) {
+      shada_free_shada_entry(entry);
+      entry->type = kSDItemMissing;
+    }
+    return fl_ret;
   }
 
   msgpack_unpacked unpacked;

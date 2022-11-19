@@ -267,6 +267,7 @@ Options:
   'tabline'     %@Func@foo%X can call any function on mouse-click
   'winblend'    pseudo-transparency in floating windows |api-floatwin|
   'winhighlight' window-local highlights
+  'diffopt'     has the option `linematch`.
 
 Signs:
   Signs are removed if the associated line is deleted.
@@ -416,6 +417,8 @@ Options:
   'jumpoptions' "view" tries to restore the |mark-view| when moving through
   the |jumplist|, |changelist|, |alternate-file| or using |mark-motions|.
   'shortmess' the "F" flag does not affect output from autocommands
+  'exrc' searches for ".nvimrc" or ".exrc" files. The user is prompted whether
+  to trust the file.
 
 Shell:
   Shell output (|:!|, |:make|, …) is always routed through the UI, so it
@@ -638,6 +641,9 @@ Options:
   *'prompt'* *'noprompt'*
   *'remap'* *'noremap'*
   *'restorescreen'* *'rs'* *'norestorescreen'* *'nors'*
+  *'secure'*
+    Everything is allowed in 'exrc' files since they must be explicitly marked
+    trusted.
   *'shelltype'*
   *'shortname'* *'sn'* *'noshortname'* *'nosn'*
   *'swapsync'* *'sws'*

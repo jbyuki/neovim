@@ -313,14 +313,23 @@ Note: In the future more global options can be made |global-local|.  Using
 
 
 						*option-value-function*
-Some options ('completefunc', 'imactivatefunc', 'imstatusfunc', 'omnifunc',
-'operatorfunc', 'quickfixtextfunc' and 'tagfunc') are set to a function name
-or a function reference or a lambda function.  Examples:
+Some options ('completefunc', 'omnifunc', 'operatorfunc', 'quickfixtextfunc',
+'tagfunc' and 'thesaurusfunc') are set to a function name or a function
+reference or a lambda function.  When using a lambda it will be converted to
+the name, e.g. "<lambda>123".  Examples:
 >
 	set opfunc=MyOpFunc
-	set opfunc=function("MyOpFunc")
-	set opfunc=funcref("MyOpFunc")
-	set opfunc={t\ ->\ MyOpFunc(t)}
+	set opfunc=function('MyOpFunc')
+	set opfunc=funcref('MyOpFunc')
+	set opfunc={a\ ->\ MyOpFunc(a)}
+	" set using a funcref variable
+	let Fn = function('MyTagFunc')
+	let &tagfunc = string(Fn)
+	" set using a lambda expression
+	let &tagfunc = {t -> MyTagFunc(t)}
+	" set using a variable with lambda expression
+	let L = {a, b, c -> MyTagFunc(a, b , c)}
+	let &tagfunc = L
 <
 
 Setting the filetype
@@ -1446,7 +1455,9 @@ A jump table for the options with a short description can be found at |Q_op|.
 	This option specifies a function to be used for Insert mode completion
 	with CTRL-X CTRL-U. |i_CTRL-X_CTRL-U|
 	See |complete-functions| for an explanation of how the function is
-	invoked and what it should return.
+	invoked and what it should return.  The value can be the name of a
+	function, a |lambda| or a |Funcref|. See |option-value-function| for
+	more information.
 	This option cannot be set from a |modeline| or in the |sandbox|, for
 	security reasons.
 
@@ -2153,7 +2164,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	See 'fileencoding' to control file-content encoding.
 
 			*'endoffile'* *'eof'* *'noendoffile'* *'noeof'*
-'endoffile' 'eof'	boolean	(default on)
+'endoffile' 'eof'	boolean	(default off)
 			local to buffer
 	Indicates that a CTRL-Z character was found at the end of the file
 	when reading it.  Normally only happens when 'fileformat' is "dos".
@@ -2252,6 +2263,20 @@ A jump table for the options with a short description can be found at |Q_op|.
 	on, use CTRL-V<Tab>.  See also |:retab| and |ins-expandtab|.
 	This option is reset when the 'paste' option is set and restored when
 	the 'paste' option is reset.
+
+					*'exrc'* *'ex'* *'noexrc'* *'noex'*
+'exrc' 'ex'		boolean (default off)
+			global
+	Enables the reading of .nvimrc and .exrc files in the current
+	directory.
+
+	The file is only sourced if the user indicates the file is trusted. If
+	it is, the SHA256 hash of the file contents and the full path of the
+	file are persisted to a trust database. The user is only prompted
+	again if the file contents change. See |vim.secure.read()|.
+
+	This option cannot be set from a |modeline| or in the |sandbox|, for
+	security reasons.
 
 				*'fileencoding'* *'fenc'* *E213*
 'fileencoding' 'fenc'	string (default: "")
@@ -4413,7 +4438,9 @@ A jump table for the options with a short description can be found at |Q_op|.
 	This option specifies a function to be used for Insert mode omni
 	completion with CTRL-X CTRL-O. |i_CTRL-X_CTRL-O|
 	See |complete-functions| for an explanation of how the function is
-	invoked and what it should return.
+	invoked and what it should return.  The value can be the name of a
+	function, a |lambda| or a |Funcref|. See |option-value-function| for
+	more information.
 	This option is usually set by a filetype plugin:
 	|:filetype-plugin-on|
 	This option cannot be set from a |modeline| or in the |sandbox|, for
@@ -5101,19 +5128,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	Specifies the nroff macros that separate sections.  These are pairs of
 	two letters (See |object-motions|).  The default makes a section start
 	at the nroff macros ".SH", ".NH", ".H", ".HU", ".nh" and ".sh".
-
-						*'secure'* *'nosecure'* *E523*
-'secure'		boolean	(default off)
-			global
-	When on, ":autocmd", shell and write commands are not allowed in
-	".nvimrc" and ".exrc" in the current directory and map commands are
-	displayed.  Switch it off only if you know that you will not run into
-	problems, or when the 'exrc' option is off.  On Unix this option is
-	only used if the ".nvimrc" or ".exrc" is not owned by you.  This can be
-	dangerous if the systems allows users to do a "chown".  You better set
-	'secure' at the end of your |init.vim| then.
-	This option cannot be set from a |modeline| or in the |sandbox|, for
-	security reasons.
 
 						*'selection'* *'sel'*
 'selection' 'sel'	string	(default "inclusive")
@@ -6443,7 +6457,9 @@ A jump table for the options with a short description can be found at |Q_op|.
 	This option specifies a function to be used to perform tag searches.
 	The function gets the tag pattern and should return a List of matching
 	tags.  See |tag-function| for an explanation of how to write the
-	function and an example.
+	function and an example.  The value can be the name of a function, a
+	|lambda| or a |Funcref|. See |option-value-function| for more
+	information.
 
 						*'taglength'* *'tl'*
 'taglength' 'tl'	number	(default 0)
@@ -6566,6 +6582,8 @@ A jump table for the options with a short description can be found at |Q_op|.
 			global or local to buffer |global-local|
 	This option specifies a function to be used for thesaurus completion
 	with CTRL-X CTRL-T. |i_CTRL-X_CTRL-T| See |compl-thesaurusfunc|.
+	The value can be the name of a function, a |lambda| or a |Funcref|.
+	See |option-value-function| for more information.
 
 	This option cannot be set from a |modeline| or in the |sandbox|, for
 	security reasons.

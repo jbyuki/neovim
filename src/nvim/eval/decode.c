@@ -1,20 +1,31 @@
 // This is an open source non-commercial project. Dear PVS-Studio, please check
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
-#include <msgpack.h>
+#include <assert.h>
+#include <msgpack/object.h>
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "klib/kvec.h"
 #include "nvim/ascii.h"
-#include "nvim/charset.h"  // vim_str2nr
+#include "nvim/charset.h"
 #include "nvim/eval.h"
 #include "nvim/eval/decode.h"
 #include "nvim/eval/encode.h"
 #include "nvim/eval/typval.h"
-#include "nvim/globals.h"
+#include "nvim/eval/typval_defs.h"
+#include "nvim/garray.h"
+#include "nvim/gettext.h"
+#include "nvim/hashtab.h"
 #include "nvim/macros.h"
+#include "nvim/mbyte.h"
+#include "nvim/memory.h"
 #include "nvim/message.h"
-#include "nvim/vim.h"  // OK, FAIL
+#include "nvim/types.h"
+#include "nvim/vim.h"
 
 /// Helper structure for container_struct
 typedef struct {
@@ -284,13 +295,12 @@ typval_T decode_string(const char *const s, const size_t len, const TriState has
       }
     }
     return tv;
-  } else {
-    return (typval_T) {
-      .v_type = VAR_STRING,
-      .v_lock = VAR_UNLOCKED,
-      .vval = { .v_string = ((s == NULL || s_allocated) ? (char *)s : xmemdupz(s, len)) },
-    };
   }
+  return (typval_T) {
+    .v_type = VAR_STRING,
+    .v_lock = VAR_UNLOCKED,
+    .vval = { .v_string = ((s == NULL || s_allocated) ? (char *)s : xmemdupz(s, len)) },
+  };
 }
 
 /// Parse JSON double-quoted string

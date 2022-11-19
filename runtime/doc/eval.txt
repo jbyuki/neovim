@@ -2698,6 +2698,8 @@ text...
 			Unlock the internal variable {name}.  Does the
 			opposite of |:lockvar|.
 
+			No error is given if {name} does not exist.
+
 :if {expr1}			*:if* *:end* *:endif* *:en* *E171* *E579* *E580*
 :en[dif]		Execute the commands until the next matching `:else`
 			or `:endif` if {expr1} evaluates to non-zero.
@@ -3177,7 +3179,7 @@ this pending exception or command is discarded.
 For examples see |throw-catch| and |try-finally|.
 
 
-NESTING	OF TRY CONDITIONALS				*try-nesting*
+NESTING OF TRY CONDITIONALS				*try-nesting*
 
 Try conditionals can be nested arbitrarily.  That is, a complete try
 conditional can be put into the try block, a catch clause, or the finally

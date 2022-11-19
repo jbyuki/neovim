@@ -29,20 +29,21 @@
 // code for redrawing the line with the deleted decoration.
 
 #include <assert.h>
+#include <sys/types.h>
 
-#include "klib/kbtree.h"
-#include "nvim/api/extmark.h"
 #include "nvim/buffer.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/buffer_updates.h"
-#include "nvim/charset.h"
 #include "nvim/decoration.h"
 #include "nvim/extmark.h"
+#include "nvim/extmark_defs.h"
 #include "nvim/globals.h"
 #include "nvim/map.h"
+#include "nvim/marktree.h"
 #include "nvim/memline.h"
+#include "nvim/memory.h"
 #include "nvim/pos.h"
 #include "nvim/undo.h"
-#include "nvim/vim.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "extmark.c.generated.h"
@@ -71,7 +72,7 @@ void extmark_set(buf_T *buf, uint32_t ns_id, uint32_t *idp, int row, colnr_T col
         || decor->conceal
         || decor_has_sign(decor)
         || decor->ui_watched
-        || decor->spell) {
+        || decor->spell != kNone) {
       decor_full = true;
       decor = xmemdup(decor, sizeof *decor);
     }

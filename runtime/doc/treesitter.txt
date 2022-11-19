@@ -212,7 +212,7 @@ treesitter queries from Lua.
 TREESITTER QUERY PREDICATES                            *treesitter-predicates*
 
 Predicates are special scheme nodes that are evaluated to conditionally capture
-nodes. For example, the |eq?| predicate can be used as follows: >
+nodes. For example, the `eq?` predicate can be used as follows: >
 
     ((identifier) @foo (#eq? @foo "foo"))
 <
@@ -239,7 +239,7 @@ The following predicates are built in:
     `contains?`                                *treesitter-predicate-contains?*
         Match a string against parts of the text corresponding to a node: >
             ((identifier) @foo (#contains? @foo "foo"))
-            ((identifier) @foo-bar (#contains @foo-bar "foo" "bar"))
+            ((identifier) @foo-bar (#contains? @foo-bar "foo" "bar"))
 <
     `any-of?`                                    *treesitter-predicate-any-of?*
         Match any of the given strings against the text corresponding to
@@ -261,7 +261,7 @@ predicates.
 TREESITTER QUERY DIRECTIVES                            *treesitter-directives*
 
 Treesitter directives store metadata for a node or match and perform side
-effects. For example, the |set!| predicate sets metadata on the match or node: >
+effects. For example, the `set!` directive sets metadata on the match or node: >
 
         ((identifier) @foo (#set! "type" "parameter"))
 <
@@ -432,6 +432,9 @@ capture marks comments as to be checked: >
 
     (comment) @spell
 <
+
+There is also `@nospell` which disables spellchecking regions with `@spell`.
+
                                                 *treesitter-highlight-conceal*
 Treesitter highlighting supports |conceal| via the `conceal` metadata. By
 convention, nodes to be concealed are captured as `@conceal`, but any capture

@@ -195,7 +195,6 @@ EXTERN int emsg_skip INIT(= 0);             // don't display errors for
 EXTERN bool emsg_severe INIT(= false);      // use message of next of several
                                             //  emsg() calls for throw
 // used by assert_fails()
-EXTERN bool emsg_assert_fails_used INIT(= false);
 EXTERN char *emsg_assert_fails_msg INIT(= NULL);
 EXTERN long emsg_assert_fails_lnum INIT(= 0);
 EXTERN char *emsg_assert_fails_context INIT(= NULL);
@@ -490,8 +489,7 @@ EXTERN int stdin_fd INIT(= -1);
 // true when doing full-screen output, otherwise only writing some messages.
 EXTERN int full_screen INIT(= false);
 
-/// Non-zero when only "safe" commands are allowed, e.g. when sourcing .exrc or
-/// .vimrc in current directory.
+/// Non-zero when only "safe" commands are allowed
 EXTERN int secure INIT(= 0);
 
 /// Non-zero when changing text and jumping to another window or editing another buffer is not
@@ -666,6 +664,8 @@ EXTERN int msg_silent INIT(= 0);         // don't print messages
 EXTERN int emsg_silent INIT(= 0);        // don't print error messages
 EXTERN bool emsg_noredir INIT(= false);  // don't redirect error messages
 EXTERN bool cmd_silent INIT(= false);    // don't echo the command line
+
+EXTERN bool in_assert_fails INIT(= false);  // assert_fails() active
 
 // Values for swap_exists_action: what to do when swap file already exists
 #define SEA_NONE        0       // don't use dialog
@@ -863,7 +863,7 @@ EXTERN char e_api_spawn_failed[] INIT(= N_("E903: Could not spawn API job"));
 EXTERN char e_argreq[] INIT(= N_("E471: Argument required"));
 EXTERN char e_backslash[] INIT(= N_("E10: \\ should be followed by /, ? or &"));
 EXTERN char e_cmdwin[] INIT(= N_("E11: Invalid in command-line window; <CR> executes, CTRL-C quits"));
-EXTERN char e_curdir[] INIT(= N_("E12: Command not allowed from exrc/vimrc in current dir or tag search"));
+EXTERN char e_curdir[] INIT(= N_("E12: Command not allowed in secure mode in current dir or tag search"));
 EXTERN char e_command_too_recursive[] INIT(= N_("E169: Command too recursive"));
 EXTERN char e_endif[] INIT(= N_("E171: Missing :endif"));
 EXTERN char e_endtry[] INIT(= N_("E600: Missing :endtry"));

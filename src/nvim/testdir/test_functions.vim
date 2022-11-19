@@ -813,6 +813,8 @@ func Test_append()
 
   " Using $ instead of '$' must give an error
   call assert_fails("call append($, 'foobar')", 'E116:')
+
+  call assert_fails("call append({}, '')", ['E728:', 'E728:'])
 endfunc
 
 " Test for setline()
@@ -941,6 +943,7 @@ func Test_match_func()
   call assert_equal(4,  match('testing', 'ing', -1))
   call assert_fails("let x=match('testing', 'ing', 0, [])", 'E745:')
   call assert_equal(-1, match(v:_null_list, 2))
+  call assert_equal(-1, match('abc', '\\%('))
 endfunc
 
 func Test_matchend()
@@ -1285,6 +1288,9 @@ func Test_col()
   call assert_equal(0, col([2, '$']))
   call assert_equal(0, col([1, 100]))
   call assert_equal(0, col([1]))
+  call assert_equal(0, col(v:_null_list))
+  call assert_fails('let c = col({})', 'E1222:')
+  call assert_fails('let c = col(".", [])', 'E1210:')
 
   " test for getting the visual start column
   func T()
@@ -1313,6 +1319,15 @@ func Test_col()
   call cursor(1, 10)
   call assert_equal(4, col('.'))
   set virtualedit&
+
+  " Test for getting the column number in another window
+  let winid = win_getid()
+  new
+  call win_execute(winid, 'normal 1G$')
+  call assert_equal(3, col('.', winid))
+  call win_execute(winid, 'normal 2G')
+  call assert_equal(8, col('$', winid))
+  call assert_equal(0, col('.', 5001))
 
   bw!
 endfunc
@@ -2453,6 +2468,7 @@ endfunc
 func Test_glob()
   call assert_equal('', glob(v:_null_string))
   call assert_equal('', globpath(v:_null_string, v:_null_string))
+  call assert_fails("let x = globpath(&rtp, 'syntax/c.vim', [])", 'E745:')
 
   call writefile([], 'Xglob1')
   call writefile([], 'XGLOB2')
@@ -2477,5 +2493,47 @@ endfunc
 func Test_default_arg_value()
   call assert_equal('msg', HasDefault())
 endfunc
+
+" Test for gettext()
+func Test_gettext()
+  call assert_fails('call gettext(1)', 'E475:')
+endfunc
+
+func Test_builtin_check()
+  call assert_fails('let g:["trim"] = {x -> " " .. x}', 'E704:')
+  call assert_fails('let g:.trim = {x -> " " .. x}', 'E704:')
+  call assert_fails('let l:["trim"] = {x -> " " .. x}', 'E704:')
+  call assert_fails('let l:.trim = {x -> " " .. x}', 'E704:')
+  let lines =<< trim END
+    vim9script
+    var s:trim = (x) => " " .. x
+  END
+  " call CheckScriptFailure(lines, 'E704:')
+
+  call assert_fails('call extend(g:, #{foo: { -> "foo" }})', 'E704:')
+  let g:bar = 123
+  call extend(g:, #{bar: { -> "foo" }}, "keep")
+  call assert_fails('call extend(g:, #{bar: { -> "foo" }}, "force")', 'E704:')
+  unlet g:bar
+
+  call assert_fails('call extend(l:, #{foo: { -> "foo" }})', 'E704:')
+  let bar = 123
+  call extend(l:, #{bar: { -> "foo" }}, "keep")
+  call assert_fails('call extend(l:, #{bar: { -> "foo" }}, "force")', 'E704:')
+  unlet bar
+
+  call assert_fails('call extend(g:, #{foo: function("extend")})', 'E704:')
+  let g:bar = 123
+  call extend(g:, #{bar: function("extend")}, "keep")
+  call assert_fails('call extend(g:, #{bar: function("extend")}, "force")', 'E704:')
+  unlet g:bar
+
+  call assert_fails('call extend(l:, #{foo: function("extend")})', 'E704:')
+  let bar = 123
+  call extend(l:, #{bar: function("extend")}, "keep")
+  call assert_fails('call extend(l:, #{bar: function("extend")}, "force")', 'E704:')
+  unlet bar
+endfunc
+
 
 " vim: shiftwidth=2 sts=2 expandtab

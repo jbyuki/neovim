@@ -3,12 +3,19 @@
 
 // eval.c: Expression evaluation.
 
+#include <assert.h>
+#include <ctype.h>
+#include <inttypes.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
+#include "auto/config.h"
+#include "nvim/api/private/defs.h"
 #include "nvim/ascii.h"
-#include "nvim/autocmd.h"
 #include "nvim/buffer.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/change.h"
 #include "nvim/channel.h"
 #include "nvim/charset.h"
@@ -22,37 +29,60 @@
 #include "nvim/eval/typval.h"
 #include "nvim/eval/userfunc.h"
 #include "nvim/eval/vars.h"
+#include "nvim/event/loop.h"
+#include "nvim/event/multiqueue.h"
+#include "nvim/event/process.h"
 #include "nvim/ex_cmds.h"
-#include "nvim/ex_cmds2.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/ex_eval.h"
 #include "nvim/ex_getln.h"
 #include "nvim/ex_session.h"
+#include "nvim/garray.h"
 #include "nvim/getchar.h"
+#include "nvim/gettext.h"
+#include "nvim/globals.h"
+#include "nvim/grid_defs.h"
 #include "nvim/highlight_group.h"
+#include "nvim/insexpand.h"
+#include "nvim/keycodes.h"
+#include "nvim/lib/queue.h"
 #include "nvim/locale.h"
 #include "nvim/lua/executor.h"
+#include "nvim/macros.h"
+#include "nvim/main.h"
+#include "nvim/map.h"
 #include "nvim/mark.h"
+#include "nvim/mbyte.h"
 #include "nvim/memline.h"
+#include "nvim/memory.h"
+#include "nvim/message.h"
 #include "nvim/move.h"
+#include "nvim/msgpack_rpc/channel_defs.h"
 #include "nvim/ops.h"
 #include "nvim/option.h"
 #include "nvim/optionstr.h"
-#include "nvim/os/input.h"
+#include "nvim/os/fileio.h"
+#include "nvim/os/fs_defs.h"
+#include "nvim/os/os.h"
 #include "nvim/os/shell.h"
+#include "nvim/os/stdpaths_defs.h"
 #include "nvim/path.h"
+#include "nvim/pos.h"
 #include "nvim/profile.h"
 #include "nvim/quickfix.h"
 #include "nvim/regexp.h"
 #include "nvim/runtime.h"
-#include "nvim/screen.h"
 #include "nvim/search.h"
 #include "nvim/sign.h"
-#include "nvim/syntax.h"
+#include "nvim/strings.h"
+#include "nvim/tag.h"
+#include "nvim/types.h"
 #include "nvim/ui.h"
 #include "nvim/ui_compositor.h"
 #include "nvim/undo.h"
+#include "nvim/usercmd.h"
 #include "nvim/version.h"
+#include "nvim/vim.h"
 #include "nvim/window.h"
 
 // TODO(ZyX-I): Remove DICT_MAXNEST, make users be non-recursive instead
@@ -60,12 +90,15 @@
 #define DICT_MAXNEST 100        // maximum nesting of lists and dicts
 
 static char *e_missbrac = N_("E111: Missing ']'");
+static char *e_list_end = N_("E697: Missing end of List ']': %s");
 static char *e_dictrange = N_("E719: Cannot use [:] with a Dictionary");
 static char *e_nowhitespace
   = N_("E274: No white space allowed before parenthesis");
 static char *e_write2 = N_("E80: Error while writing: %s");
 static char *e_string_list_or_blob_required = N_("E1098: String, List or Blob required");
 static char e_expression_too_recursive_str[] = N_("E1169: Expression too recursive: %s");
+static char e_dot_can_only_be_used_on_dictionary_str[]
+  = N_("E1203: Dot can only be used on a dictionary: %s");
 
 static char * const namespace_char = "abglstvw";
 
@@ -1071,11 +1104,11 @@ int get_spellword(list_T *const list, const char **ret_word)
   return (int)tv_list_find_nr(list, -1, NULL);
 }
 
-// Call some vim script function and return the result in "*rettv".
-// Uses argv[0] to argv[argc-1] for the function arguments. argv[argc]
-// should have type VAR_UNKNOWN.
-//
-// @return  OK or FAIL.
+/// Call some Vim script function and return the result in "*rettv".
+/// Uses argv[0] to argv[argc - 1] for the function arguments. argv[argc]
+/// should have type VAR_UNKNOWN.
+///
+/// @return  OK or FAIL.
 int call_vim_function(const char *func, int argc, typval_T *argv, typval_T *rettv)
   FUNC_ATTR_NONNULL_ALL
 {
@@ -1108,26 +1141,10 @@ fail:
 
   return ret;
 }
-/// Call Vim script function and return the result as a number
-///
-/// @param[in]  func  Function name.
-/// @param[in]  argc  Number of arguments.
-/// @param[in]  argv  Array with typval_T arguments.
-///
-/// @return -1 when calling function fails, result of function otherwise.
-varnumber_T call_func_retnr(const char *func, int argc, typval_T *argv)
-  FUNC_ATTR_NONNULL_ALL
-{
-  typval_T rettv;
 
-  if (call_vim_function((char *)func, argc, argv, &rettv) == FAIL) {
-    return -1;
-  }
-  varnumber_T retval = tv_get_number_chk(&rettv, NULL);
-  tv_clear(&rettv);
-  return retval;
-}
-/// Call Vim script function and return the result as a string
+/// Call Vim script function and return the result as a string.
+/// Uses "argv[0]" to "argv[argc - 1]" for the function arguments. "argv[argc]"
+/// should have type VAR_UNKNOWN.
 ///
 /// @param[in]  func  Function name.
 /// @param[in]  argc  Number of arguments.
@@ -1149,7 +1166,9 @@ char *call_func_retstr(const char *const func, int argc, typval_T *argv)
   tv_clear(&rettv);
   return retval;
 }
-/// Call Vim script function and return the result as a List
+
+/// Call Vim script function and return the result as a List.
+/// Uses "argv" and "argc" as call_func_retstr().
 ///
 /// @param[in]  func  Function name.
 /// @param[in]  argc  Number of arguments.
@@ -1313,13 +1332,26 @@ char *get_lval(char *const name, typval_T *const rettv, lval_T *const lp, const 
     return NULL;
   }
 
-  // Loop until no more [idx] or .key is following.
   lp->ll_tv = &v->di_tv;
+
+  if (tv_is_luafunc(lp->ll_tv)) {
+    // For v:lua just return a pointer to the "." after the "v:lua".
+    // If the caller is trans_function_name() it will check for a Lua function name.
+    return p;
+  }
+
+  // Loop until no more [idx] or .key is following.
   typval_T var1;
   var1.v_type = VAR_UNKNOWN;
   typval_T var2;
   var2.v_type = VAR_UNKNOWN;
-  while (*p == '[' || (*p == '.' && lp->ll_tv->v_type == VAR_DICT)) {
+  while (*p == '[' || (*p == '.' && p[1] != '=' && p[1] != '.')) {
+    if (*p == '.' && lp->ll_tv->v_type != VAR_DICT) {
+      if (!quiet) {
+        semsg(_(e_dot_can_only_be_used_on_dictionary_str), name);
+      }
+      return NULL;
+    }
     if (!(lp->ll_tv->v_type == VAR_LIST && lp->ll_tv->vval.v_list != NULL)
         && !(lp->ll_tv->v_type == VAR_DICT && lp->ll_tv->vval.v_dict != NULL)
         && !(lp->ll_tv->v_type == VAR_BLOB && lp->ll_tv->vval.v_blob != NULL)) {
@@ -1757,7 +1789,10 @@ void set_var_lval(lval_T *lp, char *endp, typval_T *rettv, int copy, const bool 
     // Assign to a List or Dictionary item.
     if (lp->ll_newkey != NULL) {
       if (op != NULL && *op != '=') {
-        semsg(_(e_letwrong), op);
+        semsg(_(e_dictkey), lp->ll_newkey);
+        return;
+      }
+      if (tv_dict_wrong_func_name(lp->ll_tv->vval.v_dict, rettv, lp->ll_newkey)) {
         return;
       }
 
@@ -1924,11 +1959,10 @@ bool next_for_item(void *fi_void, char *arg)
   listitem_T *item = fi->fi_lw.lw_item;
   if (item == NULL) {
     return false;
-  } else {
-    fi->fi_lw.lw_item = TV_LIST_ITEM_NEXT(fi->fi_list, item);
-    return (ex_let_vars(arg, TV_LIST_ITEM_TV(item), true,
-                        fi->fi_semicolon, fi->fi_varcount, false, NULL) == OK);
   }
+  fi->fi_lw.lw_item = TV_LIST_ITEM_NEXT(fi->fi_list, item);
+  return (ex_let_vars(arg, TV_LIST_ITEM_TV(item), true,
+                      fi->fi_semicolon, fi->fi_varcount, false, NULL) == OK);
 }
 
 // TODO(ZyX-I): move to eval/ex_cmds
@@ -2277,10 +2311,15 @@ int eval0(char *arg, typval_T *rettv, char **nextcmd, int evaluate)
   char *p;
   const int did_emsg_before = did_emsg;
   const int called_emsg_before = called_emsg;
+  bool end_error = false;
 
   p = skipwhite(arg);
   ret = eval1(&p, rettv, evaluate);
-  if (ret == FAIL || !ends_excmd(*p)) {
+
+  if (ret != FAIL) {
+    end_error = !ends_excmd(*p);
+  }
+  if (ret == FAIL || end_error) {
     if (ret != FAIL) {
       tv_clear(rettv);
     }
@@ -2290,7 +2329,11 @@ int eval0(char *arg, typval_T *rettv, char **nextcmd, int evaluate)
     // Also check called_emsg for when using assert_fails().
     if (!aborting() && did_emsg == did_emsg_before
         && called_emsg == called_emsg_before) {
-      semsg(_(e_invexpr2), arg);
+      if (end_error) {
+        semsg(_(e_trailing_arg), p);
+      } else {
+        semsg(_(e_invexpr2), arg);
+      }
     }
     ret = FAIL;
   }
@@ -3418,7 +3461,7 @@ static int eval_index(char **arg, typval_T *rettv, int evaluate, int verbose)
   if (**arg == '.') {
     // dict.name
     key = *arg + 1;
-    for (len = 0; ASCII_ISALNUM(key[len]) || key[len] == '_'; len++) {}
+    for (len = 0; eval_isdictc(key[len]); len++) {}
     if (len == 0) {
       return FAIL;
     }
@@ -3679,10 +3722,10 @@ static int eval_index(char **arg, typval_T *rettv, int evaluate, int verbose)
 int get_option_tv(const char **const arg, typval_T *const rettv, const bool evaluate)
   FUNC_ATTR_NONNULL_ARG(1)
 {
-  int opt_flags;
+  int scope;
 
   // Isolate the option name and find its value.
-  char *option_end = (char *)find_option_end(arg, &opt_flags);
+  char *option_end = (char *)find_option_end(arg, &scope);
   if (option_end == NULL) {
     if (rettv != NULL) {
       semsg(_("E112: Option name missing: %s"), *arg);
@@ -3702,7 +3745,7 @@ int get_option_tv(const char **const arg, typval_T *const rettv, const bool eval
   char c = *option_end;
   *option_end = NUL;
   getoption_T opt_type = get_option_value(*arg, &numval,
-                                          rettv == NULL ? NULL : &stringval, opt_flags);
+                                          rettv == NULL ? NULL : &stringval, NULL, scope);
 
   if (opt_type == gov_unknown) {
     if (rettv != NULL) {
@@ -3993,7 +4036,7 @@ static int get_list_tv(char **arg, typval_T *rettv, int evaluate)
   }
 
   if (**arg != ']') {
-    semsg(_("E697: Missing end of List ']': %s"), *arg);
+    semsg(_(e_list_end), *arg);
 failret:
     if (evaluate) {
       tv_list_free(l);
@@ -4158,9 +4201,22 @@ bool garbage_collect(bool testing)
     ABORTING(set_ref_dict)(buf->additional_data, copyID);
 
     // buffer callback functions
-    set_ref_in_callback(&buf->b_prompt_callback, copyID, NULL, NULL);
-    set_ref_in_callback(&buf->b_prompt_interrupt, copyID, NULL, NULL);
+    ABORTING(set_ref_in_callback)(&buf->b_prompt_callback, copyID, NULL, NULL);
+    ABORTING(set_ref_in_callback)(&buf->b_prompt_interrupt, copyID, NULL, NULL);
+    ABORTING(set_ref_in_callback)(&buf->b_cfu_cb, copyID, NULL, NULL);
+    ABORTING(set_ref_in_callback)(&buf->b_ofu_cb, copyID, NULL, NULL);
+    ABORTING(set_ref_in_callback)(&buf->b_tsrfu_cb, copyID, NULL, NULL);
+    ABORTING(set_ref_in_callback)(&buf->b_tfu_cb, copyID, NULL, NULL);
   }
+
+  // 'completefunc', 'omnifunc' and 'thesaurusfunc' callbacks
+  ABORTING(set_ref_in_insexpand_funcs)(copyID);
+
+  // 'operatorfunc' callback
+  ABORTING(set_ref_in_opfunc)(copyID);
+
+  // 'tagfunc' callback
+  ABORTING(set_ref_in_tagfunc)(copyID);
 
   FOR_ALL_TAB_WINDOWS(tp, wp) {
     // window-local variables
@@ -5002,9 +5058,8 @@ void common_function(typval_T *argvars, typval_T *rettv, bool is_funcref)
 
   if ((use_string && vim_strchr(s, AUTOLOAD_CHAR) == NULL) || is_funcref) {
     name = s;
-    trans_name = (char *)trans_function_name(&name, false,
-                                             TFN_INT | TFN_QUIET | TFN_NO_AUTOLOAD
-                                             | TFN_NO_DEREF, NULL, NULL);
+    trans_name = save_function_name(&name, false,
+                                    TFN_INT | TFN_QUIET | TFN_NO_AUTOLOAD | TFN_NO_DEREF, NULL);
     if (*name != NUL) {
       s = NULL;
     }
@@ -5851,6 +5906,7 @@ bool callback_from_typval(Callback *const callback, typval_T *const arg)
   return true;
 }
 
+/// @return  whether the callback could be called.
 bool callback_call(Callback *const callback, const int argcount_in, typval_T *const argvars_in,
                    typval_T *const rettv)
   FUNC_ATTR_NONNULL_ALL
@@ -5900,8 +5956,8 @@ bool callback_call(Callback *const callback, const int argcount_in, typval_T *co
   return call_func(name, -1, rettv, argcount_in, argvars_in, &funcexe);
 }
 
-static bool set_ref_in_callback(Callback *callback, int copyID, ht_stack_T **ht_stack,
-                                list_stack_T **list_stack)
+bool set_ref_in_callback(Callback *callback, int copyID, ht_stack_T **ht_stack,
+                         list_stack_T **list_stack)
 {
   typval_T tv;
   switch (callback->type) {
@@ -6694,7 +6750,8 @@ const char *find_name_end(const char *arg, const char **expr_start, const char *
   for (p = arg; *p != NUL
        && (eval_isnamec(*p)
            || *p == '{'
-           || ((flags & FNE_INCL_BR) && (*p == '[' || *p == '.'))
+           || ((flags & FNE_INCL_BR) && (*p == '['
+                                         || (*p == '.' && eval_isdictc(p[1]))))
            || mb_nest != 0
            || br_nest != 0); MB_PTR_ADV(p)) {
     if (*p == '\'') {
@@ -6807,16 +6864,23 @@ static char *make_expanded_name(const char *in_start, char *expr_start, char *ex
 
 /// @return  true if character "c" can be used in a variable or function name.
 ///          Does not include '{' or '}' for magic braces.
-int eval_isnamec(int c)
+bool eval_isnamec(int c)
 {
   return ASCII_ISALNUM(c) || c == '_' || c == ':' || c == AUTOLOAD_CHAR;
 }
 
 /// @return  true if character "c" can be used as the first character in a
 ///          variable or function name (excluding '{' and '}').
-int eval_isnamec1(int c)
+bool eval_isnamec1(int c)
 {
   return ASCII_ISALPHA(c) || c == '_';
+}
+
+/// @return  true if character "c" can be used as the first character of a
+///          dictionary key.
+bool eval_isdictc(int c)
+{
+  return ASCII_ISALNUM(c) || c == '_';
 }
 
 /// Get typval_T v: variable value.
@@ -7050,6 +7114,9 @@ char *set_cmdarg(exarg_T *eap, char *oldarg)
   if (eap->bad_char != 0) {
     len += 7 + 4;  // " ++bad=" + "keep" or "drop"
   }
+  if (eap->mkdir_p != 0) {
+    len += 4;
+  }
 
   const size_t newval_len = len + 1;
   char *newval = xmalloc(newval_len);
@@ -7083,6 +7150,11 @@ char *set_cmdarg(exarg_T *eap, char *oldarg)
     snprintf(newval + strlen(newval), newval_len, " ++bad=%c",
              eap->bad_char);
   }
+
+  if (eap->mkdir_p) {
+    snprintf(newval, newval_len, " ++p");
+  }
+
   vimvars[VV_CMDARG].vv_str = newval;
   return oldval;
 }
@@ -7137,9 +7209,8 @@ int check_luafunc_name(const char *const str, const bool paren)
   const char *const p = skip_luafunc_name(str);
   if (*p != (paren ? '(' : NUL)) {
     return 0;
-  } else {
-    return (int)(p - str);
   }
+  return (int)(p - str);
 }
 
 /// Handle:
@@ -7769,19 +7840,19 @@ void ex_execute(exarg_T *eap)
 ///
 /// @return  NULL when no option name found.  Otherwise pointer to the char
 ///          after the option name.
-const char *find_option_end(const char **const arg, int *const opt_flags)
+const char *find_option_end(const char **const arg, int *const scope)
 {
   const char *p = *arg;
 
   p++;
   if (*p == 'g' && p[1] == ':') {
-    *opt_flags = OPT_GLOBAL;
+    *scope = OPT_GLOBAL;
     p += 2;
   } else if (*p == 'l' && p[1] == ':') {
-    *opt_flags = OPT_LOCAL;
+    *scope = OPT_LOCAL;
     p += 2;
   } else {
-    *opt_flags = 0;
+    *scope = 0;
   }
 
   if (!ASCII_ISALPHA(*p)) {
@@ -7885,9 +7956,8 @@ static var_flavour_T var_flavour(char *varname)
       }
     }
     return VAR_FLAVOUR_SHADA;
-  } else {
-    return VAR_FLAVOUR_DEFAULT;
   }
+  return VAR_FLAVOUR_DEFAULT;
 }
 
 /// Iterate over global variables
@@ -8680,9 +8750,9 @@ bool invoke_prompt_interrupt(void)
   argv[0].v_type = VAR_UNKNOWN;
 
   got_int = false;  // don't skip executing commands
-  callback_call(&curbuf->b_prompt_interrupt, 0, argv, &rettv);
+  int ret = callback_call(&curbuf->b_prompt_interrupt, 0, argv, &rettv);
   tv_clear(&rettv);
-  return true;
+  return ret != FAIL;
 }
 
 /// Compare "typ1" and "typ2".  Put the result in "typ1".

@@ -28,9 +28,9 @@
 #include "nvim/lua/executor.h"
 #include "nvim/macros.h"
 #include "nvim/mbyte.h"
+#include "nvim/mbyte_defs.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
-#include "nvim/os/fileio.h"
 #include "nvim/os/input.h"
 #include "nvim/pos.h"
 #include "nvim/types.h"
@@ -46,6 +46,8 @@ static char e_non_empty_string_required_for_argument_nr[]
   = N_("E1175: Non-empty string required for argument %d");
 static char e_number_required_for_argument_nr[]
   = N_("E1210: Number required for argument %d");
+static char e_string_or_list_required_for_argument_nr[]
+  = N_("E1222: String or List required for argument %d");
 
 bool tv_in_free_unref_items = false;
 
@@ -1747,9 +1749,8 @@ static bool tv_dict_watcher_matches(DictWatcher *watcher, const char *const key)
   const size_t len = watcher->key_pattern_len;
   if (len && watcher->key_pattern[len - 1] == '*') {
     return strncmp(key, watcher->key_pattern, len - 1) == 0;
-  } else {
-    return strcmp(key, watcher->key_pattern) == 0;
   }
+  return strcmp(key, watcher->key_pattern) == 0;
 }
 
 /// Send a change notification to all dictionary watchers that match given key
@@ -2206,6 +2207,15 @@ bool tv_dict_get_callback(dict_T *const d, const char *const key, const ptrdiff_
   return res;
 }
 
+/// Check for adding a function to g: or l:.
+/// If the name is wrong give an error message and return true.
+int tv_dict_wrong_func_name(dict_T *d, typval_T *tv, const char *name)
+{
+  return (d == &globvardict || &d->dv_hashtab == get_funccal_local_ht())
+         && tv_is_func(*tv)
+         && var_wrong_func_name(name, true);
+}
+
 //{{{2 dict_add*
 
 /// Add item to dictionary
@@ -2217,6 +2227,9 @@ bool tv_dict_get_callback(dict_T *const d, const char *const key, const ptrdiff_
 int tv_dict_add(dict_T *const d, dictitem_T *const item)
   FUNC_ATTR_NONNULL_ALL
 {
+  if (tv_dict_wrong_func_name(d, &item->di_tv, (const char *)item->di_key)) {
+    return FAIL;
+  }
   return hash_add(&d->dv_hashtab, item->di_key);
 }
 
@@ -2447,17 +2460,9 @@ void tv_dict_extend(dict_T *const d1, dict_T *const d2, const char *const action
 
   TV_DICT_ITER(d2, di2, {
     dictitem_T *const di1 = tv_dict_find(d1, (const char *)di2->di_key, -1);
-    if (d1->dv_scope != VAR_NO_SCOPE) {
-      // Disallow replacing a builtin function in l: and g:.
-      // Check the key to be valid when adding to any scope.
-      if (d1->dv_scope == VAR_DEF_SCOPE
-          && tv_is_func(di2->di_tv)
-          && var_wrong_func_name((const char *)di2->di_key, di1 == NULL)) {
-        break;
-      }
-      if (!valid_varname((const char *)di2->di_key)) {
-        break;
-      }
+    // Check the key to be valid when adding to any scope.
+    if (d1->dv_scope != VAR_NO_SCOPE && !valid_varname((const char *)di2->di_key)) {
+      break;
     }
     if (di1 == NULL) {
       dictitem_T *const new_di = tv_dict_item_copy(di2);
@@ -2475,6 +2480,10 @@ void tv_dict_extend(dict_T *const d1, dict_T *const d2, const char *const action
 
       if (var_check_lock(di1->di_tv.v_lock, arg_errmsg, arg_errmsg_len)
           || var_check_ro(di1->di_flags, arg_errmsg, arg_errmsg_len)) {
+        break;
+      }
+      // Disallow replacing a builtin function.
+      if (tv_dict_wrong_func_name(d1, &di2->di_tv, (const char *)di2->di_key)) {
         break;
       }
 
@@ -3141,6 +3150,7 @@ static inline void _nothing_conv_dict_end(typval_T *const tv, dict_T **const dic
 #define TYPVAL_ENCODE_FIRST_ARG_TYPE const void *const
 #define TYPVAL_ENCODE_FIRST_ARG_NAME ignored
 #include "nvim/eval/typval_encode.c.h"
+
 #undef TYPVAL_ENCODE_SCOPE
 #undef TYPVAL_ENCODE_NAME
 #undef TYPVAL_ENCODE_FIRST_ARG_TYPE
@@ -3871,6 +3881,17 @@ int tv_check_for_opt_number_arg(const typval_T *const args, const int idx)
 {
   return (args[idx].v_type == VAR_UNKNOWN
           || tv_check_for_number_arg(args, idx) != FAIL) ? OK : FAIL;
+}
+
+/// Give an error and return FAIL unless "args[idx]" is a string or a list.
+int tv_check_for_string_or_list_arg(const typval_T *const args, const int idx)
+  FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_PURE
+{
+  if (args[idx].v_type != VAR_STRING && args[idx].v_type != VAR_LIST) {
+    semsg(_(e_string_or_list_required_for_argument_nr), idx + 1);
+    return FAIL;
+  }
+  return OK;
 }
 
 /// Get the string value of a "stringish" VimL object.

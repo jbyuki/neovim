@@ -10,9 +10,15 @@
 /// - Use the compiled-in xdiff library.
 /// - Let 'diffexpr' do the work, using files.
 
+#include <assert.h>
+#include <ctype.h>
 #include <inttypes.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
+#include "auto/config.h"
 #include "nvim/ascii.h"
 #include "nvim/autocmd.h"
 #include "nvim/buffer.h"
@@ -23,10 +29,14 @@
 #include "nvim/drawscreen.h"
 #include "nvim/eval.h"
 #include "nvim/ex_cmds.h"
+#include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_docmd.h"
+#include "nvim/extmark_defs.h"
 #include "nvim/fileio.h"
 #include "nvim/fold.h"
 #include "nvim/garray.h"
+#include "nvim/gettext.h"
+#include "nvim/globals.h"
 #include "nvim/linematch.h"
 #include "nvim/mark.h"
 #include "nvim/mbyte.h"
@@ -37,10 +47,13 @@
 #include "nvim/normal.h"
 #include "nvim/option.h"
 #include "nvim/optionstr.h"
+#include "nvim/os/fs_defs.h"
 #include "nvim/os/os.h"
 #include "nvim/os/shell.h"
 #include "nvim/path.h"
+#include "nvim/pos.h"
 #include "nvim/strings.h"
+#include "nvim/types.h"
 #include "nvim/ui.h"
 #include "nvim/undo.h"
 #include "nvim/vim.h"
@@ -1133,37 +1146,36 @@ static int diff_file(diffio_T *dio)
   // Use xdiff for generating the diff.
   if (dio->dio_internal) {
     return diff_file_internal(dio);
-  } else {
-    const size_t len = (strlen(tmp_orig) + strlen(tmp_new) + strlen(tmp_diff)
-                        + strlen(p_srr) + 27);
-    char *const cmd = xmalloc(len);
-
-    // We don't want $DIFF_OPTIONS to get in the way.
-    if (os_getenv("DIFF_OPTIONS")) {
-      os_unsetenv("DIFF_OPTIONS");
-    }
-
-    // Build the diff command and execute it.  Always use -a, binary
-    // differences are of no use.  Ignore errors, diff returns
-    // non-zero when differences have been found.
-    vim_snprintf(cmd, len, "diff %s%s%s%s%s%s%s%s %s",
-                 diff_a_works == kFalse ? "" : "-a ",
-                 "",
-                 (diff_flags & DIFF_IWHITE) ? "-b " : "",
-                 (diff_flags & DIFF_IWHITEALL) ? "-w " : "",
-                 (diff_flags & DIFF_IWHITEEOL) ? "-Z " : "",
-                 (diff_flags & DIFF_IBLANK) ? "-B " : "",
-                 (diff_flags & DIFF_ICASE) ? "-i " : "",
-                 tmp_orig, tmp_new);
-    append_redir(cmd, len, p_srr, tmp_diff);
-    block_autocmds();  // Avoid ShellCmdPost stuff
-    (void)call_shell((char_u *)cmd,
-                     kShellOptFilter | kShellOptSilent | kShellOptDoOut,
-                     NULL);
-    unblock_autocmds();
-    xfree(cmd);
-    return OK;
   }
+  const size_t len = (strlen(tmp_orig) + strlen(tmp_new) + strlen(tmp_diff)
+                      + strlen(p_srr) + 27);
+  char *const cmd = xmalloc(len);
+
+  // We don't want $DIFF_OPTIONS to get in the way.
+  if (os_getenv("DIFF_OPTIONS")) {
+    os_unsetenv("DIFF_OPTIONS");
+  }
+
+  // Build the diff command and execute it.  Always use -a, binary
+  // differences are of no use.  Ignore errors, diff returns
+  // non-zero when differences have been found.
+  vim_snprintf(cmd, len, "diff %s%s%s%s%s%s%s%s %s",
+               diff_a_works == kFalse ? "" : "-a ",
+               "",
+               (diff_flags & DIFF_IWHITE) ? "-b " : "",
+               (diff_flags & DIFF_IWHITEALL) ? "-w " : "",
+               (diff_flags & DIFF_IWHITEEOL) ? "-Z " : "",
+               (diff_flags & DIFF_IBLANK) ? "-B " : "",
+               (diff_flags & DIFF_ICASE) ? "-i " : "",
+               tmp_orig, tmp_new);
+  append_redir(cmd, len, p_srr, tmp_diff);
+  block_autocmds();  // Avoid ShellCmdPost stuff
+  (void)call_shell((char_u *)cmd,
+                   kShellOptFilter | kShellOptSilent | kShellOptDoOut,
+                   NULL);
+  unblock_autocmds();
+  xfree(cmd);
+  return OK;
 }
 
 /// Create a new version of a file from the current buffer and a diff file.

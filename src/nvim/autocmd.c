@@ -2,9 +2,13 @@
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
 // autocmd.c: Autocommand related functions
-#include <signal.h>
 
-#include "lauxlib.h"
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
 #include "nvim/api/private/helpers.h"
 #include "nvim/ascii.h"
 #include "nvim/autocmd.h"
@@ -12,26 +16,43 @@
 #include "nvim/charset.h"
 #include "nvim/cursor.h"
 #include "nvim/drawscreen.h"
-#include "nvim/edit.h"
 #include "nvim/eval.h"
+#include "nvim/eval/typval.h"
 #include "nvim/eval/userfunc.h"
 #include "nvim/eval/vars.h"
+#include "nvim/event/defs.h"
+#include "nvim/event/loop.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/ex_eval.h"
 #include "nvim/ex_getln.h"
 #include "nvim/fileio.h"
+#include "nvim/garray.h"
 #include "nvim/getchar.h"
+#include "nvim/gettext.h"
 #include "nvim/grid.h"
+#include "nvim/hashtab.h"
+#include "nvim/highlight_defs.h"
 #include "nvim/insexpand.h"
 #include "nvim/lua/executor.h"
+#include "nvim/main.h"
 #include "nvim/map.h"
+#include "nvim/memline_defs.h"
+#include "nvim/memory.h"
+#include "nvim/message.h"
+#include "nvim/option_defs.h"
 #include "nvim/optionstr.h"
 #include "nvim/os/input.h"
+#include "nvim/os/os.h"
+#include "nvim/os/time.h"
+#include "nvim/path.h"
 #include "nvim/profile.h"
 #include "nvim/regexp.h"
 #include "nvim/runtime.h"
+#include "nvim/screen.h"
 #include "nvim/search.h"
 #include "nvim/state.h"
+#include "nvim/strings.h"
+#include "nvim/ui.h"
 #include "nvim/ui_compositor.h"
 #include "nvim/vim.h"
 #include "nvim/window.h"
@@ -779,7 +800,7 @@ void au_event_restore(char *old_ei)
 // :autocmd * *.c               show all autocommands for *.c files.
 //
 // Mostly a {group} argument can optionally appear before <event>.
-void do_autocmd(char *arg_in, int forceit)
+void do_autocmd(exarg_T *eap, char *arg_in, int forceit)
 {
   char *arg = arg_in;
   char *envpat = NULL;
@@ -790,6 +811,7 @@ void do_autocmd(char *arg_in, int forceit)
   int group;
 
   if (*arg == '|') {
+    eap->nextcmd = arg + 1;
     arg = "";
     group = AUGROUP_ALL;  // no argument, use all groups
   } else {
@@ -806,6 +828,7 @@ void do_autocmd(char *arg_in, int forceit)
 
   pat = skipwhite(pat);
   if (*pat == '|') {
+    eap->nextcmd = pat + 1;
     pat = "";
     cmd = "";
   } else {

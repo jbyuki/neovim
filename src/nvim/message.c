@@ -7,41 +7,50 @@
 #include <inttypes.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "nvim/api/private/helpers.h"
 #include "nvim/ascii.h"
-#include "nvim/assert.h"
+#include "nvim/buffer_defs.h"
+#include "nvim/channel.h"
 #include "nvim/charset.h"
 #include "nvim/drawscreen.h"
 #include "nvim/eval.h"
-#include "nvim/ex_docmd.h"
+#include "nvim/eval/typval.h"
+#include "nvim/eval/typval_defs.h"
+#include "nvim/event/defs.h"
+#include "nvim/event/loop.h"
+#include "nvim/event/multiqueue.h"
+#include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_eval.h"
-#include "nvim/ex_getln.h"
 #include "nvim/fileio.h"
-#include "nvim/func_attr.h"
 #include "nvim/garray.h"
 #include "nvim/getchar.h"
+#include "nvim/gettext.h"
+#include "nvim/globals.h"
 #include "nvim/grid.h"
 #include "nvim/highlight.h"
 #include "nvim/indent.h"
 #include "nvim/input.h"
 #include "nvim/keycodes.h"
+#include "nvim/log.h"
 #include "nvim/main.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
 #include "nvim/mouse.h"
-#include "nvim/normal.h"
 #include "nvim/ops.h"
 #include "nvim/option.h"
 #include "nvim/os/input.h"
 #include "nvim/os/os.h"
-#include "nvim/os/time.h"
+#include "nvim/pos.h"
 #include "nvim/regexp.h"
 #include "nvim/runtime.h"
+#include "nvim/screen.h"
 #include "nvim/strings.h"
-#include "nvim/syntax.h"
 #include "nvim/ui.h"
 #include "nvim/ui_compositor.h"
 #include "nvim/vim.h"
@@ -59,8 +68,10 @@ struct msgchunk_S {
 };
 
 // Magic chars used in confirm dialog strings
-#define DLG_BUTTON_SEP  '\n'
-#define DLG_HOTKEY_CHAR '&'
+enum {
+  DLG_BUTTON_SEP = '\n',
+  DLG_HOTKEY_CHAR = '&',
+};
 
 static int confirm_msg_used = false;            // displaying confirm_msg
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -128,7 +139,6 @@ static bool msg_ext_history_visible = false;
 static bool msg_ext_keep_after_cmdline = false;
 
 static int msg_grid_pos_at_flush = 0;
-static int msg_grid_scroll_discount = 0;
 
 static void ui_ext_msg_set_pos(int row, bool scrolled)
 {
@@ -195,7 +205,7 @@ void msg_grid_validate(void)
     msg_grid_set_pos(max_rows, false);
   }
 
-  if (msg_grid.chars && cmdline_row < msg_grid_pos) {
+  if (msg_grid.chars && !msg_scrolled && cmdline_row < msg_grid_pos) {
     // TODO(bfredl): this should already be the case, but fails in some
     // "batched" executions where compute_cmdrow() use stale positions or
     // something.
@@ -663,7 +673,7 @@ static bool emsg_multiline(const char *s, bool multiline)
       return true;
     }
 
-    if (emsg_assert_fails_used && emsg_assert_fails_msg == NULL) {
+    if (in_assert_fails && emsg_assert_fails_msg == NULL) {
       emsg_assert_fails_msg = xstrdup(s);
       emsg_assert_fails_lnum = SOURCING_LNUM;
       xfree(emsg_assert_fails_context);
@@ -2443,6 +2453,7 @@ void msg_reset_scroll(void)
   }
   msg_scrolled = 0;
   msg_scrolled_at_flush = 0;
+  msg_grid_scroll_discount = 0;
 }
 
 /// Increment "msg_scrolled".
@@ -3151,6 +3162,7 @@ int msg_end(void)
 void msg_ext_ui_flush(void)
 {
   if (!ui_has(kUIMessages)) {
+    msg_ext_kind = NULL;
     return;
   }
 

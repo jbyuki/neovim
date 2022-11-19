@@ -2,6 +2,7 @@
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
 #include <stdbool.h>
+#include <string.h>
 
 #include "nvim/ascii.h"
 #include "nvim/fileio.h"
@@ -87,6 +88,9 @@ char *stdpaths_get_xdg_var(const XDGVarType idx)
   } else if (idx == kXDGRuntimeDir) {
     // Special-case: stdpath('run') is defined at startup.
     ret = vim_gettempdir();
+    if (ret == NULL) {
+      ret = "/tmp/";
+    }
     size_t len = strlen(ret);
     ret = xstrndup(ret, len >= 2 ? len - 1 : 0);  // Trim trailing slash.
   }

@@ -5,13 +5,18 @@
 //        op_change, op_yank, do_put, do_join
 
 #include <assert.h>
+#include <ctype.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-#include "klib/kvec.h"
+#include "nvim/api/private/defs.h"
 #include "nvim/ascii.h"
 #include "nvim/assert.h"
+#include "nvim/autocmd.h"
 #include "nvim/buffer.h"
 #include "nvim/change.h"
 #include "nvim/charset.h"
@@ -20,16 +25,19 @@
 #include "nvim/edit.h"
 #include "nvim/eval.h"
 #include "nvim/eval/typval.h"
-#include "nvim/ex_cmds.h"
 #include "nvim/ex_cmds2.h"
+#include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_getln.h"
 #include "nvim/extmark.h"
 #include "nvim/fold.h"
+#include "nvim/garray.h"
 #include "nvim/getchar.h"
+#include "nvim/gettext.h"
 #include "nvim/globals.h"
+#include "nvim/highlight_defs.h"
 #include "nvim/indent.h"
 #include "nvim/indent_c.h"
-#include "nvim/log.h"
+#include "nvim/keycodes.h"
 #include "nvim/macros.h"
 #include "nvim/mark.h"
 #include "nvim/mbyte.h"
@@ -43,13 +51,14 @@
 #include "nvim/option.h"
 #include "nvim/os/input.h"
 #include "nvim/os/time.h"
-#include "nvim/path.h"
 #include "nvim/plines.h"
+#include "nvim/screen.h"
 #include "nvim/search.h"
 #include "nvim/state.h"
 #include "nvim/strings.h"
 #include "nvim/terminal.h"
 #include "nvim/textformat.h"
+#include "nvim/types.h"
 #include "nvim/ui.h"
 #include "nvim/undo.h"
 #include "nvim/vim.h"
@@ -2487,7 +2496,13 @@ int op_change(oparg_T *oap)
     fix_indent();
   }
 
+  // Reset finish_op now, don't want it set inside edit().
+  const bool save_finish_op = finish_op;
+  finish_op = false;
+
   retval = edit(NUL, false, (linenr_T)1);
+
+  finish_op = save_finish_op;
 
   // In Visual block mode, handle copying the new text to all lines of the
   // block.
@@ -5568,13 +5583,22 @@ static void op_colon(oparg_T *oap)
     } else {
       stuffnumReadbuff((long)oap->start.lnum);
     }
-    if (oap->end.lnum != oap->start.lnum) {
+
+    // When using !! on a closed fold the range ".!" works best to operate
+    // on, it will be made the whole closed fold later.
+    linenr_T endOfStartFold = oap->start.lnum;
+    (void)hasFolding(oap->start.lnum, NULL, &endOfStartFold);
+    if (oap->end.lnum != oap->start.lnum && oap->end.lnum != endOfStartFold) {
+      // Make it a range with the end line.
       stuffcharReadbuff(',');
       if (oap->end.lnum == curwin->w_cursor.lnum) {
         stuffcharReadbuff('.');
       } else if (oap->end.lnum == curbuf->b_ml.ml_line_count) {
         stuffcharReadbuff('$');
-      } else if (oap->start.lnum == curwin->w_cursor.lnum) {
+      } else if (oap->start.lnum == curwin->w_cursor.lnum
+                 // do not use ".+number" for a closed fold, it would count
+                 // folded lines twice
+                 && !hasFolding(oap->end.lnum, NULL, NULL)) {
         stuffReadbuff(".+");
         stuffnumReadbuff(oap->line_count - 1);
       } else {
@@ -5619,12 +5643,17 @@ void free_operatorfunc_option(void)
 }
 #endif
 
+/// Mark the global 'operatorfunc' callback with "copyID" so that it is not
+/// garbage collected.
+bool set_ref_in_opfunc(int copyID)
+{
+  return set_ref_in_callback(&opfunc_cb, copyID, NULL, NULL);
+}
+
 /// Handle the "g@" operator: call 'operatorfunc'.
 static void op_function(const oparg_T *oap)
   FUNC_ATTR_NONNULL_ALL
 {
-  const TriState save_virtual_op = virtual_op;
-  const bool save_finish_op = finish_op;
   const pos_T orig_start = curbuf->b_op_start;
   const pos_T orig_end = curbuf->b_op_end;
 
@@ -5651,9 +5680,11 @@ static void op_function(const oparg_T *oap)
 
     // Reset virtual_op so that 'virtualedit' can be changed in the
     // function.
+    const TriState save_virtual_op = virtual_op;
     virtual_op = kNone;
 
     // Reset finish_op so that mode() returns the right value.
+    const bool save_finish_op = finish_op;
     finish_op = false;
 
     typval_T rettv;
@@ -6193,8 +6224,6 @@ void do_pending_operator(cmdarg_T *cap, int old_col, bool gui_yank)
         // Restore linebreak, so that when the user edits it looks as before.
         restore_lbr(lbr_saved);
 
-        // Reset finish_op now, don't want it set inside edit().
-        finish_op = false;
         if (op_change(oap)) {           // will call edit()
           cap->retval |= CA_COMMAND_BUSY;
         }

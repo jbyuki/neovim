@@ -3,16 +3,28 @@
 
 // Context: snapshot of the entire editor state as one big object/map
 
+#include <assert.h>
+#include <stdbool.h>
+#include <stdio.h>
+
 #include "nvim/api/private/converter.h"
 #include "nvim/api/private/helpers.h"
-#include "nvim/api/vim.h"
 #include "nvim/api/vimscript.h"
 #include "nvim/context.h"
 #include "nvim/eval/encode.h"
+#include "nvim/eval/typval.h"
+#include "nvim/eval/typval_defs.h"
 #include "nvim/eval/userfunc.h"
 #include "nvim/ex_docmd.h"
+#include "nvim/gettext.h"
+#include "nvim/hashtab.h"
+#include "nvim/keycodes.h"
+#include "nvim/memory.h"
+#include "nvim/message.h"
 #include "nvim/option.h"
 #include "nvim/shada.h"
+#include "nvim/types.h"
+#include "nvim/vim.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "context.c.generated.h"
@@ -131,7 +143,7 @@ bool ctx_restore(Context *ctx, const int flags)
   }
 
   char *op_shada;
-  get_option_value("shada", NULL, &op_shada, OPT_GLOBAL);
+  get_option_value("shada", NULL, &op_shada, NULL, OPT_GLOBAL);
   set_option_value("shada", 0L, "!,'100,%", OPT_GLOBAL);
 
   if (flags & kCtxRegs) {

@@ -10,25 +10,21 @@
 #include <string.h>
 
 #include "nvim/ascii.h"
-#include "nvim/buffer.h"
 #include "nvim/charset.h"
-#include "nvim/cursor.h"
 #include "nvim/decoration.h"
 #include "nvim/diff.h"
 #include "nvim/fold.h"
-#include "nvim/func_attr.h"
+#include "nvim/globals.h"
 #include "nvim/indent.h"
-#include "nvim/main.h"
+#include "nvim/macros.h"
 #include "nvim/mbyte.h"
 #include "nvim/memline.h"
-#include "nvim/memory.h"
 #include "nvim/move.h"
 #include "nvim/option.h"
 #include "nvim/plines.h"
-#include "nvim/screen.h"
-#include "nvim/strings.h"
+#include "nvim/pos.h"
+#include "nvim/types.h"
 #include "nvim/vim.h"
-#include "nvim/window.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "plines.c.generated.h"
@@ -238,9 +234,8 @@ int win_chartabsize(win_T *wp, char *p, colnr_T col)
   buf_T *buf = wp->w_buffer;
   if (*p == TAB && (!wp->w_p_list || wp->w_p_lcs_chars.tab1)) {
     return tabstop_padding(col, buf->b_p_ts, buf->b_p_vts_array);
-  } else {
-    return ptr2cells(p);
   }
+  return ptr2cells(p);
 }
 
 /// Return the number of characters the string 's' will take on the screen,

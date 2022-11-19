@@ -4,30 +4,43 @@
 // quickfix.c: functions for quickfix mode, using a file with error messages
 
 #include <assert.h>
+#include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
-#include "nvim/api/private/helpers.h"
 #include "nvim/arglist.h"
 #include "nvim/ascii.h"
+#include "nvim/autocmd.h"
 #include "nvim/buffer.h"
 #include "nvim/charset.h"
 #include "nvim/cursor.h"
 #include "nvim/drawscreen.h"
 #include "nvim/edit.h"
 #include "nvim/eval.h"
+#include "nvim/eval/typval.h"
+#include "nvim/eval/typval_defs.h"
 #include "nvim/ex_cmds.h"
 #include "nvim/ex_cmds2.h"
+#include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/ex_eval.h"
 #include "nvim/ex_getln.h"
 #include "nvim/fileio.h"
 #include "nvim/fold.h"
+#include "nvim/gettext.h"
+#include "nvim/globals.h"
 #include "nvim/help.h"
+#include "nvim/highlight_defs.h"
 #include "nvim/highlight_group.h"
+#include "nvim/macros.h"
 #include "nvim/mark.h"
 #include "nvim/mbyte.h"
+#include "nvim/memfile_defs.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
@@ -35,14 +48,16 @@
 #include "nvim/normal.h"
 #include "nvim/option.h"
 #include "nvim/optionstr.h"
+#include "nvim/os/fs_defs.h"
 #include "nvim/os/input.h"
 #include "nvim/os/os.h"
-#include "nvim/os_unix.h"
 #include "nvim/path.h"
+#include "nvim/pos.h"
 #include "nvim/quickfix.h"
 #include "nvim/regexp.h"
 #include "nvim/search.h"
 #include "nvim/strings.h"
+#include "nvim/types.h"
 #include "nvim/ui.h"
 #include "nvim/vim.h"
 #include "nvim/window.h"
@@ -1323,9 +1338,9 @@ static int qf_parse_fmt_t(regmatch_T *rmp, int midx, qffields_T *fields)
   return QF_OK;
 }
 
-/// Parse the match for '%+' format pattern. The whole matching line is included
-/// in the error string.  Return the matched line in "fields->errmsg".
-static void qf_parse_fmt_plus(const char *linebuf, size_t linelen, qffields_T *fields)
+/// Copy a non-error line into the error string.  Return the matched line in
+/// "fields->errmsg".
+static int copy_nonerror_line(const char *linebuf, size_t linelen, qffields_T *fields)
   FUNC_ATTR_NONNULL_ALL
 {
   if (linelen >= fields->errmsglen) {
@@ -1333,7 +1348,10 @@ static void qf_parse_fmt_plus(const char *linebuf, size_t linelen, qffields_T *f
     fields->errmsg = xrealloc(fields->errmsg, linelen + 1);
     fields->errmsglen = linelen + 1;
   }
+  // copy whole line to error message
   STRLCPY(fields->errmsg, linebuf, linelen + 1);
+
+  return QF_OK;
 }
 
 /// Parse the match for error message ('%m') pattern in regmatch.
@@ -1480,7 +1498,7 @@ static int qf_parse_match(char *linebuf, size_t linelen, efm_T *fmt_ptr, regmatc
       status = qf_parse_fmt_f(regmatch, midx, fields, idx);
     } else if (i == FMT_PATTERN_M) {
       if (fmt_ptr->flags == '+' && !qf_multiscan) {  // %+
-        qf_parse_fmt_plus(linebuf, linelen, fields);
+        status = copy_nonerror_line(linebuf, linelen, fields);
       } else if (midx > 0) {  // %m
         status = qf_parse_fmt_m(regmatch, midx, fields);
       }
@@ -1588,15 +1606,8 @@ static int qf_parse_line_nomatch(char *linebuf, size_t linelen, qffields_T *fiel
   fields->namebuf[0] = NUL;   // no match found, remove file name
   fields->lnum = 0;           // don't jump to this line
   fields->valid = false;
-  if (linelen >= fields->errmsglen) {
-    // linelen + null terminator
-    fields->errmsg = xrealloc(fields->errmsg, linelen + 1);
-    fields->errmsglen = linelen + 1;
-  }
-  // copy whole line to error message
-  STRLCPY(fields->errmsg, linebuf, linelen + 1);
 
-  return QF_OK;
+  return copy_nonerror_line(linebuf, linelen, fields);
 }
 
 /// Parse multi-line error format prefixes (%C and %Z)
@@ -2153,12 +2164,11 @@ static char *qf_push_dir(char *dirbuf, struct dir_stack_T **stackptr, bool is_fi
 
   if ((*stackptr)->dirname != NULL) {
     return (*stackptr)->dirname;
-  } else {
-    ds_ptr = *stackptr;
-    *stackptr = (*stackptr)->next;
-    xfree(ds_ptr);
-    return NULL;
   }
+  ds_ptr = *stackptr;
+  *stackptr = (*stackptr)->next;
+  xfree(ds_ptr);
+  return NULL;
 }
 
 // pop dirbuf from the directory stack and return previous directory or NULL if
@@ -2706,11 +2716,10 @@ static int qf_jump_edit_buffer(qf_info_T *qi, qfline_T *qf_ptr, int forceit, int
     if (!can_abandon(curbuf, forceit)) {
       no_write_message();
       return FAIL;
-    } else {
-      retval = do_ecmd(qf_ptr->qf_fnum, NULL, NULL, NULL, (linenr_T)1,
-                       ECMD_HIDE + ECMD_SET_HELP,
-                       prev_winid == curwin->handle ? curwin : NULL);
     }
+    retval = do_ecmd(qf_ptr->qf_fnum, NULL, NULL, NULL, (linenr_T)1,
+                     ECMD_HIDE + ECMD_SET_HELP,
+                     prev_winid == curwin->handle ? curwin : NULL);
   } else {
     retval = buflist_getfile(qf_ptr->qf_fnum, (linenr_T)1,
                              GETF_SETMARK | GETF_SWITCH, forceit);
@@ -4295,10 +4304,17 @@ void ex_make(exarg_T *eap)
 
   incr_quickfix_busy();
 
-  int res = qf_init(wp, fname, (eap->cmdidx != CMD_make
-                                && eap->cmdidx != CMD_lmake) ? p_gefm : p_efm,
-                    (eap->cmdidx != CMD_grepadd && eap->cmdidx != CMD_lgrepadd),
-                    qf_cmdtitle(*eap->cmdlinep), enc);
+  char *errorformat = p_efm;
+  bool newlist = true;
+
+  if (eap->cmdidx != CMD_make && eap->cmdidx != CMD_lmake) {
+    errorformat = p_gefm;
+  }
+  if (eap->cmdidx == CMD_grepadd || eap->cmdidx == CMD_lgrepadd) {
+    newlist = false;
+  }
+
+  int res = qf_init(wp, fname, errorformat, newlist, qf_cmdtitle(*eap->cmdlinep), enc);
 
   qf_info_T *qi = &ql_info;
   if (wp != NULL) {
@@ -5140,11 +5156,10 @@ static bool vgr_qflist_valid(win_T *wp, qf_info_T *qi, unsigned qfid, char *titl
       // An autocmd has freed the location list
       emsg(_(e_current_location_list_was_changed));
       return false;
-    } else {
-      // Quickfix list is not found, create a new one.
-      qf_new_list(qi, title);
-      return true;
     }
+    // Quickfix list is not found, create a new one.
+    qf_new_list(qi, title);
+    return true;
   }
   if (qf_restore_list(qi, qfid) == FAIL) {
     return false;
@@ -5325,10 +5340,8 @@ static int vgr_process_args(exarg_T *eap, vgr_args_T *args)
   }
 
   // Parse the list of arguments, wildcards have already been expanded.
-  if (get_arglist_exp(p, &args->fcount, &args->fnames, true) == FAIL) {
-    return FAIL;
-  }
-  if (args->fcount == 0) {
+  if (get_arglist_exp(p, &args->fcount, &args->fnames, true) == FAIL
+      || args->fcount == 0) {
     emsg(_(e_nomatch));
     return FAIL;
   }
@@ -6688,7 +6701,8 @@ int set_errorlist(win_T *wp, list_T *list, int action, char *title, dict_T *what
   return retval;
 }
 
-/// Mark the context as in use for all the lists in a quickfix stack.
+/// Mark the quickfix context and callback function as in use for all the lists
+/// in a quickfix stack.
 static bool mark_quickfix_ctx(qf_info_T *qi, int copyID)
 {
   bool abort = false;
@@ -6697,8 +6711,11 @@ static bool mark_quickfix_ctx(qf_info_T *qi, int copyID)
     typval_T *ctx = qi->qf_lists[i].qf_ctx;
     if (ctx != NULL && ctx->v_type != VAR_NUMBER
         && ctx->v_type != VAR_STRING && ctx->v_type != VAR_FLOAT) {
-      abort = set_ref_in_item(ctx, copyID, NULL, NULL);
+      abort = abort || set_ref_in_item(ctx, copyID, NULL, NULL);
     }
+
+    Callback *cb = &qi->qf_lists[i].qf_qftf_cb;
+    abort = abort || set_ref_in_callback(cb, copyID, NULL, NULL);
   }
 
   return abort;
@@ -6709,6 +6726,11 @@ static bool mark_quickfix_ctx(qf_info_T *qi, int copyID)
 bool set_ref_in_quickfix(int copyID)
 {
   bool abort = mark_quickfix_ctx(&ql_info, copyID);
+  if (abort) {
+    return abort;
+  }
+
+  abort = set_ref_in_callback(&qftf_cb, copyID, NULL, NULL);
   if (abort) {
     return abort;
   }

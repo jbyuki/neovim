@@ -3,10 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-// for FILE
 #include <stdio.h>
-
-#include "grid_defs.h"
 
 typedef struct file_buffer buf_T;  // Forward declaration
 
@@ -18,34 +15,25 @@ typedef struct {
   int br_buf_free_count;
 } bufref_T;
 
-// for garray_T
-#include "nvim/garray.h"
-// for ScreenGrid
-#include "nvim/grid_defs.h"
-// for HLF_COUNT
-#include "nvim/highlight_defs.h"
-// for pos_T, lpos_T and linenr_T
-#include "nvim/pos.h"
-// for the number window-local and buffer-local options
-#include "nvim/option_defs.h"
-// for jump list and tag stack sizes in a buffer and mark types
-#include "nvim/mark_defs.h"
-// for u_header_T
-#include "nvim/undo_defs.h"
-// for hashtab_T
-#include "nvim/hashtab.h"
-// for dict_T
-#include "nvim/eval/typval.h"
-// for String
-#include "nvim/api/private/defs.h"
-// for Map(K, V)
-#include "nvim/map.h"
-// for kvec
 #include "klib/kvec.h"
-// for marktree
+#include "nvim/api/private/defs.h"
+#include "nvim/eval/typval.h"
+#include "nvim/garray.h"
+#include "nvim/grid_defs.h"
+#include "nvim/hashtab.h"
+#include "nvim/highlight_defs.h"
+#include "nvim/map.h"
+#include "nvim/mark_defs.h"
 #include "nvim/marktree.h"
 // for tangle
 #include "nvim/bitree.h"
+// for float window title
+#include "nvim/extmark_defs.h"
+// for click definitions
+#include "nvim/option_defs.h"
+#include "nvim/pos.h"
+#include "nvim/statusline_defs.h"
+#include "nvim/undo_defs.h"
 
 #define GETFILE_SUCCESS(x)    ((x) <= 0)
 #define MODIFIABLE(buf) (buf->b_p_ma)
@@ -100,17 +88,12 @@ typedef struct wininfo_S wininfo_T;
 typedef struct frame_S frame_T;
 typedef uint64_t disptick_T;  // display tick type
 
-// for struct memline (it needs memfile_T)
 #include "nvim/memline_defs.h"
-
-// for regprog_T. Needs win_T and buf_T.
+#include "nvim/os/fs_defs.h"
 #include "nvim/regexp_defs.h"
-// for synstate_T (needs reg_extmatch_T, win_T, buf_T)
-#include "nvim/syntax_defs.h"
-// for sign_entry_T
-#include "nvim/os/fs_defs.h"    // for FileID
 #include "nvim/sign_defs.h"
-#include "nvim/terminal.h"      // for Terminal
+#include "nvim/syntax_defs.h"
+#include "nvim/terminal.h"
 
 // The taggy struct is used to store the information about a :tag command.
 typedef struct taggy {
@@ -675,8 +658,11 @@ struct file_buffer {
   char *b_p_csl;                ///< 'completeslash'
 #endif
   char *b_p_cfu;                ///< 'completefunc'
+  Callback b_cfu_cb;            ///< 'completefunc' callback
   char *b_p_ofu;                ///< 'omnifunc'
+  Callback b_ofu_cb;            ///< 'omnifunc' callback
   char *b_p_tfu;                ///< 'tagfunc'
+  Callback b_tfu_cb;            ///< 'tagfunc' callback
   int b_p_eof;                  ///< 'endoffile'
   int b_p_eol;                  ///< 'endofline'
   int b_p_fixeol;               ///< 'fixendofline'
@@ -750,6 +736,7 @@ struct file_buffer {
   char *b_p_dict;               ///< 'dictionary' local value
   char *b_p_tsr;                ///< 'thesaurus' local value
   char *b_p_tsrfu;              ///< 'thesaurusfunc' local value
+  Callback b_tsrfu_cb;          ///< 'thesaurusfunc' callback
   long b_p_ul;                  ///< 'undolevels' local value
   int b_p_udf;                  ///< 'undofile'
   char *b_p_lw;                 ///< 'lispwords' local value
@@ -1059,6 +1046,12 @@ typedef enum {
   kWinStyleMinimal,  /// Minimal UI: no number column, eob markers, etc
 } WinStyle;
 
+typedef enum {
+  kAlignLeft   = 0,
+  kAlignCenter = 1,
+  kAlignRight  = 2,
+} AlignTextPos;
+
 typedef struct {
   Window window;
   lpos_T bufpos;
@@ -1071,10 +1064,14 @@ typedef struct {
   int zindex;
   WinStyle style;
   bool border;
+  bool title;
   bool shadow;
   schar_T border_chars[8];
   int border_hl_ids[8];
   int border_attr[8];
+  AlignTextPos title_pos;
+  VirtText title_chunks;
+  int title_width;
   bool noautocmd;
 } FloatConfig;
 

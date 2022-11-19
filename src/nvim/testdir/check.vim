@@ -90,12 +90,11 @@ func CheckUnix()
   endif
 endfunc
 
-" Command to check for not running on a BSD system.
-" TODO: using this checks should not be needed
-command CheckNotBSD call CheckNotBSD()
-func CheckNotBSD()
-  if has('bsd')
-    throw 'Skipped: does not work on BSD'
+" Command to check for running on Linux
+command CheckLinux call CheckLinux()
+func CheckLinux()
+  if !has('linux')
+    throw 'Skipped: only works on Linux'
   endif
 endfunc
 

@@ -4,6 +4,7 @@ source shared.vim
 source check.vim
 source term_util.vim
 source screendump.vim
+source load.vim
 
 func s:cleanup_buffers() abort
   for bnr in range(1, bufnr('$'))
@@ -20,8 +21,35 @@ func Test_vim_did_enter()
   " becomes one.
 endfunc
 
+" Test for the CursorHold autocmd
+func Test_CursorHold_autocmd()
+  CheckRunVimInTerminal
+  call writefile(['one', 'two', 'three'], 'Xfile')
+  let before =<< trim END
+    set updatetime=10
+    au CursorHold * call writefile([line('.')], 'Xoutput', 'a')
+  END
+  call writefile(before, 'Xinit')
+  let buf = RunVimInTerminal('-S Xinit Xfile', {})
+  call term_sendkeys(buf, "G")
+  call term_wait(buf, 20)
+  call term_sendkeys(buf, "gg")
+  call term_wait(buf)
+  call WaitForAssert({-> assert_equal(['1'], readfile('Xoutput')[-1:-1])})
+  call term_sendkeys(buf, "j")
+  call term_wait(buf)
+  call WaitForAssert({-> assert_equal(['1', '2'], readfile('Xoutput')[-2:-1])})
+  call term_sendkeys(buf, "j")
+  call term_wait(buf)
+  call WaitForAssert({-> assert_equal(['1', '2', '3'], readfile('Xoutput')[-3:-1])})
+  call StopVimInTerminal(buf)
+
+  call delete('Xinit')
+  call delete('Xoutput')
+  call delete('Xfile')
+endfunc
+
 if has('timers')
-  source load.vim
 
   func ExitInsertMode(id)
     call feedkeys("\<Esc>")
@@ -175,7 +203,7 @@ func Test_autocmd_bufunload_avoiding_SEGV_01()
     exe 'autocmd BufUnload <buffer> ' . (lastbuf + 1) . 'bwipeout!'
   augroup END
 
-  call assert_fails('edit bb.txt', ['E937:', 'E517:'])
+  call assert_fails('edit bb.txt', 'E937:')
 
   autocmd! test_autocmd_bufunload
   augroup! test_autocmd_bufunload
@@ -481,17 +509,20 @@ endfunc
 func Test_early_bar()
   " test that a bar is recognized before the {event}
   call s:AddAnAutocmd()
-  augroup vimBarTest | au! | augroup END
+  augroup vimBarTest | au! | let done = 77 | augroup END
   call assert_equal(1, len(split(execute('au vimBarTest'), "\n")))
+  call assert_equal(77, done)
 
   call s:AddAnAutocmd()
-  augroup vimBarTest| au!| augroup END
+  augroup vimBarTest| au!| let done = 88 | augroup END
   call assert_equal(1, len(split(execute('au vimBarTest'), "\n")))
+  call assert_equal(88, done)
 
   " test that a bar is recognized after the {event}
   call s:AddAnAutocmd()
-  augroup vimBarTest| au!BufReadCmd| augroup END
+  augroup vimBarTest| au!BufReadCmd| let done = 99 | augroup END
   call assert_equal(1, len(split(execute('au vimBarTest'), "\n")))
+  call assert_equal(99, done)
 
   " test that a bar is recognized after the {group}
   call s:AddAnAutocmd()
@@ -1975,9 +2006,7 @@ func Test_change_mark_in_autocmds()
 endfunc
 
 func Test_Filter_noshelltemp()
-  if !executable('cat')
-    return
-  endif
+  CheckExecutable cat
 
   enew!
   call setline(1, ['a', 'b', 'c', 'd'])
@@ -2865,6 +2894,7 @@ func Test_autocmd_invalid_args()
   call assert_fails('doautocmd * BufEnter', 'E217:')
   call assert_fails('augroup! x1a2b3', 'E367:')
   call assert_fails('autocmd BufNew <buffer=999> pwd', 'E680:')
+  call assert_fails('autocmd BufNew \) set ff=unix', 'E55:')
 endfunc
 
 " Test for deep nesting of autocmds

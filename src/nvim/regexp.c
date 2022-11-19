@@ -1,9 +1,7 @@
 // This is an open source non-commercial project. Dear PVS-Studio, please check
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
-/*
- * Handling of regular expressions: vim_regcomp(), vim_regexec(), vim_regsub()
- */
+// Handling of regular expressions: vim_regcomp(), vim_regexec(), vim_regsub()
 
 // By default: do not create debugging logs or files related to regular
 // expressions, even when compiling with -DDEBUG.
@@ -15,21 +13,34 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
+#include <sys/types.h>
 
 #include "nvim/ascii.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/charset.h"
 #include "nvim/eval.h"
+#include "nvim/eval/typval.h"
+#include "nvim/eval/typval_defs.h"
 #include "nvim/eval/userfunc.h"
 #include "nvim/garray.h"
+#include "nvim/gettext.h"
+#include "nvim/globals.h"
+#include "nvim/keycodes.h"
+#include "nvim/macros.h"
 #include "nvim/mark.h"
+#include "nvim/mbyte.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
+#include "nvim/option_defs.h"
 #include "nvim/os/input.h"
 #include "nvim/plines.h"
-#include "nvim/profile.h"
+#include "nvim/pos.h"
 #include "nvim/regexp.h"
+#include "nvim/regexp_defs.h"
 #include "nvim/strings.h"
+#include "nvim/types.h"
+#include "nvim/undo_defs.h"
 #include "nvim/vim.h"
 
 #ifdef REGEXP_DEBUG
@@ -41,21 +52,17 @@
 # define BT_REGEXP_DEBUG_LOG_NAME       "bt_regexp_debug.log"
 #endif
 
-/*
- * Magic characters have a special meaning, they don't match literally.
- * Magic characters are negative.  This separates them from literal characters
- * (possibly multi-byte).  Only ASCII characters can be Magic.
- */
+// Magic characters have a special meaning, they don't match literally.
+// Magic characters are negative.  This separates them from literal characters
+// (possibly multi-byte).  Only ASCII characters can be Magic.
 #define Magic(x)        ((int)(x) - 256)
 #define un_Magic(x)     ((x) + 256)
 #define is_Magic(x)     ((x) < 0)
 
-/*
- * We should define ftpr as a pointer to a function returning a pointer to
- * a function returning a pointer to a function ...
- * This is impossible, so we declare a pointer to a function returning a
- * pointer to a function returning void. This should work for all compilers.
- */
+// We should define ftpr as a pointer to a function returning a pointer to
+// a function returning a pointer to a function ...
+// This is impossible, so we declare a pointer to a function returning a
+// pointer to a function returning void. This should work for all compilers.
 typedef void (*(*fptr_T)(int *, int))(void);
 
 static int no_Magic(int x)
@@ -143,28 +150,24 @@ static int re_multi_type(int c)
 
 static char *reg_prev_sub = NULL;
 
-/*
- * REGEXP_INRANGE contains all characters which are always special in a []
- * range after '\'.
- * REGEXP_ABBR contains all characters which act as abbreviations after '\'.
- * These are:
- *  \n  - New line (NL).
- *  \r  - Carriage Return (CR).
- *  \t  - Tab (TAB).
- *  \e  - Escape (ESC).
- *  \b  - Backspace (Ctrl_H).
- *  \d  - Character code in decimal, eg \d123
- *  \o  - Character code in octal, eg \o80
- *  \x  - Character code in hex, eg \x4a
- *  \u  - Multibyte character code, eg \u20ac
- *  \U  - Long multibyte character code, eg \U12345678
- */
+// REGEXP_INRANGE contains all characters which are always special in a []
+// range after '\'.
+// REGEXP_ABBR contains all characters which act as abbreviations after '\'.
+// These are:
+//  \n  - New line (NL).
+//  \r  - Carriage Return (CR).
+//  \t  - Tab (TAB).
+//  \e  - Escape (ESC).
+//  \b  - Backspace (Ctrl_H).
+//  \d  - Character code in decimal, eg \d123
+//  \o  - Character code in octal, eg \o80
+//  \x  - Character code in hex, eg \x4a
+//  \u  - Multibyte character code, eg \u20ac
+//  \U  - Long multibyte character code, eg \U12345678
 static char REGEXP_INRANGE[] = "]^-n\\";
 static char REGEXP_ABBR[] = "nrtebdoxuU";
 
-/*
- * Translate '\x' to its control character, except "\n", which is Magic.
- */
+// Translate '\x' to its control character, except "\n", which is Magic.
 static int backslash_trans(int c)
 {
   switch (c) {
@@ -239,10 +242,8 @@ static int get_char_class(char **pp)
   return CLASS_NONE;
 }
 
-/*
- * Specific version of character class functions.
- * Using a table to keep this fast.
- */
+// Specific version of character class functions.
+// Using a table to keep this fast.
 static int16_t class_tab[256];
 
 #define     RI_DIGIT    0x01
@@ -325,9 +326,7 @@ static int reg_string;          // matching with a string instead of a buffer
                                 // line
 static int reg_strict;          // "[abc" is illegal
 
-/*
- * META contains all characters that may be magic, except '^' and '$'.
- */
+// META contains all characters that may be magic, except '^' and '$'.
 
 // uncrustify:off
 
@@ -391,11 +390,9 @@ int re_multiline(const regprog_T *prog)
   return prog->regflags & RF_HASNL;
 }
 
-/*
- * Check for an equivalence class name "[=a=]".  "pp" points to the '['.
- * Returns a character representing the class. Zero means that no item was
- * recognized.  Otherwise "pp" is advanced to after the item.
- */
+// Check for an equivalence class name "[=a=]".  "pp" points to the '['.
+// Returns a character representing the class. Zero means that no item was
+// recognized.  Otherwise "pp" is advanced to after the item.
 static int get_equi_class(char **pp)
 {
   int c;
@@ -413,12 +410,10 @@ static int get_equi_class(char **pp)
   return 0;
 }
 
-/*
- * Check for a collating element "[.a.]".  "pp" points to the '['.
- * Returns a character. Zero means that no item was recognized.  Otherwise
- * "pp" is advanced to after the item.
- * Currently only single characters are recognized!
- */
+// Check for a collating element "[.a.]".  "pp" points to the '['.
+// Returns a character. Zero means that no item was recognized.  Otherwise
+// "pp" is advanced to after the item.
+// Currently only single characters are recognized!
 static int get_coll_element(char **pp)
 {
   int c;
@@ -562,9 +557,7 @@ static int prevchr_len;    // byte length of previous char
 static int at_start;       // True when on the first character
 static int prev_at_start;  // True when on the second character
 
-/*
- * Start parsing at "str".
- */
+// Start parsing at "str".
 static void initchr(char_u *str)
 {
   regparse = (char *)str;
@@ -574,10 +567,8 @@ static void initchr(char_u *str)
   prev_at_start = false;
 }
 
-/*
- * Save the current parse state, so that it can be restored and parsing
- * starts in the same state again.
- */
+// Save the current parse state, so that it can be restored and parsing
+// starts in the same state again.
 static void save_parse_state(parse_state_T *ps)
 {
   ps->regparse = (char_u *)regparse;
@@ -591,9 +582,7 @@ static void save_parse_state(parse_state_T *ps)
   ps->regnpar = regnpar;
 }
 
-/*
- * Restore a previously saved parse state.
- */
+// Restore a previously saved parse state.
 static void restore_parse_state(parse_state_T *ps)
 {
   regparse = (char *)ps->regparse;
@@ -607,9 +596,7 @@ static void restore_parse_state(parse_state_T *ps)
   regnpar = ps->regnpar;
 }
 
-/*
- * Get the next character without advancing.
- */
+// Get the next character without advancing.
 static int peekchr(void)
 {
   static int after_slash = false;
@@ -736,9 +723,7 @@ static int peekchr(void)
       after_slash--;
       curchr = toggle_Magic(curchr);
     } else if (vim_strchr(REGEXP_ABBR, c)) {
-      /*
-       * Handle abbreviations, like "\t" for TAB -- webb
-       */
+      // Handle abbreviations, like "\t" for TAB -- webb
       curchr = backslash_trans(c);
     } else if (reg_magic == MAGIC_NONE && (c == '$' || c == '^')) {
       curchr = toggle_Magic(c);
@@ -757,9 +742,7 @@ static int peekchr(void)
   return curchr;
 }
 
-/*
- * Eat one lexed character.  Do this in a way that we can undo it.
- */
+// Eat one lexed character.  Do this in a way that we can undo it.
 static void skipchr(void)
 {
   // peekchr() eats a backslash, do the same here
@@ -781,10 +764,8 @@ static void skipchr(void)
   nextchr = -1;
 }
 
-/*
- * Skip a character while keeping the value of prev_at_start for at_start.
- * prevchr and prevprevchr are also kept.
- */
+// Skip a character while keeping the value of prev_at_start for at_start.
+// prevchr and prevprevchr are also kept.
 static void skipchr_keepstart(void)
 {
   int as = prev_at_start;
@@ -797,10 +778,8 @@ static void skipchr_keepstart(void)
   prevprevchr = prpr;
 }
 
-/*
- * Get the next character from the pattern. We know about magic and such, so
- * therefore we need a lexical analyzer.
- */
+// Get the next character from the pattern. We know about magic and such, so
+// therefore we need a lexical analyzer.
 static int getchr(void)
 {
   int chr = peekchr();
@@ -809,9 +788,7 @@ static int getchr(void)
   return chr;
 }
 
-/*
- * put character back.  Works only once!
- */
+// put character back.  Works only once!
 static void ungetchr(void)
 {
   nextchr = curchr;
@@ -825,15 +802,13 @@ static void ungetchr(void)
   regparse -= prevchr_len;
 }
 
-/*
- * Get and return the value of the hex string at the current position.
- * Return -1 if there is no valid hex number.
- * The position is updated:
- *     blahblah\%x20asdf
- *         before-^ ^-after
- * The parameter controls the maximum number of input characters. This will be
- * 2 when reading a \%x20 sequence and 4 when reading a \%u20AC sequence.
- */
+// Get and return the value of the hex string at the current position.
+// Return -1 if there is no valid hex number.
+// The position is updated:
+//     blahblah\%x20asdf
+//         before-^ ^-after
+// The parameter controls the maximum number of input characters. This will be
+// 2 when reading a \%x20 sequence and 4 when reading a \%u20AC sequence.
 static int64_t gethexchrs(int maxinputlen)
 {
   int64_t nr = 0;
@@ -856,10 +831,8 @@ static int64_t gethexchrs(int maxinputlen)
   return nr;
 }
 
-/*
- * Get and return the value of the decimal string immediately after the
- * current position. Return -1 for invalid.  Consumes all digits.
- */
+// Get and return the value of the decimal string immediately after the
+// current position. Return -1 for invalid.  Consumes all digits.
 static int64_t getdecchrs(void)
 {
   int64_t nr = 0;
@@ -883,14 +856,12 @@ static int64_t getdecchrs(void)
   return nr;
 }
 
-/*
- * get and return the value of the octal string immediately after the current
- * position. Return -1 for invalid, or 0-255 for valid. Smart enough to handle
- * numbers > 377 correctly (for example, 400 is treated as 40) and doesn't
- * treat 8 or 9 as recognised characters. Position is updated:
- *     blahblah\%o210asdf
- *         before-^  ^-after
- */
+// get and return the value of the octal string immediately after the current
+// position. Return -1 for invalid, or 0-255 for valid. Smart enough to handle
+// numbers > 377 correctly (for example, 400 is treated as 40) and doesn't
+// treat 8 or 9 as recognised characters. Position is updated:
+//     blahblah\%o210asdf
+//         before-^  ^-after
 static int64_t getoctchrs(void)
 {
   int64_t nr = 0;
@@ -913,12 +884,10 @@ static int64_t getoctchrs(void)
   return nr;
 }
 
-/*
- * read_limits - Read two integers to be taken as a minimum and maximum.
- * If the first character is '-', then the range is reversed.
- * Should end with 'end'.  If minval is missing, zero is default, if maxval is
- * missing, a very big number is the default.
- */
+// read_limits - Read two integers to be taken as a minimum and maximum.
+// If the first character is '-', then the range is reversed.
+// Should end with 'end'.  If minval is missing, zero is default, if maxval is
+// missing, a very big number is the default.
 static int read_limits(long *minval, long *maxval)
 {
   int reverse = false;
@@ -950,10 +919,8 @@ static int read_limits(long *minval, long *maxval)
     EMSG2_RET_FAIL(_("E554: Syntax error in %s{...}"), reg_magic == MAGIC_ALL);
   }
 
-  /*
-   * Reverse the range if there was a '-', or make sure it is in the right
-   * order otherwise.
-   */
+  // Reverse the range if there was a '-', or make sure it is in the right
+  // order otherwise.
   if ((!reverse && *minval > *maxval) || (reverse && *minval < *maxval)) {
     tmp = *minval;
     *minval = *maxval;
@@ -963,13 +930,9 @@ static int read_limits(long *minval, long *maxval)
   return OK;
 }
 
-/*
- * vim_regexec and friends
- */
+// vim_regexec and friends
 
-/*
- * Global work variables for vim_regexec().
- */
+// Global work variables for vim_regexec().
 
 // Sometimes need to save a copy of a line.  Since alloc()/free() is very
 // slow, we keep one allocated piece of memory and only re-allocate it when
@@ -1052,9 +1015,7 @@ static bool reg_iswordc(int c)
   return vim_iswordc_buf(c, rex.reg_buf);
 }
 
-/*
- * Get pointer to the line "lnum", which is relative to "reg_firstlnum".
- */
+// Get pointer to the line "lnum", which is relative to "reg_firstlnum".
 static char_u *reg_getline(linenr_T lnum)
 {
   // when looking behind for a match/no-match lnum is negative.  But we
@@ -1077,9 +1038,7 @@ static lpos_T reg_endzpos[NSUBEXP];     // idem, end pos
 // true if using multi-line regexp.
 #define REG_MULTI       (rex.reg_match == NULL)
 
-/*
- * Create a new extmatch and mark it as referenced once.
- */
+// Create a new extmatch and mark it as referenced once.
 static reg_extmatch_T *make_extmatch(void)
   FUNC_ATTR_NONNULL_RET
 {
@@ -1088,9 +1047,7 @@ static reg_extmatch_T *make_extmatch(void)
   return em;
 }
 
-/*
- * Add a reference to an extmatch.
- */
+// Add a reference to an extmatch.
 reg_extmatch_T *ref_extmatch(reg_extmatch_T *em)
 {
   if (em != NULL) {
@@ -1099,10 +1056,8 @@ reg_extmatch_T *ref_extmatch(reg_extmatch_T *em)
   return em;
 }
 
-/*
- * Remove a reference to an extmatch.  If there are no references left, free
- * the info.
- */
+// Remove a reference to an extmatch.  If there are no references left, free
+// the info.
 void unref_extmatch(reg_extmatch_T *em)
 {
   int i;
@@ -1201,10 +1156,8 @@ static bool reg_match_visual(void)
   return true;
 }
 
-/*
- * Check the regexp program for its magic number.
- * Return true if it's wrong.
- */
+// Check the regexp program for its magic number.
+// Return true if it's wrong.
 static int prog_magic_wrong(void)
 {
   regprog_T *prog;
@@ -1222,11 +1175,9 @@ static int prog_magic_wrong(void)
   return false;
 }
 
-/*
- * Cleanup the subexpressions, if this wasn't done yet.
- * This construction is used to clear the subexpressions only when they are
- * used (to increase speed).
- */
+// Cleanup the subexpressions, if this wasn't done yet.
+// This construction is used to clear the subexpressions only when they are
+// used (to increase speed).
 static void cleanup_subexpr(void)
 {
   if (rex.need_clear_subexpr) {
@@ -1265,12 +1216,10 @@ static void reg_nextline(void)
   fast_breakcheck();
 }
 
-/*
- * Check whether a backreference matches.
- * Returns RA_FAIL, RA_NOMATCH or RA_MATCH.
- * If "bytelen" is not NULL, it is set to the byte length of the match in the
- * last line.
- */
+// Check whether a backreference matches.
+// Returns RA_FAIL, RA_NOMATCH or RA_MATCH.
+// If "bytelen" is not NULL, it is set to the byte length of the match in the
+// last line.
 static int match_with_backref(linenr_T start_lnum, colnr_T start_col, linenr_T end_lnum,
                               colnr_T end_col, int *bytelen)
 {
@@ -1449,9 +1398,9 @@ static int cstrncmp(char *s1, char *s2, int *n)
       c1 = mb_ptr2char_adv((const char_u **)&str1);
       c2 = mb_ptr2char_adv((const char_u **)&str2);
 
-      /* decompose the character if necessary, into 'base' characters
-       * because I don't care about Arabic, I will hard-code the Hebrew
-       * which I *do* care about!  So sue me... */
+      // decompose the character if necessary, into 'base' characters
+      // because I don't care about Arabic, I will hard-code the Hebrew
+      // which I *do* care about!  So sue me...
       if (c1 != c2 && (!rex.reg_ic || utf_fold(c1) != utf_fold(c2))) {
         // decomposition necessary?
         mb_decompose(c1, &c11, &junk, &junk);
@@ -1566,7 +1515,7 @@ char *regtilde(char *source, int magic, bool preview)
   int len;
   int prevlen;
 
-  for (p = newsub; *p; ++p) {
+  for (p = newsub; *p; p++) {
     if ((*p == '~' && magic) || (*p == '\\' && *(p + 1) == '~' && !magic)) {
       if (reg_prev_sub != NULL) {
         // length = len(newsub) - 1 + len(prev_sub) + 1
@@ -1871,12 +1820,11 @@ static int vim_regsub_both(char_u *source, typval_T *expr, char_u *dest, int des
             *s = CAR;
           } else if (*s == '\\' && s[1] != NUL) {
             s++;
-            /* Change NL to CR here too, so that this works:
-             * :s/abc\\\ndef/\="aaa\\\nbbb"/  on text:
-             *   abc\
-             *   def
-             * Not when called from vim_regexec_nl().
-             */
+            // Change NL to CR here too, so that this works:
+            // :s/abc\\\ndef/\="aaa\\\nbbb"/  on text:
+            //   abc{backslash}
+            //   def
+            // Not when called from vim_regexec_nl().
             if (*s == NL && !rsm.sm_line_lbr) {
               *s = CAR;
             }
@@ -2172,10 +2120,8 @@ char *reg_submatch(int no)
   if (rsm.sm_match == NULL) {
     ssize_t len;
 
-    /*
-     * First round: compute the length and allocate memory.
-     * Second round: copy the text.
-     */
+    // First round: compute the length and allocate memory.
+    // Second round: copy the text.
     for (round = 1; round <= 2; round++) {
       lnum = rsm.sm_mmatch->startpos[no].lnum;
       if (lnum < 0 || rsm.sm_mmatch->endpos[no].lnum < 0) {
@@ -2216,7 +2162,7 @@ char *reg_submatch(int no)
           len++;
         }
         if (round == 2) {
-          STRNCPY(retval + len, reg_getline_submatch(lnum),
+          STRNCPY(retval + len, reg_getline_submatch(lnum),  // NOLINT(runtime/printf)
                   rsm.sm_mmatch->endpos[no].col);
         }
         len += rsm.sm_mmatch->endpos[no].col;
@@ -2295,6 +2241,25 @@ list_T *reg_submatch_list(int no)
   return list;
 }
 
+/// Initialize the values used for matching against multiple lines
+///
+/// @param win   window in which to search or NULL
+/// @param buf   buffer in which to search
+/// @param lnum  nr of line to start looking for match
+static void init_regexec_multi(regmmatch_T *rmp, win_T *win, buf_T *buf, linenr_T lnum)
+{
+  rex.reg_match = NULL;
+  rex.reg_mmatch = rmp;
+  rex.reg_buf = buf;
+  rex.reg_win = win;
+  rex.reg_firstlnum = lnum;
+  rex.reg_maxline = rex.reg_buf->b_ml.ml_line_count - lnum;
+  rex.reg_line_lbr = false;
+  rex.reg_ic = rmp->rmm_ic;
+  rex.reg_icombine = false;
+  rex.reg_maxcol = rmp->rmm_maxcol;
+}
+
 // XXX Do not allow headers generator to catch definitions from regexp_nfa.c
 #ifndef DO_NOT_DEFINE_EMPTY_ATTRIBUTES
 # include "nvim/regexp_bt.c"
@@ -2327,12 +2292,10 @@ static char_u regname[][30] = {
 };
 #endif
 
-/*
- * Compile a regular expression into internal code.
- * Returns the program in allocated memory.
- * Use vim_regfree() to free the memory.
- * Returns NULL for an error.
- */
+// Compile a regular expression into internal code.
+// Returns the program in allocated memory.
+// Use vim_regfree() to free the memory.
+// Returns NULL for an error.
 regprog_T *vim_regcomp(char *expr_arg, int re_flags)
 {
   regprog_T *prog = NULL;
@@ -2413,9 +2376,7 @@ regprog_T *vim_regcomp(char *expr_arg, int re_flags)
   return prog;
 }
 
-/*
- * Free a compiled regexp program, returned by vim_regcomp().
- */
+// Free a compiled regexp program, returned by vim_regcomp().
 void vim_regfree(regprog_T *prog)
 {
   if (prog != NULL) {

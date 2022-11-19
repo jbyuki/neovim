@@ -3,18 +3,31 @@
 
 // highlight.c: low level code for UI and syntax highlighting
 
+#include <assert.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <string.h>
+
+#include "klib/kvec.h"
+#include "lauxlib.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/decoration_provider.h"
 #include "nvim/drawscreen.h"
+#include "nvim/gettext.h"
+#include "nvim/globals.h"
 #include "nvim/highlight.h"
 #include "nvim/highlight_defs.h"
 #include "nvim/highlight_group.h"
+#include "nvim/log.h"
 #include "nvim/lua/executor.h"
+#include "nvim/macros.h"
 #include "nvim/map.h"
+#include "nvim/memory.h"
 #include "nvim/message.h"
 #include "nvim/option.h"
 #include "nvim/popupmenu.h"
+#include "nvim/types.h"
 #include "nvim/ui.h"
 #include "nvim/vim.h"
 
@@ -141,10 +154,9 @@ int hl_get_syn_attr(int ns_id, int idx, HlAttrs at_en)
       || at_en.rgb_ae_attr != 0 || ns_id != 0) {
     return get_attr_entry((HlEntry){ .attr = at_en, .kind = kHlSyntax,
                                      .id1 = idx, .id2 = ns_id });
-  } else {
-    // If all the fields are cleared, clear the attr field back to default value
-    return 0;
   }
+  // If all the fields are cleared, clear the attr field back to default value
+  return 0;
 }
 
 void ns_hl_def(NS ns_id, int hl_id, HlAttrs attrs, int link_id, Dict(highlight) *dict)
@@ -238,12 +250,11 @@ int ns_get_hl(NS *ns_hl, int hl_id, bool link, bool nodefault)
   if (link) {
     if (it.attr_id >= 0) {
       return 0;
-    } else {
-      if (it.link_global) {
-        *ns_hl = 0;
-      }
-      return it.link_id;
     }
+    if (it.link_global) {
+      *ns_hl = 0;
+    }
+    return it.link_id;
   } else {
     return it.attr_id;
   }

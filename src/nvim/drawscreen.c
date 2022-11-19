@@ -59,28 +59,47 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "klib/kvec.h"
+#include "nvim/api/private/defs.h"
+#include "nvim/ascii.h"
+#include "nvim/autocmd.h"
 #include "nvim/buffer.h"
 #include "nvim/charset.h"
 #include "nvim/cmdexpand.h"
+#include "nvim/decoration.h"
+#include "nvim/decoration_provider.h"
 #include "nvim/diff.h"
+#include "nvim/drawline.h"
 #include "nvim/drawscreen.h"
 #include "nvim/ex_getln.h"
+#include "nvim/extmark_defs.h"
+#include "nvim/fold.h"
+#include "nvim/globals.h"
 #include "nvim/grid.h"
 #include "nvim/highlight.h"
 #include "nvim/highlight_group.h"
 #include "nvim/insexpand.h"
 #include "nvim/match.h"
+#include "nvim/mbyte.h"
+#include "nvim/memline.h"
+#include "nvim/message.h"
 #include "nvim/move.h"
+#include "nvim/normal.h"
 #include "nvim/option.h"
 #include "nvim/plines.h"
 #include "nvim/popupmenu.h"
+#include "nvim/pos.h"
 #include "nvim/profile.h"
 #include "nvim/regexp.h"
+#include "nvim/screen.h"
 #include "nvim/statusline.h"
 #include "nvim/syntax.h"
+#include "nvim/terminal.h"
+#include "nvim/types.h"
+#include "nvim/ui.h"
 #include "nvim/ui_compositor.h"
-#include "nvim/undo.h"
 #include "nvim/version.h"
+#include "nvim/vim.h"
 #include "nvim/window.h"
 
 /// corner value flags for hsep_connected and vsep_connected
@@ -163,14 +182,10 @@ bool default_grid_alloc(void)
   // size is wrong.
 
   grid_alloc(&default_grid, Rows, Columns, true, true);
-  StlClickDefinition *new_tab_page_click_defs =
-    xcalloc((size_t)Columns, sizeof(*new_tab_page_click_defs));
 
   stl_clear_click_defs(tab_page_click_defs, tab_page_click_defs_size);
-  xfree(tab_page_click_defs);
-
-  tab_page_click_defs = new_tab_page_click_defs;
-  tab_page_click_defs_size = Columns;
+  tab_page_click_defs = stl_alloc_click_defs(tab_page_click_defs, Columns,
+                                             &tab_page_click_defs_size);
 
   default_grid.comp_height = Rows;
   default_grid.comp_width = Columns;
@@ -453,6 +468,7 @@ int update_screen(void)
     }
     msg_scrolled = 0;
     msg_scrolled_at_flush = 0;
+    msg_grid_scroll_discount = 0;
     need_wait_return = false;
   }
 
@@ -614,6 +630,20 @@ int update_screen(void)
   return OK;
 }
 
+static void win_border_redr_title(win_T *wp, ScreenGrid *grid, int col)
+{
+  VirtText title_chunks = wp->w_float_config.title_chunks;
+
+  for (size_t i = 0; i < title_chunks.size; i++) {
+    char *text = title_chunks.items[i].text;
+    int cell = (int)mb_string2cells(text);
+    int hl_id = title_chunks.items[i].hl_id;
+    int attr = hl_id ? syn_id2attr(hl_id) : 0;
+    grid_puts(grid, text, 0, col, attr);
+    col += cell;
+  }
+}
+
 static void win_redr_border(win_T *wp)
 {
   wp->w_redr_border = false;
@@ -634,8 +664,23 @@ static void win_redr_border(win_T *wp)
     if (adj[3]) {
       grid_put_schar(grid, 0, 0, chars[0], attrs[0]);
     }
+
     for (int i = 0; i < icol; i++) {
       grid_put_schar(grid, 0, i + adj[3], chars[1], attrs[1]);
+    }
+
+    if (wp->w_float_config.title) {
+      int title_col = 0;
+      int title_width = wp->w_float_config.title_width;
+      AlignTextPos title_pos = wp->w_float_config.title_pos;
+
+      if (title_pos == kAlignCenter) {
+        title_col = (icol - title_width) / 2 + 1;
+      } else {
+        title_col = title_pos == kAlignLeft ? 1 : icol - title_width + 1;
+      }
+
+      win_border_redr_title(wp, grid, title_col);
     }
     if (adj[1]) {
       grid_put_schar(grid, 0, icol + adj[3], chars[2], attrs[2]);

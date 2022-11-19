@@ -1,25 +1,42 @@
 // This is an open source non-commercial project. Dear PVS-Studio, please check
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
+#include <assert.h>
+#include <fcntl.h>
 #include <float.h>
+#include <inttypes.h>
+#include <limits.h>
 #include <math.h>
+#include <msgpack/object.h>
+#include <msgpack/pack.h>
+#include <msgpack/unpack.h>
+#include <signal.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <uv.h>
 
+#include "auto/config.h"
 #include "nvim/api/private/converter.h"
+#include "nvim/api/private/defs.h"
+#include "nvim/api/private/dispatch.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/api/vim.h"
-#include "nvim/arglist.h"
 #include "nvim/ascii.h"
 #include "nvim/assert.h"
+#include "nvim/autocmd.h"
 #include "nvim/buffer.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/change.h"
 #include "nvim/channel.h"
 #include "nvim/charset.h"
 #include "nvim/cmdexpand.h"
-#include "nvim/cmdhist.h"
 #include "nvim/context.h"
 #include "nvim/cursor.h"
 #include "nvim/diff.h"
-#include "nvim/digraph.h"
 #include "nvim/edit.h"
 #include "nvim/eval.h"
 #include "nvim/eval/decode.h"
@@ -29,54 +46,71 @@
 #include "nvim/eval/typval.h"
 #include "nvim/eval/userfunc.h"
 #include "nvim/eval/vars.h"
+#include "nvim/event/loop.h"
+#include "nvim/event/multiqueue.h"
+#include "nvim/event/process.h"
+#include "nvim/event/time.h"
 #include "nvim/ex_cmds.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/ex_eval.h"
 #include "nvim/ex_getln.h"
 #include "nvim/file_search.h"
 #include "nvim/fileio.h"
-#include "nvim/fold.h"
+#include "nvim/garray.h"
 #include "nvim/getchar.h"
+#include "nvim/gettext.h"
 #include "nvim/globals.h"
+#include "nvim/grid_defs.h"
+#include "nvim/hashtab.h"
+#include "nvim/highlight_defs.h"
 #include "nvim/highlight_group.h"
 #include "nvim/indent.h"
 #include "nvim/indent_c.h"
 #include "nvim/input.h"
-#include "nvim/insexpand.h"
+#include "nvim/keycodes.h"
 #include "nvim/lua/executor.h"
 #include "nvim/macros.h"
-#include "nvim/mapping.h"
+#include "nvim/main.h"
 #include "nvim/mark.h"
-#include "nvim/match.h"
 #include "nvim/math.h"
+#include "nvim/mbyte.h"
+#include "nvim/memfile_defs.h"
 #include "nvim/memline.h"
+#include "nvim/memory.h"
 #include "nvim/menu.h"
+#include "nvim/message.h"
 #include "nvim/mouse.h"
 #include "nvim/move.h"
 #include "nvim/msgpack_rpc/channel.h"
+#include "nvim/msgpack_rpc/channel_defs.h"
 #include "nvim/msgpack_rpc/server.h"
+#include "nvim/normal.h"
 #include "nvim/ops.h"
 #include "nvim/option.h"
 #include "nvim/optionstr.h"
 #include "nvim/os/dl.h"
+#include "nvim/os/fileio.h"
+#include "nvim/os/fs_defs.h"
+#include "nvim/os/os.h"
+#include "nvim/os/pty_process.h"
 #include "nvim/os/shell.h"
+#include "nvim/os/stdpaths_defs.h"
+#include "nvim/os/time.h"
 #include "nvim/path.h"
 #include "nvim/plines.h"
 #include "nvim/popupmenu.h"
+#include "nvim/pos.h"
 #include "nvim/profile.h"
-#include "nvim/quickfix.h"
 #include "nvim/regexp.h"
 #include "nvim/runtime.h"
-#include "nvim/screen.h"
 #include "nvim/search.h"
 #include "nvim/sha256.h"
-#include "nvim/sign.h"
 #include "nvim/spell.h"
 #include "nvim/spellsuggest.h"
 #include "nvim/state.h"
+#include "nvim/strings.h"
 #include "nvim/syntax.h"
 #include "nvim/tag.h"
-#include "nvim/testing.h"
 #include "nvim/ui.h"
 #include "nvim/undo.h"
 #include "nvim/version.h"
@@ -105,6 +139,7 @@ typedef enum {
 PRAGMA_DIAG_PUSH_IGNORE_MISSING_PROTOTYPES
 PRAGMA_DIAG_PUSH_IGNORE_IMPLICIT_FALLTHROUGH
 # include "funcs.generated.h"
+
 PRAGMA_DIAG_POP
 PRAGMA_DIAG_POP
 #endif
@@ -846,9 +881,32 @@ static void f_char2nr(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 ///          otherwise the byte index of the column.
 static void get_col(typval_T *argvars, typval_T *rettv, bool charcol)
 {
+  if (tv_check_for_string_or_list_arg(argvars, 0) == FAIL
+      || tv_check_for_opt_number_arg(argvars, 1) == FAIL) {
+    return;
+  }
+
+  switchwin_T switchwin;
+  bool winchanged = false;
+
+  if (argvars[1].v_type != VAR_UNKNOWN) {
+    // use the window specified in the second argument
+    tabpage_T *tp;
+    win_T *wp = win_id2wp_tp((int)tv_get_number(&argvars[1]), &tp);
+    if (wp == NULL || tp == NULL) {
+      return;
+    }
+
+    if (switch_win_noblock(&switchwin, wp, tp, true) != OK) {
+      return;
+    }
+
+    check_cursor();
+    winchanged = true;
+  }
+
   colnr_T col = 0;
   int fnum = curbuf->b_fnum;
-
   pos_T *fp = var2fpos(&argvars[0], false, &fnum, charcol);
   if (fp != NULL && fnum == curbuf->b_fnum) {
     if (fp->col == MAXCOL) {
@@ -876,6 +934,10 @@ static void get_col(typval_T *argvars, typval_T *rettv, bool charcol)
     }
   }
   rettv->vval.v_number = col;
+
+  if (winchanged) {
+    restore_win_noblock(&switchwin, true);
+  }
 }
 
 /// "charcol()" function
@@ -1510,6 +1572,7 @@ static void f_deletebufline(typval_T *argvars, typval_T *rettv, EvalFuncData fpt
 
   buf_T *curbuf_save = NULL;
   win_T *curwin_save = NULL;
+  // After this don't use "return", goto "cleanup"!
   if (!is_curbuf) {
     VIsual_active = false;
     curbuf_save = curbuf;
@@ -1530,34 +1593,35 @@ static void f_deletebufline(typval_T *argvars, typval_T *rettv, EvalFuncData fpt
   }
 
   if (u_save(first - 1, last + 1) == FAIL) {
-    rettv->vval.v_number = 1;  // FAIL
-  } else {
-    for (linenr_T lnum = first; lnum <= last; lnum++) {
-      ml_delete(first, true);
-    }
-
-    FOR_ALL_TAB_WINDOWS(tp, wp) {
-      if (wp->w_buffer == buf) {
-        if (wp->w_cursor.lnum > last) {
-          wp->w_cursor.lnum -= (linenr_T)count;
-        } else if (wp->w_cursor.lnum > first) {
-          wp->w_cursor.lnum = first;
-        }
-        if (wp->w_cursor.lnum > wp->w_buffer->b_ml.ml_line_count) {
-          wp->w_cursor.lnum = wp->w_buffer->b_ml.ml_line_count;
-        }
-      }
-    }
-    check_cursor_col();
-    deleted_lines_mark(first, count);
+    goto cleanup;
   }
 
+  for (linenr_T lnum = first; lnum <= last; lnum++) {
+    ml_delete(first, true);
+  }
+
+  FOR_ALL_TAB_WINDOWS(tp, wp) {
+    if (wp->w_buffer == buf) {
+      if (wp->w_cursor.lnum > last) {
+        wp->w_cursor.lnum -= (linenr_T)count;
+      } else if (wp->w_cursor.lnum > first) {
+        wp->w_cursor.lnum = first;
+      }
+      if (wp->w_cursor.lnum > wp->w_buffer->b_ml.ml_line_count) {
+        wp->w_cursor.lnum = wp->w_buffer->b_ml.ml_line_count;
+      }
+    }
+  }
+  check_cursor_col();
+  deleted_lines_mark(first, count);
+  rettv->vval.v_number = 0;  // OK
+
+cleanup:
   if (!is_curbuf) {
     curbuf = curbuf_save;
     curwin = curwin_save;
     VIsual_active = save_VIsual_active;
   }
-  rettv->vval.v_number = 0;  // OK
 }
 
 /// "did_filetype()" function
@@ -2464,13 +2528,17 @@ static void f_get(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
       const char *const what = tv_get_string(&argvars[1]);
 
       if (strcmp(what, "func") == 0 || strcmp(what, "name") == 0) {
+        const char *name = (const char *)partial_name(pt);
         rettv->v_type = (*what == 'f' ? VAR_FUNC : VAR_STRING);
-        const char *const n = (const char *)partial_name(pt);
-        assert(n != NULL);
-        rettv->vval.v_string = xstrdup(n);
+        assert(name != NULL);
         if (rettv->v_type == VAR_FUNC) {
-          func_ref((char_u *)rettv->vval.v_string);
+          func_ref((char_u *)name);
         }
+        if (*what == 'n' && pt->pt_name == NULL && pt->pt_func != NULL) {
+          // use <SNR> instead of the byte code
+          name = (const char *)printable_func_name(pt->pt_func);
+        }
+        rettv->vval.v_string = xstrdup(name);
       } else if (strcmp(what, "dict") == 0) {
         what_is_dict = true;
         if (pt->pt_dict != NULL) {
@@ -5238,10 +5306,9 @@ static void f_mkdir(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
         xfree(failed_dir);
         rettv->vval.v_number = FAIL;
         return;
-      } else {
-        rettv->vval.v_number = OK;
-        return;
       }
+      rettv->vval.v_number = OK;
+      return;
     }
   }
   rettv->vval.v_number = vim_mkdir_emsg(dir, prot);
@@ -7483,9 +7550,8 @@ static void f_serverstart(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     if (argvars[0].v_type != VAR_STRING) {
       emsg(_(e_invarg));
       return;
-    } else {
-      address = xstrdup(tv_get_string(argvars));
     }
+    address = xstrdup(tv_get_string(argvars));
   } else {
     address = server_address_new(NULL);
   }
@@ -9968,6 +10034,7 @@ static void f_writefile(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
   bool binary = false;
   bool append = false;
   bool do_fsync = !!p_fs;
+  bool mkdir_p = false;
   if (argvars[2].v_type != VAR_UNKNOWN) {
     const char *const flags = tv_get_string_chk(&argvars[2]);
     if (flags == NULL) {
@@ -9983,6 +10050,8 @@ static void f_writefile(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
         do_fsync = true; break;
       case 'S':
         do_fsync = false; break;
+      case 'p':
+        mkdir_p = true; break;
       default:
         // Using %s, p and not %c, *p to preserve multibyte characters
         semsg(_("E5060: Unknown flag: %s"), p);
@@ -10002,6 +10071,7 @@ static void f_writefile(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     emsg(_("E482: Can't open file with an empty name"));
   } else if ((error = file_open(&fp, fname,
                                 ((append ? kFileAppend : kFileTruncate)
+                                 | (mkdir_p ? kFileMkDir : kFileCreate)
                                  | kFileCreate), 0666)) != 0) {
     semsg(_("E482: Can't open file %s for writing: %s"),
           fname, os_strerror(error));

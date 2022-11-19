@@ -6,62 +6,68 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <iconv.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <uv.h>
 
-#include "nvim/api/private/helpers.h"
+#include "auto/config.h"
 #include "nvim/ascii.h"
+#include "nvim/autocmd.h"
 #include "nvim/buffer.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/buffer_updates.h"
 #include "nvim/change.h"
-#include "nvim/charset.h"
 #include "nvim/cursor.h"
 #include "nvim/diff.h"
 #include "nvim/drawscreen.h"
 #include "nvim/edit.h"
 #include "nvim/eval.h"
-#include "nvim/eval/typval.h"
-#include "nvim/eval/userfunc.h"
 #include "nvim/ex_cmds.h"
-#include "nvim/ex_docmd.h"
 #include "nvim/ex_eval.h"
 #include "nvim/fileio.h"
 #include "nvim/fold.h"
-#include "nvim/func_attr.h"
 #include "nvim/garray.h"
 #include "nvim/getchar.h"
-#include "nvim/hashtab.h"
+#include "nvim/gettext.h"
+#include "nvim/globals.h"
+#include "nvim/highlight_defs.h"
 #include "nvim/iconv.h"
 #include "nvim/input.h"
+#include "nvim/log.h"
+#include "nvim/macros.h"
 #include "nvim/mbyte.h"
 #include "nvim/memfile.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
 #include "nvim/move.h"
-#include "nvim/normal.h"
 #include "nvim/option.h"
 #include "nvim/optionstr.h"
+#include "nvim/os/fs_defs.h"
 #include "nvim/os/input.h"
 #include "nvim/os/os.h"
-#include "nvim/os/os_defs.h"
 #include "nvim/os/time.h"
 #include "nvim/os_unix.h"
 #include "nvim/path.h"
-#include "nvim/quickfix.h"
+#include "nvim/pos.h"
 #include "nvim/regexp.h"
-#include "nvim/search.h"
+#include "nvim/screen.h"
 #include "nvim/sha256.h"
 #include "nvim/shada.h"
-#include "nvim/state.h"
 #include "nvim/strings.h"
 #include "nvim/types.h"
 #include "nvim/ui.h"
-#include "nvim/ui_compositor.h"
 #include "nvim/undo.h"
 #include "nvim/vim.h"
-#include "nvim/window.h"
+
+#ifdef OPEN_CHR_FILES
+# include "nvim/charset.h"
+#endif
 
 #define BUFSIZE         8192    // size of normal write buffer
 #define SMBUFSIZE       256     // size of emergency write buffer
@@ -72,15 +78,17 @@
 #endif
 
 #define HAS_BW_FLAGS
-#define FIO_LATIN1     0x01    // convert Latin1
-#define FIO_UTF8       0x02    // convert UTF-8
-#define FIO_UCS2       0x04    // convert UCS-2
-#define FIO_UCS4       0x08    // convert UCS-4
-#define FIO_UTF16      0x10    // convert UTF-16
-#define FIO_ENDIAN_L   0x80    // little endian
-#define FIO_NOCONVERT  0x2000  // skip encoding conversion
-#define FIO_UCSBOM     0x4000  // check for BOM at start of file
-#define FIO_ALL        (-1)    // allow all formats
+enum {
+  FIO_LATIN1 = 0x01,       // convert Latin1
+  FIO_UTF8 = 0x02,         // convert UTF-8
+  FIO_UCS2 = 0x04,         // convert UCS-2
+  FIO_UCS4 = 0x08,         // convert UCS-4
+  FIO_UTF16 = 0x10,        // convert UTF-16
+  FIO_ENDIAN_L = 0x80,     // little endian
+  FIO_NOCONVERT = 0x2000,  // skip encoding conversion
+  FIO_UCSBOM = 0x4000,     // check for BOM at start of file
+  FIO_ALL = -1,            // allow all formats
+};
 
 // When converting, a read() or write() may leave some bytes to be converted
 // for the next call.  The value is guessed...
@@ -498,18 +506,17 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
         return FAIL;
       }
       return OK;                  // a new file is not an error
-    } else {
-      filemess(curbuf, sfname, ((fd == UV_EFBIG) ? _("[File too big]") :
-#if defined(UNIX) && defined(EOVERFLOW)
-                                // libuv only returns -errno
-                                // in Unix and in Windows
-                                // open() does not set
-                                // EOVERFLOW
-                                (fd == -EOVERFLOW) ? _("[File too big]") :
-#endif
-                                _("[Permission Denied]")), 0);
-      curbuf->b_p_ro = true;                  // must use "w!" now
     }
+    filemess(curbuf, sfname, ((fd == UV_EFBIG) ? _("[File too big]") :
+#if defined(UNIX) && defined(EOVERFLOW)
+                              // libuv only returns -errno
+                              // in Unix and in Windows
+                              // open() does not set
+                              // EOVERFLOW
+                              (fd == -EOVERFLOW) ? _("[File too big]") :
+#endif
+                              _("[Permission Denied]")), 0);
+    curbuf->b_p_ro = true;                  // must use "w!" now
 
     return FAIL;
   }
@@ -2204,8 +2211,7 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
     return FAIL;
   }
 
-  // Disallow writing from .exrc and .vimrc in current directory for
-  // security reasons.
+  // Disallow writing in secure mode.
   if (check_secure()) {
     return FAIL;
   }
@@ -4945,7 +4951,7 @@ int buf_check_timestamp(buf_T *buf)
         }
         msg_clr_eos();
         (void)msg_end();
-        if (emsg_silent == 0) {
+        if (emsg_silent == 0 && !in_assert_fails) {
           ui_flush();
           // give the user some time to think about it
           os_delay(1004L, true);
@@ -5232,10 +5238,9 @@ static void vim_mktempdir(void)
     if (vim_settempdir(path)) {
       // Successfully created and set temporary directory so stop trying.
       break;
-    } else {
-      // Couldn't set `vim_tempdir` to `path` so remove created directory.
-      os_rmdir(path);
     }
+    // Couldn't set `vim_tempdir` to `path` so remove created directory.
+    os_rmdir(path);
   }
   (void)umask(umask_save);
 }

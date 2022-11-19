@@ -159,6 +159,19 @@ func Test_spell_file_missing()
   %bwipe!
 endfunc
 
+func Test_spell_file_missing_bwipe()
+  " this was using a window that was wiped out in a SpellFileMissing autocmd
+  set spelllang=xy
+  au SpellFileMissing * n0
+  set spell
+  au SpellFileMissing * bw
+  snext somefile
+
+  au! SpellFileMissing
+  bwipe!
+  set nospell spelllang=en
+endfunc
+
 func Test_spelldump()
   " In case the spell file is not found avoid getting the download dialog, we
   " would get stuck at the prompt.
@@ -328,6 +341,11 @@ func Test_spellsuggest()
   call assert_equal(['third', 'THIRD'], spellsuggest('tHIrd', 2))
   call assert_equal(['Third'], spellsuggest('THird', 1))
   call assert_equal(['All'],      spellsuggest('ALl', 1))
+
+  " Special suggestion for repeated 'the the'.
+  call assert_inrange(0, 2, index(spellsuggest('the the',   3), 'the'))
+  call assert_inrange(0, 2, index(spellsuggest('the   the', 3), 'the'))
+  call assert_inrange(0, 2, index(spellsuggest('The the',   3), 'The'))
 
   call assert_fails("call spellsuggest('maxch', [])", 'E745:')
   call assert_fails("call spellsuggest('maxch', 2, [])", 'E745:')

@@ -289,6 +289,16 @@ func Test_dict_func()
   call assert_equal('xxx3', Fn('xxx'))
 endfunc
 
+func Test_dict_assign()
+  let d = {}
+  let d.1 = 1
+  let d._ = 2
+  call assert_equal({'1': 1, '_': 2}, d)
+
+  let n = 0
+  call assert_fails('let n.key = 3', 'E1203: Dot can only be used on a dictionary: n.key = 3')
+endfunc
+
 " Function in script-local List or Dict
 func Test_script_local_dict_func()
   let g:dict = {}
@@ -744,6 +754,7 @@ func Test_str_split()
   call assert_equal(['', 'a', '', 'b', '', 'c', ''], split('abc', '\zs', 1))
   call assert_fails("call split('abc', [])", 'E730:')
   call assert_fails("call split('abc', 'b', [])", 'E745:')
+  call assert_equal(['abc'], split('abc', '\\%('))
 endfunc
 
 " compare recursively linked list and dict

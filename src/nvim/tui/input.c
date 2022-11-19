@@ -1,20 +1,32 @@
 // This is an open source non-commercial project. Dear PVS-Studio, please check
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/api/vim.h"
 #include "nvim/ascii.h"
 #include "nvim/autocmd.h"
 #include "nvim/charset.h"
-#include "nvim/ex_docmd.h"
+#include "nvim/event/defs.h"
+#include "nvim/event/multiqueue.h"
+#include "nvim/globals.h"
+#include "nvim/log.h"
 #include "nvim/macros.h"
 #include "nvim/main.h"
+#include "nvim/map.h"
+#include "nvim/memory.h"
+#include "nvim/message.h"
 #include "nvim/option.h"
 #include "nvim/os/input.h"
 #include "nvim/os/os.h"
 #include "nvim/tui/input.h"
+#include "nvim/tui/input_defs.h"
 #include "nvim/tui/tui.h"
-#include "nvim/vim.h"
 #ifdef MSWIN
 # include "nvim/os/os_win_console.h"
 #endif
@@ -324,15 +336,14 @@ static void forward_simple_utf8(TermInput *input, TermKeyKey *key)
       && map_has(KittyKey, cstr_t)(&kitty_key_map, (KittyKey)key->code.codepoint)) {
     handle_kitty_key_protocol(input, key);
     return;
-  } else {
-    while (*ptr) {
-      if (*ptr == '<') {
-        len += (size_t)snprintf(buf + len, sizeof(buf) - len, "<lt>");
-      } else {
-        buf[len++] = *ptr;
-      }
-      ptr++;
+  }
+  while (*ptr) {
+    if (*ptr == '<') {
+      len += (size_t)snprintf(buf + len, sizeof(buf) - len, "<lt>");
+    } else {
+      buf[len++] = *ptr;
     }
+    ptr++;
   }
 
   tinput_enqueue(input, buf, len);
@@ -355,21 +366,20 @@ static void forward_modified_utf8(TermInput *input, TermKeyKey *key)
                                      (KittyKey)key->code.codepoint)) {
       handle_kitty_key_protocol(input, key);
       return;
-    } else {
-      // Termkey doesn't include the S- modifier for ASCII characters (e.g.,
-      // ctrl-shift-l is <C-L> instead of <C-S-L>.  Vim, on the other hand,
-      // treats <C-L> and <C-l> the same, requiring the S- modifier.
-      len = termkey_strfkey(input->tk, buf, sizeof(buf), key, TERMKEY_FORMAT_VIM);
-      if ((key->modifiers & TERMKEY_KEYMOD_CTRL)
-          && !(key->modifiers & TERMKEY_KEYMOD_SHIFT)
-          && ASCII_ISUPPER(key->code.codepoint)) {
-        assert(len <= 62);
-        // Make room for the S-
-        memmove(buf + 3, buf + 1, len - 1);
-        buf[1] = 'S';
-        buf[2] = '-';
-        len += 2;
-      }
+    }
+    // Termkey doesn't include the S- modifier for ASCII characters (e.g.,
+    // ctrl-shift-l is <C-L> instead of <C-S-L>.  Vim, on the other hand,
+    // treats <C-L> and <C-l> the same, requiring the S- modifier.
+    len = termkey_strfkey(input->tk, buf, sizeof(buf), key, TERMKEY_FORMAT_VIM);
+    if ((key->modifiers & TERMKEY_KEYMOD_CTRL)
+        && !(key->modifiers & TERMKEY_KEYMOD_SHIFT)
+        && ASCII_ISUPPER(key->code.codepoint)) {
+      assert(len <= 62);
+      // Make room for the S-
+      memmove(buf + 3, buf + 1, len - 1);
+      buf[1] = 'S';
+      buf[2] = '-';
+      len += 2;
     }
   }
 

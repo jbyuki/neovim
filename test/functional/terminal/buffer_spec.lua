@@ -15,6 +15,8 @@ local matches = helpers.matches
 local exec_lua = helpers.exec_lua
 local sleep = helpers.sleep
 local funcs = helpers.funcs
+local iswin = helpers.iswin
+local skip = helpers.skip
 
 describe(':terminal buffer', function()
   local screen
@@ -262,7 +264,7 @@ describe(':terminal buffer', function()
   end)
 
   it('it works with set rightleft #11438', function()
-    if helpers.pending_win32(pending) then return end
+    skip(iswin())
     local columns = eval('&columns')
     feed(string.rep('a', columns))
     command('set rightleft')
@@ -409,6 +411,14 @@ describe('on_lines does not emit out-of-bounds line indexes when', function()
     feed_command('lua _G.register_callback(0)')
     feed_command('bdelete!')
     eq('', exec_lua([[return _G.cb_error]]))
+  end)
+
+  it('runs TextChangedT event', function()
+    meths.set_var('called', 0)
+    command('autocmd TextChangedT * ++once let g:called = 1')
+    feed_command('terminal')
+    feed('iaa')
+    eq(1, meths.get_var('called'))
   end)
 end)
 

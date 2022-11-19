@@ -1,20 +1,29 @@
 // This is an open source non-commercial project. Dear PVS-Studio, please check
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
+#include <string.h>
 
+#include "klib/kvec.h"
+#include "lauxlib.h"
 #include "nvim/api/extmark.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/charset.h"
+#include "nvim/decoration.h"
 #include "nvim/decoration_provider.h"
 #include "nvim/drawscreen.h"
 #include "nvim/extmark.h"
 #include "nvim/highlight_group.h"
-#include "nvim/lua/executor.h"
+#include "nvim/mbyte.h"
 #include "nvim/memline.h"
+#include "nvim/memory.h"
+#include "nvim/pos.h"
+#include "nvim/strings.h"
+#include "nvim/vim.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "api/extmark.c.generated.h"
@@ -721,8 +730,12 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
   bool ephemeral = false;
   OPTION_TO_BOOL(ephemeral, ephemeral, false);
 
-  OPTION_TO_BOOL(decor.spell, spell, false);
-  if (decor.spell) {
+  if (opts->spell.type == kObjectTypeNil) {
+    decor.spell = kNone;
+  } else {
+    bool spell = false;
+    OPTION_TO_BOOL(spell, spell, false);
+    decor.spell = spell ? kTrue : kFalse;
     has_decor = true;
   }
 
@@ -833,9 +846,8 @@ uint32_t src2ns(Integer *src_id)
   }
   if (*src_id < 0) {
     return (((uint32_t)1) << 31) - 1;
-  } else {
-    return (uint32_t)(*src_id);
   }
+  return (uint32_t)(*src_id);
 }
 
 /// Adds a highlight to buffer.

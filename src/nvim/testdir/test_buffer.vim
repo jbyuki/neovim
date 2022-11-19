@@ -67,15 +67,6 @@ func Test_bunload_with_offset()
   call assert_fails('1,4bunload', 'E16:')
   call assert_fails(',100bunload', 'E16:')
 
-  " Use a try-catch for this test. When assert_fails() is used for this
-  " test, the command fails with E515: instead of E90:
-  let caught_E90 = 0
-  try
-    $bunload
-  catch /E90:/
-    let caught_E90 = 1
-  endtry
-  call assert_equal(1, caught_E90)
   call assert_fails('$bunload', 'E90:')
 endfunc
 
@@ -147,6 +138,7 @@ func Test_bdelete_cmd()
   %bwipe!
   call assert_fails('bdelete 5', 'E516:')
   call assert_fails('1,1bdelete 1 2', 'E488:')
+  call assert_fails('bdelete \)', 'E55:')
 
   " Deleting a unlisted and unloaded buffer
   edit Xfile1
@@ -401,12 +393,12 @@ func Test_buffer_scheme()
   set noshellslash
   %bwipe!
   let bufnames = [
-    \ #{id: 'b0', name: 'test://xyz/foo/b0'    , match: 1},
-    \ #{id: 'b1', name: 'test+abc://xyz/foo/b1', match: 0},
-    \ #{id: 'b2', name: 'test_abc://xyz/foo/b2', match: 0},
-    \ #{id: 'b3', name: 'test-abc://xyz/foo/b3', match: 1},
-    \ #{id: 'b4', name: '-test://xyz/foo/b4'   , match: 0},
-    \ #{id: 'b5', name: 'test-://xyz/foo/b5'   , match: 0},
+    \ #{id: 'ssb0', name: 'test://xyz/foo/ssb0'    , match: 1},
+    \ #{id: 'ssb1', name: 'test+abc://xyz/foo/ssb1', match: 0},
+    \ #{id: 'ssb2', name: 'test_abc://xyz/foo/ssb2', match: 0},
+    \ #{id: 'ssb3', name: 'test-abc://xyz/foo/ssb3', match: 1},
+    \ #{id: 'ssb4', name: '-test://xyz/foo/ssb4'   , match: 0},
+    \ #{id: 'ssb5', name: 'test-://xyz/foo/ssb5'   , match: 0},
     \]
   for buf in bufnames
     new `=buf.name`
@@ -431,6 +423,26 @@ func Test_buf_pattern_invalid()
   vsplit 00000000000000000000000000
   silent! buf [0--]\&\zs*\zs*e
   bwipe!
+endfunc
+
+" Test for the 'maxmem' and 'maxmemtot' options
+func Test_buffer_maxmem()
+  " use 1KB per buffer and 2KB for all the buffers
+  " set maxmem=1 maxmemtot=2
+  new
+  let v:errmsg = ''
+  " try opening some files
+  edit test_arglist.vim
+  call assert_equal('test_arglist.vim', bufname())
+  edit test_eval_stuff.vim
+  call assert_equal('test_eval_stuff.vim', bufname())
+  b test_arglist.vim
+  call assert_equal('test_arglist.vim', bufname())
+  b test_eval_stuff.vim
+  call assert_equal('test_eval_stuff.vim', bufname())
+  close
+  call assert_equal('', v:errmsg)
+  " set maxmem& maxmemtot&
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

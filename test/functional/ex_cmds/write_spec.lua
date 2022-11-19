@@ -10,6 +10,7 @@ local funcs = helpers.funcs
 local meths = helpers.meths
 local iswin = helpers.iswin
 local isCI = helpers.isCI
+local skip = helpers.skip
 
 local fname = 'Xtest-functional-ex_cmds-write'
 local fname_bak = fname .. '~'
@@ -20,6 +21,9 @@ describe(':write', function()
     os.remove('test_bkc_file.txt')
     os.remove('test_bkc_link.txt')
     os.remove('test_fifo')
+    os.remove('test/write/p_opt.txt')
+    os.remove('test/write')
+    os.remove('test')
     os.remove(fname)
     os.remove(fname_bak)
     os.remove(fname_broken)
@@ -53,9 +57,7 @@ describe(':write', function()
   end)
 
   it('&backupcopy=no replaces symlink with new file', function()
-    if isCI('cirrus') then
-      pending('FIXME: cirrus')
-    end
+    skip(isCI('cirrus'))
     command('set backupcopy=no')
     write_file('test_bkc_file.txt', 'content0')
     if iswin() then
@@ -94,10 +96,32 @@ describe(':write', function()
     fifo:close()
   end)
 
-  it('errors out correctly', function()
-    if isCI('cirrus') then
-      pending('FIXME: cirrus')
+  it("++p creates missing parent directories", function()
+    eq(0, eval("filereadable('p_opt.txt')"))
+    command("write ++p p_opt.txt")
+    eq(1, eval("filereadable('p_opt.txt')"))
+    os.remove("p_opt.txt")
+
+    eq(0, eval("filereadable('p_opt.txt')"))
+    command("write ++p ./p_opt.txt")
+    eq(1, eval("filereadable('p_opt.txt')"))
+    os.remove("p_opt.txt")
+
+    eq(0, eval("filereadable('test/write/p_opt.txt')"))
+    command("write ++p test/write/p_opt.txt")
+    eq(1, eval("filereadable('test/write/p_opt.txt')"))
+
+    eq(('Vim(write):E32: No file name'), pcall_err(command, 'write ++p test_write/'))
+    if not iswin() then
+      eq(('Vim(write):E17: "'..funcs.fnamemodify('.', ':p:h')..'" is a directory'),
+        pcall_err(command, 'write ++p .'))
+      eq(('Vim(write):E17: "'..funcs.fnamemodify('.', ':p:h')..'" is a directory'),
+        pcall_err(command, 'write ++p ./'))
     end
+  end)
+
+  it('errors out correctly', function()
+    skip(isCI('cirrus'))
     command('let $HOME=""')
     eq(funcs.fnamemodify('.', ':p:h'), funcs.fnamemodify('.', ':p:h:~'))
     -- Message from check_overwrite
@@ -128,8 +152,7 @@ describe(':write', function()
       eq(true, os.remove(fname_bak))
     end
     write_file(fname_bak, 'TTYX')
-    -- FIXME: exc_exec('write!') outputs 0 in Windows
-    if iswin() then return end
+    skip(iswin(), [[FIXME: exc_exec('write!') outputs 0 in Windows]])
     lfs.link(fname_bak .. ('/xxxxx'):rep(20), fname, true)
     eq('Vim(write):E166: Can\'t open linked file for writing',
        pcall_err(command, 'write!'))

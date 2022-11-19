@@ -1,32 +1,46 @@
 // This is an open source non-commercial project. Dear PVS-Studio, please check
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
+#include <assert.h>
 #include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "nvim/ascii.h"
 #include "nvim/buffer.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/charset.h"
 #include "nvim/cursor.h"
-#include "nvim/diff.h"
 #include "nvim/drawscreen.h"
 #include "nvim/eval.h"
+#include "nvim/eval/typval.h"
+#include "nvim/eval/typval_defs.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/fold.h"
 #include "nvim/getchar.h"
+#include "nvim/globals.h"
 #include "nvim/grid.h"
+#include "nvim/keycodes.h"
+#include "nvim/macros.h"
+#include "nvim/mark.h"
+#include "nvim/mbyte.h"
 #include "nvim/memline.h"
 #include "nvim/menu.h"
+#include "nvim/message.h"
 #include "nvim/mouse.h"
 #include "nvim/move.h"
+#include "nvim/normal.h"
 #include "nvim/ops.h"
 #include "nvim/option.h"
-#include "nvim/os_unix.h"
 #include "nvim/plines.h"
+#include "nvim/pos.h"
+#include "nvim/screen.h"
 #include "nvim/search.h"
 #include "nvim/state.h"
+#include "nvim/statusline.h"
 #include "nvim/strings.h"
 #include "nvim/syntax.h"
+#include "nvim/types.h"
 #include "nvim/ui.h"
 #include "nvim/ui_compositor.h"
 #include "nvim/vim.h"
@@ -1179,17 +1193,15 @@ retnomove:
       // Don't use start_arrow() if we're in the same window
       if (curwin == old_curwin) {
         return IN_STATUS_LINE;
-      } else {
-        return IN_STATUS_LINE | CURSOR_MOVED;
       }
+      return IN_STATUS_LINE | CURSOR_MOVED;
     }
     if (sep_line_offset) {                          // In (or below) status line
       // Don't use start_arrow() if we're in the same window
       if (curwin == old_curwin) {
         return IN_SEP_LINE;
-      } else {
-        return IN_SEP_LINE | CURSOR_MOVED;
       }
+      return IN_SEP_LINE | CURSOR_MOVED;
     }
 
     curwin->w_cursor.lnum = curwin->w_topline;

@@ -36,6 +36,7 @@ for k, v in pairs({
   ui = true,
   health = true,
   fs = true,
+  secure = true,
 }) do
   vim._submodules[k] = v
 end
@@ -167,7 +168,8 @@ do
         local line1 = lines[1]:gsub('(%c)', '\022%1')
         -- nvim_input() is affected by mappings,
         -- so use nvim_feedkeys() with "n" flag to ignore mappings.
-        vim.api.nvim_feedkeys(line1, 'n', true)
+        -- "t" flag is also needed so the pasted text is saved in cmdline history.
+        vim.api.nvim_feedkeys(line1, 'nt', true)
       end
       return true
     end

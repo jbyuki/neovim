@@ -4,58 +4,57 @@
 // ex_docmd.c: functions for executing an Ex command line.
 
 #include <assert.h>
+#include <ctype.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "auto/config.h"
 #include "nvim/arglist.h"
 #include "nvim/ascii.h"
+#include "nvim/autocmd.h"
 #include "nvim/buffer.h"
 #include "nvim/change.h"
 #include "nvim/charset.h"
 #include "nvim/cmdexpand.h"
-#include "nvim/cmdhist.h"
 #include "nvim/cursor.h"
 #include "nvim/debugger.h"
-#include "nvim/diff.h"
 #include "nvim/digraph.h"
 #include "nvim/drawscreen.h"
 #include "nvim/edit.h"
 #include "nvim/eval.h"
+#include "nvim/eval/typval.h"
+#include "nvim/eval/typval_defs.h"
 #include "nvim/eval/userfunc.h"
-#include "nvim/eval/vars.h"
-#include "nvim/event/rstream.h"
-#include "nvim/event/wstream.h"
+#include "nvim/event/loop.h"
 #include "nvim/ex_cmds.h"
 #include "nvim/ex_cmds2.h"
 #include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/ex_eval.h"
 #include "nvim/ex_getln.h"
-#include "nvim/ex_session.h"
 #include "nvim/file_search.h"
 #include "nvim/fileio.h"
 #include "nvim/fold.h"
-#include "nvim/func_attr.h"
 #include "nvim/garray.h"
 #include "nvim/getchar.h"
+#include "nvim/gettext.h"
 #include "nvim/globals.h"
-#include "nvim/hardcopy.h"
-#include "nvim/help.h"
+#include "nvim/highlight_defs.h"
 #include "nvim/highlight_group.h"
 #include "nvim/input.h"
 #include "nvim/keycodes.h"
-#include "nvim/locale.h"
-#include "nvim/lua/executor.h"
+#include "nvim/macros.h"
 #include "nvim/main.h"
-#include "nvim/mapping.h"
 #include "nvim/mark.h"
-#include "nvim/match.h"
 #include "nvim/mbyte.h"
+#include "nvim/memfile_defs.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
-#include "nvim/menu.h"
 #include "nvim/message.h"
 #include "nvim/mouse.h"
 #include "nvim/move.h"
@@ -65,28 +64,25 @@
 #include "nvim/optionstr.h"
 #include "nvim/os/input.h"
 #include "nvim/os/os.h"
-#include "nvim/os/time.h"
-#include "nvim/os_unix.h"
+#include "nvim/os/shell.h"
 #include "nvim/path.h"
 #include "nvim/popupmenu.h"
+#include "nvim/pos.h"
 #include "nvim/profile.h"
 #include "nvim/quickfix.h"
 #include "nvim/regexp.h"
+#include "nvim/runtime.h"
+#include "nvim/screen.h"
 #include "nvim/search.h"
 #include "nvim/shada.h"
-#include "nvim/sign.h"
-#include "nvim/spell.h"
-#include "nvim/spellfile.h"
 #include "nvim/state.h"
+#include "nvim/statusline.h"
 #include "nvim/strings.h"
-#include "nvim/syntax.h"
 #include "nvim/tag.h"
-#include "nvim/terminal.h"
+#include "nvim/types.h"
 #include "nvim/ui.h"
 #include "nvim/undo.h"
-#include "nvim/undo_defs.h"
 #include "nvim/usercmd.h"
-#include "nvim/version.h"
 #include "nvim/vim.h"
 #include "nvim/window.h"
 
@@ -1638,6 +1634,7 @@ int execute_cmd(exarg_T *eap, CmdParseInfo *cmdinfo, bool preview)
   char *errormsg = NULL;
   int retv = 0;
 
+#undef ERROR
 #define ERROR(msg) \
   do { \
     errormsg = msg; \
@@ -3481,9 +3478,10 @@ static linenr_T get_address(exarg_T *eap, char **ptr, cmd_addr_T addr_type, int 
       } else {
         i = (char_u)(*cmd++);
       }
-      if (!ascii_isdigit(*cmd)) {       // '+' is '+1', but '+0' is not '+1'
+      if (!ascii_isdigit(*cmd)) {       // '+' is '+1'
         n = 1;
       } else {
+        // "number", "+number" or "-number"
         n = getdigits_int32(&cmd, false, MAXLNUM);
         if (n == MAXLNUM) {
           emsg(_(e_line_number_out_of_range));
@@ -3498,8 +3496,8 @@ static linenr_T get_address(exarg_T *eap, char **ptr, cmd_addr_T addr_type, int 
       } else if (addr_type == ADDR_LOADED_BUFFERS || addr_type == ADDR_BUFFERS) {
         lnum = compute_buffer_local_count(addr_type, lnum, (i == '-') ? -1 * n : n);
       } else {
-        // Relative line addressing, need to adjust for folded lines
-        // now, but only do it after the first address.
+        // Relative line addressing: need to adjust for lines in a
+        // closed fold after the first address.
         if (addr_type == ADDR_LINES && (i == '-' || i == '+')
             && address_count >= 2) {
           (void)hasFolding(lnum, NULL, &lnum);
@@ -4074,6 +4072,13 @@ static int getargopt(exarg_T *eap)
     return OK;
   }
 
+  // ":write ++p foo/bar/file
+  if (strncmp(arg, "p", 1) == 0) {
+    eap->mkdir_p = true;
+    eap->arg = skipwhite(arg + 1);
+    return OK;
+  }
+
   if (STRNCMP(arg, "ff", 2) == 0) {
     arg += 2;
     pp = &eap->force_ff;
@@ -4218,13 +4223,12 @@ theend:
 
 static void ex_autocmd(exarg_T *eap)
 {
-  // Disallow autocommands from .exrc and .vimrc in current
-  // directory for security reasons.
+  // Disallow autocommands in secure mode.
   if (secure) {
     secure = 2;
     eap->errmsg = _(e_curdir);
   } else if (eap->cmdidx == CMD_autocmd) {
-    do_autocmd(eap->arg, eap->forceit);
+    do_autocmd(eap, eap->arg, eap->forceit);
   } else {
     do_augroup(eap->arg, eap->forceit);
   }
@@ -4357,9 +4361,8 @@ char *check_nextcmd(char *p)
 
   if (*s == '|' || *s == '\n') {
     return s + 1;
-  } else {
-    return NULL;
   }
+  return NULL;
 }
 
 /// - if there are more files to edit
@@ -4758,9 +4761,8 @@ static void ex_only(exarg_T *eap)
     for (wp = firstwin; --wnr > 0;) {
       if (wp->w_next == NULL) {
         break;
-      } else {
-        wp = wp->w_next;
       }
+      wp = wp->w_next;
     }
   } else {
     wp = curwin;

@@ -6,27 +6,35 @@
 /// Popup menu (PUM)
 
 #include <assert.h>
-#include <inttypes.h>
+#include <limits.h>
 #include <stdbool.h>
+#include <string.h>
 
+#include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/ascii.h"
 #include "nvim/buffer.h"
 #include "nvim/charset.h"
 #include "nvim/drawscreen.h"
-#include "nvim/edit.h"
 #include "nvim/eval/typval.h"
+#include "nvim/eval/typval_defs.h"
 #include "nvim/ex_cmds.h"
+#include "nvim/getchar.h"
+#include "nvim/globals.h"
 #include "nvim/grid.h"
 #include "nvim/highlight.h"
 #include "nvim/insexpand.h"
+#include "nvim/keycodes.h"
+#include "nvim/mbyte.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
 #include "nvim/menu.h"
+#include "nvim/message.h"
 #include "nvim/move.h"
 #include "nvim/option.h"
 #include "nvim/popupmenu.h"
-#include "nvim/search.h"
+#include "nvim/pos.h"
+#include "nvim/screen.h"
 #include "nvim/strings.h"
 #include "nvim/ui.h"
 #include "nvim/ui_compositor.h"
@@ -762,12 +770,11 @@ static bool pum_set_selected(int n, int repeat)
             if (e == NULL) {
               ml_append(lnum++, (char *)p, 0, false);
               break;
-            } else {
-              *e = NUL;
-              ml_append(lnum++, (char *)p, (int)(e - p + 1), false);
-              *e = '\n';
-              p = e + 1;
             }
+            *e = NUL;
+            ml_append(lnum++, (char *)p, (int)(e - p + 1), false);
+            *e = '\n';
+            p = e + 1;
           }
 
           // Increase the height of the preview window to show the
@@ -1044,10 +1051,16 @@ void pum_show_popupmenu(vimmenu_T *menu)
   pumitem_T *array = (pumitem_T *)xcalloc((size_t)pum_size, sizeof(pumitem_T));
 
   for (vimmenu_T *mp = menu->children; mp != NULL; mp = mp->next) {
+    char *s = NULL;
+    // Make a copy of the text, the menu may be redefined in a callback.
     if (menu_is_separator(mp->dname)) {
-      array[idx++].pum_text = (char_u *)"";
+      s = "";
     } else if (mp->modes & mp->enabled & mode) {
-      array[idx++].pum_text = (char_u *)mp->dname;
+      s = mp->dname;
+    }
+    if (s != NULL) {
+      s = xstrdup(s);
+      array[idx++].pum_text = (char_u *)s;
     }
   }
 
@@ -1118,6 +1131,9 @@ void pum_show_popupmenu(vimmenu_T *menu)
     }
   }
 
+  for (idx = 0; idx < pum_size; idx++) {
+    xfree(array[idx].pum_text);
+  }
   xfree(array);
   pum_undisplay(true);
   if (!p_mousemev) {

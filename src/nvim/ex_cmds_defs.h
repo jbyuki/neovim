@@ -6,7 +6,7 @@
 
 #include "nvim/eval/typval.h"
 #include "nvim/normal.h"
-#include "nvim/pos.h"      // for linenr_T
+#include "nvim/pos.h"
 #include "nvim/regexp_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -202,6 +202,7 @@ struct exarg {
   int regname;                  ///< register name (NUL if none)
   int force_bin;                ///< 0, FORCE_BIN or FORCE_NOBIN
   int read_edit;                ///< ++edit argument
+  int mkdir_p;                  ///< ++p argument
   int force_ff;                 ///< ++ff= argument (first char of argument)
   int force_enc;                ///< ++enc= argument (index in cmd[])
   int bad_char;                 ///< BAD_KEEP, BAD_DROP or replacement byte

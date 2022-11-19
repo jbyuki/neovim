@@ -4,11 +4,14 @@
 // edit.c: functions for Insert mode
 
 #include <assert.h>
+#include <ctype.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <string.h>
+#include <sys/types.h>
 
 #include "nvim/ascii.h"
+#include "nvim/autocmd.h"
 #include "nvim/buffer.h"
 #include "nvim/change.h"
 #include "nvim/charset.h"
@@ -17,20 +20,23 @@
 #include "nvim/drawscreen.h"
 #include "nvim/edit.h"
 #include "nvim/eval.h"
-#include "nvim/event/loop.h"
+#include "nvim/eval/typval_defs.h"
+#include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_docmd.h"
-#include "nvim/ex_getln.h"
 #include "nvim/extmark.h"
 #include "nvim/fileio.h"
 #include "nvim/fold.h"
 #include "nvim/getchar.h"
+#include "nvim/gettext.h"
+#include "nvim/globals.h"
 #include "nvim/grid.h"
+#include "nvim/highlight_defs.h"
 #include "nvim/highlight_group.h"
 #include "nvim/indent.h"
 #include "nvim/indent_c.h"
 #include "nvim/insexpand.h"
 #include "nvim/keycodes.h"
-#include "nvim/main.h"
+#include "nvim/macros.h"
 #include "nvim/mapping.h"
 #include "nvim/mark.h"
 #include "nvim/mbyte.h"
@@ -43,19 +49,18 @@
 #include "nvim/ops.h"
 #include "nvim/option.h"
 #include "nvim/os/input.h"
-#include "nvim/os/time.h"
-#include "nvim/path.h"
 #include "nvim/plines.h"
 #include "nvim/popupmenu.h"
-#include "nvim/quickfix.h"
+#include "nvim/pos.h"
+#include "nvim/screen.h"
 #include "nvim/search.h"
-#include "nvim/spell.h"
 #include "nvim/state.h"
 #include "nvim/strings.h"
 #include "nvim/syntax.h"
 #include "nvim/terminal.h"
 #include "nvim/textformat.h"
 #include "nvim/textobject.h"
+#include "nvim/types.h"
 #include "nvim/ui.h"
 #include "nvim/undo.h"
 #include "nvim/vim.h"
@@ -89,10 +94,12 @@ typedef struct insert_state {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "edit.c.generated.h"
 #endif
-#define BACKSPACE_CHAR              1
-#define BACKSPACE_WORD              2
-#define BACKSPACE_WORD_NOT_SPACE    3
-#define BACKSPACE_LINE              4
+enum {
+  BACKSPACE_CHAR = 1,
+  BACKSPACE_WORD = 2,
+  BACKSPACE_WORD_NOT_SPACE = 3,
+  BACKSPACE_LINE = 4,
+};
 
 /// Set when doing something for completion that may call edit() recursively,
 /// which is not allowed.
@@ -1229,9 +1236,8 @@ bool edit(int cmdchar, bool startln, long count)
       restart_edit = 'i';
       force_restart_edit = true;
       return false;
-    } else {
-      return terminal_enter();
     }
+    return terminal_enter();
   }
 
   // Don't allow inserting in the sandbox.

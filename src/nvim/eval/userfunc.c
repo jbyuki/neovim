@@ -3,28 +3,48 @@
 
 // User defined function support
 
+#include <assert.h>
+#include <ctype.h>
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "lauxlib.h"
 #include "nvim/ascii.h"
+#include "nvim/autocmd.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/charset.h"
 #include "nvim/debugger.h"
-#include "nvim/edit.h"
 #include "nvim/eval.h"
 #include "nvim/eval/encode.h"
 #include "nvim/eval/funcs.h"
+#include "nvim/eval/typval.h"
 #include "nvim/eval/userfunc.h"
 #include "nvim/eval/vars.h"
+#include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/ex_eval.h"
 #include "nvim/ex_getln.h"
-#include "nvim/fileio.h"
 #include "nvim/getchar.h"
+#include "nvim/gettext.h"
 #include "nvim/globals.h"
 #include "nvim/insexpand.h"
+#include "nvim/keycodes.h"
 #include "nvim/lua/executor.h"
+#include "nvim/macros.h"
+#include "nvim/mbyte.h"
+#include "nvim/memline_defs.h"
+#include "nvim/memory.h"
+#include "nvim/message.h"
+#include "nvim/option_defs.h"
 #include "nvim/os/input.h"
+#include "nvim/path.h"
 #include "nvim/profile.h"
 #include "nvim/regexp.h"
 #include "nvim/runtime.h"
 #include "nvim/search.h"
+#include "nvim/strings.h"
 #include "nvim/ui.h"
 #include "nvim/vim.h"
 
@@ -277,6 +297,7 @@ int get_lambda_tv(char **arg, typval_T *rettv, bool evaluate)
   e = (char_u *)(*arg);
   *arg = skipwhite(*arg);
   if (**arg != '}') {
+    semsg(_("E451: Expected }: %s"), *arg);
     goto errret;
   }
   (*arg)++;
@@ -589,7 +610,7 @@ static void add_nr_var(dict_T *dp, dictitem_T *v, char *name, varnumber_T nr)
   STRCPY(v->di_key, name);
 #endif
   v->di_flags = DI_FLAGS_RO | DI_FLAGS_FIX;
-  tv_dict_add(dp, v);
+  hash_add(&dp->dv_hashtab, v->di_key);
   v->di_tv.v_type = VAR_NUMBER;
   v->di_tv.v_lock = VAR_FIXED;
   v->di_tv.vval.v_number = nr;
@@ -885,7 +906,7 @@ void call_user_func(ufunc_T *fp, int argcount, typval_T *argvars, typval_T *rett
     STRCPY(name, "self");
 #endif
     v->di_flags = DI_FLAGS_RO | DI_FLAGS_FIX;
-    tv_dict_add(&fc->l_vars, v);
+    hash_add(&fc->l_vars.dv_hashtab, v->di_key);
     v->di_tv.v_type = VAR_DICT;
     v->di_tv.v_lock = VAR_UNLOCKED;
     v->di_tv.vval.v_dict = selfdict;
@@ -911,7 +932,7 @@ void call_user_func(ufunc_T *fp, int argcount, typval_T *argvars, typval_T *rett
     STRCPY(name, "000");
 #endif
     v->di_flags = DI_FLAGS_RO | DI_FLAGS_FIX;
-    tv_dict_add(&fc->l_avars, v);
+    hash_add(&fc->l_avars.dv_hashtab, v->di_key);
     v->di_tv.v_type = VAR_LIST;
     v->di_tv.v_lock = VAR_FIXED;
     v->di_tv.vval.v_list = &fc->l_varlist;
@@ -989,9 +1010,9 @@ void call_user_func(ufunc_T *fp, int argcount, typval_T *argvars, typval_T *rett
       // Named arguments can be accessed without the "a:" prefix in lambda
       // expressions. Add to the l: dict.
       tv_copy(&v->di_tv, &v->di_tv);
-      tv_dict_add(&fc->l_vars, v);
+      hash_add(&fc->l_vars.dv_hashtab, v->di_key);
     } else {
-      tv_dict_add(&fc->l_avars, v);
+      hash_add(&fc->l_avars.dv_hashtab, v->di_key);
     }
 
     if (ai >= 0 && ai < MAX_FUNC_ARGS) {
@@ -1393,6 +1414,24 @@ func_call_skip_call:
   return r;
 }
 
+/// call the 'callback' function and return the result as a number.
+/// Returns -2 when calling the function fails.  Uses argv[0] to argv[argc - 1]
+/// for the function arguments. argv[argc] should have type VAR_UNKNOWN.
+///
+/// @param argcount  number of "argvars"
+/// @param argvars   vars for arguments, must have "argcount" PLUS ONE elements!
+varnumber_T callback_call_retnr(Callback *callback, int argcount, typval_T *argvars)
+{
+  typval_T rettv;
+  if (!callback_call(callback, argcount, argvars, &rettv)) {
+    return -2;
+  }
+
+  varnumber_T retval = tv_get_number_chk(&rettv, NULL);
+  tv_clear(&rettv);
+  return retval;
+}
+
 /// Give an error message for the result of a function.
 /// Nothing if "error" is FCERR_NONE.
 static void user_func_error(int error, const char_u *name)
@@ -1611,6 +1650,11 @@ theend:
   xfree(name);
 
   return ret;
+}
+
+char_u *printable_func_name(ufunc_T *fp)
+{
+  return fp->uf_name_exp != NULL ? fp->uf_name_exp : fp->uf_name;
 }
 
 /// List the head of the function: "name(arg1, arg2)".
@@ -1886,6 +1930,27 @@ theend:
   return (char_u *)name;
 }
 
+/// Call trans_function_name(), except that a lambda is returned as-is.
+/// Returns the name in allocated memory.
+char *save_function_name(char **name, bool skip, int flags, funcdict_T *fudi)
+{
+  char *p = *name;
+  char *saved;
+
+  if (strncmp(p, "<lambda>", 8) == 0) {
+    p += 8;
+    (void)getdigits(&p, false, 0);
+    saved = xstrndup(*name, (size_t)(p - *name));
+    if (fudi != NULL) {
+      CLEAR_POINTER(fudi);
+    }
+  } else {
+    saved = (char *)trans_function_name(&p, skip, flags, fudi, NULL);
+  }
+  *name = p;
+  return saved;
+}
+
 #define MAX_FUNC_NESTING 50
 
 /// List functions.
@@ -2000,14 +2065,7 @@ void ex_function(exarg_T *eap)
   // s:func      script-local function name
   // g:func      global function name, same as "func"
   p = eap->arg;
-  if (strncmp(p, "<lambda>", 8) == 0) {
-    p += 8;
-    (void)getdigits(&p, false, 0);
-    name = xstrndup(eap->arg, (size_t)(p - eap->arg));
-    CLEAR_FIELD(fudi);
-  } else {
-    name = (char *)trans_function_name(&p, eap->skip, TFN_NO_AUTOLOAD, &fudi, NULL);
-  }
+  name = save_function_name(&p, eap->skip, TFN_NO_AUTOLOAD, &fudi);
   paren = (vim_strchr(p, '(') != NULL);
   if (name == NULL && (fudi.fd_dict == NULL || !paren) && !eap->skip) {
     // Return on an invalid expression in braces, unless the expression
@@ -2019,9 +2077,8 @@ void ex_function(exarg_T *eap)
       }
       xfree(fudi.fd_newkey);
       return;
-    } else {
-      eap->skip = true;
     }
+    eap->skip = true;
   }
 
   // An error in a function call during evaluation of an expression in magic

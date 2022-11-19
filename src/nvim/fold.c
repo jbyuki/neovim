@@ -5,10 +5,15 @@
 
 // fold.c: code for folding
 
+#include <assert.h>
 #include <inttypes.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "nvim/ascii.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/buffer_updates.h"
 #include "nvim/change.h"
 #include "nvim/charset.h"
@@ -16,14 +21,17 @@
 #include "nvim/diff.h"
 #include "nvim/drawscreen.h"
 #include "nvim/eval.h"
-#include "nvim/ex_docmd.h"
+#include "nvim/eval/typval.h"
+#include "nvim/eval/typval_defs.h"
 #include "nvim/ex_session.h"
 #include "nvim/extmark.h"
 #include "nvim/fold.h"
-#include "nvim/func_attr.h"
 #include "nvim/garray.h"
+#include "nvim/gettext.h"
+#include "nvim/globals.h"
 #include "nvim/indent.h"
 #include "nvim/mark.h"
+#include "nvim/mbyte.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
@@ -35,6 +43,7 @@
 #include "nvim/search.h"
 #include "nvim/strings.h"
 #include "nvim/syntax.h"
+#include "nvim/types.h"
 #include "nvim/undo.h"
 #include "nvim/vim.h"
 
@@ -57,9 +66,11 @@ typedef struct {
                                 // folds too
 } fold_T;
 
-#define FD_OPEN         0       // fold is open (nested ones can be closed)
-#define FD_CLOSED       1       // fold is closed
-#define FD_LEVEL        2       // depends on 'foldlevel' (nested folds too)
+enum {
+  FD_OPEN = 0,    // fold is open (nested ones can be closed)
+  FD_CLOSED = 1,  // fold is closed
+  FD_LEVEL = 2,   // depends on 'foldlevel' (nested folds too)
+};
 
 #define MAX_LEVEL       20      // maximum fold depth
 
@@ -1772,7 +1783,7 @@ char *get_foldtext(win_T *wp, linenr_T lnum, linenr_T lnume, foldinfo_T foldinfo
     }
   }
   if (text == NULL) {
-    unsigned long count = (unsigned long)(lnume - lnum + 1);
+    unsigned long count = (unsigned long)(lnume - lnum + 1);  // NOLINT(bugprone-misplaced-widening-cast)
 
     vim_snprintf(buf, FOLD_TEXT_LEN,
                  NGETTEXT("+--%3ld line folded",
@@ -3115,7 +3126,7 @@ static int put_folds_recurse(FILE *fd, garray_T *gap, linenr_T off)
       return FAIL;
     }
     if (fprintf(fd, "%" PRId64 ",%" PRId64 "fold",
-                (int64_t)(fp->fd_top + off),
+                (int64_t)fp->fd_top + off,
                 (int64_t)(fp->fd_top + off + fp->fd_len - 1)) < 0
         || put_eol(fd) == FAIL) {
       return FAIL;
@@ -3136,7 +3147,7 @@ static int put_foldopen_recurse(FILE *fd, win_T *wp, garray_T *gap, linenr_T off
     if (fp->fd_flags != FD_LEVEL) {
       if (!GA_EMPTY(&fp->fd_nested)) {
         // open nested folds while this fold is open
-        if (fprintf(fd, "%" PRId64, (int64_t)(fp->fd_top + off)) < 0
+        if (fprintf(fd, "%" PRId64, (int64_t)fp->fd_top + off) < 0
             || put_eol(fd) == FAIL
             || put_line(fd, "normal! zo") == FAIL) {
           return FAIL;

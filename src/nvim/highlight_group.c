@@ -3,29 +3,53 @@
 
 // highlight_group.c: code for managing highlight groups
 
+#include <ctype.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
+#include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
+#include "nvim/ascii.h"
 #include "nvim/autocmd.h"
+#include "nvim/buffer_defs.h"
 #include "nvim/charset.h"
 #include "nvim/cursor_shape.h"
+#include "nvim/decoration_provider.h"
 #include "nvim/drawscreen.h"
 #include "nvim/eval.h"
+#include "nvim/eval/typval_defs.h"
 #include "nvim/eval/vars.h"
+#include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_docmd.h"
-#include "nvim/fold.h"
+#include "nvim/garray.h"
+#include "nvim/gettext.h"
+#include "nvim/globals.h"
+#include "nvim/grid_defs.h"
 #include "nvim/highlight.h"
 #include "nvim/highlight_group.h"
 #include "nvim/lua/executor.h"
-#include "nvim/match.h"
+#include "nvim/macros.h"
+#include "nvim/map.h"
+#include "nvim/memory.h"
+#include "nvim/message.h"
 #include "nvim/option.h"
+#include "nvim/os/time.h"
 #include "nvim/runtime.h"
+#include "nvim/strings.h"
+#include "nvim/types.h"
+#include "nvim/ui.h"
+#include "nvim/vim.h"
 
 /// \addtogroup SG_SET
 /// @{
-#define SG_CTERM        2       // cterm has been set
-#define SG_GUI          4       // gui has been set
-#define SG_LINK         8       // link has been set
+enum {
+  SG_CTERM = 2,  // cterm has been set
+  SG_GUI = 4,    // gui has been set
+  SG_LINK = 8,   // link has been set
+};
 /// @}
 
 #define MAX_SYN_NAME 200
@@ -131,6 +155,7 @@ static const char *highlight_init_both[] = {
   "default link MsgSeparator StatusLine",
   "default link NormalFloat Pmenu",
   "default link FloatBorder WinSeparator",
+  "default link FloatTitle Title",
   "default FloatShadow blend=80 guibg=Black",
   "default FloatShadowThrough blend=100 guibg=Black",
   "RedrawDebugNormal cterm=reverse gui=reverse",
@@ -1729,9 +1754,8 @@ int syn_name2id(const char *name)
   if (name[0] == '@') {
     // if we look up @aaa.bbb, we have to consider @aaa as well
     return syn_check_group(name, strlen(name));
-  } else {
-    return syn_name2id_len(name, strlen(name));
   }
+  return syn_name2id_len(name, strlen(name));
 }
 
 /// Lookup a highlight group name and return its ID.
@@ -2071,6 +2095,8 @@ void highlight_changed(void)
     }
   }
   highlight_ga.ga_len = hlcnt;
+
+  decor_provider_invalidate_hl();
 }
 
 /// Handle command line completion for :highlight command.
