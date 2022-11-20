@@ -752,6 +752,7 @@ void tangle_open_line()
 	insert_in_section(prev_l->parent_section, prev_l, next_l, pl);
 
 	update_count_recursively(pl->parent_section, 1);
+
 }
 
 void insert_in_section(Section* section, Line* prev_l, Line* next_l, Line* pl)
@@ -773,6 +774,62 @@ void insert_in_section(Section* section, Line* prev_l, Line* next_l, Line* pl)
 	}
 
 	pl->parent_section = section;
+}
+
+void tangle_delete_lines(int count)
+{
+	size_t col = (size_t)curwin->w_cursor.col;
+	linenr_T lnum = curwin->w_cursor.lnum;
+
+	Line* line = tree_lookup(curbuf->tgl_tree, lnum-1);
+
+	Section* prev_section = prev_line(line)->parent_section;
+	Section* cur_section = prev_section;
+	int deleted_from_prev = 0;
+
+
+	for(int j=0;j < count; ++j) {
+		if(line->type == TEXT) {
+			if(prev_section == cur_section) {
+				deleted_from_prev++;
+			}
+			remove_line_from_section(line);
+		}
+
+		else if(line->type == REFERENCE) {
+			if(prev_section == cur_section) {
+				deleted_from_prev += tangle_get_count(curbuf, line->name);
+			}
+
+			Line* old_line = line;
+			SectionList* old_list = get_section_list(&curbuf->sections, old_line->name);
+			remove_ref(old_list, old_line->parent_section);
+
+			remove_line_from_section(line);
+		}
+
+		else if(line->type == SECTION) {
+			assert(false);
+		}
+
+
+		Line* todelete = line;
+		line = next_line(line);
+		// This could potentially be faster by avoiding
+		// the downward search because we already know 
+		// the location in the tree
+		tree_delete(curbuf->tgl_tree, lnum-1);
+
+	}
+
+
+	update_count_recursively(prev_section, -deleted_from_prev);
+}
+
+void remove_line_from_section(Line* line)
+{
+	line->pprev->pnext = line->pnext;
+	line->pnext->pprev = line->pprev;
 }
 
 void tangle_update(buf_T* buf)

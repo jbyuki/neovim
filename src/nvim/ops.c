@@ -1647,6 +1647,7 @@ int op_delete(oparg_T *oap)
       }
     } else {
       if(curbuf->b_p_tgl == 1) {
+				tangle_delete_lines(oap->line_count);
       }
       del_lines(oap->line_count, true);
 

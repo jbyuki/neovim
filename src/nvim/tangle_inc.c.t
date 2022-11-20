@@ -431,3 +431,72 @@ insert_in_section(prev_l->parent_section, prev_l, next_l, pl);
 
 @update_count_for_current_section_append+=
 update_count_recursively(pl->parent_section, 1);
+
+@define_functions+=
+void tangle_delete_lines(int count)
+{
+	@get_cursor_position
+	@get_line_from_btree
+	@delete_lines_while_recording
+
+	@readjust_following_lines_section
+	@update_current_section_delete
+}
+
+@delete_lines_while_recording+=
+@deleted_lines_data
+
+for(int j=0;j < count; ++j) {
+	@if_deleted_line_is_text
+	@if_deleted_line_is_reference
+	@if_deleted_line_is_section
+
+	@release_line_and_go_to_next_line
+}
+
+@deleted_lines_data+=
+Section* prev_section = prev_line(line)->parent_section;
+Section* cur_section = prev_section;
+int deleted_from_prev = 0;
+
+@define_functions+=
+void remove_line_from_section(Line* line)
+{
+	line->pprev->pnext = line->pnext;
+	line->pnext->pprev = line->pprev;
+}
+
+@if_deleted_line_is_text+=
+if(line->type == TEXT) {
+	if(prev_section == cur_section) {
+		deleted_from_prev++;
+	}
+	remove_line_from_section(line);
+}
+
+@release_line_and_go_to_next_line+=
+Line* todelete = line;
+line = next_line(line);
+// This could potentially be faster by avoiding
+// the downward search because we already know 
+// the location in the tree
+tree_delete(curbuf->tgl_tree, lnum-1);
+
+@if_deleted_line_is_reference+=
+else if(line->type == REFERENCE) {
+	if(prev_section == cur_section) {
+		deleted_from_prev += tangle_get_count(curbuf, line->name);
+	}
+
+	Line* old_line = line;
+	@remove_old_line_reference
+	remove_line_from_section(line);
+}
+
+@if_deleted_line_is_section+=
+else if(line->type == SECTION) {
+	assert(false);
+}
+
+@update_current_section_delete+=
+update_count_recursively(prev_section, -deleted_from_prev);
