@@ -520,7 +520,7 @@ for(int i=0; i<kv_size(sections_to_delete); ++i) {
 if(prev_section != cur_section) {
 	int added = 0;
 	Line* line_n = line;
-	while(line_n->pnext) {
+	while(line_n && line_n->pnext) {
 		line_n->parent_section = prev_section;
 		added += get_tangle_line_size(line_n);
 		line_n = line_n->pnext;
@@ -537,14 +537,18 @@ if(prev_section != cur_section) {
 
 @fixup_first_line_after_deleted+=
 Line* line_n = line;
-if(prev_l->type == SECTION) {
-	line_n->pprev = &prev_section->head;
-	prev_section->head.pnext = line_n;
-} else {
-	line_n->pprev = prev_l;
-	prev_l->pnext = line_n;
+if(line_n) {
+	if(prev_l->type == SECTION) {
+		line_n->pprev = &prev_section->head;
+		prev_section->head.pnext = line_n;
+	} else {
+		line_n->pprev = prev_l;
+		prev_l->pnext = line_n;
+	}
 }
 
 @fixup_last_line_in_section+=
-prev_section->tail.pprev = cur_section->tail.pprev;
-cur_section->tail.pprev->pnext = &prev_section->tail;
+if(line_n) {
+	prev_section->tail.pprev = cur_section->tail.pprev;
+	cur_section->tail.pprev->pnext = &prev_section->tail;
+}

@@ -238,6 +238,15 @@ Line* delete_node_nonmin(bptree* tree, bpnode* node, int index)
 			node->keys[i] = node->keys[i+1];
 		}
 		node->n--;
+		if(index == node->n) {
+			bpnode* parent = node;
+			bpnode* right = parent->right;
+			if(right) {
+				return &right->keys[0];
+			}
+			return NULL;
+
+		}
 		return &node->keys[index];
 	}
 

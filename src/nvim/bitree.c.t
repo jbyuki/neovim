@@ -348,6 +348,10 @@ if(node->leaf) {
 		node->keys[i] = node->keys[i+1];
 	}
 	node->n--;
+	if(index == node->n) {
+		bpnode* parent = node;
+		@get_line_directly_to_the_right
+	}
 	return &node->keys[index];
 }
 
