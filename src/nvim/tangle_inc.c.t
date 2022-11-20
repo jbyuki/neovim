@@ -15,7 +15,7 @@ linenr_T lnum = curwin->w_cursor.lnum;
 Line* line = tree_lookup(curbuf->tgl_tree, lnum-1);
 
 @define_functions+=
-void update_current_tangle_line(Line* old_line)
+void update_current_tangle_line(Line* old_line, int rel)
 {
 	@get_cursor_position
 	@get_current_line
@@ -29,7 +29,7 @@ void update_current_tangle_line(Line* old_line)
 }
 
 @get_current_line+=
-char *line = ml_get(lnum);
+char *line = ml_get(lnum + rel);
 size_t linelen = strlen(line) + 1;  // length of old line including NUL
 
 @reanalyze_current_line+=

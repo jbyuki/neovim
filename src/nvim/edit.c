@@ -4674,13 +4674,24 @@ bool ins_eol(int c)
   AppendToRedobuff(NL_STR);
   bool i;
 
-  i = open_line(FORWARD,
-        has_format_option(FO_RET_COMS) ? OPENLINE_DO_COM : 0,
-        old_indent, NULL);
 
   if(curbuf->b_p_tgl == 1) {
+		Line* line_p = get_current_tangle_line();
+
+		i = open_line(FORWARD,
+					has_format_option(FO_RET_COMS) ? OPENLINE_DO_COM : 0,
+					old_indent, NULL);
+
+		Line* line_n = get_current_tangle_line();
 		tangle_open_line();
-  }
+
+		update_current_tangle_line(line_p, -1);
+		update_current_tangle_line(line_n, 0);
+  } else {
+		i = open_line(FORWARD,
+					has_format_option(FO_RET_COMS) ? OPENLINE_DO_COM : 0,
+					old_indent, NULL);
+	}
 
   old_indent = 0;
   can_cindent = true;

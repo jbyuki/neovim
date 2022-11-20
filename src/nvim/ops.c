@@ -1647,7 +1647,7 @@ int op_delete(oparg_T *oap)
       }
     } else {
       if(curbuf->b_p_tgl == 1) {
-				tangle_delete_lines(oap->line_count);
+				tangle_delete_lines(oap->line_count, 0);
       }
       del_lines(oap->line_count, true);
 
@@ -1734,7 +1734,7 @@ int op_delete(oparg_T *oap)
 				Line* line = get_current_tangle_line();
 				(void)del_bytes((colnr_T)n, !virtual_op,
 						oap->op_type == OP_DELETE && !oap->is_VIsual);
-				update_current_tangle_line(line);
+				update_current_tangle_line(line, 0);
       } else {
 				(void)del_bytes((colnr_T)n, !virtual_op,
 						oap->op_type == OP_DELETE && !oap->is_VIsual);

@@ -205,12 +205,12 @@ Line* get_current_tangle_line()
 	return line;
 }
 
-void update_current_tangle_line(Line* old_line)
+void update_current_tangle_line(Line* old_line, int rel)
 {
 	size_t col = (size_t)curwin->w_cursor.col;
 	linenr_T lnum = curwin->w_cursor.lnum;
 
-	char *line = ml_get(lnum);
+	char *line = ml_get(lnum + rel);
 	size_t linelen = strlen(line) + 1;  // length of old line including NUL
 
 	char* fp = strnwfirst(line);
