@@ -313,15 +313,15 @@ void print_node(bpnode* node, int indent)
 }
 
 @define+=
-void tree_delete(bptree* tree, int index)
+Line* tree_delete(bptree* tree, int index)
 {
-	delete_node_nonmin(tree, tree->root, index);
 	tree->total--;
+	return delete_node_nonmin(tree, tree->root, index);
 }
 
 
 @define+=
-void delete_node_nonmin(bptree* tree, bpnode* node, int index)
+Line* delete_node_nonmin(bptree* tree, bpnode* node, int index)
 {
 	@if_leaf_delete_key
 	@otherwise_in_which_children_to_delete
@@ -348,6 +348,7 @@ if(node->leaf) {
 		node->keys[i] = node->keys[i+1];
 	}
 	node->n--;
+	return &node->keys[index];
 }
 
 @otherwise_in_which_children_to_delete+=
@@ -357,7 +358,7 @@ else {
 	@if_child_is_minimum_merge
 
 	node->counts[j]--;
-	delete_node_nonmin(tree, node->children[j], index);
+	return delete_node_nonmin(tree, node->children[j], index);
 }
 
 @search_which_child_contains_index_to_delete+=
@@ -514,8 +515,7 @@ if(node->n == 1) {
 	tree->root = tree->root->children[0];
 	tree->root->parent = NULL;
 	free(node);
-	delete_node_nonmin(tree, tree->root, index);
-	return;
+	return delete_node_nonmin(tree, tree->root, index);
 }
 
 @define+=

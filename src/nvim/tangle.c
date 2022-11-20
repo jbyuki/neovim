@@ -783,9 +783,12 @@ void tangle_delete_lines(int count)
 
 	Line* line = tree_lookup(curbuf->tgl_tree, lnum-1);
 
-	Section* prev_section = prev_line(line)->parent_section;
+	Line* prev_l = prev_line(line);
+	Section* prev_section = prev_l->parent_section;
 	Section* cur_section = prev_section;
 	int deleted_from_prev = 0;
+
+	kvec_t(Section*) sections_to_delete = KV_INITIAL_VALUE;
 
 
 	for(int j=0;j < count; ++j) {
@@ -808,22 +811,57 @@ void tangle_delete_lines(int count)
 			remove_line_from_section(line);
 		}
 
+
 		else if(line->type == SECTION) {
-			assert(false);
+			cur_section = line->parent_section;
+			kv_push(sections_to_delete, cur_section);
 		}
 
 
-		Line* todelete = line;
-		line = next_line(line);
 		// This could potentially be faster by avoiding
 		// the downward search because we already know 
 		// the location in the tree
-		tree_delete(curbuf->tgl_tree, lnum-1);
+		line = tree_delete(curbuf->tgl_tree, lnum-1);
 
 	}
 
 
 	update_count_recursively(prev_section, -deleted_from_prev);
+	if(prev_section != cur_section) {
+		int added = 0;
+		Line* line_n = line;
+		while(line_n->pnext) {
+			line_n->parent_section = prev_section;
+			added += get_tangle_line_size(line_n);
+			line_n = line_n->pnext;
+		}
+
+		update_count_recursively(prev_section, added);
+	}
+
+	if(prev_section != cur_section) {
+		Line* line_n = line;
+		if(prev_l->type == SECTION) {
+			line_n->pprev = &prev_section->head;
+			prev_section->head.pnext = line_n;
+		} else {
+			line_n->pprev = prev_l;
+			prev_l->pnext = line_n;
+		}
+
+		prev_section->tail.pprev = cur_section->tail.pprev;
+		cur_section->tail.pprev->pnext = &prev_section->tail;
+	}
+
+
+	for(int i=0; i<kv_size(sections_to_delete); ++i) {
+		Section* old_s = kv_A(sections_to_delete, i);
+
+		int delta = old_s->n;
+		update_count_recursively(old_s, -delta);
+		sectionlist_remove(old_s);
+	}
+
 }
 
 void remove_line_from_section(Line* line)

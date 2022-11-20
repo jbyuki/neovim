@@ -222,14 +222,14 @@ void print_node(bpnode* node, int indent)
 	}
 }
 
-void tree_delete(bptree* tree, int index)
+Line* tree_delete(bptree* tree, int index)
 {
-	delete_node_nonmin(tree, tree->root, index);
 	tree->total--;
+	return delete_node_nonmin(tree, tree->root, index);
 }
 
 
-void delete_node_nonmin(bptree* tree, bpnode* node, int index)
+Line* delete_node_nonmin(bptree* tree, bpnode* node, int index)
 {
 	if(node->leaf) {
 		delete_key(&node->keys[index]);
@@ -238,6 +238,7 @@ void delete_node_nonmin(bptree* tree, bpnode* node, int index)
 			node->keys[i] = node->keys[i+1];
 		}
 		node->n--;
+		return &node->keys[index];
 	}
 
 	else {
@@ -392,8 +393,7 @@ void delete_node_nonmin(bptree* tree, bpnode* node, int index)
 					tree->root = tree->root->children[0];
 					tree->root->parent = NULL;
 					free(node);
-					delete_node_nonmin(tree, tree->root, index);
-					return;
+					return delete_node_nonmin(tree, tree->root, index);
 				}
 
 			}
@@ -401,7 +401,7 @@ void delete_node_nonmin(bptree* tree, bpnode* node, int index)
 
 
 		node->counts[j]--;
-		delete_node_nonmin(tree, node->children[j], index);
+		return delete_node_nonmin(tree, node->children[j], index);
 	}
 
 }

@@ -439,8 +439,8 @@ void tangle_delete_lines(int count)
 	@get_line_from_btree
 	@delete_lines_while_recording
 
-	@readjust_following_lines_section
 	@update_current_section_delete
+	@delete_old_sections
 }
 
 @delete_lines_while_recording+=
@@ -455,7 +455,8 @@ for(int j=0;j < count; ++j) {
 }
 
 @deleted_lines_data+=
-Section* prev_section = prev_line(line)->parent_section;
+Line* prev_l = prev_line(line);
+Section* prev_section = prev_l->parent_section;
 Section* cur_section = prev_section;
 int deleted_from_prev = 0;
 
@@ -475,12 +476,10 @@ if(line->type == TEXT) {
 }
 
 @release_line_and_go_to_next_line+=
-Line* todelete = line;
-line = next_line(line);
 // This could potentially be faster by avoiding
 // the downward search because we already know 
 // the location in the tree
-tree_delete(curbuf->tgl_tree, lnum-1);
+line = tree_delete(curbuf->tgl_tree, lnum-1);
 
 @if_deleted_line_is_reference+=
 else if(line->type == REFERENCE) {
@@ -493,10 +492,59 @@ else if(line->type == REFERENCE) {
 	remove_line_from_section(line);
 }
 
-@if_deleted_line_is_section+=
-else if(line->type == SECTION) {
-	assert(false);
-}
 
 @update_current_section_delete+=
 update_count_recursively(prev_section, -deleted_from_prev);
+@append_lines_other_deleted_section
+@fixup_section_head_tail_pointers
+
+@deleted_lines_data+=
+kvec_t(Section*) sections_to_delete = KV_INITIAL_VALUE;
+
+@if_deleted_line_is_section+=
+else if(line->type == SECTION) {
+	cur_section = line->parent_section;
+	kv_push(sections_to_delete, cur_section);
+}
+
+@delete_old_sections+=
+for(int i=0; i<kv_size(sections_to_delete); ++i) {
+	Section* old_s = kv_A(sections_to_delete, i);
+
+	int delta = old_s->n;
+	update_count_recursively(old_s, -delta);
+	sectionlist_remove(old_s);
+}
+
+@append_lines_other_deleted_section+=
+if(prev_section != cur_section) {
+	int added = 0;
+	Line* line_n = line;
+	while(line_n->pnext) {
+		line_n->parent_section = prev_section;
+		added += get_tangle_line_size(line_n);
+		line_n = line_n->pnext;
+	}
+
+	update_count_recursively(prev_section, added);
+}
+
+@fixup_section_head_tail_pointers+=
+if(prev_section != cur_section) {
+	@fixup_first_line_after_deleted
+	@fixup_last_line_in_section
+}
+
+@fixup_first_line_after_deleted+=
+Line* line_n = line;
+if(prev_l->type == SECTION) {
+	line_n->pprev = &prev_section->head;
+	prev_section->head.pnext = line_n;
+} else {
+	line_n->pprev = prev_l;
+	prev_l->pnext = line_n;
+}
+
+@fixup_last_line_in_section+=
+prev_section->tail.pprev = cur_section->tail.pprev;
+cur_section->tail.pprev->pnext = &prev_section->tail;
