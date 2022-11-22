@@ -356,24 +356,26 @@ buf_T* buf = curbuf;
 Section* cur_section;
 @parse_operator
 @parse_section_name
-@create_new_section
-@link_to_previous_section_if_needed
-@otherwise_just_save_section
+if(strcmp(old_line->name, name) != 0) {
+	@create_new_section
+	@link_to_previous_section_if_needed
+	@otherwise_just_save_section
 
-new_line.name = name;
-new_line.pnext = NULL;
-new_line.pprev = NULL;
-new_line.parent_section = section;
+	new_line.name = name;
+	new_line.pnext = NULL;
+	new_line.pprev = NULL;
+	new_line.parent_section = section;
 
-Line* next_l = next_line(old_line);
-Line* last_l = old_line->parent_section->tail.pprev;
+	Line* next_l = next_line(old_line);
+	Line* last_l = old_line->parent_section->tail.pprev;
 
-@update_subsequent_lines_parent_section
-@compute_removed_count_section
-@remove_and_add_references
-@remove_section
-@update_count_section_reference_new_section
-@fix_section_linkedlist_new_section
+	@update_subsequent_lines_parent_section
+	@compute_removed_count_section
+	@remove_and_add_references
+	@remove_section
+	@update_count_section_reference_new_section
+	@fix_section_linkedlist_new_section
+}
 
 @update_count_section_reference_new_section+=
 update_count_recursively(section, delta);
