@@ -43,6 +43,8 @@ struct Section_s
 
 struct SectionList_s
 {
+  bool root;
+
   int n;
 
   Section* phead;
@@ -60,6 +62,8 @@ struct SectionList_s
 static SectionList* sectionlist_init()
 {
   SectionList* list = (SectionList*)xcalloc(1, sizeof(SectionList));
+	list->root = false;
+
 	list->n = -1;
 
 
@@ -138,13 +142,20 @@ void attach_tangle(buf_T *buf)
 
 	tangle_update(buf);
 
-	for(int i=0; i<buf->root_names.size; ++i) {
-		const char* name = buf->root_names.items[i];
-		buf_T* view_buf = buflist_new(name, NULL, 1L, BLN_DUMMY);
-		kv_push(buf->tgl_bufs, view_buf->handle);
+	kvec_t(cstr_t) root_names = KV_INITIAL_VALUE;
+	const char* name;
+	buf_T* pbuf;
+	map_foreach(&buf->tgl_bufs, name, pbuf, {
+		kv_push(root_names, name);
+	});
+
+	for(int i=0; i<kv_size(root_names); ++i) {
+		const char* root_name = kv_A(root_names, i);
+
+		buf_T* view_buf = buflist_new(root_name, NULL, 1L, BLN_DUMMY);
+		pmap_put(cstr_t)(&buf->tgl_bufs, name, view_buf);
 		view_buf->parent_tgl = buf;
 	}
-
 }
 
 void deattach_tangle(buf_T *buf) 
@@ -298,10 +309,12 @@ void update_current_tangle_line(Line* old_line, int rel)
 			  } else {
 			    list = sectionlist_init();
 			    pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
-			    kv_push(buf->root_names, name);
+			    pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
 			  }
 
 			  sectionlist_clear(list);
+				list->root = true;
+
 			  sectionlist_push_back(list, section);
 			}
 
@@ -424,10 +437,12 @@ void update_current_tangle_line(Line* old_line, int rel)
 			  } else {
 			    list = sectionlist_init();
 			    pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
-			    kv_push(buf->root_names, name);
+			    pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
 			  }
 
 			  sectionlist_clear(list);
+				list->root = true;
+
 			  sectionlist_push_back(list, section);
 			}
 
@@ -612,6 +627,9 @@ void update_current_tangle_line(Line* old_line, int rel)
 			name[len] = '\0';
 
 			if(strcmp(old_line->name, name) != 0) {
+				SectionList* old_list = get_section_list(&curbuf->sections, old_line->name);
+
+
 				Section* section = (Section*)xcalloc(1, sizeof(Section));
 
 				cur_section = section;
@@ -635,10 +653,12 @@ void update_current_tangle_line(Line* old_line, int rel)
 				  } else {
 				    list = sectionlist_init();
 				    pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
-				    kv_push(buf->root_names, name);
+				    pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
 				  }
 
 				  sectionlist_clear(list);
+					list->root = true;
+
 				  sectionlist_push_back(list, section);
 				}
 
@@ -687,6 +707,17 @@ void update_current_tangle_line(Line* old_line, int rel)
 
 				section->head.pnext = next_l;
 				section->tail.pprev = last_l;
+
+
+				if(op == 0 && old_list->root) {
+					buf_T* dummy_buf = pmap_get(cstr_t)(&curbuf->tgl_bufs, old_line->name);
+					assert(dummy_buf);
+
+					aco_save_T aco;
+					aucmd_prepbuf(&aco, dummy_buf);
+					int ren_ret = rename_buffer(name);
+					aucmd_restbuf(&aco);
+				}
 
 			}
 
@@ -857,6 +888,7 @@ void tangle_delete_lines(int count)
 			prev_section->tail.pprev = cur_section->tail.pprev;
 			cur_section->tail.pprev->pnext = &prev_section->tail;
 		}
+
 	}
 
 
@@ -920,7 +952,7 @@ int tangle_get_count(buf_T* buf, const char* name)
 void tangle_parse(buf_T *buf)
 {
   pmap_clear(cstr_t)(&buf->sections);
-  kv_init(buf->root_names);
+  pmap_clear(cstr_t)(&buf->tgl_bufs);
 
   Section* cur_section = NULL;
 
@@ -973,10 +1005,12 @@ void tangle_parse(buf_T *buf)
             } else {
               list = sectionlist_init();
               pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
-              kv_push(buf->root_names, name);
+              pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
             }
 
             sectionlist_clear(list);
+          	list->root = true;
+
             sectionlist_push_back(list, section);
           }
 

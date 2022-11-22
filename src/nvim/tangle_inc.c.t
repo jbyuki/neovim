@@ -357,6 +357,8 @@ Section* cur_section;
 @parse_operator
 @parse_section_name
 if(strcmp(old_line->name, name) != 0) {
+	@get_old_section_list
+
 	@create_new_section
 	@link_to_previous_section_if_needed
 	@otherwise_just_save_section
@@ -375,6 +377,8 @@ if(strcmp(old_line->name, name) != 0) {
 	@remove_section
 	@update_count_section_reference_new_section
 	@fix_section_linkedlist_new_section
+
+	@if_root_section_rename
 }
 
 @update_count_section_reference_new_section+=
@@ -554,3 +558,31 @@ if(line_n) {
 	prev_section->tail.pprev = cur_section->tail.pprev;
 	cur_section->tail.pprev->pnext = &prev_section->tail;
 }
+
+@section_list_data+=
+bool root;
+
+@set_section_as_root+=
+list->root = true;
+
+@init_section_list+=
+list->root = false;
+
+@get_old_section_list+=
+SectionList* old_list = get_section_list(&curbuf->sections, old_line->name);
+
+@if_root_section_rename+=
+if(op == 0 && old_list->root) {
+	@get_dummy_buffer_for_name
+	@rename_buffer
+}
+
+@get_dummy_buffer_for_name+=
+buf_T* dummy_buf = pmap_get(cstr_t)(&curbuf->tgl_bufs, old_line->name);
+assert(dummy_buf);
+
+@rename_buffer+=
+aco_save_T aco;
+aucmd_prepbuf(&aco, dummy_buf);
+int ren_ret = rename_buffer(name);
+aucmd_restbuf(&aco);

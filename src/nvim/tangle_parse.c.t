@@ -79,7 +79,7 @@ Section* section = (Section*)xcalloc(1, sizeof(Section));
 
 @parse_variables+=
 pmap_clear(cstr_t)(&buf->sections);
-kv_init(buf->root_names);
+pmap_clear(cstr_t)(&buf->tgl_bufs);
 
 @define_functions+=
 static SectionList* get_section_list(PMap(cstr_t)* sections, const char* name)
@@ -125,10 +125,11 @@ else {
   } else {
     list = sectionlist_init();
     pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
-    kv_push(buf->root_names, name);
+    pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
   }
 
   sectionlist_clear(list);
+	@set_section_as_root
   sectionlist_push_back(list, section);
 }
 
