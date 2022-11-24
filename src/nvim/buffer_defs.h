@@ -867,6 +867,7 @@ struct file_buffer {
 	// Tangle related attributes
 	PMap(cstr_t) sections;
 	PMap(cstr_t) tgl_bufs;
+  Line first_line;
 	bptree* tgl_tree;
 	buf_T* parent_tgl;
 };

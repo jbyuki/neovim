@@ -494,7 +494,7 @@ Line* next_line(Line* line)
 	return &parent->keys[offset];
 }
 
-Line* prev_line(Line* line)
+Line* prev_line(Line* line, Line* top)
 {
 	bpnode* parent = line->parent;
 	assert(parent);
@@ -506,7 +506,7 @@ Line* prev_line(Line* line)
 		if(left) {
 			return &left->keys[left->n-1];
 		}
-		return NULL;
+		return top;
 	}
 	return &parent->keys[offset];
 }

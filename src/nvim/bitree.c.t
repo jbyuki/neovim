@@ -597,7 +597,7 @@ if(right) {
 return NULL;
 
 @define+=
-Line* prev_line(Line* line)
+Line* prev_line(Line* line, Line* top)
 {
 	bpnode* parent = line->parent;
 	assert(parent);
@@ -615,4 +615,4 @@ bpnode* left = parent->left;
 if(left) {
 	return &left->keys[left->n-1];
 }
-return NULL;
+return top;

@@ -269,7 +269,7 @@ else if(old_line->type == SECTION) {
 
 @insert_section_to_text+=
 Line* next_l = next_line(old_line);
-Line* prev_l = prev_line(old_line);
+Line* prev_l = prev_line(old_line, &curbuf->first_line);
 
 @update_subsequent_lines_parent_section_to_previous
 
@@ -331,7 +331,7 @@ new_line.name = name;
 new_line.prefix = prefix;
 
 Line* next_l = next_line(old_line);
-Line* prev_l = prev_line(old_line);
+Line* prev_l = prev_line(old_line, &curbuf->first_line);
 
 @update_subsequent_lines_parent_section_to_previous
 
@@ -430,7 +430,7 @@ void insert_in_section(Section* section, Line* prev_l, Line* next_l, Line* pl)
 }
 
 @append_text_to_current_section+=
-Line* prev_l = prev_line(pl);
+Line* prev_l = prev_line(pl, &curbuf->first_line);
 Line* next_l = next_line(pl);
 
 insert_in_section(prev_l->parent_section, prev_l, next_l, pl);
@@ -461,8 +461,8 @@ for(int j=0;j < count; ++j) {
 }
 
 @deleted_lines_data+=
-Line* prev_l = prev_line(line);
-Section* prev_section = prev_l ? prev_l->parent_section : NULL;
+Line* prev_l = prev_line(line, &curbuf->first_line);
+Section* prev_section = prev_l->parent_section;
 Section* cur_section = prev_section;
 int deleted_from_prev = 0;
 
@@ -611,3 +611,16 @@ if(old_list->root) {
   int result = do_buffer(DOBUF_WIPE, DOBUF_FIRST, FORWARD, bufdel->handle, force);
 	pmap_del(cstr_t)(&curbuf->tgl_bufs, line->str);
 }
+
+
+@create_first_dummy_line+=
+SectionList* top_list = get_section_list(&curbuf->sections, "__top__");
+Section* top_section = (Section*)xcalloc(1, sizeof(Section));
+top_section->head.pnext = &top_section->tail;
+top_section->tail.pprev = &top_section->head;
+sectionlist_push_back(top_list, top_section);
+
+buf->first_line.type = SECTION;
+buf->first_line.parent = NULL;
+buf->first_line.parent_section = top_section;
+

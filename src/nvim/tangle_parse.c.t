@@ -9,6 +9,7 @@ void tangle_parse(buf_T *buf)
     @check_if_section_or_reference
     @otherwise_add_to_section
   }
+  @create_first_dummy_line
 }
 
 @includes+=
