@@ -137,7 +137,7 @@ static void sectionlist_remove(Section* section)
 }
 void attach_tangle(buf_T *buf) 
 {
-  semsg(_("Tangle activated!"));
+  // semsg(_("Tangle activated!"));
   tangle_parse(buf);
 
 	tangle_update(buf);
@@ -160,7 +160,7 @@ void attach_tangle(buf_T *buf)
 
 void deattach_tangle(buf_T *buf) 
 {
-  semsg(_("Tangle deactivated!"));
+  // semsg(_("Tangle deactivated!"));
 }
 
 int tangle_convert_lnum_to_untangled(buf_T* buf, const char* root, int lnum)
@@ -326,7 +326,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 
 			Line* next_l = old_line->pnext;
 			Line* next_line = next_l;
-			while(next_line->pnext) {
+			while(next_line && next_line->pnext) {
 				next_line->parent_section = section;
 				next_line = next_line->pnext;
 			}
@@ -334,7 +334,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 			next_line = next_l;
 
 			int removed = 0;
-			while(next_line->pnext) {
+			while(next_line && next_line->pnext) {
 				removed += get_tangle_line_size(next_line);
 				next_line = next_line->pnext;
 			}
@@ -342,7 +342,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 			next_line = next_l;
 
 			Section* old_section = old_line->parent_section;
-			while(next_line->pnext) {
+			while(next_line && next_line->pnext) {
 				if(next_line->type == REFERENCE) {
 					SectionList* ref_list = get_section_list(&curbuf->sections, next_line->name);
 					remove_ref(ref_list, old_line->parent_section);
@@ -456,7 +456,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 			Line* next_l = next_line(old_line);
 
 			Line* next_line = next_l;
-			while(next_line->pnext) {
+			while(next_line && next_line->pnext) {
 				next_line->parent_section = section;
 				next_line = next_line->pnext;
 			}
@@ -464,7 +464,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 			next_line = next_l;
 
 			int removed = 0;
-			while(next_line->pnext) {
+			while(next_line && next_line->pnext) {
 				removed += get_tangle_line_size(next_line);
 				next_line = next_line->pnext;
 			}
@@ -475,7 +475,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 			next_line = next_l;
 
 			Section* old_section = old_line->parent_section;
-			while(next_line->pnext) {
+			while(next_line && next_line->pnext) {
 				if(next_line->type == REFERENCE) {
 					SectionList* ref_list = get_section_list(&curbuf->sections, next_line->name);
 					remove_ref(ref_list, old_line->parent_section);
@@ -673,7 +673,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 				Line* last_l = old_line->parent_section->tail.pprev;
 
 				Line* next_line = next_l;
-				while(next_line->pnext) {
+				while(next_line && next_line->pnext) {
 					next_line->parent_section = section;
 					next_line = next_line->pnext;
 				}
@@ -681,7 +681,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 				next_line = next_l;
 
 				int removed = 0;
-				while(next_line->pnext) {
+				while(next_line && next_line->pnext) {
 					removed += get_tangle_line_size(next_line);
 					next_line = next_line->pnext;
 				}
@@ -689,7 +689,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 				next_line = next_l;
 
 				Section* old_section = old_line->parent_section;
-				while(next_line->pnext) {
+				while(next_line && next_line->pnext) {
 					if(next_line->type == REFERENCE) {
 						SectionList* ref_list = get_section_list(&curbuf->sections, next_line->name);
 						remove_ref(ref_list, old_line->parent_section);

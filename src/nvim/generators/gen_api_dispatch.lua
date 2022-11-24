@@ -209,6 +209,7 @@ output:write([[
 #include "nvim/api/extmark.h"
 #include "nvim/api/options.h"
 #include "nvim/api/tabpage.h"
+#include "nvim/api/tangle.h"
 #include "nvim/api/ui.h"
 #include "nvim/api/vim.h"
 #include "nvim/api/vimscript.h"

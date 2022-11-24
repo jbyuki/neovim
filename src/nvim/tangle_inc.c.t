@@ -177,7 +177,7 @@ Line* next_l = old_line->pnext;
 
 @update_subsequent_lines_parent_section+=
 Line* next_line = next_l;
-while(next_line->pnext) {
+while(next_line && next_line->pnext) {
 	next_line->parent_section = section;
 	next_line = next_line->pnext;
 }
@@ -197,7 +197,7 @@ static int get_tangle_line_size(Line* line)
 next_line = next_l;
 
 int removed = 0;
-while(next_line->pnext) {
+while(next_line && next_line->pnext) {
 	removed += get_tangle_line_size(next_line);
 	next_line = next_line->pnext;
 }
@@ -206,7 +206,7 @@ while(next_line->pnext) {
 next_line = next_l;
 
 Section* old_section = old_line->parent_section;
-while(next_line->pnext) {
+while(next_line && next_line->pnext) {
 	if(next_line->type == REFERENCE) {
 		SectionList* ref_list = get_section_list(&curbuf->sections, next_line->name);
 		remove_ref(ref_list, old_line->parent_section);

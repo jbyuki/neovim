@@ -44,7 +44,7 @@
 @define_functions+=
 void attach_tangle(buf_T *buf) 
 {
-  semsg(_("Tangle activated!"));
+  // semsg(_("Tangle activated!"));
   @parse_tangle_initial
 	@update_loc_data_tangle
 	@create_dummy_buffer_foreach_roots
@@ -52,7 +52,7 @@ void attach_tangle(buf_T *buf)
 
 void deattach_tangle(buf_T *buf) 
 {
-  semsg(_("Tangle deactivated!"));
+  // semsg(_("Tangle deactivated!"));
 }
 
 @includes+=
