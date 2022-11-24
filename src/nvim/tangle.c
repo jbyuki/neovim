@@ -312,6 +312,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 			    pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
 			  }
 
+
 			  sectionlist_clear(list);
 				list->root = true;
 
@@ -418,35 +419,6 @@ void update_current_tangle_line(Line* old_line, int rel)
 
 			cur_section = section;
 
-			if(op == 1 || op == 2) {
-			  SectionList* list = get_section_list(&buf->sections, name);
-
-			  if(op == 1) {
-			    sectionlist_push_back(list, section);
-
-			  } else { /* op == 2 */
-			    sectionlist_push_front(list, section);
-
-			  }
-			}
-
-			else {
-			  SectionList* list; 
-			  if(pmap_has(cstr_t)(&buf->sections, name)) {
-			    list = pmap_get(cstr_t)(&buf->sections, name);
-			  } else {
-			    list = sectionlist_init();
-			    pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
-			    pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
-			  }
-
-			  sectionlist_clear(list);
-				list->root = true;
-
-			  sectionlist_push_back(list, section);
-			}
-
-
 
 			new_line.name = name;
 			new_line.pnext = NULL;
@@ -487,13 +459,50 @@ void update_current_tangle_line(Line* old_line, int rel)
 			int delta = -get_tangle_line_size(old_line) - removed;
 			update_count_recursively(old_line->parent_section, delta);
 
-			delta = removed;
-			update_count_recursively(section, delta);
-
 			section->head.pnext = old_line->pnext;
 			section->tail.pprev = old_line->parent_section->tail.pprev;
 			old_line->parent_section->tail.pprev = old_line->pprev;
 
+
+			if(op == 1 || op == 2) {
+			  SectionList* list = get_section_list(&buf->sections, name);
+
+			  if(op == 1) {
+			    sectionlist_push_back(list, section);
+
+			  } else { /* op == 2 */
+			    sectionlist_push_front(list, section);
+
+			  }
+			}
+
+			else {
+			  SectionList* list; 
+			  if(pmap_has(cstr_t)(&buf->sections, name)) {
+			    list = pmap_get(cstr_t)(&buf->sections, name);
+			  } else {
+			    list = sectionlist_init();
+			    pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
+			    pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
+			  }
+
+
+			  sectionlist_clear(list);
+				list->root = true;
+
+			  sectionlist_push_back(list, section);
+			}
+
+
+			delta = removed;
+			update_count_recursively(section, delta);
+
+
+			if(op == 0) {
+				buf_T* view_buf = buflist_new(name, NULL, 1L, BLN_DUMMY);
+				pmap_put(cstr_t)(&curbuf->tgl_bufs, name, view_buf);
+				view_buf->parent_tgl = curbuf;
+			}
 
 		}
 	}
@@ -655,6 +664,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 				    pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
 				    pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
 				  }
+
 
 				  sectionlist_clear(list);
 					list->root = true;
@@ -1051,6 +1061,7 @@ void tangle_parse(buf_T *buf)
               pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
               pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
             }
+
 
             sectionlist_clear(list);
           	list->root = true;

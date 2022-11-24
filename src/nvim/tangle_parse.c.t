@@ -129,6 +129,7 @@ else {
     pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
   }
 
+
   sectionlist_clear(list);
 	@set_section_as_root
   sectionlist_push_back(list, section);

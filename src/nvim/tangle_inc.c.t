@@ -234,8 +234,6 @@ Section* cur_section;
 @parse_operator
 @parse_section_name
 @create_new_section
-@link_to_previous_section_if_needed
-@otherwise_just_save_section
 
 new_line.name = name;
 new_line.pnext = NULL;
@@ -249,8 +247,13 @@ Line* next_l = next_line(old_line);
 @remove_current_reference
 @remove_and_add_references
 @compute_text_section_delta_count_and_update
-@compute_new_section_size_and_update
 @fix_section_linkedlist
+
+@link_to_previous_section_if_needed
+@otherwise_just_save_section
+@compute_new_section_size_and_update
+
+@if_new_section_is_root_create_buf
 
 @remove_current_reference+=
 SectionList* ref_list = get_section_list(&curbuf->sections, old_line->name);
@@ -646,3 +649,9 @@ buf->first_line.type = SECTION;
 buf->first_line.parent = NULL;
 buf->first_line.parent_section = top_section;
 
+@if_new_section_is_root_create_buf+=
+if(op == 0) {
+	buf_T* view_buf = buflist_new(name, NULL, 1L, BLN_DUMMY);
+	pmap_put(cstr_t)(&curbuf->tgl_bufs, name, view_buf);
+	view_buf->parent_tgl = curbuf;
+}
