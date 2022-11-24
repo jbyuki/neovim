@@ -878,6 +878,17 @@ void tangle_delete_lines(int count)
 		update_count_recursively(prev_section, -deleted_from_prev);
 	}
 	if(prev_section != cur_section) {
+		Line* line_n = line;
+		while(line_n && line_n->pnext) {
+			if(line_n->type == REFERENCE) {
+				SectionList* ref_list = get_section_list(&curbuf->sections, line_n->name);
+				replace_ref(ref_list, line_n->parent_section, prev_section);
+			}
+			line_n = line_n->pnext;
+		}
+	}
+
+	if(prev_section != cur_section) {
 		int added = 0;
 		Line* line_n = line;
 		while(line_n && line_n->pnext) {
@@ -893,12 +904,10 @@ void tangle_delete_lines(int count)
 
 	if(prev_section != cur_section) {
 		Line* line_n = line;
-		if(line_n && prev_l) {
+		if(line_n) {
 			if(prev_l->type == SECTION) {
-				if(prev_section) {
-					line_n->pprev = &prev_section->head;
-					prev_section->head.pnext = line_n;
-				}
+				line_n->pprev = &prev_section->head;
+				prev_section->head.pnext = line_n;
 			} else {
 				line_n->pprev = prev_l;
 				prev_l->pnext = line_n;
@@ -906,10 +915,8 @@ void tangle_delete_lines(int count)
 		}
 
 		if(line_n) {
-			if(prev_section) {
-				prev_section->tail.pprev = cur_section->tail.pprev;
-				cur_section->tail.pprev->pnext = &prev_section->tail;
-			}
+			prev_section->tail.pprev = cur_section->tail.pprev;
+			cur_section->tail.pprev->pnext = &prev_section->tail;
 		}
 
 	}
@@ -931,6 +938,18 @@ void remove_line_from_section(Line* line)
 {
 	line->pprev->pnext = line->pnext;
 	line->pnext->pprev = line->pprev;
+}
+
+static void replace_ref(SectionList* list, Section* old_ref, Section* new_ref)
+{
+	int i = 0;
+	for(; i<kv_size(list->refs); ++i) {
+		if(kv_A(list->refs, i) == old_ref) {
+			break;
+		}
+	}
+	assert(i < kv_size(list->refs));
+	kv_A(list->refs, i) = new_ref;
 }
 
 void tangle_update(buf_T* buf)
