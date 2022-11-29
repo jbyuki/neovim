@@ -1492,13 +1492,28 @@ bool buf_collect_lines(buf_T *buf, size_t n, linenr_T start, int start_idx, bool
 		const char *bufstr;
 		if(buf->parent_tgl == NULL) {
 			bufstr = ml_get_buf(buf, (linenr_T)lnum, false);
+			push_linestr(lstate, l, bufstr, strlen(bufstr), start_idx + (int)i, replace_nl);
 		} else {
 			// Convert tangle lnum to untangled one
-			lnum = tangle_convert_lnum_to_untangled(buf->parent_tgl, buf->b_fname, lnum-1)+1;
-			bufstr = ml_get_buf(buf->parent_tgl, (linenr_T)lnum, false);
-		}
+			char* prefix = xmalloc(256); // Fix this. No hard limits please.
+			prefix[0] = '\0';
 
-    push_linestr(lstate, l, bufstr, strlen(bufstr), start_idx + (int)i, replace_nl);
+			lnum = tangle_convert_lnum_to_untangled(buf->parent_tgl, buf->b_fname, lnum-1, prefix)+1;
+			bufstr = ml_get_buf(buf->parent_tgl, (linenr_T)lnum, false);
+
+			int prefix_len = strlen(prefix);
+			if(prefix_len == 0) {
+				push_linestr(lstate, l, bufstr, strlen(bufstr), start_idx + (int)i, replace_nl);
+			} else {
+				int total_len = strlen(bufstr)+prefix_len;
+				char* allocated = xmallocz(total_len);
+				memcpy(allocated, prefix, prefix_len);
+				memcpy(allocated+prefix_len, bufstr, total_len-prefix_len);
+				push_linestr(lstate, l, allocated, total_len, start_idx + (int)i, replace_nl);
+				xfree(allocated);
+			}
+			xfree(prefix);
+		}
   }
 
   return true;

@@ -1,6 +1,6 @@
 ##tangle
 @define_functions+=
-int tangle_convert_lnum_to_untangled(buf_T* buf, const char* root, int lnum)
+int tangle_convert_lnum_to_untangled(buf_T* buf, const char* root, int lnum, char* prefix)
 {
 	int new_lnum;
 	@search_for_line_with_lnum
@@ -9,7 +9,7 @@ int tangle_convert_lnum_to_untangled(buf_T* buf, const char* root, int lnum)
 }
 
 @define_functions+=
-Line* get_line_at_lnum_tangled(buf_T* buf, const char* name, int lnum)
+Line* get_line_at_lnum_tangled(buf_T* buf, const char* name, int lnum, char* prefix)
 {
 	assert(pmap_has(cstr_t)(&buf->sections, name));
 
@@ -37,7 +37,8 @@ while(line != &section->tail) {
 	} else if(line->type == REFERENCE) {
 		int count = tangle_get_count(buf, line->name);
 		if(lnum < count) {
-			return get_line_at_lnum_tangled(buf, line->name, lnum);
+			STRCAT(prefix, line->prefix);
+			return get_line_at_lnum_tangled(buf, line->name, lnum, prefix);
 		}
 		lnum -= count;
 	}
@@ -45,7 +46,7 @@ while(line != &section->tail) {
 }
 
 @search_for_line_with_lnum+=
-Line* line = get_line_at_lnum_tangled(buf, root, lnum);
+Line* line = get_line_at_lnum_tangled(buf, root, lnum, prefix);
 assert(line);
 
 @reverse_lookup_line_in_btree+=

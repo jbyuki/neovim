@@ -163,17 +163,17 @@ void deattach_tangle(buf_T *buf)
   // semsg(_("Tangle deactivated!"));
 }
 
-int tangle_convert_lnum_to_untangled(buf_T* buf, const char* root, int lnum)
+int tangle_convert_lnum_to_untangled(buf_T* buf, const char* root, int lnum, char* prefix)
 {
 	int new_lnum;
-	Line* line = get_line_at_lnum_tangled(buf, root, lnum);
+	Line* line = get_line_at_lnum_tangled(buf, root, lnum, prefix);
 	assert(line);
 
 	new_lnum = tree_reverse_lookup(line);
 	return new_lnum;
 }
 
-Line* get_line_at_lnum_tangled(buf_T* buf, const char* name, int lnum)
+Line* get_line_at_lnum_tangled(buf_T* buf, const char* name, int lnum, char* prefix)
 {
 	assert(pmap_has(cstr_t)(&buf->sections, name));
 
@@ -191,7 +191,8 @@ Line* get_line_at_lnum_tangled(buf_T* buf, const char* name, int lnum)
 				} else if(line->type == REFERENCE) {
 					int count = tangle_get_count(buf, line->name);
 					if(lnum < count) {
-						return get_line_at_lnum_tangled(buf, line->name, lnum);
+						STRCAT(prefix, line->prefix);
+						return get_line_at_lnum_tangled(buf, line->name, lnum, prefix);
 					}
 					lnum -= count;
 				}
