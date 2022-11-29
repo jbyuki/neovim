@@ -64,6 +64,7 @@ Array nvim_tangle_get_lineinfo(Buffer buffer, Integer row, Error *err)
 	@popualte_tangle_parent_section
 	@popualte_tangle_next
 	@popualte_tangle_prev
+	@popualte_tangle_line_id
 
 	return rv;
 }
@@ -113,3 +114,6 @@ ADD(rv, STRING_OBJ(ptr_to_str(line->pnext)));
 
 @popualte_tangle_prev+=
 ADD(rv, STRING_OBJ(ptr_to_str(line->pprev)));
+
+@popualte_tangle_line_id+=
+ADD(rv, INTEGER_OBJ((int)line->id));

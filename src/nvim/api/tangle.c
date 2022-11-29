@@ -64,6 +64,8 @@ Array nvim_tangle_get_lineinfo(Buffer buffer, Integer row, Error *err)
 
 	ADD(rv, STRING_OBJ(ptr_to_str(line->pprev)));
 
+	ADD(rv, INTEGER_OBJ((int)line->id));
+
 	return rv;
 }
 

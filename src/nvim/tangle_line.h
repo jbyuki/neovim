@@ -24,6 +24,8 @@ struct Line_s
   Line* pnext, *pprev;
   bpnode* parent;
   Section* parent_section;
+
+  int64_t id;
 };
 
 

@@ -26,6 +26,14 @@
 
 typedef struct SectionList_s SectionList;
 
+typedef struct LineRef_s LineRef;
+
+struct LineRef_s
+{
+	Section* section;
+	int64_t id;
+};
+
 struct Section_s
 {
   int n;
@@ -50,7 +58,7 @@ struct SectionList_s
   Section* phead;
   Section* ptail;
 
-  kvec_t(Section*) refs;
+  kvec_t(LineRef) refs;
 
 };
 
@@ -269,7 +277,10 @@ void update_current_tangle_line(Line* old_line, int rel)
 			update_count_recursively(old_line->parent_section, delta);
 
 			SectionList* list = get_section_list(&curbuf->sections, name);
-			kv_push(list->refs, new_line.parent_section);
+			LineRef line_ref;
+			line_ref.section = new_line.parent_section;
+			line_ref.id = new_line.id;
+			kv_push(list->refs, line_ref);
 
 
 		} else if(new_line.type == SECTION) {
@@ -347,8 +358,12 @@ void update_current_tangle_line(Line* old_line, int rel)
 			while(next_line && next_line->pnext) {
 				if(next_line->type == REFERENCE) {
 					SectionList* ref_list = get_section_list(&curbuf->sections, next_line->name);
-					remove_ref(ref_list, old_line->parent_section);
-					kv_push(ref_list->refs, section);
+					LineRef old_ref = { .section = old_line->parent_section, .id = old_line->id };
+					remove_ref(ref_list, old_ref);
+					LineRef line_ref;
+					line_ref.section = section;
+					line_ref.id = next_line->id;
+					kv_push(ref_list->refs, line_ref);
 				}
 				next_line = next_line->pnext;
 			}
@@ -372,8 +387,11 @@ void update_current_tangle_line(Line* old_line, int rel)
 			int delta = -tangle_get_count(curbuf, old_line->name)+1;
 			update_count_recursively(old_line->parent_section, delta);
 
+			{
 			SectionList* old_list = get_section_list(&curbuf->sections, old_line->name);
-			remove_ref(old_list, old_line->parent_section);
+			LineRef line_ref = { .section = old_line->parent_section, .id = old_line->id };
+			remove_ref(old_list, line_ref);
+			}
 
 
 		} else if(new_line.type == REFERENCE) {
@@ -394,11 +412,17 @@ void update_current_tangle_line(Line* old_line, int rel)
 			int delta = -tangle_get_count(curbuf, old_line->name) + tangle_get_count(curbuf, name);
 			update_count_recursively(old_line->parent_section, delta);
 
+			{
 			SectionList* old_list = get_section_list(&curbuf->sections, old_line->name);
-			remove_ref(old_list, old_line->parent_section);
+			LineRef line_ref = { .section = old_line->parent_section, .id = old_line->id };
+			remove_ref(old_list, line_ref);
+			}
 
 			SectionList* list = get_section_list(&curbuf->sections, name);
-			kv_push(list->refs, new_line.parent_section);
+			LineRef line_ref;
+			line_ref.section = new_line.parent_section;
+			line_ref.id = new_line.id;
+			kv_push(list->refs, line_ref);
 
 
 		} else if(new_line.type == SECTION) {
@@ -442,8 +466,11 @@ void update_current_tangle_line(Line* old_line, int rel)
 				next_line = next_line->pnext;
 			}
 
-			SectionList* ref_list = get_section_list(&curbuf->sections, old_line->name);
-			remove_ref(ref_list, old_line->parent_section);
+			{
+				SectionList* ref_list = get_section_list(&curbuf->sections, old_line->name);
+				LineRef line_ref = { .section = old_line->parent_section, .id = old_line->id };
+				remove_ref(ref_list, line_ref);
+			}
 
 			next_line = next_l;
 
@@ -451,8 +478,12 @@ void update_current_tangle_line(Line* old_line, int rel)
 			while(next_line && next_line->pnext) {
 				if(next_line->type == REFERENCE) {
 					SectionList* ref_list = get_section_list(&curbuf->sections, next_line->name);
-					remove_ref(ref_list, old_line->parent_section);
-					kv_push(ref_list->refs, section);
+					LineRef old_ref = { .section = old_line->parent_section, .id = old_line->id };
+					remove_ref(ref_list, old_ref);
+					LineRef line_ref;
+					line_ref.section = section;
+					line_ref.id = next_line->id;
+					kv_push(ref_list->refs, line_ref);
 				}
 				next_line = next_line->pnext;
 			}
@@ -528,8 +559,12 @@ void update_current_tangle_line(Line* old_line, int rel)
 			while(line_iter->pnext) {
 				if(line_iter->type == REFERENCE) {
 					SectionList* ref_list = get_section_list(&curbuf->sections, line_iter->name);
-					remove_ref(ref_list, old_line->parent_section);
-					kv_push(ref_list->refs, prev_section);
+					LineRef old_ref = { .section = old_line->parent_section, .id = old_line->id };
+					remove_ref(ref_list, old_ref);
+					LineRef line_ref;
+					line_ref.section = prev_section;
+					line_ref.id = line_iter->id;
+					kv_push(ref_list->refs, line_ref);
 				}
 				line_iter = line_iter->pnext;
 			}
@@ -588,14 +623,21 @@ void update_current_tangle_line(Line* old_line, int rel)
 			while(line_iter->pnext) {
 				if(line_iter->type == REFERENCE) {
 					SectionList* ref_list = get_section_list(&curbuf->sections, line_iter->name);
-					remove_ref(ref_list, old_line->parent_section);
-					kv_push(ref_list->refs, prev_section);
+					LineRef old_ref = { .section = old_line->parent_section, .id = old_line->id };
+					remove_ref(ref_list, old_ref);
+					LineRef line_ref;
+					line_ref.section = prev_section;
+					line_ref.id = line_iter->id;
+					kv_push(ref_list->refs, line_ref);
 				}
 				line_iter = line_iter->pnext;
 			}
 
 			SectionList* list = get_section_list(&curbuf->sections, name);
-			kv_push(list->refs, prev_section);
+			LineRef line_ref;
+			line_ref.section = prev_section;
+			line_ref.id = new_line.id;
+			kv_push(list->refs, line_ref);
 			if(list->n < 0) {
 				list->n = 0;
 			}
@@ -703,8 +745,12 @@ void update_current_tangle_line(Line* old_line, int rel)
 				while(next_line && next_line->pnext) {
 					if(next_line->type == REFERENCE) {
 						SectionList* ref_list = get_section_list(&curbuf->sections, next_line->name);
-						remove_ref(ref_list, old_line->parent_section);
-						kv_push(ref_list->refs, section);
+						LineRef old_ref = { .section = old_line->parent_section, .id = old_line->id };
+						remove_ref(ref_list, old_ref);
+						LineRef line_ref;
+						line_ref.section = section;
+						line_ref.id = next_line->id;
+						kv_push(ref_list->refs, line_ref);
 					}
 					next_line = next_line->pnext;
 				}
@@ -748,16 +794,17 @@ void update_count_recursively(Section* section, int delta)
 	list->n += delta;
 
 	for (size_t i = 0; i < kv_size(list->refs); i++) {
-		Section* ref = kv_A(list->refs, i);
-		update_count_recursively(ref, delta);
+		LineRef line_ref = kv_A(list->refs, i);
+		update_count_recursively(line_ref.section, delta);
 	}
 }
 
-static void remove_ref(SectionList* list, Section* ref)
+static void remove_ref(SectionList* list, LineRef ref)
 {
 	int i = 0;
 	for(; i<kv_size(list->refs); ++i) {
-		if(kv_A(list->refs, i) == ref) {
+		LineRef cur_ref = kv_A(list->refs, i);
+		if(cur_ref.section == ref.section && cur_ref.id == ref.id) {
 			break;
 		}
 	}
@@ -789,6 +836,8 @@ void tangle_open_line()
 	l.pnext = NULL;
 	l.pprev = NULL;
 
+	buf_T* buf = curbuf;
+	l.id = ++buf->line_counter;
 	Line* pl = tree_insert(curbuf->tgl_tree, lnum-1, &l);
 
 	Line* prev_l = prev_line(pl, &curbuf->first_line);
@@ -850,8 +899,11 @@ void tangle_delete_lines(int count)
 			}
 
 			Line* old_line = line;
+			{
 			SectionList* old_list = get_section_list(&curbuf->sections, old_line->name);
-			remove_ref(old_list, old_line->parent_section);
+			LineRef line_ref = { .section = old_line->parent_section, .id = old_line->id };
+			remove_ref(old_list, line_ref);
+			}
 
 			remove_line_from_section(line);
 		}
@@ -893,7 +945,9 @@ void tangle_delete_lines(int count)
 		while(line_n && line_n->pnext) {
 			if(line_n->type == REFERENCE) {
 				SectionList* ref_list = get_section_list(&curbuf->sections, line_n->name);
-				replace_ref(ref_list, line_n->parent_section, prev_section);
+				LineRef old_ref = { .section = line_n->parent_section, .id = line_n->id };
+				LineRef new_ref = { .section = prev_section, .id = line_n->id };
+				replace_ref(ref_list, old_ref, new_ref);
 			}
 			line_n = line_n->pnext;
 		}
@@ -951,11 +1005,12 @@ void remove_line_from_section(Line* line)
 	line->pnext->pprev = line->pprev;
 }
 
-static void replace_ref(SectionList* list, Section* old_ref, Section* new_ref)
+static void replace_ref(SectionList* list, LineRef old_ref, LineRef new_ref)
 {
 	int i = 0;
 	for(; i<kv_size(list->refs); ++i) {
-		if(kv_A(list->refs, i) == old_ref) {
+		LineRef ref = kv_A(list->refs, i);
+		if(ref.section == old_ref.section && ref.id == old_ref.id) {
 			break;
 		}
 	}
@@ -1078,7 +1133,9 @@ void tangle_parse(buf_T *buf)
           l.pprev = NULL;
           l.parent_section = section;
 
+          l.id = ++buf->line_counter;
           Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
+
 
         } else {
           size_t len = fp - line;
@@ -1098,11 +1155,16 @@ void tangle_parse(buf_T *buf)
           l.pnext = NULL;
           l.pprev = NULL;
 
+          l.id = ++buf->line_counter;
           Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
+
           add_to_section(cur_section, pl);
 
           SectionList* list = get_section_list(&buf->sections, name);
-          kv_push(list->refs, cur_section);
+          LineRef line_ref;
+          line_ref.section = cur_section;
+          line_ref.id = l.id;
+          kv_push(list->refs, line_ref);
 
 
         }
@@ -1112,7 +1174,9 @@ void tangle_parse(buf_T *buf)
     		l.pnext = NULL;
     		l.pprev = NULL;
 
+    		l.id = ++buf->line_counter;
     		Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
+
     		add_to_section(cur_section, pl);
 
       }
@@ -1124,7 +1188,9 @@ void tangle_parse(buf_T *buf)
     	l.pnext = NULL;
     	l.pprev = NULL;
 
+    	l.id = ++buf->line_counter;
     	Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
+
     	add_to_section(cur_section, pl);
 
     }

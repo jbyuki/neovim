@@ -28,6 +28,7 @@
 @includes
 
 @declare_struct
+@line_ref_struct
 @section_struct
 @section_list_struct
 

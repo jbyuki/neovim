@@ -57,6 +57,7 @@ if(fp == NULL) {
 if(old_line->type == TEXT) {
 	if(new_line.type == TEXT) {
 		// Nothing to do
+		@changed_text_to_text
 		return;
 	} else if(new_line.type == REFERENCE) {
 		@insert_text_to_reference
@@ -90,14 +91,17 @@ void update_count_recursively(Section* section, int delta)
 	list->n += delta;
 
 	for (size_t i = 0; i < kv_size(list->refs); i++) {
-		Section* ref = kv_A(list->refs, i);
-		update_count_recursively(ref, delta);
+		LineRef line_ref = kv_A(list->refs, i);
+		update_count_recursively(line_ref.section, delta);
 	}
 }
 
 @append_new_line_reference+=
 SectionList* list = get_section_list(&curbuf->sections, name);
-kv_push(list->refs, new_line.parent_section);
+LineRef line_ref;
+line_ref.section = new_line.parent_section;
+line_ref.id = new_line.id;
+kv_push(list->refs, line_ref);
 
 @if_old_line_was_reference_insert+=
 else if(old_line->type == REFERENCE) {
@@ -126,15 +130,19 @@ int delta = -tangle_get_count(curbuf, old_line->name) + tangle_get_count(curbuf,
 update_count_recursively(old_line->parent_section, delta);
 
 @remove_old_line_reference+=
+{
 SectionList* old_list = get_section_list(&curbuf->sections, old_line->name);
-remove_ref(old_list, old_line->parent_section);
+LineRef line_ref = { .section = old_line->parent_section, .id = old_line->id };
+remove_ref(old_list, line_ref);
+}
 
 @define_functions+=
-static void remove_ref(SectionList* list, Section* ref)
+static void remove_ref(SectionList* list, LineRef ref)
 {
 	int i = 0;
 	for(; i<kv_size(list->refs); ++i) {
-		if(kv_A(list->refs, i) == ref) {
+		LineRef cur_ref = kv_A(list->refs, i);
+		if(cur_ref.section == ref.section && cur_ref.id == ref.id) {
 			break;
 		}
 	}
@@ -209,8 +217,12 @@ Section* old_section = old_line->parent_section;
 while(next_line && next_line->pnext) {
 	if(next_line->type == REFERENCE) {
 		SectionList* ref_list = get_section_list(&curbuf->sections, next_line->name);
-		remove_ref(ref_list, old_line->parent_section);
-		kv_push(ref_list->refs, section);
+		LineRef old_ref = { .section = old_line->parent_section, .id = old_line->id };
+		remove_ref(ref_list, old_ref);
+		LineRef line_ref;
+		line_ref.section = section;
+		line_ref.id = next_line->id;
+		kv_push(ref_list->refs, line_ref);
 	}
 	next_line = next_line->pnext;
 }
@@ -256,8 +268,11 @@ Line* next_l = next_line(old_line);
 @if_new_section_is_root_create_buf
 
 @remove_current_reference+=
-SectionList* ref_list = get_section_list(&curbuf->sections, old_line->name);
-remove_ref(ref_list, old_line->parent_section);
+{
+	SectionList* ref_list = get_section_list(&curbuf->sections, old_line->name);
+	LineRef line_ref = { .section = old_line->parent_section, .id = old_line->id };
+	remove_ref(ref_list, line_ref);
+}
 
 @if_old_line_was_section_insert+=
 else if(old_line->type == SECTION) {
@@ -320,8 +335,12 @@ line_iter = next_l;
 while(line_iter->pnext) {
 	if(line_iter->type == REFERENCE) {
 		SectionList* ref_list = get_section_list(&curbuf->sections, line_iter->name);
-		remove_ref(ref_list, old_line->parent_section);
-		kv_push(ref_list->refs, prev_section);
+		LineRef old_ref = { .section = old_line->parent_section, .id = old_line->id };
+		remove_ref(ref_list, old_ref);
+		LineRef line_ref;
+		line_ref.section = prev_section;
+		line_ref.id = line_iter->id;
+		kv_push(ref_list->refs, line_ref);
 	}
 	line_iter = line_iter->pnext;
 }
@@ -346,7 +365,10 @@ Line* prev_l = prev_line(old_line, &curbuf->first_line);
 
 @add_current_line_reference_to_previous_section+=
 SectionList* list = get_section_list(&curbuf->sections, name);
-kv_push(list->refs, prev_section);
+LineRef line_ref;
+line_ref.section = prev_section;
+line_ref.id = new_line.id;
+kv_push(list->refs, line_ref);
 if(list->n < 0) {
 	list->n = 0;
 }
@@ -396,6 +418,8 @@ void tangle_open_line()
 {
 	@get_cursor_position
 	@create_empty_text_line
+	buf_T* buf = curbuf;
+	@assign_new_line_id
 	@append_text_line_based_on_dir
 	@append_text_to_current_section
 	@update_count_for_current_section_append
@@ -553,18 +577,21 @@ if(prev_section != cur_section) {
 	while(line_n && line_n->pnext) {
 		if(line_n->type == REFERENCE) {
 			SectionList* ref_list = get_section_list(&curbuf->sections, line_n->name);
-			replace_ref(ref_list, line_n->parent_section, prev_section);
+			LineRef old_ref = { .section = line_n->parent_section, .id = line_n->id };
+			LineRef new_ref = { .section = prev_section, .id = line_n->id };
+			replace_ref(ref_list, old_ref, new_ref);
 		}
 		line_n = line_n->pnext;
 	}
 }
 
 @define_functions+=
-static void replace_ref(SectionList* list, Section* old_ref, Section* new_ref)
+static void replace_ref(SectionList* list, LineRef old_ref, LineRef new_ref)
 {
 	int i = 0;
 	for(; i<kv_size(list->refs); ++i) {
-		if(kv_A(list->refs, i) == old_ref) {
+		LineRef ref = kv_A(list->refs, i);
+		if(ref.section == old_ref.section && ref.id == old_ref.id) {
 			break;
 		}
 	}

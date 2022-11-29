@@ -32,6 +32,7 @@ if(*fp == '@') {
     }
   } else {
 		@create_text_line_without_at
+		@assign_new_line_id
 		@add_line_to_btree
 		@add_line_to_current_section
   }
@@ -47,6 +48,7 @@ char* lp = strnwlast(line);
 @link_to_previous_section_if_needed
 @otherwise_just_save_section
 @create_line_section
+@assign_new_line_id
 @add_line_to_btree
 
 @parse_operator+=
@@ -148,6 +150,7 @@ l.parent_section = section;
 @get_whitespace_before
 @get_reference_name
 @create_line_reference
+@assign_new_line_id
 @add_line_to_btree
 @add_line_to_current_section
 @add_reference_to_section_list
@@ -209,12 +212,25 @@ static inline void add_to_section(Section* section, Line* pl)
 @add_line_to_current_section+=
 add_to_section(cur_section, pl);
 
+@declare_struct+=
+typedef struct LineRef_s LineRef;
+
+@line_ref_struct+=
+struct LineRef_s
+{
+	Section* section;
+	int64_t id;
+};
+
 @section_list_data+=
-kvec_t(Section*) refs;
+kvec_t(LineRef) refs;
 
 @add_reference_to_section_list+=
 SectionList* list = get_section_list(&buf->sections, name);
-kv_push(list->refs, cur_section);
+LineRef line_ref;
+line_ref.section = cur_section;
+line_ref.id = l.id;
+kv_push(list->refs, line_ref);
 
 @create_text_line_without_at+=
 Line l;
@@ -225,6 +241,7 @@ l.pprev = NULL;
 @otherwise_add_to_section+=
 else {
 	@create_text_line
+	@assign_new_line_id
 	@add_line_to_btree
 	@add_line_to_current_section
 }
@@ -243,3 +260,6 @@ buf->tgl_tree = create_tree();
 
 @add_line_to_btree+=
 Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
+
+@assign_new_line_id+=
+l.id = ++buf->line_counter;

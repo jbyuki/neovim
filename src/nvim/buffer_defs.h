@@ -870,6 +870,7 @@ struct file_buffer {
   Line first_line;
 	bptree* tgl_tree;
 	buf_T* parent_tgl;
+	int64_t line_counter;
 };
 
 // Stuff for diff mode.

@@ -53,3 +53,6 @@ char* prefix;
 Line* pnext, *pprev;
 bpnode* parent;
 Section* parent_section;
+
+@line_data+=
+int64_t id;
