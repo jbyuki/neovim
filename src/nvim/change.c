@@ -378,23 +378,27 @@ static void changedOneline(buf_T *buf, linenr_T lnum)
 /// Careful: may trigger autocommands that reload the buffer.
 void changed_bytes(linenr_T lnum, colnr_T col)
 {
-  changedOneline(curbuf, lnum);
-  changed_common(lnum, col, lnum + 1, 0);
+	if(!curbuf->parent_tgl) {
+		changedOneline(curbuf, lnum);
+		changed_common(lnum, col, lnum + 1, 0);
+	}
   // notify any channels that are watching
   buf_updates_send_changes(curbuf, lnum, 1, 1);
 
   // Diff highlighting in other diff windows may need to be updated too.
-  if (curwin->w_p_diff) {
-    FOR_ALL_WINDOWS_IN_TAB(wp, curtab) {
-      if (wp->w_p_diff && wp != curwin) {
-        redraw_later(wp, UPD_VALID);
-        linenr_T wlnum = diff_lnum_win(lnum, wp);
-        if (wlnum > 0) {
-          changedOneline(wp->w_buffer, wlnum);
-        }
-      }
-    }
-  }
+	if(!curbuf->parent_tgl) {
+		if (curwin->w_p_diff) {
+			FOR_ALL_WINDOWS_IN_TAB(wp, curtab) {
+				if (wp->w_p_diff && wp != curwin) {
+					redraw_later(wp, UPD_VALID);
+					linenr_T wlnum = diff_lnum_win(lnum, wp);
+					if (wlnum > 0) {
+						changedOneline(wp->w_buffer, wlnum);
+					}
+				}
+			}
+		}
+	}
 }
 
 /// insert/delete bytes at column
