@@ -9,6 +9,9 @@
 #include "nvim/types.h"
 #include "nvim/bitree.h"
 
+typedef struct LineRef_s LineRef;
+
+
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "tangle.h.generated.h"
 #endif

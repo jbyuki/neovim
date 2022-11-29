@@ -66,6 +66,7 @@ Array nvim_tangle_get_lineinfo(Buffer buffer, Integer row, Error *err)
 
 	ADD(rv, INTEGER_OBJ((int)line->id));
 
+
 	return rv;
 }
 
@@ -76,5 +77,30 @@ static String ptr_to_str(void* p)
 	return cbuf_to_string(buffer, strlen(buffer));
 }
 
+Boolean nvim_buf_is_tangle(Buffer buffer, Error *err)
+  FUNC_API_SINCE(7)
+{
+  buf_T *buf = find_buffer_by_handle(buffer, err);
+	return buf->b_p_tgl == 1;
+}
+
+ArrayOf(Integer) nvim_tangle_get_bufs(Buffer buffer, Error *err)
+  FUNC_API_SINCE(7)
+{
+  buf_T *buf = find_buffer_by_handle(buffer, err);
+
+  Array rv = ARRAY_DICT_INIT;
+
+	if(buf->b_p_tgl == 0) {
+		return rv;
+	}
+
+	const char* name;
+	buf_T* pbuf;
+	map_foreach(&buf->tgl_bufs, name, pbuf, {
+			ADD(rv, INTEGER_OBJ(pbuf->handle));
+	});
+	return rv;
+}
 
 

@@ -13,7 +13,7 @@ Section* phead;
 Section* ptail;
 
 @define_functions_linked_list+=
-static SectionList* sectionlist_init()
+static SectionList* sectionlist_init(const char* name)
 {
   SectionList* list = (SectionList*)xcalloc(1, sizeof(SectionList));
 	@init_section_list
@@ -93,3 +93,9 @@ static void sectionlist_remove(Section* section)
 
 	xfree(section);
 }
+
+@section_list_data+=
+const char* name;
+
+@init_section_list+=
+list->name = name;

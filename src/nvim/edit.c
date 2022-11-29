@@ -4685,8 +4685,8 @@ bool ins_eol(int c)
 		Line* line_n = get_current_tangle_line();
 		tangle_open_line();
 
-		update_current_tangle_line(line_p, -1);
-		update_current_tangle_line(line_n, 0);
+		update_current_tangle_line(line_p, -1, 0, 0, 0);
+		update_current_tangle_line(line_n, 0, 0, 0, 0);
   } else {
 		i = open_line(FORWARD,
 					has_format_option(FO_RET_COMS) ? OPENLINE_DO_COM : 0,

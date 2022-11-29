@@ -1732,9 +1732,10 @@ int op_delete(oparg_T *oap)
 
       if(curbuf->b_p_tgl == 1) {
 				Line* line = get_current_tangle_line();
+				size_t col = (size_t)curwin->w_cursor.col;
 				(void)del_bytes((colnr_T)n, !virtual_op,
 						oap->op_type == OP_DELETE && !oap->is_VIsual);
-				update_current_tangle_line(line, 0);
+				update_current_tangle_line(line, 0, col, 1, 0);
       } else {
 				(void)del_bytes((colnr_T)n, !virtual_op,
 						oap->op_type == OP_DELETE && !oap->is_VIsual);

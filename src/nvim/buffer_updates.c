@@ -34,7 +34,7 @@
 bool buf_updates_register(buf_T *buf, uint64_t channel_id, BufUpdateCallbacks cb, bool send_buffer)
 {
   // must fail if the buffer isn't loaded
-  if (buf->b_ml.ml_mfp == NULL) {
+  if (buf->b_ml.ml_mfp == NULL && buf->parent_tgl == NULL) {
     return false;
   }
 

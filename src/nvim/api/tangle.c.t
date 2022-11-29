@@ -117,3 +117,31 @@ ADD(rv, STRING_OBJ(ptr_to_str(line->pprev)));
 
 @popualte_tangle_line_id+=
 ADD(rv, INTEGER_OBJ((int)line->id));
+
+@define_functions+=
+Boolean nvim_buf_is_tangle(Buffer buffer, Error *err)
+  FUNC_API_SINCE(7)
+{
+  buf_T *buf = find_buffer_by_handle(buffer, err);
+	return buf->b_p_tgl == 1;
+}
+
+@define_functions+=
+ArrayOf(Integer) nvim_tangle_get_bufs(Buffer buffer, Error *err)
+  FUNC_API_SINCE(7)
+{
+  buf_T *buf = find_buffer_by_handle(buffer, err);
+
+  Array rv = ARRAY_DICT_INIT;
+
+	if(buf->b_p_tgl == 0) {
+		return rv;
+	}
+
+	const char* name;
+	buf_T* pbuf;
+	map_foreach(&buf->tgl_bufs, name, pbuf, {
+			ADD(rv, INTEGER_OBJ(pbuf->handle));
+	});
+	return rv;
+}

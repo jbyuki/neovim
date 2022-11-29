@@ -26,8 +26,6 @@
 
 typedef struct SectionList_s SectionList;
 
-typedef struct LineRef_s LineRef;
-
 struct LineRef_s
 {
 	Section* section;
@@ -58,6 +56,8 @@ struct SectionList_s
   Section* phead;
   Section* ptail;
 
+  const char* name;
+
   kvec_t(LineRef) refs;
 
 };
@@ -67,13 +67,14 @@ struct SectionList_s
 # include "tangle.c.generated.h"
 #endif
 
-static SectionList* sectionlist_init()
+static SectionList* sectionlist_init(const char* name)
 {
   SectionList* list = (SectionList*)xcalloc(1, sizeof(SectionList));
 	list->root = false;
 
 	list->n = -1;
 
+	list->name = name;
 
   list->phead = NULL;
   list->ptail = NULL;
@@ -143,6 +144,7 @@ static void sectionlist_remove(Section* section)
 
 	xfree(section);
 }
+
 void attach_tangle(buf_T *buf) 
 {
   // semsg(_("Tangle activated!"));
@@ -169,6 +171,67 @@ void attach_tangle(buf_T *buf)
 void deattach_tangle(buf_T *buf) 
 {
   // semsg(_("Tangle deactivated!"));
+}
+
+void tangle_inserted_bytes(linenr_T lnum, colnr_T col, int old, int new, Line* line)
+{
+	int offset = lnum;
+	Section* section = line->parent_section;
+	Section* section_iter = section->pprev;
+	while(section_iter) {
+		offset += section_iter->n;
+		section_iter = section_iter->pprev;
+	}
+
+	SectionList* list = section->parent;
+	if(list->root) {
+		buf_T* dummy_buf = pmap_get(cstr_t)(&curbuf->tgl_bufs, list->name);
+
+		aco_save_T aco;
+		aucmd_prepbuf(&aco, dummy_buf);
+		inserted_bytes(offset+1, col, old, new);
+		aucmd_restbuf(&aco);
+	}
+
+	else {
+		for (size_t i = 0; i < kv_size(list->refs); i++) {
+			LineRef line_ref = kv_A(list->refs, i);
+			Line* parent_line;
+			offset += get_line_from_ref(line_ref, &parent_line);
+			int pre_offset = strlen(parent_line->prefix);
+			tangle_inserted_bytes(offset, col+pre_offset, old, new, parent_line);
+		}
+	}
+
+}
+
+int relative_offset_section(Line* line)
+{
+	int offset = 0;
+	Line* line_iter = line->pprev;
+	while(line_iter->pprev) {
+		offset += get_tangle_line_size(line_iter);
+		line_iter = line_iter->pprev;
+	}
+	return offset;
+}
+
+int get_line_from_ref(LineRef line_ref, Line** line)
+{
+	Section* section = line_ref.section;
+	int offset = 0;
+	Line* line_iter = section->head.pnext;
+	while(line_iter->pnext) {
+		if(line_ref.id == line_iter->id) {
+			*line = line_iter;
+			return offset;
+		}
+		offset += get_tangle_line_size(line_iter);
+		line_iter = line_iter->pprev;
+	}
+	assert(false);
+	*line = NULL;
+	return offset;
 }
 
 int tangle_convert_lnum_to_untangled(buf_T* buf, const char* root, int lnum, char* prefix)
@@ -225,7 +288,7 @@ Line* get_current_tangle_line()
 	return line;
 }
 
-void update_current_tangle_line(Line* old_line, int rel)
+void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, int new)
 {
 	size_t col = (size_t)curwin->w_cursor.col;
 	linenr_T lnum = curwin->w_cursor.lnum;
@@ -257,6 +320,8 @@ void update_current_tangle_line(Line* old_line, int rel)
 	if(old_line->type == TEXT) {
 		if(new_line.type == TEXT) {
 			// Nothing to do
+			int offset = relative_offset_section(old_line);
+			tangle_inserted_bytes(offset, linecol, old, new, old_line);
 			return;
 		} else if(new_line.type == REFERENCE) {
 			size_t len = fp - line;
@@ -319,7 +384,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 			  if(pmap_has(cstr_t)(&buf->sections, name)) {
 			    list = pmap_get(cstr_t)(&buf->sections, name);
 			  } else {
-			    list = sectionlist_init();
+			    list = sectionlist_init(name);
 			    pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
 			    pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
 			  }
@@ -513,7 +578,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 			  if(pmap_has(cstr_t)(&buf->sections, name)) {
 			    list = pmap_get(cstr_t)(&buf->sections, name);
 			  } else {
-			    list = sectionlist_init();
+			    list = sectionlist_init(name);
 			    pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
 			    pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
 			  }
@@ -703,7 +768,7 @@ void update_current_tangle_line(Line* old_line, int rel)
 				  if(pmap_has(cstr_t)(&buf->sections, name)) {
 				    list = pmap_get(cstr_t)(&buf->sections, name);
 				  } else {
-				    list = sectionlist_init();
+				    list = sectionlist_init(name);
 				    pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
 				    pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
 				  }
@@ -1113,7 +1178,7 @@ void tangle_parse(buf_T *buf)
             if(pmap_has(cstr_t)(&buf->sections, name)) {
               list = pmap_get(cstr_t)(&buf->sections, name);
             } else {
-              list = sectionlist_init();
+              list = sectionlist_init(name);
               pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
               pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
             }
@@ -1212,7 +1277,7 @@ static SectionList* get_section_list(PMap(cstr_t)* sections, const char* name)
 {
 	SectionList* list;
 	if(!pmap_has(cstr_t)(sections, name)) {
-    list = sectionlist_init();
+    list = sectionlist_init(name);
     pmap_put(cstr_t)(sections, xstrdup(name), list);
   } else {
     list = pmap_get(cstr_t)(sections, name);

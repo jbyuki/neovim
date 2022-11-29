@@ -11,6 +11,8 @@
 #include "nvim/types.h"
 #include "nvim/bitree.h"
 
+@declare_struct_header
+
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "tangle.h.generated.h"
 #endif

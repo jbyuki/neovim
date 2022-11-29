@@ -89,7 +89,7 @@ static SectionList* get_section_list(PMap(cstr_t)* sections, const char* name)
 {
 	SectionList* list;
 	if(!pmap_has(cstr_t)(sections, name)) {
-    list = sectionlist_init();
+    list = sectionlist_init(name);
     pmap_put(cstr_t)(sections, xstrdup(name), list);
   } else {
     list = pmap_get(cstr_t)(sections, name);
@@ -126,7 +126,7 @@ else {
   if(pmap_has(cstr_t)(&buf->sections, name)) {
     list = pmap_get(cstr_t)(&buf->sections, name);
   } else {
-    list = sectionlist_init();
+    list = sectionlist_init(name);
     pmap_put(cstr_t)(&buf->sections, xstrdup(name), list);
     pmap_put(cstr_t)(&buf->tgl_bufs, xstrdup(name), NULL);
   }
@@ -212,7 +212,7 @@ static inline void add_to_section(Section* section, Line* pl)
 @add_line_to_current_section+=
 add_to_section(cur_section, pl);
 
-@declare_struct+=
+@declare_struct_header+=
 typedef struct LineRef_s LineRef;
 
 @line_ref_struct+=
