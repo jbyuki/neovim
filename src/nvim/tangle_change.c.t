@@ -51,7 +51,7 @@ int get_line_from_ref(LineRef line_ref, Line** line)
 			return offset;
 		}
 		offset += get_tangle_line_size(line_iter);
-		line_iter = line_iter->pprev;
+		line_iter = line_iter->pnext;
 	}
 	assert(false);
 	*line = NULL;
