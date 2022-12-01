@@ -34,6 +34,7 @@ struct LineRef_s
 
 struct Section_s
 {
+  int total;
   int n;
 
   Section* pnext, *pprev;
@@ -50,6 +51,8 @@ struct Section_s
 struct SectionList_s
 {
   bool root;
+
+  int total;
 
   int n;
 
@@ -73,6 +76,7 @@ static SectionList* sectionlist_init(const char* name)
 	list->root = false;
 
 	list->n = -1;
+	list->total = -1;
 
 	list->name = name;
 
@@ -173,6 +177,10 @@ void deattach_tangle(buf_T *buf)
   // semsg(_("Tangle deactivated!"));
 }
 
+// Reimplement "ml_find_line_or_offset" but for tangled buffers
+long tangle_find_line_or_offset(buf_T *buf, linenr_T lnum, long *offp, bool no_ff)
+{
+}
 void tangle_inserted_bytes(linenr_T lnum, colnr_T col, int old, int new, Line* line)
 {
 	int offset = lnum;
@@ -260,7 +268,8 @@ Line* get_line_at_lnum_tangled(buf_T* buf, const char* name, int lnum, char* pre
 					}
 					lnum--;
 				} else if(line->type == REFERENCE) {
-					int count = tangle_get_count(buf, line->name);
+					int count, total;
+					tangle_get_count(buf, line->name, &count, &total);
 					if(lnum < count) {
 						STRCAT(prefix, line->prefix);
 						return get_line_at_lnum_tangled(buf, line->name, lnum, prefix);
@@ -338,7 +347,9 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			new_line.name = name;
 			new_line.prefix = prefix;
 
-			int delta = -1 + tangle_get_count(curbuf, name);
+			int n, total;
+			tangle_get_count(curbuf, name, &n, &total);
+			int delta = -1 + n;
 			update_count_recursively(old_line->parent_section, delta);
 
 			SectionList* list = get_section_list(&curbuf->sections, name);
@@ -352,15 +363,18 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			buf_T* buf = curbuf;
 			Section* cur_section;
 			int op;
-			switch(*(lp-1)) {
+			switch(*(fp+1)) {
 			case '+': op = 1; break;
 			case '-': op = 2; break;
 			default: op = 0; break;
 			}
 
-			size_t len = (op == 0 ? lp : lp-1) - (fp+1);
+			// fp  fp+1 ... lp
+			// @    +   
+			// len = 0 if fp+1 == lp
+			size_t len = lp - (fp+1);
 			char* name = xmalloc(len + 1);
-			STRNCPY(name, fp+1, len);
+			STRNCPY(name, fp+2, len);
 			name[len] = '\0';
 
 			Section* section = (Section*)xcalloc(1, sizeof(Section));
@@ -447,9 +461,12 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 		}
 	}
 
+
 	else if(old_line->type == REFERENCE) {
 		if(new_line.type == TEXT) {
-			int delta = -tangle_get_count(curbuf, old_line->name)+1;
+			int n, total;
+			tangle_get_count(curbuf, old_line->name, &n, &total);
+			int delta = -n+1;
 			update_count_recursively(old_line->parent_section, delta);
 
 			{
@@ -474,7 +491,11 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			new_line.name = name;
 			new_line.prefix = prefix;
 
-			int delta = -tangle_get_count(curbuf, old_line->name) + tangle_get_count(curbuf, name);
+			int old_n, new_n;
+			int old_total, new_total;
+			tangle_get_count(curbuf, old_line->name, &old_n, &old_total);
+			tangle_get_count(curbuf, name, &new_n, &new_total);
+			int delta = -old_n + new_n;
 			update_count_recursively(old_line->parent_section, delta);
 
 			{
@@ -494,15 +515,18 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			buf_T* buf = curbuf;
 			Section* cur_section;
 			int op;
-			switch(*(lp-1)) {
+			switch(*(fp+1)) {
 			case '+': op = 1; break;
 			case '-': op = 2; break;
 			default: op = 0; break;
 			}
 
-			size_t len = (op == 0 ? lp : lp-1) - (fp+1);
+			// fp  fp+1 ... lp
+			// @    +   
+			// len = 0 if fp+1 == lp
+			size_t len = lp - (fp+1);
 			char* name = xmalloc(len + 1);
-			STRNCPY(name, fp+1, len);
+			STRNCPY(name, fp+2, len);
 			name[len] = '\0';
 
 			Section* section = (Section*)xcalloc(1, sizeof(Section));
@@ -600,6 +624,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 				pmap_put(cstr_t)(&curbuf->tgl_bufs, name, view_buf);
 				view_buf->parent_tgl = curbuf;
 			}
+
 
 		}
 	}
@@ -732,15 +757,18 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			buf_T* buf = curbuf;
 			Section* cur_section;
 			int op;
-			switch(*(lp-1)) {
+			switch(*(fp+1)) {
 			case '+': op = 1; break;
 			case '-': op = 2; break;
 			default: op = 0; break;
 			}
 
-			size_t len = (op == 0 ? lp : lp-1) - (fp+1);
+			// fp  fp+1 ... lp
+			// @    +   
+			// len = 0 if fp+1 == lp
+			size_t len = lp - (fp+1);
 			char* name = xmalloc(len + 1);
-			STRNCPY(name, fp+1, len);
+			STRNCPY(name, fp+2, len);
 			name[len] = '\0';
 
 			if(strcmp(old_line->name, name) != 0) {
@@ -884,7 +912,9 @@ static void remove_ref(SectionList* list, LineRef ref)
 static int get_tangle_line_size(Line* line)
 {
 	if(line->type == REFERENCE) {
-		return tangle_get_count(curbuf, line->name);
+		int n, total;
+		tangle_get_count(curbuf, line->name, &n, &total);
+		return n;
 	} else if(line->type == TEXT) {
 		return 1;
 	}
@@ -960,7 +990,9 @@ void tangle_delete_lines(int count)
 
 		else if(line->type == REFERENCE) {
 			if(prev_section == cur_section) {
-				deleted_from_prev += tangle_get_count(curbuf, line->name);
+				int n, total;
+				tangle_get_count(curbuf, line->name, &n, &total);
+				deleted_from_prev += n;
 			}
 
 			Line* old_line = line;
@@ -1087,32 +1119,46 @@ void tangle_update(buf_T* buf)
 {
 	const char* name;
 	SectionList* list;
+	int n, total;
   map_foreach(&buf->sections, name, list, {
-		tangle_get_count(buf, name);
+		tangle_get_count(buf, name, &n, &total);
   });
 }
 
-int tangle_get_count(buf_T* buf, const char* name)
+void tangle_get_count(buf_T* buf, const char* name, int* n, int* total)
 {
 	if(!pmap_has(cstr_t)(&buf->sections, name)) {
-		return 0;
+		*n = 0;
+		*total = 0;
+		return;
 	}
 
 	SectionList* list = pmap_get(cstr_t)(&buf->sections, name);
-	if(list->n != -1) {
-		return list->n;
+	if(list->n != -1 && list->total != -1) {
+		*n = list->n;
+		*total = list->total;
+		return;
 	}
 
 	list->n = 0;
+	list->total = 0;
 	Section* section = list->phead;
 	while(section) {
 		section->n = 0;
+		section->total = 0;
 		Line* line = section->head.pnext;
 		while(line != &section->tail) {
 			if(line->type == TEXT) {
 				section->n++;
+				section->n += line->len;
 			} else if(line->type == REFERENCE) {
-				section->n += tangle_get_count(buf, line->name);
+				int ref_n, ref_total;
+				tangle_get_count(buf, line->name, &ref_n, &ref_total);
+
+				int prefix_len = strlen(line->prefix);
+
+				section->n += ref_n;
+				section->total += ref_n*prefix_len + ref_total;
 			}
 			line = line->pnext;
 		}
@@ -1121,7 +1167,9 @@ int tangle_get_count(buf_T* buf, const char* name)
 		section = section->pnext;
 	}
 
-	return list->n;
+
+	*n = list->n;
+	*total = list->total;
 }
 
 void tangle_parse(buf_T *buf)
@@ -1144,17 +1192,20 @@ void tangle_parse(buf_T *buf)
       if(*(fp+1) != '@') {
         char* lp = strnwlast(line);
 
-        if(*lp == '=') {
+        if(*(fp+1) == '=' || *(fp+1) == '+' || *(fp+1) == '-') {
           int op;
-          switch(*(lp-1)) {
+          switch(*(fp+1)) {
           case '+': op = 1; break;
           case '-': op = 2; break;
           default: op = 0; break;
           }
 
-          size_t len = (op == 0 ? lp : lp-1) - (fp+1);
+          // fp  fp+1 ... lp
+          // @    +   
+          // len = 0 if fp+1 == lp
+          size_t len = lp - (fp+1);
           char* name = xmalloc(len + 1);
-          STRNCPY(name, fp+1, len);
+          STRNCPY(name, fp+2, len);
           name[len] = '\0';
 
           Section* section = (Section*)xcalloc(1, sizeof(Section));
@@ -1238,6 +1289,7 @@ void tangle_parse(buf_T *buf)
     		l.type = TEXT;
     		l.pnext = NULL;
     		l.pprev = NULL;
+    		l.len = strlen(line);
 
     		l.id = ++buf->line_counter;
     		Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
@@ -1252,6 +1304,7 @@ void tangle_parse(buf_T *buf)
     	l.type = TEXT;
     	l.pnext = NULL;
     	l.pprev = NULL;
+    	l.len = strlen(line);
 
     	l.id = ++buf->line_counter;
     	Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);

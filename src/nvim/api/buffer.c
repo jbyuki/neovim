@@ -1389,7 +1389,9 @@ static int64_t normalize_index(buf_T *buf, int64_t index, bool end_exclusive, bo
 		assert(buf->b_ml.ml_line_count > 0);
 		max_index = buf->b_ml.ml_line_count + (int)end_exclusive - 1;
 	} else {
-		max_index = tangle_get_count(buf->parent_tgl, buf->b_fname) + (int)end_exclusive - 1;
+		int n, total;
+		tangle_get_count(buf->parent_tgl, buf->b_fname, &n, &total);
+		max_index = n + (int)end_exclusive - 1;
 	}
 
   // Fix if < 0

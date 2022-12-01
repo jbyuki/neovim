@@ -66,6 +66,7 @@ if(old_line->type == TEXT) {
 	}
 }
 
+
 @update_line+=
 *old_line = new_line;
 
@@ -80,7 +81,9 @@ new_line.prefix = prefix;
 @append_new_line_reference
 
 @compute_text_ref_delta_count_and_update+=
-int delta = -1 + tangle_get_count(curbuf, name);
+int n, total;
+tangle_get_count(curbuf, name, &n, &total);
+int delta = -1 + n;
 update_count_recursively(old_line->parent_section, delta);
 
 @define_functions+=
@@ -126,7 +129,11 @@ new_line.prefix = prefix;
 @append_new_line_reference
 
 @compute_delta_reference_to_reference_and_update+=
-int delta = -tangle_get_count(curbuf, old_line->name) + tangle_get_count(curbuf, name);
+int old_n, new_n;
+int old_total, new_total;
+tangle_get_count(curbuf, old_line->name, &old_n, &old_total);
+tangle_get_count(curbuf, name, &new_n, &new_total);
+int delta = -old_n + new_n;
 update_count_recursively(old_line->parent_section, delta);
 
 @remove_old_line_reference+=
@@ -159,7 +166,9 @@ static void remove_ref(SectionList* list, LineRef ref)
 @remove_old_line_reference
 
 @compute_delta_reference_to_text_and_update+=
-int delta = -tangle_get_count(curbuf, old_line->name)+1;
+int n, total;
+tangle_get_count(curbuf, old_line->name, &n, &total);
+int delta = -n+1;
 update_count_recursively(old_line->parent_section, delta);
 
 @insert_text_to_section+=
@@ -194,7 +203,9 @@ while(next_line && next_line->pnext) {
 static int get_tangle_line_size(Line* line)
 {
 	if(line->type == REFERENCE) {
-		return tangle_get_count(curbuf, line->name);
+		int n, total;
+		tangle_get_count(curbuf, line->name, &n, &total);
+		return n;
 	} else if(line->type == TEXT) {
 		return 1;
 	}
@@ -517,7 +528,9 @@ line = tree_delete(curbuf->tgl_tree, lnum-1);
 @if_deleted_line_is_reference+=
 else if(line->type == REFERENCE) {
 	if(prev_section == cur_section) {
-		deleted_from_prev += tangle_get_count(curbuf, line->name);
+		int n, total;
+		tangle_get_count(curbuf, line->name, &n, &total);
+		deleted_from_prev += n;
 	}
 
 	Line* old_line = line;
@@ -682,3 +695,9 @@ if(op == 0) {
 	pmap_put(cstr_t)(&curbuf->tgl_bufs, name, view_buf);
 	view_buf->parent_tgl = curbuf;
 }
+
+@section_list_data+=
+int total;
+
+@section_data+=
+int total;

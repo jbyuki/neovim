@@ -26,6 +26,7 @@ struct Line_s
   Section* parent_section;
 
   int64_t id;
+	int len;
 };
 
 

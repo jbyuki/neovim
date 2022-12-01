@@ -25,7 +25,7 @@ if(fp == NULL) {
 if(*fp == '@') {
   if(*(fp+1) != '@') {
     @find_last_char_non_whitespace
-    if(*lp == '=') {
+    if(*(fp+1) == '=' || *(fp+1) == '+' || *(fp+1) == '-') {
       @parse_section
     } else {
       @parse_reference
@@ -53,7 +53,7 @@ char* lp = strnwlast(line);
 
 @parse_operator+=
 int op;
-switch(*(lp-1)) {
+switch(*(fp+1)) {
 case '+': op = 1; break;
 case '-': op = 2; break;
 default: op = 0; break;
@@ -63,9 +63,12 @@ default: op = 0; break;
 #include "nvim/vim.h"
 
 @parse_section_name+=
-size_t len = (op == 0 ? lp : lp-1) - (fp+1);
+// fp  fp+1 ... lp
+// @    +   
+// len = 0 if fp+1 == lp
+size_t len = lp - (fp+1);
 char* name = xmalloc(len + 1);
-STRNCPY(name, fp+1, len);
+STRNCPY(name, fp+2, len);
 name[len] = '\0';
 
 @section_struct+=
@@ -237,6 +240,7 @@ Line l;
 l.type = TEXT;
 l.pnext = NULL;
 l.pprev = NULL;
+l.len = strlen(line);
 
 @otherwise_add_to_section+=
 else {
@@ -251,6 +255,7 @@ Line l;
 l.type = TEXT;
 l.pnext = NULL;
 l.pprev = NULL;
+l.len = strlen(line);
 
 @includes+=
 #include "nvim/bitree.h"

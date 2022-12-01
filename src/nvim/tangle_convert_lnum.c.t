@@ -35,7 +35,8 @@ while(line != &section->tail) {
 		}
 		lnum--;
 	} else if(line->type == REFERENCE) {
-		int count = tangle_get_count(buf, line->name);
+		int count, total;
+		tangle_get_count(buf, line->name, &count, &total);
 		if(lnum < count) {
 			STRCAT(prefix, line->prefix);
 			return get_line_at_lnum_tangled(buf, line->name, lnum, prefix);
