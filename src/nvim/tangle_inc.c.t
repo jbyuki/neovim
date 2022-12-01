@@ -41,7 +41,7 @@ if(fp == NULL) {
 	new_line.type = TEXT;
 } else if(*fp == '@') {
   if(*(fp+1) != '@') {
-    if(*lp == '=') {
+    if(*(fp+1) == '=' || *(fp+1) == '+' || *(fp+1) == '-') {
 			new_line.type = SECTION;
     } else {
 			new_line.type = REFERENCE;

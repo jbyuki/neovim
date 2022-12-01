@@ -56,6 +56,7 @@ while(section) {
 	section->total = 0;
 	@count_section
 	list->n += section->n;
+	list->total += section->total;
 	section = section->pnext;
 }
 
@@ -69,7 +70,7 @@ while(line != &section->tail) {
 @count_line+=
 if(line->type == TEXT) {
 	section->n++;
-	section->n += line->len;
+	section->total += line->len;
 } else if(line->type == REFERENCE) {
 	int ref_n, ref_total;
 	tangle_get_count(buf, line->name, &ref_n, &ref_total);

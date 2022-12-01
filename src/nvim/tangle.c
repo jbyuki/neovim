@@ -313,7 +313,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 		new_line.type = TEXT;
 	} else if(*fp == '@') {
 	  if(*(fp+1) != '@') {
-	    if(*lp == '=') {
+	    if(*(fp+1) == '=' || *(fp+1) == '+' || *(fp+1) == '-') {
 				new_line.type = SECTION;
 	    } else {
 				new_line.type = REFERENCE;
@@ -1150,7 +1150,7 @@ void tangle_get_count(buf_T* buf, const char* name, int* n, int* total)
 		while(line != &section->tail) {
 			if(line->type == TEXT) {
 				section->n++;
-				section->n += line->len;
+				section->total += line->len;
 			} else if(line->type == REFERENCE) {
 				int ref_n, ref_total;
 				tangle_get_count(buf, line->name, &ref_n, &ref_total);
@@ -1164,6 +1164,7 @@ void tangle_get_count(buf_T* buf, const char* name, int* n, int* total)
 		}
 
 		list->n += section->n;
+		list->total += section->total;
 		section = section->pnext;
 	}
 
