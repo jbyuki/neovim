@@ -223,6 +223,7 @@ struct LineRef_s
 {
 	Section* section;
 	int64_t id;
+	@line_ref_data
 };
 
 @section_list_data+=
@@ -233,6 +234,7 @@ SectionList* list = get_section_list(&buf->sections, name);
 LineRef line_ref;
 line_ref.section = cur_section;
 line_ref.id = l.id;
+line_ref.prefix_len = strlen(prefix);
 kv_push(list->refs, line_ref);
 
 @create_text_line_without_at+=

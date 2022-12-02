@@ -57,6 +57,7 @@ if(fp == NULL) {
 if(old_line->type == TEXT) {
 	if(new_line.type == TEXT) {
 		// Nothing to do
+		@update_text_to_text_total
 		@changed_text_to_text
 		return;
 	} else if(new_line.type == REFERENCE) {
@@ -80,22 +81,26 @@ new_line.prefix = prefix;
 @compute_text_ref_delta_count_and_update
 @append_new_line_reference
 
+@line_ref_data+=
+int prefix_len;
+
 @compute_text_ref_delta_count_and_update+=
 int n, total;
 tangle_get_count(curbuf, name, &n, &total);
-int delta = -1 + n;
-update_count_recursively(old_line->parent_section, delta);
+update_count_recursively(old_line->parent_section, -1 + n, -old_line->len + total);
 
 @define_functions+=
-void update_count_recursively(Section* section, int delta)
+void update_count_recursively(Section* section, int delta_n, int delta_total)
 {
-	section->n += delta;
+	section->n += delta_n;
+	section->total += delta_total;
 	SectionList* list = section->parent;
-	list->n += delta;
+	list->n += delta_n;
+	list->total += delta_total;
 
 	for (size_t i = 0; i < kv_size(list->refs); i++) {
 		LineRef line_ref = kv_A(list->refs, i);
-		update_count_recursively(line_ref.section, delta);
+		update_count_recursively(line_ref.section, delta_n, delta_n * line_ref.prefix_len + delta_total);
 	}
 }
 
@@ -104,6 +109,7 @@ SectionList* list = get_section_list(&curbuf->sections, name);
 LineRef line_ref;
 line_ref.section = new_line.parent_section;
 line_ref.id = new_line.id;
+line_ref.prefix_len = strlen(new_line);
 kv_push(list->refs, line_ref);
 
 @if_old_line_was_reference_insert+=
@@ -130,11 +136,10 @@ new_line.prefix = prefix;
 
 @compute_delta_reference_to_reference_and_update+=
 int old_n, new_n;
-int old_total, new_total;
-tangle_get_count(curbuf, old_line->name, &old_n, &old_total);
-tangle_get_count(curbuf, name, &new_n, &new_total);
-int delta = -old_n + new_n;
-update_count_recursively(old_line->parent_section, delta);
+int old_bytes, new_bytes;
+get_tangle_line_size(old_line, &old_n, &old_bytes);
+get_tangle_line_size(&new_line, &new_n, &new_bytes);
+update_count_recursively(old_line->parent_section, -old_n + new_n, -old_bytes + new_bytes);
 
 @remove_old_line_reference+=
 {
@@ -166,10 +171,9 @@ static void remove_ref(SectionList* list, LineRef ref)
 @remove_old_line_reference
 
 @compute_delta_reference_to_text_and_update+=
-int n, total;
-tangle_get_count(curbuf, old_line->name, &n, &total);
-int delta = -n+1;
-update_count_recursively(old_line->parent_section, delta);
+int n, bytes;
+get_tangle_line_size(old_line, &n, &bytes);
+update_count_recursively(old_line->parent_section, -n+1, -bytes+new_line.len);
 
 @insert_text_to_section+=
 buf_T* buf = curbuf;
@@ -200,24 +204,35 @@ while(next_line && next_line->pnext) {
 }
 
 @define_functions+=
-static int get_tangle_line_size(Line* line)
+static void get_tangle_line_size(Line* line, int* n, int* bytes)
 {
 	if(line->type == REFERENCE) {
-		int n, total;
-		tangle_get_count(curbuf, line->name, &n, &total);
-		return n;
+		int ref_n, ref_total;
+		tangle_get_count(curbuf, line->name, &ref_n, &ref_total);
+		*n = ref_n;
+		*bytes = ref_n*strlen(line->prefix) + ref_total;
+		return;
 	} else if(line->type == TEXT) {
-		return 1;
+		*n = 1;
+		*bytes = line->len;
+		return;
 	}
-	return 0;
+	*n = 0;
+	*bytes = 0;
+	return;
 }
 
 @compute_removed_count_section+=
 next_line = next_l;
 
 int removed = 0;
+int removed_bytes = 0;
+
 while(next_line && next_line->pnext) {
-	removed += get_tangle_line_size(next_line);
+	int n, bytes;
+	get_tangle_line_size(next_line, &n, &bytes);
+	removed += n;
+	removed_bytes += bytes;
 	next_line = next_line->pnext;
 }
 
@@ -233,18 +248,22 @@ while(next_line && next_line->pnext) {
 		LineRef line_ref;
 		line_ref.section = section;
 		line_ref.id = next_line->id;
+		line_ref.prefix_len = strlen(next_line->prefix);
 		kv_push(ref_list->refs, line_ref);
 	}
 	next_line = next_line->pnext;
 }
 
 @compute_text_section_delta_count_and_update+=
-int delta = -get_tangle_line_size(old_line) - removed;
-update_count_recursively(old_line->parent_section, delta);
+int old_n, old_bytes;
+get_tangle_line_size(old_line, &old_n, &old_bytes);
+update_count_recursively(old_line->parent_section, 
+	-old_n - removed, 
+	-old_bytes - removed_bytes, 
+);
 
 @compute_new_section_size_and_update+=
-delta = removed;
-update_count_recursively(section, delta);
+update_count_recursively(section, removed, removed_bytes);
 
 @fix_section_linkedlist+=
 section->head.pnext = old_line->pnext;
@@ -334,12 +353,13 @@ while(line_iter->pnext) {
 
 @remove_section+=
 Section* old_s = old_line->parent_section;
-int delta = old_s->n;
-update_count_recursively(old_s, -delta);
+int delta_n = old_s->n;
+int delta_bytes = old_s->total;
+update_count_recursively(old_s, -delta_n, -delta_bytes);
 sectionlist_remove(old_s);
 
 @update_count_section_text_previous_section+=
-update_count_recursively(prev_section, delta+1);
+update_count_recursively(prev_section, delta_n+1, delta_bytes+new_line.len);
 
 @move_references_to_previous_section+=
 line_iter = next_l;
@@ -351,6 +371,7 @@ while(line_iter->pnext) {
 		LineRef line_ref;
 		line_ref.section = prev_section;
 		line_ref.id = line_iter->id;
+		line_ref.prefix_len = strlen(line_iter->prefix);
 		kv_push(ref_list->refs, line_ref);
 	}
 	line_iter = line_iter->pnext;
@@ -379,13 +400,16 @@ SectionList* list = get_section_list(&curbuf->sections, name);
 LineRef line_ref;
 line_ref.section = prev_section;
 line_ref.id = new_line.id;
+line_ref.prefix_len = strlen(new_line.prefix);
 kv_push(list->refs, line_ref);
 if(list->n < 0) {
 	list->n = 0;
 }
 
 @update_count_section_reference_previous_section+=
-update_count_recursively(prev_section, delta+list->n);
+int ref_n, ref_bytes;
+get_tangle_line_size(&new_line, &ref_n, &ref_bytes);
+update_count_recursively(prev_section, delta_n + ref_n, delta_bytes + ref_bytes);
 
 @insert_section_to_section+=
 buf_T* buf = curbuf;
@@ -418,7 +442,7 @@ if(strcmp(old_line->name, name) != 0) {
 }
 
 @update_count_section_reference_new_section+=
-update_count_recursively(section, delta);
+update_count_recursively(section, delta_n, delta_bytes);
 
 @fix_section_linkedlist_new_section+=
 section->head.pnext = next_l;
@@ -441,6 +465,7 @@ Line l;
 l.type = TEXT;
 l.pnext = NULL;
 l.pprev = NULL;
+l.len = 0;
 
 @append_text_line_based_on_dir+=
 Line* pl = tree_insert(curbuf->tgl_tree, lnum-1, &l);
@@ -474,7 +499,7 @@ Line* next_l = next_line(pl);
 insert_in_section(prev_l->parent_section, prev_l, next_l, pl);
 
 @update_count_for_current_section_append+=
-update_count_recursively(pl->parent_section, 1);
+update_count_recursively(pl->parent_section, 1, l.len);
 
 @define_functions+=
 void tangle_delete_lines(int count)
@@ -503,6 +528,7 @@ Line* prev_l = prev_line(line, &curbuf->first_line);
 Section* prev_section = prev_l->parent_section;
 Section* cur_section = prev_section;
 int deleted_from_prev = 0;
+int deleted_from_prev_bytes = 0;
 
 @define_functions+=
 void remove_line_from_section(Line* line)
@@ -514,7 +540,10 @@ void remove_line_from_section(Line* line)
 @if_deleted_line_is_text+=
 if(line->type == TEXT) {
 	if(prev_section == cur_section) {
-		deleted_from_prev++;
+		int n, bytes;
+		get_tangle_line_size(line, &n, &bytes);
+		deleted_from_prev += n;
+		deleted_from_prev_bytes += bytes;
 	}
 	remove_line_from_section(line);
 }
@@ -528,9 +557,10 @@ line = tree_delete(curbuf->tgl_tree, lnum-1);
 @if_deleted_line_is_reference+=
 else if(line->type == REFERENCE) {
 	if(prev_section == cur_section) {
-		int n, total;
-		tangle_get_count(curbuf, line->name, &n, &total);
+		int n, bytes;
+		get_tangle_line_size(line, &n, &bytes);
 		deleted_from_prev += n;
+		deleted_from_prev_bytes += bytes;
 	}
 
 	Line* old_line = line;
@@ -541,7 +571,7 @@ else if(line->type == REFERENCE) {
 
 @update_current_section_delete+=
 if(prev_section) {
-	update_count_recursively(prev_section, -deleted_from_prev);
+	update_count_recursively(prev_section, -deleted_from_prev, -deleted_from_prev_bytes);
 }
 @update_reference_ref_deleted_section
 @append_lines_other_deleted_section
@@ -562,25 +592,26 @@ else if(line->type == SECTION) {
 for(int i=0; i<kv_size(sections_to_delete); ++i) {
 	Section* old_s = kv_A(sections_to_delete, i);
 
-
-	int delta = old_s->n;
-	update_count_recursively(old_s, -delta);
+	update_count_recursively(old_s, -old_s->n, -old_s->total);
 	sectionlist_remove(old_s);
 
 }
 
 @append_lines_other_deleted_section+=
 if(prev_section != cur_section) {
-	int added = 0;
+	int added = 0, added_bytes = 0;
 	Line* line_n = line;
 	while(line_n && line_n->pnext) {
 		line_n->parent_section = prev_section;
-		added += get_tangle_line_size(line_n);
+		int n, bytes;
+		get_tangle_line_size(line_n, &n, &bytes);
+		added += n;
+		added_bytes += bytes;
 		line_n = line_n->pnext;
 	}
 
 	if(prev_section) {
-		update_count_recursively(prev_section, added);
+		update_count_recursively(prev_section, added, added_bytes);
 	}
 }
 
@@ -591,7 +622,7 @@ if(prev_section != cur_section) {
 		if(line_n->type == REFERENCE) {
 			SectionList* ref_list = get_section_list(&curbuf->sections, line_n->name);
 			LineRef old_ref = { .section = line_n->parent_section, .id = line_n->id };
-			LineRef new_ref = { .section = prev_section, .id = line_n->id };
+			LineRef new_ref = { .section = prev_section, .id = line_n->id, .prefix_len = strlen(line_n->prefix) };
 			replace_ref(ref_list, old_ref, new_ref);
 		}
 		line_n = line_n->pnext;
@@ -701,3 +732,7 @@ int total;
 
 @section_data+=
 int total;
+
+@update_text_to_text_total+=
+new_line.len = strlen(line);
+update_count_recursively(old_line->parent_section, 0, new_line.len - old_line->len);
