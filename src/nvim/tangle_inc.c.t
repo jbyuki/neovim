@@ -736,3 +736,10 @@ int total;
 @update_text_to_text_total+=
 new_line.len = strlen(line)+1;
 update_count_recursively(old_line->parent_section, 0, new_line.len - old_line->len);
+
+@define_functions+=
+int get_buf_line_count_tangle(buf_T* buf)
+{
+	SectionList* list = pmap_get(cstr_t)(&buf->parent_tgl->sections, buf->b_fname);
+	return list->n;
+}

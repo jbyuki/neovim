@@ -424,6 +424,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			// Nothing to do
 			new_line.len = strlen(line)+1;
 			update_count_recursively(old_line->parent_section, 0, new_line.len - old_line->len);
+
 			int offset = relative_offset_section(old_line);
 			tangle_inserted_bytes(offset, linecol, old, new, old_line);
 			return;
@@ -1256,6 +1257,11 @@ static void replace_ref(SectionList* list, LineRef old_ref, LineRef new_ref)
 	kv_A(list->refs, i) = new_ref;
 }
 
+int get_buf_line_count_tangle(buf_T* buf)
+{
+	SectionList* list = pmap_get(cstr_t)(&buf->parent_tgl->sections, buf->b_fname);
+	return list->n;
+}
 void tangle_update(buf_T* buf)
 {
 	const char* name;

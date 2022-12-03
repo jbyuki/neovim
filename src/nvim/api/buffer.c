@@ -74,6 +74,10 @@ Integer nvim_buf_line_count(Buffer buffer, Error *err)
     return 0;
   }
 
+	if(buf->parent_tgl) {
+		return get_buf_line_count_tangle(buf);
+	}
+
   // return sentinel value if the buffer isn't loaded
   if (buf->b_ml.ml_mfp == NULL) {
     return 0;
