@@ -13,7 +13,9 @@ int relative_offset_section(Line* line)
 	int offset = 0;
 	Line* line_iter = line->pprev;
 	while(line_iter->pprev) {
-		offset += get_tangle_line_size(line_iter);
+		int n, bytes;
+		get_tangle_line_size(line_iter, &n, &bytes);
+		offset += n;
 		line_iter = line_iter->pprev;
 	}
 	return offset;
@@ -50,7 +52,9 @@ int get_line_from_ref(LineRef line_ref, Line** line)
 			*line = line_iter;
 			return offset;
 		}
-		offset += get_tangle_line_size(line_iter);
+		int n, bytes;
+		get_tangle_line_size(line_iter, &n, &bytes);
+		offset += n;
 		line_iter = line_iter->pnext;
 	}
 	assert(false);

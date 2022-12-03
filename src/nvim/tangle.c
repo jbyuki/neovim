@@ -221,7 +221,9 @@ int relative_offset_section(Line* line)
 	int offset = 0;
 	Line* line_iter = line->pprev;
 	while(line_iter->pprev) {
-		offset += get_tangle_line_size(line_iter);
+		int n, bytes;
+		get_tangle_line_size(line_iter, &n, &bytes);
+		offset += n;
 		line_iter = line_iter->pprev;
 	}
 	return offset;
@@ -237,7 +239,9 @@ int get_line_from_ref(LineRef line_ref, Line** line)
 			*line = line_iter;
 			return offset;
 		}
-		offset += get_tangle_line_size(line_iter);
+		int n, bytes;
+		get_tangle_line_size(line_iter, &n, &bytes);
+		offset += n;
 		line_iter = line_iter->pnext;
 	}
 	assert(false);
@@ -360,7 +364,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			LineRef line_ref;
 			line_ref.section = new_line.parent_section;
 			line_ref.id = new_line.id;
-			line_ref.prefix_len = strlen(new_line);
+			line_ref.prefix_len = strlen(prefix);
 			kv_push(list->refs, line_ref);
 
 
@@ -462,7 +466,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			get_tangle_line_size(old_line, &old_n, &old_bytes);
 			update_count_recursively(old_line->parent_section, 
 				-old_n - removed, 
-				-old_bytes - removed_bytes, 
+				-old_bytes - removed_bytes
 			);
 
 			update_count_recursively(section, removed, removed_bytes);
@@ -520,7 +524,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			LineRef line_ref;
 			line_ref.section = new_line.parent_section;
 			line_ref.id = new_line.id;
-			line_ref.prefix_len = strlen(new_line);
+			line_ref.prefix_len = strlen(prefix);
 			kv_push(list->refs, line_ref);
 
 
@@ -600,7 +604,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			get_tangle_line_size(old_line, &old_n, &old_bytes);
 			update_count_recursively(old_line->parent_section, 
 				-old_n - removed, 
-				-old_bytes - removed_bytes, 
+				-old_bytes - removed_bytes
 			);
 
 			section->head.pnext = old_line->pnext;

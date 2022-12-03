@@ -109,7 +109,7 @@ SectionList* list = get_section_list(&curbuf->sections, name);
 LineRef line_ref;
 line_ref.section = new_line.parent_section;
 line_ref.id = new_line.id;
-line_ref.prefix_len = strlen(new_line);
+line_ref.prefix_len = strlen(prefix);
 kv_push(list->refs, line_ref);
 
 @if_old_line_was_reference_insert+=
@@ -259,7 +259,7 @@ int old_n, old_bytes;
 get_tangle_line_size(old_line, &old_n, &old_bytes);
 update_count_recursively(old_line->parent_section, 
 	-old_n - removed, 
-	-old_bytes - removed_bytes, 
+	-old_bytes - removed_bytes
 );
 
 @compute_new_section_size_and_update+=
