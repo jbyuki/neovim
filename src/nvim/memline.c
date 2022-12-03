@@ -87,6 +87,7 @@
 #include "nvim/undo.h"
 #include "nvim/version.h"
 #include "nvim/vim.h"
+#include "nvim/tangle.h"
 
 #ifndef UNIX            // it's in os/unix_defs.h for Unix
 # include <time.h>
@@ -3790,6 +3791,11 @@ static void ml_updatechunk(buf_T *buf, linenr_T line, long len, int updtype)
 /// @return  -1 if information is not available
 long ml_find_line_or_offset(buf_T *buf, linenr_T lnum, long *offp, bool no_ff)
 {
+	// Hijack if it's a tangled dummy buffer
+	if(buf->parent_tgl) {
+		return tangle_find_line_or_offset(buf, lnum, offp, no_ff);
+	}
+
   linenr_T curline;
   int curix;
   long size;
@@ -3803,6 +3809,7 @@ long ml_find_line_or_offset(buf_T *buf, linenr_T lnum, long *offp, bool no_ff)
   int len;
   int ffdos = !no_ff && (get_fileformat(buf) == EOL_DOS);
   int extra = 0;
+
 
   // take care of cached line first. Only needed if the cached line is before
   // the requested line. Additionally cache the value for the cached line.

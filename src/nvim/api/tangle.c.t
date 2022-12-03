@@ -65,6 +65,7 @@ Array nvim_tangle_get_lineinfo(Buffer buffer, Integer row, Error *err)
 	@popualte_tangle_next
 	@popualte_tangle_prev
 	@popualte_tangle_line_id
+	@popualte_tangle_line_len
 
 	return rv;
 }
@@ -117,6 +118,9 @@ ADD(rv, STRING_OBJ(ptr_to_str(line->pprev)));
 
 @popualte_tangle_line_id+=
 ADD(rv, INTEGER_OBJ((int)line->id));
+
+@popualte_tangle_line_len+=
+ADD(rv, INTEGER_OBJ((int)line->len));
 
 @define_functions+=
 Boolean nvim_buf_is_tangle(Buffer buffer, Error *err)

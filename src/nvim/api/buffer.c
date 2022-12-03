@@ -904,6 +904,10 @@ Integer nvim_buf_get_offset(Buffer buffer, Integer index, Error *err)
     return 0;
   }
 
+	if(buf->parent_tgl) {
+		return tangle_find_line_or_offset(buf, (int)index+1, NULL, true);
+	}
+
   // return sentinel value if the buffer isn't loaded
   if (buf->b_ml.ml_mfp == NULL) {
     return -1;

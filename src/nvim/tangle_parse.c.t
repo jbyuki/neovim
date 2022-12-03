@@ -242,7 +242,7 @@ Line l;
 l.type = TEXT;
 l.pnext = NULL;
 l.pprev = NULL;
-l.len = strlen(line);
+l.len = strlen(line)+1;
 
 @otherwise_add_to_section+=
 else {
@@ -257,7 +257,7 @@ Line l;
 l.type = TEXT;
 l.pnext = NULL;
 l.pprev = NULL;
-l.len = strlen(line);
+l.len = strlen(line)+1;
 
 @includes+=
 #include "nvim/bitree.h"

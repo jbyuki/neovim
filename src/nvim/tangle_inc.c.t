@@ -734,5 +734,5 @@ int total;
 int total;
 
 @update_text_to_text_total+=
-new_line.len = strlen(line);
+new_line.len = strlen(line)+1;
 update_count_recursively(old_line->parent_section, 0, new_line.len - old_line->len);

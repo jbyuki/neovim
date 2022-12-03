@@ -183,7 +183,93 @@ void deattach_tangle(buf_T *buf)
 // Reimplement "ml_find_line_or_offset" but for tangled buffers
 long tangle_find_line_or_offset(buf_T *buf, linenr_T lnum, long *offp, bool no_ff)
 {
+	if(lnum > 0) {
+		return get_bytes_at_lnum_tangled(buf->parent_tgl, buf->b_fname, lnum-1, 0);
+
+	} else {
+		return get_lnum_at_bytes_tangled(buf->parent_tgl, buf->b_fname, *offp, 0);
+	}
 }
+
+int get_bytes_at_lnum_tangled(buf_T* buf, const char* name, int lnum, int prefix_len)
+{
+	assert(pmap_has(cstr_t)(&buf->sections, name));
+
+	SectionList* list = pmap_get(cstr_t)(&buf->sections, name);
+	Section* section = list->phead;
+	int bytes = 0;
+	while(section) {
+		if(lnum < section->n) {
+			Line* line = section->head.pnext;
+			while(line != &section->tail) {
+				if(line->type == TEXT) {
+					if(lnum == 0) {
+						return bytes;
+					}
+					lnum--;
+					bytes += prefix_len + line->len;
+				} else if(line->type == REFERENCE) {
+					int count, total;
+					tangle_get_count(buf, line->name, &count, &total);
+					int ref_prefix_len = prefix_len+strlen(line->prefix);
+					if(lnum < count) {
+						return bytes + get_bytes_at_lnum_tangled(buf, line->name, lnum, ref_prefix_len);
+					}
+					lnum -= count;
+					bytes += count * ref_prefix_len + total;
+				}
+				line = line->pnext;
+			}
+
+		}
+		lnum -= section->n;
+		lnum -= section->n*prefix_len + section->total;
+		section = section->pnext;
+	}
+	return bytes;
+}
+
+int get_lnum_at_bytes_tangled(buf_T* buf, const char* name, int bytes, int prefix_len)
+{
+	assert(pmap_has(cstr_t)(&buf->sections, name));
+
+	SectionList* list = pmap_get(cstr_t)(&buf->sections, name);
+	Section* section = list->phead;
+	int lnum = 0;
+	while(section) {
+		int section_bytes = section->n*prefix_len + section->total;
+		if(bytes < section_bytes) {
+			Line* line = section->head.pnext;
+			while(line != &section->tail) {
+				if(line->type == TEXT) {
+					if(bytes < prefix_len + line->len) {
+						return lnum;
+					}
+					lnum++;
+					bytes -= prefix_len + line->len;
+				} else if(line->type == REFERENCE) {
+					int count, total;
+					tangle_get_count(buf, line->name, &count, &total);
+					int ref_prefix_len = prefix_len+strlen(line->prefix);
+					int ref_bytes = count * ref_prefix_len + total;
+
+					if(bytes < ref_bytes) {
+						return lnum + get_lnum_at_bytes_tangled(buf, line->name, bytes, ref_prefix_len);
+					}
+					lnum += count;
+					bytes -= ref_bytes;
+				}
+				line = line->pnext;
+			}
+
+		}
+		lnum += section->n;
+		bytes -= section_bytes;
+		section = section->pnext;
+	}
+	return bytes;
+}
+
 void tangle_inserted_bytes(linenr_T lnum, colnr_T col, int old, int new, Line* line)
 {
 	int offset = lnum;
@@ -336,7 +422,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 	if(old_line->type == TEXT) {
 		if(new_line.type == TEXT) {
 			// Nothing to do
-			new_line.len = strlen(line);
+			new_line.len = strlen(line)+1;
 			update_count_recursively(old_line->parent_section, 0, new_line.len - old_line->len);
 			int offset = relative_offset_section(old_line);
 			tangle_inserted_bytes(offset, linecol, old, new, old_line);
@@ -1346,7 +1432,7 @@ void tangle_parse(buf_T *buf)
     		l.type = TEXT;
     		l.pnext = NULL;
     		l.pprev = NULL;
-    		l.len = strlen(line);
+    		l.len = strlen(line)+1;
 
     		l.id = ++buf->line_counter;
     		Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
@@ -1361,7 +1447,7 @@ void tangle_parse(buf_T *buf)
     	l.type = TEXT;
     	l.pnext = NULL;
     	l.pprev = NULL;
-    	l.len = strlen(line);
+    	l.len = strlen(line)+1;
 
     	l.id = ++buf->line_counter;
     	Line* pl = tree_insert(buf->tgl_tree, buf->tgl_tree->total, &l);
