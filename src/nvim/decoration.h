@@ -12,6 +12,7 @@
 #include "nvim/marktree.h"
 #include "nvim/pos.h"
 #include "nvim/types.h"
+#include "nvim/tangle.h"
 
 // actual Decoration data is in extmark_defs.h
 
@@ -100,6 +101,7 @@ typedef struct {
   int conceal_attr;
 
   TriState spell;
+	Line* line_iter;
 } DecorState;
 
 EXTERN DecorState decor_state INIT(= { 0 });

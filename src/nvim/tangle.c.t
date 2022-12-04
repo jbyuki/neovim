@@ -82,5 +82,3 @@ for(int i=0; i<kv_size(root_names); ++i) {
 
 	apply_autocmds(EVENT_BUFTANGLEPOST, NULL, root_name, false, view_buf);
 }
-
-

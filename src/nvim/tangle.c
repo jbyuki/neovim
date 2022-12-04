@@ -175,8 +175,6 @@ void attach_tangle(buf_T *buf)
 
 		apply_autocmds(EVENT_BUFTANGLEPOST, NULL, root_name, false, view_buf);
 	}
-
-
 }
 
 void deattach_tangle(buf_T *buf) 

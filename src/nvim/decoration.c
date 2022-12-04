@@ -237,6 +237,11 @@ next_mark:
     marktree_itr_next(buf->b_marktree, state->itr);
   }
 
+	// Tangle 
+	if(buf->b_p_tgl == 1) {
+		state->line_iter = tree_lookup(curbuf->tgl_tree, top_row);
+	}
+
   return true;  // TODO(bfredl): check if available in the region
 }
 

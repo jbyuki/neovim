@@ -118,12 +118,12 @@ end
 
 ---@private
 function TSHighlighter:get_highlight_state(tstree)
-  if not self._highlight_states[tstree] then
+  -- if not self._highlight_states[tstree] then
     self._highlight_states[tstree] = {
       next_row = 0,
       iter = nil,
     }
-  end
+  -- end
 
   return self._highlight_states[tstree]
 end
