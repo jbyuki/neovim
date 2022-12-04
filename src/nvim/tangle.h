@@ -9,6 +9,8 @@
 #include "nvim/types.h"
 #include "nvim/bitree.h"
 
+typedef struct SectionList_s SectionList;
+
 typedef struct LineRef_s LineRef;
 
 

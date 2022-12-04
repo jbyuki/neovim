@@ -237,11 +237,6 @@ next_mark:
     marktree_itr_next(buf->b_marktree, state->itr);
   }
 
-	// Tangle 
-	if(buf->b_p_tgl == 1) {
-		state->line_iter = tree_lookup(curbuf->tgl_tree, top_row);
-	}
-
   return true;  // TODO(bfredl): check if available in the region
 }
 
@@ -249,7 +244,18 @@ bool decor_redraw_line(buf_T *buf, int row, DecorState *state)
 {
   if (state->row == -1) {
     decor_redraw_start(buf, row, state);
-  }
+
+		if(buf->b_p_tgl == 1) {
+			state->line_iter = tree_lookup(curbuf->tgl_tree, row);
+		}
+  } else {
+		if(buf->b_p_tgl == 1) {
+			for(int i=state->row; i<row; ++i) {
+				state->line_iter = next_line(state->line_iter);
+			}
+		}
+	}
+
   state->row = row;
   state->col_until = -1;
   state->eol_col = -1;

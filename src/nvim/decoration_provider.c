@@ -18,6 +18,7 @@
 #include "nvim/lua/executor.h"
 #include "nvim/memory.h"
 #include "nvim/pos.h"
+#include "nvim/tangle.h"
 
 static kvec_t(DecorProvider) decor_providers = KV_INITIAL_VALUE;
 
@@ -126,17 +127,40 @@ void decor_providers_invoke_win(win_T *wp, DecorProviders *providers,
 
   for (size_t k = 0; k < kv_size(*providers); k++) {
     DecorProvider *p = kv_A(*providers, k);
-    if (p && p->redraw_win != LUA_NOREF) {
-      MAXSIZE_TEMP_ARRAY(args, 4);
-      ADD_C(args, WINDOW_OBJ(wp->handle));
-      ADD_C(args, BUFFER_OBJ(wp->w_buffer->handle));
-      // TODO(bfredl): we are not using this, but should be first drawn line?
-      ADD_C(args, INTEGER_OBJ(wp->w_topline - 1));
-      ADD_C(args, INTEGER_OBJ(knownmax));
-      if (decor_provider_invoke(p->ns_id, "win", p->redraw_win, args, true, err)) {
-        kvi_push(*line_providers, p);
-      }
-    }
+		if(wp->w_buffer->b_p_tgl == 0) {
+			if (p && p->redraw_win != LUA_NOREF) {
+				MAXSIZE_TEMP_ARRAY(args, 4);
+				ADD_C(args, WINDOW_OBJ(wp->handle));
+				ADD_C(args, BUFFER_OBJ(wp->w_buffer->handle));
+				// TODO(bfredl): we are not using this, but should be first drawn line?
+				ADD_C(args, INTEGER_OBJ(wp->w_topline - 1));
+				ADD_C(args, INTEGER_OBJ(knownmax));
+				if (decor_provider_invoke(p->ns_id, "win", p->redraw_win, args, true, err)) {
+					kvi_push(*line_providers, p);
+				}
+			}
+		} else {
+			const char* name;
+			buf_T* pbuf;
+			bool append = false;
+			map_foreach(&wp->w_buffer->tgl_bufs, name, pbuf, {
+				if (p && p->redraw_win != LUA_NOREF) {
+					MAXSIZE_TEMP_ARRAY(args, 4);
+					ADD_C(args, WINDOW_OBJ(wp->handle));
+					ADD_C(args, BUFFER_OBJ(pbuf->handle));
+					// TODO(bfredl): we are not using this, but should be first drawn line?
+					ADD_C(args, INTEGER_OBJ(wp->w_topline - 1));
+					ADD_C(args, INTEGER_OBJ(knownmax));
+					if (decor_provider_invoke(p->ns_id, "win", p->redraw_win, args, true, err)) {
+						append = true;
+					}
+				}
+			});
+
+			if(append) {
+				kvi_push(*line_providers, p);
+			}
+		}
   }
 }
 
@@ -147,25 +171,60 @@ void decor_providers_invoke_win(win_T *wp, DecorProviders *providers,
 /// @param      row       Row to invoke line callback for
 /// @param[out] has_decor Set when at least one provider invokes a line callback
 /// @param[out] err       Provider error
-void decor_providers_invoke_line(win_T *wp, DecorProviders *providers, int row, bool *has_decor,
+void decor_providers_invoke_line(win_T *wp, DecorProviders *providers, int row, bool *has_decor, Line* line,
                                  char **err)
 {
   for (size_t k = 0; k < kv_size(*providers); k++) {
     DecorProvider *p = kv_A(*providers, k);
-    if (p && p->redraw_line != LUA_NOREF) {
-      MAXSIZE_TEMP_ARRAY(args, 3);
-      ADD_C(args, WINDOW_OBJ(wp->handle));
-      ADD_C(args, BUFFER_OBJ(wp->w_buffer->handle));
-      ADD_C(args, INTEGER_OBJ(row));
-      if (decor_provider_invoke(p->ns_id, "line", p->redraw_line, args, true, err)) {
-        *has_decor = true;
-      } else {
-        // return 'false' or error: skip rest of this window
-        kv_A(*providers, k) = NULL;
-      }
+		if (p && p->redraw_line != LUA_NOREF) {
+			if(wp->w_buffer->b_p_tgl == 0) {
+				MAXSIZE_TEMP_ARRAY(args, 3);
+				ADD_C(args, WINDOW_OBJ(wp->handle));
+				ADD_C(args, BUFFER_OBJ(wp->w_buffer->handle));
+				ADD_C(args, INTEGER_OBJ(row));
+				if (decor_provider_invoke(p->ns_id, "line", p->redraw_line, args, true, err)) {
+					*has_decor = true;
+				} else {
+					// return 'false' or error: skip rest of this window
+					kv_A(*providers, k) = NULL;
+				}
 
-      hl_check_ns();
-    }
+				hl_check_ns();
+			} else {
+				if(line->type == TEXT) {
+					buf_T* tangle_buf;
+					int lnum;
+					get_tangle_buf_line(wp->w_buffer, line, &lnum, &tangle_buf);
+
+					MAXSIZE_TEMP_ARRAY(args, 3);
+					ADD_C(args, WINDOW_OBJ(wp->handle));
+					ADD_C(args, BUFFER_OBJ(tangle_buf));
+					ADD_C(args, INTEGER_OBJ(lnum));
+					if (decor_provider_invoke(p->ns_id, "line", p->redraw_line, args, true, err)) {
+						*has_decor = true;
+					} else {
+						// return 'false' or error: skip rest of this window
+						kv_A(*providers, k) = NULL;
+					}
+
+					hl_check_ns();
+
+				} else {
+					MAXSIZE_TEMP_ARRAY(args, 3);
+					ADD_C(args, WINDOW_OBJ(wp->handle));
+					ADD_C(args, BUFFER_OBJ(wp->w_buffer->handle));
+					ADD_C(args, INTEGER_OBJ(row));
+					if (decor_provider_invoke(p->ns_id, "line", p->redraw_line, args, true, err)) {
+						*has_decor = true;
+					} else {
+						// return 'false' or error: skip rest of this window
+						kv_A(*providers, k) = NULL;
+					}
+
+					hl_check_ns();
+				}
+			}
+		}
   }
 }
 

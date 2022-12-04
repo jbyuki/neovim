@@ -1,5 +1,5 @@
 ##tangle
-@declare_struct+=
+@declare_struct_header+=
 typedef struct SectionList_s SectionList;
 
 @section_list_struct+=
