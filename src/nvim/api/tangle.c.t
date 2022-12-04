@@ -123,11 +123,11 @@ ADD(rv, INTEGER_OBJ((int)line->id));
 ADD(rv, INTEGER_OBJ((int)line->len));
 
 @define_functions+=
-Boolean nvim_buf_is_tangle(Buffer buffer, Error *err)
+Boolean nvim_buf_is_tangle(Buffer buffer, Error* err)
   FUNC_API_SINCE(7)
 {
   buf_T *buf = find_buffer_by_handle(buffer, err);
-	return buf->b_p_tgl == 1;
+	return buf->parent_tgl != NULL;
 }
 
 @define_functions+=

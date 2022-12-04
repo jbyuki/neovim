@@ -9,6 +9,7 @@ return {
     'BufLeave',               -- before leaving a buffer
     'BufModifiedSet',         -- after the 'modified' state of a buffer changes
     'BufNew',                 -- after creating any buffer
+    'BufTanglePost',          -- after tangling a new  buffer
     'BufNewFile',             -- when creating a buffer for a new file
     'BufReadCmd',             -- read buffer using command
     'BufReadPost',            -- after reading a buffer

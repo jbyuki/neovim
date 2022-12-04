@@ -722,7 +722,7 @@ buf->first_line.parent_section = top_section;
 
 @if_new_section_is_root_create_buf+=
 if(op == 0) {
-	buf_T* view_buf = buflist_new(name, NULL, 1L, BLN_DUMMY);
+	buf_T* view_buf = buflist_new(name, NULL, 1L, BLN_NEW | BLN_NOOPT);
 	pmap_put(cstr_t)(&curbuf->tgl_bufs, name, view_buf);
 	view_buf->parent_tgl = curbuf;
 }

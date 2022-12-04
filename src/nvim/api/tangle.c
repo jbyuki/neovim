@@ -79,11 +79,11 @@ static String ptr_to_str(void* p)
 	return cbuf_to_string(buffer, strlen(buffer));
 }
 
-Boolean nvim_buf_is_tangle(Buffer buffer, Error *err)
+Boolean nvim_buf_is_tangle(Buffer buffer, Error* err)
   FUNC_API_SINCE(7)
 {
   buf_T *buf = find_buffer_by_handle(buffer, err);
-	return buf->b_p_tgl == 1;
+	return buf->parent_tgl != NULL;
 }
 
 ArrayOf(Integer) nvim_tangle_get_bufs(Buffer buffer, Error *err)

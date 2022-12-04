@@ -169,10 +169,14 @@ void attach_tangle(buf_T *buf)
 	for(int i=0; i<kv_size(root_names); ++i) {
 		const char* root_name = kv_A(root_names, i);
 
-		buf_T* view_buf = buflist_new(root_name, NULL, 1L, BLN_DUMMY);
+		buf_T* view_buf = buflist_new(root_name, NULL, 1L, BLN_NEW | BLN_NOOPT);
 		pmap_put(cstr_t)(&buf->tgl_bufs, name, view_buf);
 		view_buf->parent_tgl = buf;
+
+		apply_autocmds(EVENT_BUFTANGLEPOST, NULL, root_name, false, view_buf);
 	}
+
+
 }
 
 void deattach_tangle(buf_T *buf) 
@@ -733,7 +737,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 
 
 			if(op == 0) {
-				buf_T* view_buf = buflist_new(name, NULL, 1L, BLN_DUMMY);
+				buf_T* view_buf = buflist_new(name, NULL, 1L, BLN_NEW | BLN_NOOPT);
 				pmap_put(cstr_t)(&curbuf->tgl_bufs, name, view_buf);
 				view_buf->parent_tgl = curbuf;
 			}
