@@ -198,7 +198,7 @@ void decor_providers_invoke_line(win_T *wp, DecorProviders *providers, int row, 
 
 					MAXSIZE_TEMP_ARRAY(args, 3);
 					ADD_C(args, WINDOW_OBJ(wp->handle));
-					ADD_C(args, BUFFER_OBJ(tangle_buf));
+					ADD_C(args, BUFFER_OBJ(tangle_buf->handle));
 					ADD_C(args, INTEGER_OBJ(lnum));
 					if (decor_provider_invoke(p->ns_id, "line", p->redraw_line, args, true, err)) {
 						*has_decor = true;

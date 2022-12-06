@@ -1505,7 +1505,7 @@ bool buf_collect_lines(buf_T *buf, size_t n, linenr_T start, int start_idx, bool
 			push_linestr(lstate, l, bufstr, strlen(bufstr), start_idx + (int)i, replace_nl);
 		} else {
 			// Convert tangle lnum to untangled one
-			char* prefix = xmalloc(256); // Fix this. No hard limits please.
+			static char prefix[256]; // Fix this. No hard limits please.
 			prefix[0] = '\0';
 
 			lnum = tangle_convert_lnum_to_untangled(buf->parent_tgl, buf->b_fname, lnum-1, prefix)+1;
@@ -1522,7 +1522,6 @@ bool buf_collect_lines(buf_T *buf, size_t n, linenr_T start, int start_idx, bool
 				push_linestr(lstate, l, allocated, total_len, start_idx + (int)i, replace_nl);
 				xfree(allocated);
 			}
-			xfree(prefix);
 		}
   }
 

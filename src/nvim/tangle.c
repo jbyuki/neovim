@@ -167,7 +167,7 @@ void attach_tangle(buf_T *buf)
 	for(int i=0; i<kv_size(root_names); ++i) {
 		const char* root_name = kv_A(root_names, i);
 
-		buf_T* view_buf = buflist_new(root_name, NULL, 1L, BLN_NEW | BLN_NOOPT);
+		buf_T* view_buf = buflist_new(root_name, NULL, 1L, BLN_DUMMY);
 		pmap_put(cstr_t)(&buf->tgl_bufs, name, view_buf);
 		view_buf->parent_tgl = buf;
 

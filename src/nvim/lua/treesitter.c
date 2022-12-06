@@ -29,6 +29,7 @@
 #include "nvim/strings.h"
 #include "nvim/types.h"
 #include "tree_sitter/api.h"
+#include "nvim/tangle.h"
 
 #define TS_META_PARSER "treesitter_parser"
 #define TS_META_TREE "treesitter_tree"
@@ -331,31 +332,72 @@ static const char *input_cb(void *payload, uint32_t byte_index, TSPoint position
 {
   buf_T *bp  = payload;
 #define BUFSIZE 256
-  static char buf[BUFSIZE];
+	static char buf[BUFSIZE];
 
-  if ((linenr_T)position.row >= bp->b_ml.ml_line_count) {
-    *bytes_read = 0;
-    return "";
-  }
-  char *line = ml_get_buf(bp, (linenr_T)position.row + 1, false);
-  size_t len = strlen(line);
-  if (position.column > len) {
-    *bytes_read = 0;
-    return "";
-  }
-  size_t tocopy = MIN(len - position.column, BUFSIZE);
+	if(bp->parent_tgl == NULL) {
 
-  memcpy(buf, line + position.column, tocopy);
-  // Translate embedded \n to NUL
-  memchrsub(buf, '\n', '\0', tocopy);
-  *bytes_read = (uint32_t)tocopy;
-  if (tocopy < BUFSIZE) {
-    // now add the final \n. If it didn't fit, input_cb will be called again
-    // on the same line with advanced column.
-    buf[tocopy] = '\n';
-    (*bytes_read)++;
-  }
-  return buf;
+		if ((linenr_T)position.row >= bp->b_ml.ml_line_count) {
+			*bytes_read = 0;
+			return "";
+		}
+		char* line = ml_get_buf(bp, (linenr_T)position.row + 1, false);
+
+		size_t len = strlen(line);
+		if (position.column > len) {
+			*bytes_read = 0;
+			return "";
+		}
+		size_t tocopy = MIN(len - position.column, BUFSIZE);
+
+		memcpy(buf, line + position.column, tocopy);
+		// Translate embedded \n to NUL
+		memchrsub(buf, '\n', '\0', tocopy);
+		*bytes_read = (uint32_t)tocopy;
+		if (tocopy < BUFSIZE) {
+			// now add the final \n. If it didn't fit, input_cb will be called again
+			// on the same line with advanced column.
+			buf[tocopy] = '\n';
+			(*bytes_read)++;
+		}
+		return buf;
+	} else {
+		static char prefix[256];
+		prefix[0] = '\0';
+		linenr_T lnum = tangle_convert_lnum_to_untangled(bp->parent_tgl, bp->b_fname, (linenr_T)position.row, prefix)+1;
+
+		int prefix_len = strlen(buf);
+
+		size_t tocopy;
+		if(position.column < prefix_len) {
+			tocopy = prefix_len - position.column;
+			memcpy(buf, prefix + position.column, tocopy);
+			*bytes_read = tocopy;
+			return buf;
+		}
+
+		const char* bufstr = ml_get_buf(bp->parent_tgl, (linenr_T)lnum, false);
+
+		int bufstr_len = strlen(bufstr);
+		if(position.column > prefix_len+bufstr_len) {
+			*bytes_read = 0;
+			return "";
+		}
+
+		tocopy = MIN(bufstr_len - (position.column - prefix_len), BUFSIZE);
+
+		memcpy(buf, bufstr + (position.column - prefix_len), tocopy);
+		// Translate embedded \n to NUL
+		memchrsub(buf, '\n', '\0', tocopy);
+		*bytes_read = (uint32_t)tocopy;
+
+		if (tocopy < BUFSIZE) {
+			// now add the final \n. If it didn't fit, input_cb will be called again
+			// on the same line with advanced column.
+			buf[tocopy] = '\n';
+			(*bytes_read)++;
+		}
+		return buf;
+	}
 #undef BUFSIZE
 }
 
