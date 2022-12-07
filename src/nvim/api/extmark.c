@@ -508,6 +508,22 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
     goto error;
   }
 
+	// Get line count
+	int line_count;
+	if(buf->parent_tgl == NULL) {
+		line_count = buf->b_ml.ml_line_count;
+	} else {
+		int n, total;
+		tangle_get_count(buf->parent_tgl, buf->b_fname, &n, &total);
+		line_count = n;
+
+		// convert line and col to untangled
+		static char prefix[256];
+		prefix[0] = '\0';
+		line = tangle_convert_lnum_to_untangled(buf->parent_tgl, buf->b_fname, line, prefix)+1;
+		col -= strlen(prefix);
+	}
+
   uint32_t id = 0;
   if (opts->id.type == kObjectTypeInteger && opts->id.data.integer > 0) {
     id = (uint32_t)opts->id.data.integer;
@@ -536,9 +552,16 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
   bool strict = true;
   OPTION_TO_BOOL(strict, strict, true);
 
+	static char end_prefix[256];
+	end_prefix[0] = '\0';
+
   if (opts->end_row.type == kObjectTypeInteger) {
     Integer val = opts->end_row.data.integer;
-    if (val < 0 || (val > buf->b_ml.ml_line_count && strict)) {
+		if(buf->parent_tgl) {
+			val = tangle_convert_lnum_to_untangled(buf->parent_tgl, buf->b_fname, val, end_prefix)+1;
+		}
+
+    if (val < 0 || (val > line_count && strict)) {
       api_set_error(err, kErrorTypeValidation, "end_row value outside range");
       goto error;
     } else {
@@ -552,6 +575,8 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
   colnr_T col2 = -1;
   if (opts->end_col.type == kObjectTypeInteger) {
     Integer val = opts->end_col.data.integer;
+		val -= strlen(end_prefix);
+
     if (val < 0 || val > MAXCOL) {
       api_set_error(err, kErrorTypeValidation, "end_col value outside range");
       goto error;
@@ -562,6 +587,10 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
     api_set_error(err, kErrorTypeValidation, "end_col is not an integer");
     goto error;
   }
+
+	if(buf->parent_tgl) {
+		buf = buf->parent_tgl;
+	}
 
   // uncrustify:off
 
@@ -747,14 +776,14 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
   if (line < 0) {
     api_set_error(err, kErrorTypeValidation, "line value outside range");
     goto error;
-  } else if (line > buf->b_ml.ml_line_count) {
+  } else if (line > line_count) {
     if (strict) {
       api_set_error(err, kErrorTypeValidation, "line value outside range");
       goto error;
     } else {
-      line = buf->b_ml.ml_line_count;
+      line = line_count;
     }
-  } else if (line < buf->b_ml.ml_line_count) {
+  } else if (line < line_count) {
     len = ephemeral ? MAXCOL : strlen(ml_get_buf(buf, (linenr_T)line + 1, false));
   }
 
@@ -773,9 +802,9 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
   }
 
   if (col2 >= 0) {
-    if (line2 >= 0 && line2 < buf->b_ml.ml_line_count) {
+    if (line2 >= 0 && line2 < line_count) {
       len = ephemeral ? MAXCOL : strlen(ml_get_buf(buf, (linenr_T)line2 + 1, false));
-    } else if (line2 == buf->b_ml.ml_line_count) {
+    } else if (line2 == line_count) {
       // We are trying to add an extmark past final newline
       len = 0;
     } else {

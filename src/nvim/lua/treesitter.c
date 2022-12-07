@@ -361,11 +361,18 @@ static const char *input_cb(void *payload, uint32_t byte_index, TSPoint position
 		}
 		return buf;
 	} else {
+		int n, total;
+		tangle_get_count(bp->parent_tgl, bp->b_fname, &n, &total);
+		if((linenr_T)position.row >= n) {
+			*bytes_read = 0;
+			return "";
+		}
+
 		static char prefix[256];
 		prefix[0] = '\0';
 		linenr_T lnum = tangle_convert_lnum_to_untangled(bp->parent_tgl, bp->b_fname, (linenr_T)position.row, prefix)+1;
 
-		int prefix_len = strlen(buf);
+		int prefix_len = strlen(prefix);
 
 		size_t tocopy;
 		if(position.column < prefix_len) {
