@@ -513,14 +513,12 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
 	if(buf->parent_tgl == NULL) {
 		line_count = buf->b_ml.ml_line_count;
 	} else {
-		int n, total;
-		tangle_get_count(buf->parent_tgl, buf->b_fname, &n, &total);
-		line_count = n;
+		line_count = buf->parent_tgl->b_ml.ml_line_count;
 
 		// convert line and col to untangled
 		static char prefix[256];
 		prefix[0] = '\0';
-		line = tangle_convert_lnum_to_untangled(buf->parent_tgl, buf->b_fname, line, prefix)+1;
+		line = tangle_convert_lnum_to_untangled(buf->parent_tgl, buf->b_fname, line, prefix);
 		col -= strlen(prefix);
 	}
 
@@ -558,7 +556,7 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
   if (opts->end_row.type == kObjectTypeInteger) {
     Integer val = opts->end_row.data.integer;
 		if(buf->parent_tgl) {
-			val = tangle_convert_lnum_to_untangled(buf->parent_tgl, buf->b_fname, val, end_prefix)+1;
+			val = tangle_convert_lnum_to_untangled(buf->parent_tgl, buf->b_fname, val, end_prefix);
 		}
 
     if (val < 0 || (val > line_count && strict)) {
