@@ -149,3 +149,78 @@ ArrayOf(Integer) nvim_tangle_get_bufs(Buffer buffer, Error *err)
 	});
 	return rv;
 }
+
+@define_functions+=
+Array nvim_tangle_get_sections(Buffer buffer, Error* err)
+  FUNC_API_SINCE(7)
+{
+  buf_T *buf = find_buffer_by_handle(buffer, err);
+
+  Array rv = ARRAY_DICT_INIT;
+
+	if(buf->b_p_tgl == 0) {
+		return rv;
+	}
+
+	const char* name;
+	SectionList* section_list;
+	map_foreach(&buf->sections, name, section_list, {
+		ADD(rv, STRING_OBJ(cstr_to_string(name)));
+	});
+	return rv;
+}
+
+@define_functions+=
+Array nvim_tangle_get_section_refs(Buffer buffer, String name, Error* err)
+  FUNC_API_SINCE(7)
+{
+  buf_T *buf = find_buffer_by_handle(buffer, err);
+
+  Array rv = ARRAY_DICT_INIT;
+
+	if(buf->b_p_tgl == 0) {
+		return rv;
+	}
+
+	SectionList* list = get_section_list(&buf->sections, name.data);
+
+	for(size_t i=0; i<kv_size(list->refs); ++i) {
+		LineRef cur_ref = kv_A(list->refs, i);
+		ADD(rv, INTEGER_OBJ(cur_ref.id));
+	}
+	return rv;
+}
+
+@define_functions+=
+Integer nvim_tangle_get_section_line_count(Buffer buffer, String name, Error* err)
+  FUNC_API_SINCE(7)
+{
+  buf_T *buf = find_buffer_by_handle(buffer, err);
+
+	if(buf->b_p_tgl == 0) {
+		return -1;
+	}
+
+	SectionList* list = get_section_list(&buf->sections, name.data);
+	return list->n;
+}
+
+@define_functions+=
+Integer nvim_tangle_get_section_size(Buffer buffer, String name, Error* err)
+  FUNC_API_SINCE(7)
+{
+  buf_T *buf = find_buffer_by_handle(buffer, err);
+
+	if(buf->b_p_tgl == 0) {
+		return -1;
+	}
+
+	SectionList* list = get_section_list(&buf->sections, name.data);
+	int count = 0;
+	Section* section = list->phead;
+	while(section) {
+		count++;
+		section = section->pnext;
+	}
+	return count;
+}

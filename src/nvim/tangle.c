@@ -24,48 +24,6 @@
 #include "nvim/bitree.h"
 
 
-struct LineRef_s
-{
-	Section* section;
-	int64_t id;
-	int prefix_len;
-
-};
-
-struct Section_s
-{
-  int total;
-
-  int n;
-
-  Section* pnext, *pprev;
-
-  SectionList* parent;
-
-  // Making whole structs instead of pointer so
-  // that during btree insertion, the pointers
-  // are correctly adjusted.
-  Line head, tail;
-
-};
-
-struct SectionList_s
-{
-  bool root;
-
-  int total;
-
-  int n;
-
-  Section* phead;
-  Section* ptail;
-
-  const char* name;
-
-  kvec_t(LineRef) refs;
-
-};
-
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "tangle.c.generated.h"
@@ -427,7 +385,6 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 
 			int offset = relative_offset_section(old_line);
 			tangle_inserted_bytes(offset, linecol, old, new, old_line);
-			return;
 		} else if(new_line.type == REFERENCE) {
 			size_t len = fp - line;
 			char* prefix = xmalloc(len+1);
@@ -477,9 +434,9 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 
 			cur_section = section;
 
+			SectionList* list;
 			if(op == 1 || op == 2) {
-			  SectionList* list = get_section_list(&buf->sections, name);
-
+				list = get_section_list(&buf->sections, name);
 			  if(op == 1) {
 			    sectionlist_push_back(list, section);
 
@@ -490,7 +447,6 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			}
 
 			else {
-			  SectionList* list; 
 			  if(pmap_has(cstr_t)(&buf->sections, name)) {
 			    list = pmap_get(cstr_t)(&buf->sections, name);
 			  } else {
@@ -506,6 +462,11 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			  sectionlist_push_back(list, section);
 			}
 
+
+			if(list->n == -1 || list->total == -1) {
+				list->n = 0;
+				list->total = 0;
+			}
 
 
 			new_line.name = name;
@@ -699,9 +660,9 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			old_line->parent_section->tail.pprev = old_line->pprev;
 
 
+			SectionList* list;
 			if(op == 1 || op == 2) {
-			  SectionList* list = get_section_list(&buf->sections, name);
-
+				list = get_section_list(&buf->sections, name);
 			  if(op == 1) {
 			    sectionlist_push_back(list, section);
 
@@ -712,7 +673,6 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			}
 
 			else {
-			  SectionList* list; 
 			  if(pmap_has(cstr_t)(&buf->sections, name)) {
 			    list = pmap_get(cstr_t)(&buf->sections, name);
 			  } else {
@@ -728,6 +688,11 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			  sectionlist_push_back(list, section);
 			}
 
+
+			if(list->n == -1 || list->total == -1) {
+				list->n = 0;
+				list->total = 0;
+			}
 
 			update_count_recursively(section, removed, removed_bytes);
 
@@ -899,9 +864,9 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 
 				cur_section = section;
 
+				SectionList* list;
 				if(op == 1 || op == 2) {
-				  SectionList* list = get_section_list(&buf->sections, name);
-
+					list = get_section_list(&buf->sections, name);
 				  if(op == 1) {
 				    sectionlist_push_back(list, section);
 
@@ -912,7 +877,6 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 				}
 
 				else {
-				  SectionList* list; 
 				  if(pmap_has(cstr_t)(&buf->sections, name)) {
 				    list = pmap_get(cstr_t)(&buf->sections, name);
 				  } else {
@@ -928,6 +892,11 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 				  sectionlist_push_back(list, section);
 				}
 
+
+				if(list->n == -1 || list->total == -1) {
+					list->n = 0;
+					list->total = 0;
+				}
 
 
 				new_line.name = name;
@@ -1262,6 +1231,7 @@ int get_buf_line_count_tangle(buf_T* buf)
 	SectionList* list = pmap_get(cstr_t)(&buf->parent_tgl->sections, buf->b_fname);
 	return list->n;
 }
+
 void tangle_update(buf_T* buf)
 {
 	const char* name;
@@ -1360,9 +1330,9 @@ void tangle_parse(buf_T *buf)
 
           cur_section = section;
 
+          SectionList* list;
           if(op == 1 || op == 2) {
-            SectionList* list = get_section_list(&buf->sections, name);
-
+          	list = get_section_list(&buf->sections, name);
             if(op == 1) {
               sectionlist_push_back(list, section);
 
@@ -1373,7 +1343,6 @@ void tangle_parse(buf_T *buf)
           }
 
           else {
-            SectionList* list; 
             if(pmap_has(cstr_t)(&buf->sections, name)) {
               list = pmap_get(cstr_t)(&buf->sections, name);
             } else {
@@ -1475,7 +1444,7 @@ void tangle_parse(buf_T *buf)
 
 }
 
-static SectionList* get_section_list(PMap(cstr_t)* sections, const char* name)
+SectionList* get_section_list(PMap(cstr_t)* sections, const char* name)
 {
 	SectionList* list;
 	if(!pmap_has(cstr_t)(sections, name)) {

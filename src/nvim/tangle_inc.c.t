@@ -59,7 +59,6 @@ if(old_line->type == TEXT) {
 		// Nothing to do
 		@update_text_to_text_total
 		@changed_text_to_text
-		return;
 	} else if(new_line.type == REFERENCE) {
 		@insert_text_to_reference
 	} else if(new_line.type == SECTION) {
@@ -183,6 +182,7 @@ Section* cur_section;
 @create_new_section
 @link_to_previous_section_if_needed
 @otherwise_just_save_section
+@if_section_new_reset
 
 new_line.name = name;
 new_line.pnext = NULL;
@@ -293,6 +293,7 @@ Line* next_l = next_line(old_line);
 
 @link_to_previous_section_if_needed
 @otherwise_just_save_section
+@if_section_new_reset
 @compute_new_section_size_and_update
 
 @if_new_section_is_root_create_buf
@@ -422,6 +423,7 @@ if(strcmp(old_line->name, name) != 0) {
 	@create_new_section
 	@link_to_previous_section_if_needed
 	@otherwise_just_save_section
+	@if_section_new_reset
 
 	new_line.name = name;
 	new_line.pnext = NULL;
@@ -439,6 +441,12 @@ if(strcmp(old_line->name, name) != 0) {
 	@fix_section_linkedlist_new_section
 
 	@if_root_section_rename
+}
+
+@if_section_new_reset+=
+if(list->n == -1 || list->total == -1) {
+	list->n = 0;
+	list->total = 0;
 }
 
 @update_count_section_reference_new_section+=
@@ -743,3 +751,4 @@ int get_buf_line_count_tangle(buf_T* buf)
 	SectionList* list = pmap_get(cstr_t)(&buf->parent_tgl->sections, buf->b_fname);
 	return list->n;
 }
+

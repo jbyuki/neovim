@@ -88,7 +88,7 @@ pmap_clear(cstr_t)(&buf->sections);
 pmap_clear(cstr_t)(&buf->tgl_bufs);
 
 @define_functions+=
-static SectionList* get_section_list(PMap(cstr_t)* sections, const char* name)
+SectionList* get_section_list(PMap(cstr_t)* sections, const char* name)
 {
 	SectionList* list;
 	if(!pmap_has(cstr_t)(sections, name)) {
@@ -101,9 +101,9 @@ static SectionList* get_section_list(PMap(cstr_t)* sections, const char* name)
 }
 
 @link_to_previous_section_if_needed+=
+SectionList* list;
 if(op == 1 || op == 2) {
-  SectionList* list = get_section_list(&buf->sections, name);
-
+	list = get_section_list(&buf->sections, name);
   if(op == 1) {
     @add_back_to_section
   } else { /* op == 2 */
@@ -125,7 +125,6 @@ sectionlist_push_front(list, section);
 
 @otherwise_just_save_section+=
 else {
-  SectionList* list; 
   if(pmap_has(cstr_t)(&buf->sections, name)) {
     list = pmap_get(cstr_t)(&buf->sections, name);
   } else {

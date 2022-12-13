@@ -12,6 +12,9 @@
 #include "nvim/bitree.h"
 
 @declare_struct_header
+@line_ref_struct
+@section_struct
+@section_list_struct
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "tangle.h.generated.h"
@@ -29,10 +32,6 @@
 
 @includes
 
-@declare_struct
-@line_ref_struct
-@section_struct
-@section_list_struct
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "tangle.c.generated.h"
