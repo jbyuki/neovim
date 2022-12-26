@@ -822,7 +822,7 @@ int del_chars(long count, int fixpos)
 		Line* line = get_current_tangle_line();
 		size_t col = (size_t)curwin->w_cursor.col;
 		int ret = del_bytes(bytes, fixpos, true);
-		update_current_tangle_line(line, 0, col, 0, bytes);
+		update_current_tangle_line(line, 0, col, bytes, 0);
 		return ret;
   } else {
 		return del_bytes(bytes, fixpos, true);
