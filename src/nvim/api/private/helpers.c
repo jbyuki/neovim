@@ -487,27 +487,64 @@ String buf_get_text(buf_T *buf, int64_t lnum, int64_t start_col, int64_t end_col
     return rv;
   }
 
-  char *bufstr = ml_get_buf(buf, (linenr_T)lnum, false);
-  size_t line_length = strlen(bufstr);
+	if(buf->parent_tgl == NULL) {
+		char *bufstr = ml_get_buf(buf, (linenr_T)lnum, false);
+		size_t line_length = strlen(bufstr);
 
-  start_col = start_col < 0 ? (int64_t)line_length + start_col + 1 : start_col;
-  end_col = end_col < 0 ? (int64_t)line_length + end_col + 1 : end_col;
+		start_col = start_col < 0 ? (int64_t)line_length + start_col + 1 : start_col;
+		end_col = end_col < 0 ? (int64_t)line_length + end_col + 1 : end_col;
 
-  if (start_col >= MAXCOL || end_col >= MAXCOL) {
-    api_set_error(err, kErrorTypeValidation, "Column index is too high");
-    return rv;
-  }
+		if (start_col >= MAXCOL || end_col >= MAXCOL) {
+			api_set_error(err, kErrorTypeValidation, "Column index is too high");
+			return rv;
+		}
 
-  if (start_col > end_col) {
-    api_set_error(err, kErrorTypeValidation, "start_col must be less than end_col");
-    return rv;
-  }
+		if (start_col > end_col) {
+			api_set_error(err, kErrorTypeValidation, "start_col must be less than end_col");
+			return rv;
+		}
 
-  if ((size_t)start_col >= line_length) {
-    return rv;
-  }
+		if ((size_t)start_col >= line_length) {
+			return rv;
+		}
 
-  return cstrn_as_string((char *)&bufstr[start_col], (size_t)(end_col - start_col));
+		return cstrn_as_string((char *)&bufstr[start_col], (size_t)(end_col - start_col));
+	} else {
+		// Convert tangle lnum to untangled one
+		static char prefix[256]; // Fix this. No hard limits please.
+		prefix[0] = '\0';
+
+		lnum = tangle_convert_lnum_to_untangled(buf->parent_tgl, buf->b_fname, lnum-1, prefix)+1;
+		char* bufstr = ml_get_buf(buf->parent_tgl, (linenr_T)lnum, false);
+
+		int prefix_len = strlen(prefix);
+		int line_length = strlen(bufstr)+prefix_len;
+
+		start_col = start_col < 0 ? (int64_t)line_length + start_col + 1 : start_col;
+		end_col = end_col < 0 ? (int64_t)line_length + end_col + 1 : end_col;
+
+		char* allocated = xmallocz(line_length);
+		memcpy(allocated, prefix, prefix_len);
+		memcpy(allocated+prefix_len, bufstr, line_length-prefix_len);
+
+		if (start_col >= MAXCOL || end_col >= MAXCOL) {
+			api_set_error(err, kErrorTypeValidation, "Column index is too high");
+			return rv;
+		}
+
+		if (start_col > end_col) {
+			api_set_error(err, kErrorTypeValidation, "start_col must be less than end_col");
+			return rv;
+		}
+
+		if ((size_t)start_col >= line_length) {
+			return rv;
+		}
+
+		rv = cstrn_to_string((char *)&allocated[start_col], (size_t)(end_col - start_col));
+		xfree(allocated);
+		return rv;
+	}
 }
 
 void api_free_string(String value)
