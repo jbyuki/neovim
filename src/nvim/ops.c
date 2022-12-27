@@ -1735,7 +1735,7 @@ int op_delete(oparg_T *oap)
 				size_t col = (size_t)curwin->w_cursor.col;
 				(void)del_bytes((colnr_T)n, !virtual_op,
 						oap->op_type == OP_DELETE && !oap->is_VIsual);
-				update_current_tangle_line(line, 0, col, 1, 0);
+				update_current_tangle_line(line, 0, col, (colnr_T)n, 0);
       } else {
 				(void)del_bytes((colnr_T)n, !virtual_op,
 						oap->op_type == OP_DELETE && !oap->is_VIsual);
