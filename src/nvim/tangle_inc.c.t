@@ -466,6 +466,8 @@ void tangle_open_line()
 	@append_text_line_based_on_dir
 	@append_text_to_current_section
 	@update_count_for_current_section_append
+
+	@change_open_line
 }
 
 @create_empty_text_line+=
