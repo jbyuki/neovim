@@ -1082,8 +1082,8 @@ void tangle_open_line()
 	update_count_recursively(pl->parent_section, 1, l.len);
 
 
-	int offset = relative_offset_section(prev_l);
-	tangle_inserted_lines(offset, 0, 1, prev_l);
+	int offset = relative_offset_section(pl);
+	tangle_inserted_lines(offset, 0, 1, pl);
 }
 
 void insert_in_section(Section* section, Line* prev_l, Line* next_l, Line* pl)
