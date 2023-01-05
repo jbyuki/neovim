@@ -818,7 +818,7 @@ ArrayOf(String) nvim_buf_get_text(uint64_t channel_id, Buffer buffer,
   }
 
   // return sentinel value if the buffer isn't loaded
-  if (buf->b_ml.ml_mfp == NULL) {
+  if (buf->b_ml.ml_mfp == NULL && buf->parent_tgl == NULL) {
     return rv;
   }
 

@@ -11,6 +11,8 @@
 #include "nvim/buffer.h"
 #include "nvim/option.h"
 
+#include "nvim/extmark.h"
+
 #include "nvim/tangle_utils.h"
 
 #include "nvim/vim.h"
@@ -307,11 +309,16 @@ void tangle_inserted_lines(linenr_T lnum, int old, int new, Line* line)
 	if(list->root) {
 		buf_T* dummy_buf = pmap_get(cstr_t)(&curbuf->tgl_bufs, list->name);
 
+	  bcount_t new_byte = 1;
+	  bcount_t old_byte = 0;
+
 		aco_save_T aco;
 		aucmd_prepbuf(&aco, dummy_buf);
 		changed_lines(offset+1, old, offset+1, new, true);
-		extmark_splice(curbuf, offset, 0,
-				0, 0, 0, 1, 0, 1, kExtmarkUndo);
+		extmark_splice(curbuf, 
+				offset, 0,
+				0, 0, old_byte, 
+				1, 0, new_byte, kExtmarkUndo);
 		aucmd_restbuf(&aco);
 	}
 
