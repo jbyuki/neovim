@@ -549,13 +549,16 @@ void remove_line_from_section(Line* line)
 
 @if_deleted_line_is_text+=
 if(line->type == TEXT) {
+	int n, bytes;
+	get_tangle_line_size(line, &n, &bytes);
+
 	if(prev_section == cur_section) {
-		int n, bytes;
-		get_tangle_line_size(line, &n, &bytes);
 		deleted_from_prev += n;
 		deleted_from_prev_bytes += bytes;
 	}
+	@collect_lnum_to_delete_text
 	remove_line_from_section(line);
+	@change_line_delete_text
 }
 
 @release_line_and_go_to_next_line+=
@@ -580,9 +583,7 @@ else if(line->type == REFERENCE) {
 
 
 @update_current_section_delete+=
-if(prev_section) {
-	update_count_recursively(prev_section, -deleted_from_prev, -deleted_from_prev_bytes);
-}
+update_count_recursively(prev_section, -deleted_from_prev, -deleted_from_prev_bytes);
 @update_reference_ref_deleted_section
 @append_lines_other_deleted_section
 @fixup_section_head_tail_pointers
