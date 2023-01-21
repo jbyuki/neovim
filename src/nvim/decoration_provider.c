@@ -241,6 +241,16 @@ void decor_providers_invoke_buf(buf_T *buf, DecorProviders *providers, char **er
       MAXSIZE_TEMP_ARRAY(args, 1);
       ADD_C(args, BUFFER_OBJ(buf->handle));
       decor_provider_invoke(p->ns_id, "buf", p->redraw_buf, args, true, err);
+
+			if(buf->b_p_tgl != 0) {
+				const char* name;
+				buf_T* pbuf;
+				map_foreach(&buf->tgl_bufs, name, pbuf, {
+					MAXSIZE_TEMP_ARRAY(args, 1);
+					ADD_C(args, BUFFER_OBJ(pbuf->handle));
+					decor_provider_invoke(p->ns_id, "buf", p->redraw_buf, args, true, err);
+				});
+			}
     }
   }
 }
