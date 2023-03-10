@@ -2,7 +2,7 @@
 @define_functions+=
 Line* get_current_tangle_line()
 {
-	@get_cursor_position
+  @get_cursor_position
 	@get_line_from_btree
 	return line;
 }
@@ -570,7 +570,7 @@ line = tree_delete(curbuf->tgl_tree, lnum-1);
 @if_deleted_line_is_reference+=
 else if(line->type == REFERENCE) {
 	if(prev_section == cur_section) {
-		int n, bytes;
+	        int n, bytes;
 		get_tangle_line_size(line, &n, &bytes);
 		deleted_from_prev += n;
 		deleted_from_prev_bytes += bytes;

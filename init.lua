@@ -86,16 +86,17 @@ vim.api.nvim_set_keymap("n", "<leader>ww", ":e C:/Users/jybur/fakeroot/doc/wiki/
 -- }}}
 
 -- Colorscheme {{{
-local overrides = {
-	StatusLine = { bg = "None" },
-	StatusLineNC = { bg = "None" },
-	TabLine = { bg = "None" },
-	TabLineFill = { bg = "None" },
-}
-
 require"kanagawa".setup {
 	transparent = true,
-	overrides = overrides,
+	overrides = function(colors)
+		return {
+			LineNr = { bg = "None" },
+			StatusLine = { bg = "None" },
+			StatusLineNC = { bg = "None" },
+			TabLine = { bg = "None" },
+			TabLineFill = { bg = "None" },
+		}
+	end,
 }
 vim.cmd("colorscheme kanagawa")
 
@@ -236,52 +237,6 @@ keymap("<F2>", function() require"wiki".create_page() end)
 -- }}}
 -- venn.nvim {{{
 vim.cmd [[vnoremap <leader>g :VBox<CR>]]
--- }}}
--- vim-easy-align {{{
--- vim.cmd [[xmap ga <Plug>(EasyAlign)]]
--- }}}
--- gitsigns.nvim {{{
--- require('gitsigns').setup{
-  -- signcolumn = false
--- }
--- }}}
--- leap.nvim {{{
-require('leap').add_default_mappings()
--- }}}
--- zenmode.nvim {{{
--- require("zen-mode").setup {
-	-- window = {
-		-- backdrop = 1,
-		-- width = .55,
-		-- options = {
-			-- number = false,
-			-- relativenumber = false,
-		-- }
-	-- },
-	-- plugins = {
-		-- options = {
-			-- enabled = true,
-			-- ruler = false, -- disables the ruler text in the cmd line area
-			-- showcmd = false, -- disables the command in the last line of the screen
-		-- },
-	-- }
--- }
--- }}}
--- luasnip {{{
--- vim.keymap.set('i', '<Tab>', function()
-	-- if require"luasnip".expand_or_jumpable() then
-		-- return '<Plug>luasnip-expand-or-jump'
-	-- else
-		-- return '<Tab>'
-	-- end
--- end, { silent = true, expr = true, remap = true })
--- vim.keymap.set('i', '<S-Tab>', function() require"luasnip".jump(-1) end)
-
--- vim.keymap.set('s', '<Tab>', function() require"luasnip".jump(1) end)
--- vim.keymap.set('s', '<S-Tab>', function() require"luasnip".jump(-11) end)
-
--- require"luasnip-snippets.tex"
-
 -- }}}
 
 -- advent of code {{{

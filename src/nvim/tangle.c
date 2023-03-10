@@ -423,8 +423,8 @@ Line* get_line_at_lnum_tangled(buf_T* buf, const char* name, int lnum, char* pre
 
 Line* get_current_tangle_line()
 {
-	size_t col = (size_t)curwin->w_cursor.col;
-	linenr_T lnum = curwin->w_cursor.lnum;
+  size_t col = (size_t)curwin->w_cursor.col;
+  linenr_T lnum = curwin->w_cursor.lnum;
 
 	Line* line = tree_lookup(curbuf->tgl_tree, lnum-1);
 
@@ -1192,7 +1192,7 @@ void tangle_delete_lines(int count)
 
 		else if(line->type == REFERENCE) {
 			if(prev_section == cur_section) {
-				int n, bytes;
+			        int n, bytes;
 				get_tangle_line_size(line, &n, &bytes);
 				deleted_from_prev += n;
 				deleted_from_prev_bytes += bytes;
