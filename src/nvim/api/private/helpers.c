@@ -153,7 +153,18 @@ bool try_end(Error *err)
       xfree(msg);
     }
   } else if (did_throw) {
-    api_set_error(err, kErrorTypeException, "%s", current_exception->value);
+    if (*current_exception->throw_name != NUL) {
+      if (current_exception->throw_lnum != 0) {
+        api_set_error(err, kErrorTypeException, "%s, line %" PRIdLINENR ": %s",
+                      current_exception->throw_name, current_exception->throw_lnum,
+                      current_exception->value);
+      } else {
+        api_set_error(err, kErrorTypeException, "%s: %s",
+                      current_exception->throw_name, current_exception->value);
+      }
+    } else {
+      api_set_error(err, kErrorTypeException, "%s", current_exception->value);
+    }
     discard_current_exception();
   }
 
@@ -393,13 +404,13 @@ String cbuf_to_string(const char *buf, size_t size)
 String cstrn_to_string(const char *str, size_t maxsize)
   FUNC_ATTR_NONNULL_ALL
 {
-  return cbuf_to_string(str, STRNLEN(str, maxsize));
+  return cbuf_to_string(str, strnlen(str, maxsize));
 }
 
 String cstrn_as_string(char *str, size_t maxsize)
   FUNC_ATTR_NONNULL_ALL
 {
-  return cbuf_as_string(str, STRNLEN(str, maxsize));
+  return cbuf_as_string(str, strnlen(str, maxsize));
 }
 
 /// Creates a String using the given C string. Unlike
@@ -508,6 +519,7 @@ String buf_get_text(buf_T *buf, int64_t lnum, int64_t start_col, int64_t end_col
 			return rv;
 		}
 
+<<<<<<< HEAD
 		return cstrn_as_string((char *)&bufstr[start_col], (size_t)(end_col - start_col));
 	} else {
 		// Convert tangle lnum to untangled one
@@ -545,6 +557,9 @@ String buf_get_text(buf_T *buf, int64_t lnum, int64_t start_col, int64_t end_col
 		xfree(allocated);
 		return rv;
 	}
+=======
+  return cstrn_as_string(&bufstr[start_col], (size_t)(end_col - start_col));
+>>>>>>> 29a43ef8affbb9ecbae03b75db346205ffe9ec14
 }
 
 void api_free_string(String value)
@@ -850,9 +865,38 @@ int object_to_hl_id(Object obj, const char *what, Error *err)
   } else if (obj.type == kObjectTypeInteger) {
     return MAX((int)obj.data.integer, 0);
   } else {
-    api_set_error(err, kErrorTypeValidation,
-                  "%s is not a valid highlight", what);
+    api_set_error(err, kErrorTypeValidation, "Invalid highlight: %s", what);
     return 0;
+  }
+}
+
+char *api_typename(ObjectType t)
+{
+  switch (t) {
+  case kObjectTypeNil:
+    return "nil";
+  case kObjectTypeBoolean:
+    return "Boolean";
+  case kObjectTypeInteger:
+    return "Integer";
+  case kObjectTypeFloat:
+    return "Float";
+  case kObjectTypeString:
+    return "String";
+  case kObjectTypeArray:
+    return "Array";
+  case kObjectTypeDictionary:
+    return "Dict";
+  case kObjectTypeLuaRef:
+    return "Function";
+  case kObjectTypeBuffer:
+    return "Buffer";
+  case kObjectTypeWindow:
+    return "Window";
+  case kObjectTypeTabpage:
+    return "Tabpage";
+  default:
+    abort();
   }
 }
 

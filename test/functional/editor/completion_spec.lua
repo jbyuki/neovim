@@ -935,6 +935,9 @@ describe('completion', function()
       eq({'api'}, funcs.getcompletion('vim.ap', 'lua'))
       eq({'tbl_filter'}, funcs.getcompletion('vim.tbl_fil', 'lua'))
       eq({'vim'}, funcs.getcompletion('print(vi', 'lua'))
+      -- fuzzy completion is not supported, so the result should be the same
+      command('set wildoptions+=fuzzy')
+      eq({'vim'}, funcs.getcompletion('vi', 'lua'))
     end)
   end)
 
@@ -1029,7 +1032,8 @@ describe('completion', function()
     ]])
   end)
 
-  it('TextChangedP autocommand', function()
+  -- oldtest: Test_ChangedP()
+  it('TextChangedI and TextChangedP autocommands', function()
     curbufmeths.set_lines(0, 1, false, { 'foo', 'bar', 'foobar'})
     source([[
       set complete=. completeopt=menuone

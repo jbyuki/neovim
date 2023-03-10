@@ -387,7 +387,7 @@ void terminal_check_size(Terminal *term)
   // Check if there is a window that displays the terminal and find the maximum width and height.
   // Skip the autocommand window which isn't actually displayed.
   FOR_ALL_TAB_WINDOWS(tp, wp) {
-    if (wp == aucmd_win) {
+    if (is_aucmd_win(wp)) {
       continue;
     }
     if (wp->w_buffer && wp->w_buffer->terminal == term) {
@@ -435,7 +435,7 @@ bool terminal_enter(void)
   handle_T save_curwin = curwin->handle;
   bool save_w_p_cul = curwin->w_p_cul;
   char *save_w_p_culopt = NULL;
-  char_u save_w_p_culopt_flags = curwin->w_p_culopt_flags;
+  uint8_t save_w_p_culopt_flags = curwin->w_p_culopt_flags;
   int save_w_p_cuc = curwin->w_p_cuc;
   long save_w_p_so = curwin->w_p_so;
   long save_w_p_siso = curwin->w_p_siso;
@@ -718,7 +718,7 @@ void terminal_paste(long count, char **y_array, size_t y_size)
   }
   vterm_keyboard_start_paste(curbuf->terminal->vt);
   size_t buff_len = strlen(y_array[0]);
-  char_u *buff = xmalloc(buff_len);
+  char *buff = xmalloc(buff_len);
   for (int i = 0; i < count; i++) {  // -V756
     // feed the lines to the terminal
     for (size_t j = 0; j < y_size; j++) {
@@ -731,18 +731,18 @@ void terminal_paste(long count, char **y_array, size_t y_size)
         buff = xrealloc(buff, len);
         buff_len = len;
       }
-      char_u *dst = buff;
-      char_u *src = (char_u *)y_array[j];
+      char *dst = buff;
+      char *src = y_array[j];
       while (*src != '\0') {
-        len = (size_t)utf_ptr2len((char *)src);
-        int c = utf_ptr2char((char *)src);
+        len = (size_t)utf_ptr2len(src);
+        int c = utf_ptr2char(src);
         if (!is_filter_char(c)) {
           memcpy(dst, src, len);
           dst += len;
         }
         src += len;
       }
-      terminal_send(curbuf->terminal, (char *)buff, (size_t)(dst - buff));
+      terminal_send(curbuf->terminal, buff, (size_t)(dst - buff));
     }
   }
   xfree(buff);
@@ -1439,8 +1439,8 @@ static bool send_mouse_event(Terminal *term, int c)
     int direction = c == K_MOUSEDOWN ? MSCR_DOWN : MSCR_UP;
     if (mod_mask & (MOD_MASK_SHIFT | MOD_MASK_CTRL)) {
       scroll_redraw(direction, curwin->w_botline - curwin->w_topline);
-    } else {
-      scroll_redraw(direction, 3L);
+    } else if (p_mousescroll_vert > 0) {
+      scroll_redraw(direction, p_mousescroll_vert);
     }
 
     curwin->w_redr_status = true;

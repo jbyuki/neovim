@@ -68,61 +68,62 @@ static void prepare_assert_error(garray_T *gap)
 
 /// Append "p[clen]" to "gap", escaping unprintable characters.
 /// Changes NL to \n, CR to \r, etc.
-static void ga_concat_esc(garray_T *gap, const char_u *p, int clen)
+static void ga_concat_esc(garray_T *gap, const char *p, int clen)
   FUNC_ATTR_NONNULL_ALL
 {
-  char_u buf[NUMBUFLEN];
+  char buf[NUMBUFLEN];
 
   if (clen > 1) {
     memmove(buf, p, (size_t)clen);
     buf[clen] = NUL;
-    ga_concat(gap, (char *)buf);
-  } else {
-    switch (*p) {
-    case BS:
-      ga_concat(gap, "\\b"); break;
-    case ESC:
-      ga_concat(gap, "\\e"); break;
-    case FF:
-      ga_concat(gap, "\\f"); break;
-    case NL:
-      ga_concat(gap, "\\n"); break;
-    case TAB:
-      ga_concat(gap, "\\t"); break;
-    case CAR:
-      ga_concat(gap, "\\r"); break;
-    case '\\':
-      ga_concat(gap, "\\\\"); break;
-    default:
-      if (*p < ' ' || *p == 0x7f) {
-        vim_snprintf((char *)buf, NUMBUFLEN, "\\x%02x", *p);
-        ga_concat(gap, (char *)buf);
-      } else {
-        ga_append(gap, (char)(*p));
-      }
-      break;
+    ga_concat(gap, buf);
+    return;
+  }
+
+  switch (*p) {
+  case BS:
+    ga_concat(gap, "\\b"); break;
+  case ESC:
+    ga_concat(gap, "\\e"); break;
+  case FF:
+    ga_concat(gap, "\\f"); break;
+  case NL:
+    ga_concat(gap, "\\n"); break;
+  case TAB:
+    ga_concat(gap, "\\t"); break;
+  case CAR:
+    ga_concat(gap, "\\r"); break;
+  case '\\':
+    ga_concat(gap, "\\\\"); break;
+  default:
+    if ((uint8_t)(*p) < ' ' || *p == 0x7f) {
+      vim_snprintf(buf, NUMBUFLEN, "\\x%02x", *p);
+      ga_concat(gap, buf);
+    } else {
+      ga_append(gap, (uint8_t)(*p));
     }
+    break;
   }
 }
 
 /// Append "str" to "gap", escaping unprintable characters.
 /// Changes NL to \n, CR to \r, etc.
-static void ga_concat_shorten_esc(garray_T *gap, const char_u *str)
+static void ga_concat_shorten_esc(garray_T *gap, const char *str)
   FUNC_ATTR_NONNULL_ARG(1)
 {
-  char_u buf[NUMBUFLEN];
+  char buf[NUMBUFLEN];
 
   if (str == NULL) {
     ga_concat(gap, "NULL");
     return;
   }
 
-  for (const char_u *p = str; *p != NUL; p++) {
+  for (const char *p = str; *p != NUL; p++) {
     int same_len = 1;
-    const char_u *s = p;
+    const char *s = p;
     const int c = mb_ptr2char_adv(&s);
     const int clen = (int)(s - p);
-    while (*s != NUL && c == utf_ptr2char((char *)s)) {
+    while (*s != NUL && c == utf_ptr2char(s)) {
       same_len++;
       s += clen;
     }
@@ -130,8 +131,8 @@ static void ga_concat_shorten_esc(garray_T *gap, const char_u *str)
       ga_concat(gap, "\\[");
       ga_concat_esc(gap, p, clen);
       ga_concat(gap, " occurs ");
-      vim_snprintf((char *)buf, NUMBUFLEN, "%d", same_len);
-      ga_concat(gap, (char *)buf);
+      vim_snprintf(buf, NUMBUFLEN, "%d", same_len);
+      ga_concat(gap, buf);
       ga_concat(gap, " times]");
       p = s - 1;
     } else {
@@ -141,10 +142,10 @@ static void ga_concat_shorten_esc(garray_T *gap, const char_u *str)
 }
 
 /// Fill "gap" with information about an assert error.
-static void fill_assert_error(garray_T *gap, typval_T *opt_msg_tv, char_u *exp_str,
+static void fill_assert_error(garray_T *gap, typval_T *opt_msg_tv, char *exp_str,
                               typval_T *exp_tv_arg, typval_T *got_tv_arg, assert_type_T atype)
 {
-  char_u *tofree;
+  char *tofree;
   typval_T *exp_tv = exp_tv_arg;
   typval_T *got_tv = got_tv_arg;
   bool did_copy = false;
@@ -154,8 +155,8 @@ static void fill_assert_error(garray_T *gap, typval_T *opt_msg_tv, char_u *exp_s
       && !(opt_msg_tv->v_type == VAR_STRING
            && (opt_msg_tv->vval.v_string == NULL
                || *opt_msg_tv->vval.v_string == NUL))) {
-    tofree = (char_u *)encode_tv2echo(opt_msg_tv, NULL);
-    ga_concat(gap, (char *)tofree);
+    tofree = encode_tv2echo(opt_msg_tv, NULL);
+    ga_concat(gap, tofree);
     xfree(tofree);
     ga_concat(gap, ": ");
   }
@@ -188,7 +189,7 @@ static void fill_assert_error(garray_T *gap, typval_T *opt_msg_tv, char_u *exp_s
           if (item2 == NULL
               || !tv_equal(&TV_DICT_HI2DI(hi)->di_tv, &item2->di_tv, false, false)) {
             // item of exp_d not present in got_d or values differ.
-            const size_t key_len = STRLEN(hi->hi_key);
+            const size_t key_len = strlen(hi->hi_key);
             tv_dict_add_tv(exp_tv->vval.v_dict, (const char *)hi->hi_key, key_len,
                            &TV_DICT_HI2DI(hi)->di_tv);
             if (item2 != NULL) {
@@ -209,7 +210,7 @@ static void fill_assert_error(garray_T *gap, typval_T *opt_msg_tv, char_u *exp_s
           dictitem_T *item2 = tv_dict_find(exp_d, (const char *)hi->hi_key, -1);
           if (item2 == NULL) {
             // item of got_d not present in exp_d
-            const size_t key_len = STRLEN(hi->hi_key);
+            const size_t key_len = strlen(hi->hi_key);
             tv_dict_add_tv(got_tv->vval.v_dict, (const char *)hi->hi_key, key_len,
                            &TV_DICT_HI2DI(hi)->di_tv);
           }
@@ -218,7 +219,7 @@ static void fill_assert_error(garray_T *gap, typval_T *opt_msg_tv, char_u *exp_s
       }
     }
 
-    tofree = (char_u *)encode_tv2string(exp_tv, NULL);
+    tofree = encode_tv2string(exp_tv, NULL);
     ga_concat_shorten_esc(gap, tofree);
     xfree(tofree);
   } else {
@@ -233,7 +234,7 @@ static void fill_assert_error(garray_T *gap, typval_T *opt_msg_tv, char_u *exp_s
     } else {
       ga_concat(gap, " but got ");
     }
-    tofree = (char_u *)encode_tv2string(got_tv, NULL);
+    tofree = encode_tv2string(got_tv, NULL);
     ga_concat_shorten_esc(gap, tofree);
     xfree(tofree);
 
@@ -306,7 +307,7 @@ static int assert_bool(typval_T *argvars, bool is_true)
                                 : kBoolVarFalse)))) {
     prepare_assert_error(&ga);
     fill_assert_error(&ga, &argvars[1],
-                      (char_u *)(is_true ? "True" : "False"),
+                      is_true ? "True" : "False",
                       NULL, &argvars[0], ASSERT_OTHER);
     assert_error(&ga);
     ga_clear(&ga);
@@ -394,12 +395,12 @@ static int assert_equalfile(typval_T *argvars)
   char line2[200];
   ptrdiff_t lineidx = 0;
   if (fd1 == NULL) {
-    snprintf((char *)IObuff, IOSIZE, (char *)e_notread, fname1);
+    snprintf(IObuff, IOSIZE, e_notread, fname1);
   } else {
     FILE *const fd2 = os_fopen(fname2, READBIN);
     if (fd2 == NULL) {
       fclose(fd1);
-      snprintf((char *)IObuff, IOSIZE, (char *)e_notread, fname2);
+      snprintf(IObuff, IOSIZE, e_notread, fname2);
     } else {
       int64_t linecount = 1;
       for (int64_t count = 0;; count++) {
@@ -418,7 +419,7 @@ static int assert_equalfile(typval_T *argvars)
           line2[lineidx] = (char)c2;
           lineidx++;
           if (c1 != c2) {
-            snprintf((char *)IObuff, IOSIZE,
+            snprintf(IObuff, IOSIZE,
                      "difference at byte %" PRId64 ", line %" PRId64,
                      count, linecount);
             break;
@@ -445,7 +446,7 @@ static int assert_equalfile(typval_T *argvars)
       xfree(tofree);
       ga_concat(&ga, ": ");
     }
-    ga_concat(&ga, (char *)IObuff);
+    ga_concat(&ga, IObuff);
     if (lineidx > 0) {
       line1[lineidx] = NUL;
       line2[lineidx] = NUL;
@@ -606,6 +607,7 @@ theend:
   suppress_errthrow = false;
   in_assert_fails = false;
   did_emsg = false;
+  got_int = false;
   msg_col = 0;
   no_wait_return--;
   need_wait_return = false;
@@ -641,8 +643,8 @@ static int assert_inrange(typval_T *argvars)
       garray_T ga;
       prepare_assert_error(&ga);
       if (argvars[3].v_type != VAR_UNKNOWN) {
-        char_u *const tofree = (char_u *)encode_tv2string(&argvars[3], NULL);
-        ga_concat(&ga, (char *)tofree);
+        char *const tofree = encode_tv2string(&argvars[3], NULL);
+        ga_concat(&ga, tofree);
         xfree(tofree);
       } else {
         char msg[80];
@@ -670,7 +672,7 @@ static int assert_inrange(typval_T *argvars)
       vim_snprintf(msg, sizeof(msg),
                    "range %" PRIdVARNUMBER " - %" PRIdVARNUMBER ",",
                    lower, upper);  // -V576
-      fill_assert_error(&ga, &argvars[3], (char_u *)msg, NULL, &argvars[2],
+      fill_assert_error(&ga, &argvars[3], msg, NULL, &argvars[2],
                         ASSERT_INRANGE);
       assert_error(&ga);
       ga_clear(&ga);

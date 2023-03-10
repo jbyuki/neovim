@@ -206,6 +206,8 @@ typedef struct {
 #define w_p_cc w_onebuf_opt.wo_cc      // 'colorcolumn'
   char *wo_sbr;
 #define w_p_sbr w_onebuf_opt.wo_sbr    // 'showbreak'
+  char *wo_stc;
+#define w_p_stc w_onebuf_opt.wo_stc     // 'statuscolumn'
   char *wo_stl;
 #define w_p_stl w_onebuf_opt.wo_stl     // 'statusline'
   char *wo_wbr;
@@ -320,7 +322,7 @@ typedef struct {
 typedef struct mapblock mapblock_T;
 struct mapblock {
   mapblock_T *m_next;           // next mapblock in list
-  uint8_t *m_keys;              // mapped from, lhs
+  char *m_keys;                 // mapped from, lhs
   char *m_str;                  // mapped to, rhs
   char *m_orig_str;             // rhs as entered by the user
   LuaRef m_luaref;              // lua function reference as rhs
@@ -335,36 +337,6 @@ struct mapblock {
   sctx_T m_script_ctx;          // SCTX where map was defined
   char *m_desc;                 // description of mapping
   bool m_replace_keycodes;      // replace keycodes in result of expression
-};
-
-/// Used for highlighting in the status line.
-typedef struct stl_hlrec stl_hlrec_t;
-struct stl_hlrec {
-  char *start;
-  int userhl;                   // 0: no HL, 1-9: User HL, < 0 for syn ID
-};
-
-/// Used for building the status line.
-typedef struct stl_item stl_item_t;
-struct stl_item {
-  // Where the item starts in the status line output buffer
-  char *start;
-  // Function to run for ClickFunc items.
-  char *cmd;
-  // The minimum width of the item
-  int minwid;
-  // The maximum width of the item
-  int maxwid;
-  enum {
-    Normal,
-    Empty,
-    Group,
-    Separate,
-    Highlight,
-    TabPage,
-    ClickFunc,
-    Trunc,
-  } type;
 };
 
 // values for b_syn_spell: what to do with toplevel text
@@ -840,6 +812,7 @@ struct file_buffer {
   Map(uint32_t, uint32_t) b_extmark_ns[1];         // extmark namespaces
   size_t b_virt_line_blocks;    // number of virt_line blocks
   size_t b_signs;               // number of sign extmarks
+  size_t b_signs_with_text;     // number of sign extmarks with text
 
   // array of channel_id:s which have asked to receive updates for this
   // buffer.
@@ -915,7 +888,8 @@ struct tabpage_S {
   win_T *tp_firstwin;      ///< first window in this Tab page
   win_T *tp_lastwin;       ///< last window in this Tab page
   long tp_old_Rows_avail;  ///< ROWS_AVAIL when Tab page was left
-  long tp_old_Columns;     ///< Columns when Tab page was left
+  long tp_old_Columns;     ///< Columns when Tab page was left, -1 when
+                           ///< calling win_new_screen_cols() postponed
   long tp_ch_used;         ///< value of 'cmdheight' when frame size was set
 
   diff_T *tp_first_diff;
@@ -1037,10 +1011,11 @@ typedef enum {
   kFloatRelativeEditor = 0,
   kFloatRelativeWindow = 1,
   kFloatRelativeCursor = 2,
+  kFloatRelativeMouse = 3,
 } FloatRelative;
 
 EXTERN const char *const float_relative_str[] INIT(= { "editor", "win",
-                                                       "cursor" });
+                                                       "cursor", "mouse" });
 
 typedef enum {
   kWinStyleUnused = 0,
@@ -1119,20 +1094,23 @@ struct window_S {
   win_T *w_prev;              ///< link to previous window
   win_T *w_next;              ///< link to next window
   bool w_closing;                   ///< window is being closed, don't let
-                                    ///  autocommands close it too.
+                                    ///< autocommands close it too.
 
   frame_T *w_frame;             ///< frame containing this window
 
   pos_T w_cursor;                   ///< cursor position in buffer
 
   colnr_T w_curswant;               ///< Column we want to be at.  This is
-                                    ///  used to try to stay in the same column
-                                    ///  for up/down cursor motions.
+                                    ///< used to try to stay in the same column
+                                    ///< for up/down cursor motions.
 
   int w_set_curswant;               // If set, then update w_curswant the next
                                     // time through cursupdate() to the
                                     // current virtual column
 
+  linenr_T w_cursorline;            ///< Where 'cursorline' should be drawn,
+                                    ///< can be different from w_cursor.lnum
+                                    ///< for closed folds.
   linenr_T w_last_cursorline;       ///< where last 'cursorline' was drawn
   pos_T w_last_cursormoved;         ///< for CursorMoved event
 
@@ -1203,8 +1181,9 @@ struct window_S {
   colnr_T w_skipcol;                // starting column when a single line
                                     // doesn't fit in the window
 
-  // five fields that are only used when there is a WinScrolled autocommand
+  // six fields that are only used when there is a WinScrolled autocommand
   linenr_T w_last_topline;          ///< last known value for w_topline
+  int w_last_topfill;               ///< last known value for w_topfill
   colnr_T w_last_leftcol;           ///< last known value for w_leftcol
   colnr_T w_last_skipcol;           ///< last known value for w_skipcol
   int w_last_width;                 ///< last known value for w_width
@@ -1310,14 +1289,16 @@ struct window_S {
   linenr_T w_redraw_bot;            // when != 0: last line needing redraw
   bool w_redr_status;               // if true statusline/winbar must be redrawn
   bool w_redr_border;               // if true border must be redrawn
+  bool w_redr_statuscol;            // if true 'statuscolumn' must be redrawn
 
-  // remember what is shown in the ruler for this window (if 'ruler' set)
-  pos_T w_ru_cursor;                // cursor position shown in ruler
-  colnr_T w_ru_virtcol;             // virtcol shown in ruler
-  linenr_T w_ru_topline;            // topline shown in ruler
-  linenr_T w_ru_line_count;         // line count used for ruler
-  int w_ru_topfill;                 // topfill shown in ruler
-  char w_ru_empty;                  // true if ruler shows 0-1 (empty line)
+  // remember what is shown in the 'statusline'-format elements
+  pos_T w_stl_cursor;                // cursor position when last redrawn
+  colnr_T w_stl_virtcol;             // virtcol when last redrawn
+  linenr_T w_stl_topline;            // topline when last redrawn
+  linenr_T w_stl_line_count;         // line count when last redrawn
+  int w_stl_topfill;                 // topfill when last redrawn
+  char w_stl_empty;                  // true if elements show 0-1 (empty line)
+  int w_stl_state;                   // State when last redrawn
 
   int w_alt_fnum;                   // alternate file (for # and CTRL-^)
 
@@ -1398,6 +1379,7 @@ struct window_S {
   int w_prev_fraction_row;
 
   linenr_T w_nrwidth_line_count;        // line count when ml_nrwidth_width was computed.
+  linenr_T w_statuscol_line_count;      // line count when 'statuscolumn' width was computed.
   int w_nrwidth_width;                  // nr of chars to print line count.
 
   qf_info_T *w_llist;                 // Location list for this window
@@ -1414,6 +1396,11 @@ struct window_S {
   StlClickDefinition *w_winbar_click_defs;
   // Size of the w_winbar_click_defs array
   size_t w_winbar_click_defs_size;
+
+  // Status column click definitions
+  StlClickDefinition *w_statuscol_click_defs;
+  // Size of the w_statuscol_click_defs array
+  size_t w_statuscol_click_defs_size;
 };
 
 /// Macros defined in Vim, but not in Neovim

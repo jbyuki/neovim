@@ -2,12 +2,13 @@ set(NVIM_VERSION
     "v${NVIM_VERSION_MAJOR}.${NVIM_VERSION_MINOR}.${NVIM_VERSION_PATCH}${NVIM_VERSION_PRERELEASE}")
 
 execute_process(
-  COMMAND git describe --first-parent --dirty --always
+  COMMAND git --git-dir=${NVIM_SOURCE_DIR}/.git --work-tree=${NVIM_SOURCE_DIR} describe --first-parent --dirty --always
   OUTPUT_VARIABLE GIT_TAG
   OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
   RESULT_VARIABLE RES)
 
-if(RES AND NOT RES EQUAL 0)
+if(RES)
   message(STATUS "Using NVIM_VERSION: ${NVIM_VERSION}")
   file(WRITE "${OUTPUT}" "")
   return()
@@ -33,4 +34,7 @@ endif()
 if(NOT "${NVIM_VERSION_HASH}" STREQUAL "${CURRENT_VERSION_HASH}")
   message(STATUS "Using NVIM_VERSION: ${NVIM_VERSION}")
   file(WRITE "${OUTPUT}" "${NVIM_VERSION_STRING}")
+  if(WIN32)
+    configure_file("${OUTPUT}" "${OUTPUT}" NEWLINE_STYLE UNIX)
+  endif()
 endif()

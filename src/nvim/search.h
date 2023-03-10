@@ -73,7 +73,7 @@ typedef struct soffset {
 
 /// Structure containing last search pattern and its attributes.
 typedef struct spat {
-  char_u *pat;          ///< The pattern (in allocated memory) or NULL.
+  char *pat;            ///< The pattern (in allocated memory) or NULL.
   bool magic;           ///< Magicness of the pattern.
   bool no_scs;          ///< No smartcase for this pattern.
   Timestamp timestamp;  ///< Time of the last change.
@@ -98,6 +98,14 @@ typedef struct searchstat {
   // 2: max count exceeded
   int last_maxcount;  // the max count of the last search
 } searchstat_T;
+
+/// Fuzzy matched string list item. Used for fuzzy match completion. Items are
+/// usually sorted by "score". The "idx" member is used for stable-sort.
+typedef struct {
+  int idx;
+  char *str;
+  int score;
+} fuzmatch_str_T;
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "search.h.generated.h"

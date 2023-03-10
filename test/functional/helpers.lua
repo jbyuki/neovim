@@ -1,15 +1,11 @@
-require('coxpcall')
-local busted = require('busted')
 local luv = require('luv')
 local lfs = require('lfs')
-local mpack = require('mpack')
 local global_helpers = require('test.helpers')
 
--- nvim client: Found in .deps/usr/share/lua/<version>/nvim/ if "bundled".
-local Session = require('nvim.session')
-local TcpStream = require('nvim.tcp_stream')
-local SocketStream = require('nvim.socket_stream')
-local ChildProcessStream = require('nvim.child_process_stream')
+local Session = require('test.client.session')
+local uv_stream = require('test.client.uv_stream')
+local SocketStream = uv_stream.SocketStream
+local ChildProcessStream = uv_stream.ChildProcessStream
 
 local check_cores = global_helpers.check_cores
 local check_logs = global_helpers.check_logs
@@ -24,7 +20,6 @@ local tbl_contains = global_helpers.tbl_contains
 local fail = global_helpers.fail
 
 local module = {
-  NIL = mpack.NIL,
   mkdir = lfs.mkdir,
 }
 
@@ -54,7 +49,6 @@ if module.nvim_dir == module.nvim_prog then
   module.nvim_dir = "."
 end
 
-local iswin = global_helpers.iswin
 local prepend_argv
 
 if os.getenv('VALGRIND') then
@@ -204,7 +198,7 @@ function module.expect_msg_seq(...)
 end
 
 local function call_and_stop_on_error(lsession, ...)
-  local status, result = copcall(...)  -- luacheck: ignore
+  local status, result = Session.safe_pcall(...)  -- luacheck: ignore
   if not status then
     lsession:stop()
     last_error = result
@@ -244,7 +238,7 @@ function module.run_session(lsession, request_cb, notification_cb, setup_cb, tim
   end
 
   loop_running = true
-  session:run(on_request, on_notification, on_setup, timeout)
+  lsession:run(on_request, on_notification, on_setup, timeout)
   loop_running = false
   if last_error then
     local err = last_error
@@ -252,7 +246,7 @@ function module.run_session(lsession, request_cb, notification_cb, setup_cb, tim
     error(err)
   end
 
-  return session.eof_err
+  return lsession.eof_err
 end
 
 function module.run(request_cb, notification_cb, setup_cb, timeout)
@@ -398,9 +392,12 @@ local function remove_args(args, args_rm)
   return new_args
 end
 
-function module.check_close(old_session)
+function module.check_close()
+  if not session then
+    return
+  end
   local start_time = luv.now()
-  old_session:close()
+  session:close()
   luv.update_time()  -- Update cached value of luv.now() (libuv: uv_now()).
   local end_time = luv.now()
   local delta = end_time - start_time
@@ -409,12 +406,13 @@ function module.check_close(old_session)
           "This indicates a likely problem with the test even if it passed!\n")
     io.stdout:flush()
   end
+  session = nil
 end
 
 --- @param io_extra used for stdin_fd, see :help ui-option
 function module.spawn(argv, merge, env, keep, io_extra)
-  if session and not keep then
-    module.check_close(session)
+  if not keep then
+    module.check_close()
   end
 
   local child_stream = ChildProcessStream.spawn(
@@ -426,31 +424,9 @@ end
 -- Creates a new Session connected by domain socket (named pipe) or TCP.
 function module.connect(file_or_address)
   local addr, port = string.match(file_or_address, "(.*):(%d+)")
-  local stream = (addr and port) and TcpStream.open(addr, port) or
+  local stream = (addr and port) and SocketStream.connect(addr, port) or
     SocketStream.open(file_or_address)
   return Session.new(stream)
-end
-
--- Calls fn() until it succeeds, up to `max` times or until `max_ms`
--- milliseconds have passed.
-function module.retry(max, max_ms, fn)
-  assert(max == nil or max > 0)
-  assert(max_ms == nil or max_ms > 0)
-  local tries = 1
-  local timeout = (max_ms and max_ms or 10000)
-  local start_time = luv.now()
-  while true do
-    local status, result = pcall(fn)
-    if status then
-      return result
-    end
-    luv.update_time()  -- Update cached value of luv.now() (libuv: uv_now()).
-    if (max and tries >= max) or (luv.now() - start_time > timeout) then
-      busted.fail(string.format("retry() attempts: %d\n%s", tries, tostring(result)), 2)
-    end
-    tries = tries + 1
-    luv.sleep(20)  -- Avoid hot loop...
-  end
 end
 
 -- Starts a new global Nvim session.
@@ -466,8 +442,14 @@ end
 --    clear('-e')
 --    clear{args={'-e'}, args_rm={'-i'}, env={TERM=term}}
 function module.clear(...)
+  module.set_session(module.spawn_argv(false, ...))
+end
+
+-- same params as clear, but does returns the session instead
+-- of replacing the default session
+function module.spawn_argv(keep, ...)
   local argv, env, io_extra = module.new_argv(...)
-  module.set_session(module.spawn(argv, nil, env, nil, io_extra))
+  return module.spawn(argv, nil, env, keep, io_extra)
 end
 
 -- Builds an argument list for use in clear().
@@ -557,7 +539,7 @@ function module.source(code)
 end
 
 function module.has_powershell()
-  return module.eval('executable("'..(iswin() and 'powershell' or 'pwsh')..'")') == 1
+  return module.eval('executable("'..(is_os('win') and 'powershell' or 'pwsh')..'")') == 1
 end
 
 --- Sets Nvim shell to powershell.
@@ -570,9 +552,9 @@ function module.set_shell_powershell(fake)
   if not fake then
     assert(found)
   end
-  local shell = found and (iswin() and 'powershell' or 'pwsh') or module.testprg('pwsh-test')
+  local shell = found and (is_os('win') and 'powershell' or 'pwsh') or module.testprg('pwsh-test')
   local set_encoding = '[Console]::InputEncoding=[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();'
-  local cmd = set_encoding..'Remove-Item -Force '..table.concat(iswin()
+  local cmd = set_encoding..'Remove-Item -Force '..table.concat(is_os('win')
     and {'alias:cat', 'alias:echo', 'alias:sleep', 'alias:sort'}
     or  {'alias:echo'}, ',')..';'
   module.exec([[
@@ -854,13 +836,13 @@ function module.exec_lua(code, ...)
 end
 
 function module.get_pathsep()
-  return iswin() and '\\' or '/'
+  return is_os('win') and '\\' or '/'
 end
 
 --- Gets the filesystem root dir, namely "/" or "C:/".
 function module.pathroot()
   local pathsep = package.config:sub(1,1)
-  return iswin() and (module.nvim_dir:sub(1,2)..pathsep) or '/'
+  return is_os('win') and (module.nvim_dir:sub(1,2)..pathsep) or '/'
 end
 
 --- Gets the full `…/build/bin/{name}` path of a test program produced by
@@ -868,7 +850,7 @@ end
 ---
 --- @param name (string) Name of the test program.
 function module.testprg(name)
-  local ext = module.iswin() and '.exe' or ''
+  local ext = module.is_os('win') and '.exe' or ''
   return ('%s/%s%s'):format(module.nvim_dir, name, ext)
 end
 
@@ -895,7 +877,7 @@ function module.missing_provider(provider)
 end
 
 function module.alter_slashes(obj)
-  if not iswin() then
+  if not is_os('win') then
     return obj
   end
   if type(obj) == 'string' then
@@ -913,10 +895,10 @@ function module.alter_slashes(obj)
 end
 
 local load_factor = 1
-if global_helpers.isCI() then
+if global_helpers.is_ci() then
   -- Compute load factor only once (but outside of any tests).
   module.clear()
-  module.request('nvim_command', 'source src/nvim/testdir/load.vim')
+  module.request('nvim_command', 'source test/old/testdir/load.vim')
   load_factor = module.request('nvim_eval', 'g:test_load_factor')
 end
 function module.load_adjust(num)
@@ -946,14 +928,14 @@ end
 
 -- Kill process with given pid
 function module.os_kill(pid)
-  return os.execute((iswin()
+  return os.execute((is_os('win')
     and 'taskkill /f /t /pid '..pid..' > nul'
     or  'kill -9 '..pid..' > /dev/null'))
 end
 
 -- Create folder with non existing parents
 function module.mkdir_p(path)
-  return os.execute((iswin()
+  return os.execute((is_os('win')
     and 'mkdir '..path
     or 'mkdir -p '..path))
 end

@@ -136,14 +136,14 @@ static int conv_error(const char *const msg, const MPConvStack *const mpstack,
       typval_T key_tv = {
         .v_type = VAR_STRING,
         .vval = { .v_string =
-                    (char *)(v.data.d.hi ==
-                             NULL ? v.data.d.dict->dv_hashtab.ht_array : (v.data.d.hi -
-                                                                          1))->hi_key },
+                    (v.data.d.hi ==
+                     NULL ? v.data.d.dict->dv_hashtab.ht_array : (v.data.d.hi -
+                                                                  1))->hi_key },
       };
       char *const key = encode_tv2string(&key_tv, NULL);
-      vim_snprintf((char *)IObuff, IOSIZE, key_msg, key);
+      vim_snprintf(IObuff, IOSIZE, key_msg, key);
       xfree(key);
-      ga_concat(&msg_ga, (char *)IObuff);
+      ga_concat(&msg_ga, IObuff);
       break;
     }
     case kMPConvPairs:
@@ -163,8 +163,8 @@ static int conv_error(const char *const msg, const MPConvStack *const mpstack,
           || li == NULL
           || (TV_LIST_ITEM_TV(li)->v_type != VAR_LIST
               && tv_list_len(TV_LIST_ITEM_TV(li)->vval.v_list) <= 0)) {
-        vim_snprintf((char *)IObuff, IOSIZE, idx_msg, idx);
-        ga_concat(&msg_ga, (char *)IObuff);
+        vim_snprintf(IObuff, IOSIZE, idx_msg, idx);
+        ga_concat(&msg_ga, IObuff);
       } else {
         assert(li != NULL);
         listitem_T *const first_item =
@@ -172,9 +172,9 @@ static int conv_error(const char *const msg, const MPConvStack *const mpstack,
         assert(first_item != NULL);
         typval_T key_tv = *TV_LIST_ITEM_TV(first_item);
         char *const key = encode_tv2echo(&key_tv, NULL);
-        vim_snprintf((char *)IObuff, IOSIZE, key_pair_msg, key, idx);
+        vim_snprintf(IObuff, IOSIZE, key_pair_msg, key, idx);
         xfree(key);
-        ga_concat(&msg_ga, (char *)IObuff);
+        ga_concat(&msg_ga, IObuff);
       }
       break;
     }
@@ -193,8 +193,8 @@ static int conv_error(const char *const msg, const MPConvStack *const mpstack,
       break;
     case kMPConvPartialList: {
       const int idx = (int)(v.data.a.arg - v.data.a.argv) - 1;
-      vim_snprintf((char *)IObuff, IOSIZE, partial_arg_i_msg, idx);
-      ga_concat(&msg_ga, (char *)IObuff);
+      vim_snprintf(IObuff, IOSIZE, partial_arg_i_msg, idx);
+      ga_concat(&msg_ga, IObuff);
       break;
     }
     }
@@ -309,7 +309,7 @@ int encode_read_from_list(ListReaderState *const state, char *const buf, const s
         if (buf_[i_] == '\'') { \
           ga_append(gap, '\''); \
         } \
-        ga_append(gap, buf_[i_]); \
+        ga_append(gap, (uint8_t)buf_[i_]); \
       } \
       ga_append(gap, '\''); \
     } \

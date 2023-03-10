@@ -13,6 +13,7 @@
 #include "nvim/buffer_defs.h"
 #include "nvim/cursor.h"
 #include "nvim/drawscreen.h"
+#include "nvim/eval/window.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/gettext.h"
 #include "nvim/globals.h"
@@ -168,9 +169,11 @@ void nvim_win_set_height(Window window, Integer height, Error *err)
 
   win_T *savewin = curwin;
   curwin = win;
+  curbuf = curwin->w_buffer;
   try_start();
   win_setheight((int)height);
   curwin = savewin;
+  curbuf = curwin->w_buffer;
   try_end(err);
 }
 
@@ -213,9 +216,11 @@ void nvim_win_set_width(Window window, Integer width, Error *err)
 
   win_T *savewin = curwin;
   curwin = win;
+  curbuf = curwin->w_buffer;
   try_start();
   win_setwidth((int)width);
   curwin = savewin;
+  curbuf = curwin->w_buffer;
   try_end(err);
 }
 
@@ -364,11 +369,16 @@ void nvim_win_hide(Window window, Error *err)
   tabpage_T *tabpage = win_find_tabpage(win);
   TryState tstate;
   try_enter(&tstate);
-  if (tabpage == curtab) {
+
+  // Never close the autocommand window.
+  if (is_aucmd_win(win)) {
+    emsg(_(e_autocmd_close));
+  } else if (tabpage == curtab) {
     win_close(win, false, false);
   } else {
     win_close_othertab(win, false, tabpage);
   }
+
   vim_ignored = try_leave(&tstate, err);
 }
 

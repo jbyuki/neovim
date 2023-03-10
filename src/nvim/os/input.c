@@ -44,7 +44,6 @@ typedef enum {
 static Stream read_stream = { .closed = true };  // Input before UI starts.
 static RBuffer *input_buffer = NULL;
 static bool input_eof = false;
-static int global_fd = -1;
 static bool blocking = false;
 static int cursorhold_time = 0;  ///< time waiting for CursorHold event
 static int cursorhold_tb_change_cnt = 0;  ///< tb_change_cnt when waiting started
@@ -58,25 +57,14 @@ void input_init(void)
   input_buffer = rbuffer_new(INPUT_BUFFER_SIZE + MAX_KEY_CODE_LEN);
 }
 
-void input_global_fd_init(int fd)
-{
-  global_fd = fd;
-}
-
-/// Global TTY (or pipe for "-es") input stream, before UI starts.
-int input_global_fd(void)
-{
-  return global_fd;
-}
-
-void input_start(int fd)
+void input_start(void)
 {
   if (!read_stream.closed) {
     return;
   }
 
-  input_global_fd_init(fd);
-  rstream_init_fd(&main_loop, &read_stream, fd, READ_BUFFER_SIZE);
+  used_stdin = true;
+  rstream_init_fd(&main_loop, &read_stream, STDIN_FILENO, READ_BUFFER_SIZE);
   rstream_start(&read_stream, input_read_cb, NULL);
 }
 
@@ -266,7 +254,8 @@ size_t input_enqueue(String keys)
     uint8_t buf[19] = { 0 };
     // Do not simplify the keys here. Simplification will be done later.
     unsigned int new_size
-      = trans_special((const uint8_t **)&ptr, (size_t)(end - ptr), buf, FSK_KEYCODE, true, NULL);
+      = trans_special((const char **)&ptr, (size_t)(end - ptr), (char *)buf, FSK_KEYCODE, true,
+                      NULL);
 
     if (new_size) {
       new_size = handle_mouse_event(&ptr, buf, new_size);
@@ -481,11 +470,6 @@ static InbufPollResult inbuf_poll(int ms, MultiQueue *events)
   return input_eof ? kInputEof : kInputNone;
 }
 
-void input_done(void)
-{
-  input_eof = true;
-}
-
 bool input_available(void)
 {
   return rbuffer_size(input_buffer) != 0;
@@ -494,7 +478,7 @@ bool input_available(void)
 static void input_read_cb(Stream *stream, RBuffer *buf, size_t c, void *data, bool at_eof)
 {
   if (at_eof) {
-    input_done();
+    input_eof = true;
   }
 
   assert(rbuffer_space(input_buffer) >= rbuffer_size(buf));
@@ -561,8 +545,7 @@ static void read_error_exit(void)
   if (silent_mode) {  // Normal way to exit for "nvim -es".
     getout(0);
   }
-  STRCPY(IObuff, _("Vim: Error reading input, exiting...\n"));
-  preserve_exit();
+  preserve_exit(_("Vim: Error reading input, exiting...\n"));
 }
 
 static bool pending_events(MultiQueue *events)

@@ -31,6 +31,7 @@
 #include "nvim/ex_cmds.h"
 #include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_docmd.h"
+#include "nvim/extmark.h"
 #include "nvim/extmark_defs.h"
 #include "nvim/fileio.h"
 #include "nvim/fold.h"
@@ -1043,12 +1044,12 @@ static int check_external_diff(diffio_T *diffio)
           for (;;) {
             // For normal diff there must be a line that contains
             // "1c1".  For unified diff "@@ -1 +1 @@".
-            if (vim_fgets((char_u *)linebuf, LBUFLEN, fd)) {
+            if (vim_fgets(linebuf, LBUFLEN, fd)) {
               break;
             }
 
-            if (STRNCMP(linebuf, "1c1", 3) == 0
-                || STRNCMP(linebuf, "@@ -1 +1 @@", 11) == 0) {
+            if (strncmp(linebuf, "1c1", 3) == 0
+                || strncmp(linebuf, "@@ -1 +1 @@", 11) == 0) {
               ok = kTrue;
             }
           }
@@ -1147,6 +1148,7 @@ static int diff_file(diffio_T *dio)
   if (dio->dio_internal) {
     return diff_file_internal(dio);
   }
+
   const size_t len = (strlen(tmp_orig) + strlen(tmp_new) + strlen(tmp_diff)
                       + strlen(p_srr) + 27);
   char *const cmd = xmalloc(len);
@@ -1170,7 +1172,7 @@ static int diff_file(diffio_T *dio)
                tmp_orig, tmp_new);
   append_redir(cmd, len, p_srr, tmp_diff);
   block_autocmds();  // Avoid ShellCmdPost stuff
-  (void)call_shell((char_u *)cmd,
+  (void)call_shell(cmd,
                    kShellOptFilter | kShellOptSilent | kShellOptDoOut,
                    NULL);
   unblock_autocmds();
@@ -1215,12 +1217,11 @@ void ex_diffpatch(exarg_T *eap)
 #ifdef UNIX
   // Get the absolute path of the patchfile, changing directory below.
   fullname = FullName_save(eap->arg, false);
-  esc_name =
-    (char *)vim_strsave_shellescape((char_u *)(fullname != NULL ? fullname : eap->arg), true, true);
+  esc_name = vim_strsave_shellescape(fullname != NULL ? fullname : eap->arg, true, true);
 #else
   esc_name = vim_strsave_shellescape(eap->arg, true, true);
 #endif
-  size_t buflen = STRLEN(tmp_orig) + STRLEN(esc_name) + STRLEN(tmp_new) + 16;
+  size_t buflen = strlen(tmp_orig) + strlen(esc_name) + strlen(tmp_new) + 16;
   buf = xmalloc(buflen);
 
 #ifdef UNIX
@@ -1230,7 +1231,7 @@ void ex_diffpatch(exarg_T *eap)
   // have our own temp dir use that instead, it will be cleaned up when we
   // exit (any .rej files created).  Don't change directory if we can't
   // return to the current.
-  if ((os_dirname((char_u *)dirbuf, MAXPATHL) != OK)
+  if ((os_dirname(dirbuf, MAXPATHL) != OK)
       || (os_chdir(dirbuf) != 0)) {
     dirbuf[0] = NUL;
   } else {
@@ -1255,7 +1256,7 @@ void ex_diffpatch(exarg_T *eap)
     vim_snprintf(buf, buflen, "patch -o %s %s < %s",
                  tmp_new, tmp_orig, esc_name);
     block_autocmds();  // Avoid ShellCmdPost stuff
-    (void)call_shell((char_u *)buf, kShellOptFilter, NULL);
+    (void)call_shell(buf, kShellOptFilter, NULL);
     unblock_autocmds();
   }
 
@@ -1351,30 +1352,33 @@ void ex_diffsplit(exarg_T *eap)
   // don't use a new tab page, each tab page has its own diffs
   cmdmod.cmod_tab = 0;
 
-  if (win_split(0, (diff_flags & DIFF_VERTICAL) ? WSP_VERT : 0) != FAIL) {
-    // Pretend it was a ":split fname" command
-    eap->cmdidx = CMD_split;
-    curwin->w_p_diff = true;
-    do_exedit(eap, old_curwin);
+  if (win_split(0, (diff_flags & DIFF_VERTICAL) ? WSP_VERT : 0) == FAIL) {
+    return;
+  }
 
-    // split must have worked
-    if (curwin != old_curwin) {
-      // Set 'diff', 'scrollbind' on and 'wrap' off.
-      diff_win_options(curwin, true);
-      if (win_valid(old_curwin)) {
-        diff_win_options(old_curwin, true);
+  // Pretend it was a ":split fname" command
+  eap->cmdidx = CMD_split;
+  curwin->w_p_diff = true;
+  do_exedit(eap, old_curwin);
 
-        if (bufref_valid(&old_curbuf)) {
-          // Move the cursor position to that of the old window.
-          curwin->w_cursor.lnum = diff_get_corresponding_line(old_curbuf.br_buf,
-                                                              old_curwin->w_cursor.lnum);
-        }
-      }
-      // Now that lines are folded scroll to show the cursor at the same
-      // relative position.
-      scroll_to_fraction(curwin, curwin->w_height);
+  if (curwin == old_curwin) {  // split didn't work
+    return;
+  }
+
+  // Set 'diff', 'scrollbind' on and 'wrap' off.
+  diff_win_options(curwin, true);
+  if (win_valid(old_curwin)) {
+    diff_win_options(old_curwin, true);
+
+    if (bufref_valid(&old_curbuf)) {
+      // Move the cursor position to that of the old window.
+      curwin->w_cursor.lnum = diff_get_corresponding_line(old_curbuf.br_buf,
+                                                          old_curwin->w_cursor.lnum);
     }
   }
+  // Now that lines are folded scroll to show the cursor at the same
+  // relative position.
+  scroll_to_fraction(curwin, curwin->w_height);
 }
 
 // Set options to show diffs for the current window.
@@ -1499,7 +1503,7 @@ void ex_diffoff(exarg_T *eap)
         free_string_option(wp->w_p_fdm);
         wp->w_p_fdm = xstrdup(*wp->w_p_fdm_save ? wp->w_p_fdm_save : "manual");
         free_string_option(wp->w_p_fdc);
-        wp->w_p_fdc = xstrdup(wp->w_p_fdc_save);
+        wp->w_p_fdc = xstrdup(*wp->w_p_fdc_save ? wp->w_p_fdc_save : "0");
 
         if (wp->w_p_fdl == 0) {
           wp->w_p_fdl = wp->w_p_fdl_save;
@@ -1557,7 +1561,7 @@ static bool extract_hunk(FILE *fd, diffhunk_T *hunk, diffstyle_T *diffstyle)
 {
   for (;;) {
     char line[LBUFLEN];  // only need to hold the diff line
-    if (vim_fgets((char_u *)line, LBUFLEN, fd)) {
+    if (vim_fgets(line, LBUFLEN, fd)) {
       return true;  // end of file
     }
 
@@ -1572,15 +1576,15 @@ static bool extract_hunk(FILE *fd, diffhunk_T *hunk, diffstyle_T *diffstyle)
       // --- file1       2018-03-20 13:23:35.783153140 +0100
       // +++ file2       2018-03-20 13:23:41.183156066 +0100
       // @@ -1,3 +1,5 @@
-      if (isdigit(*line)) {
+      if (isdigit((uint8_t)(*line))) {
         *diffstyle = DIFF_ED;
-      } else if ((STRNCMP(line, "@@ ", 3) == 0)) {
+      } else if ((strncmp(line, "@@ ", 3) == 0)) {
         *diffstyle = DIFF_UNIFIED;
-      } else if ((STRNCMP(line, "--- ", 4) == 0)  // -V501
-                 && (vim_fgets((char_u *)line, LBUFLEN, fd) == 0)  // -V501
-                 && (STRNCMP(line, "+++ ", 4) == 0)
-                 && (vim_fgets((char_u *)line, LBUFLEN, fd) == 0)  // -V501
-                 && (STRNCMP(line, "@@ ", 3) == 0)) {
+      } else if ((strncmp(line, "--- ", 4) == 0)  // -V501
+                 && (vim_fgets(line, LBUFLEN, fd) == 0)  // -V501
+                 && (strncmp(line, "+++ ", 4) == 0)
+                 && (vim_fgets(line, LBUFLEN, fd) == 0)  // -V501
+                 && (strncmp(line, "@@ ", 3) == 0)) {
         *diffstyle = DIFF_UNIFIED;
       } else {
         // Format not recognized yet, skip over this line.  Cygwin diff
@@ -1590,7 +1594,7 @@ static bool extract_hunk(FILE *fd, diffhunk_T *hunk, diffstyle_T *diffstyle)
     }
 
     if (*diffstyle == DIFF_ED) {
-      if (!isdigit(*line)) {
+      if (!isdigit((uint8_t)(*line))) {
         continue;   // not the start of a diff block
       }
       if (parse_diff_ed(line, hunk) == FAIL) {
@@ -1598,7 +1602,7 @@ static bool extract_hunk(FILE *fd, diffhunk_T *hunk, diffstyle_T *diffstyle)
       }
     } else {
       assert(*diffstyle == DIFF_UNIFIED);
-      if (STRNCMP(line, "@@ ", 3) != 0) {
+      if (strncmp(line, "@@ ", 3) != 0) {
         continue;   // not the start of a diff block
       }
       if (parse_diff_unified(line, hunk) == FAIL) {
@@ -1891,7 +1895,7 @@ static void count_filler_lines_and_topline(int *curlinenum_to, int *linesfiller,
   const diff_T *curdif = thistopdiff;
   int ch_virtual_lines = 0;
   int isfiller = 0;
-  while (virtual_lines_passed) {
+  while (virtual_lines_passed > 0) {
     if (ch_virtual_lines) {
       virtual_lines_passed--;
       ch_virtual_lines--;
@@ -1947,7 +1951,6 @@ static void calculate_topfill_and_topline(const int fromidx, const int toidx, co
   virtual_lines_passed -= from_topfill;
 
   // count the same amount of virtual lines in the toidx buffer
-  curdif = thistopdiff;
   int curlinenum_to = thistopdiff->df_lnum[toidx];
   int linesfiller = 0;
   count_filler_lines_and_topline(&curlinenum_to, &linesfiller,
@@ -2264,7 +2267,7 @@ static bool diff_equal_char(const char *const p1, const char *const p2, int *con
     return false;
   }
   if (l > 1) {
-    if (STRNCMP(p1, p2, l) != 0
+    if (strncmp(p1, p2, (size_t)l) != 0
         && (!(diff_flags & DIFF_ICASE)
             || utf_fold(utf_ptr2char(p1)) != utf_fold(utf_ptr2char(p2)))) {
       return false;
@@ -2291,7 +2294,7 @@ static bool diff_equal_char(const char *const p1, const char *const p2, int *con
 static int diff_cmp(char *s1, char *s2)
 {
   if ((diff_flags & DIFF_IBLANK)
-      && (*(char_u *)skipwhite(s1) == NUL || *skipwhite(s2) == NUL)) {
+      && (*skipwhite(s1) == NUL || *skipwhite(s2) == NUL)) {
     return 0;
   }
 
@@ -2467,69 +2470,69 @@ int diffopt_changed(void)
 
   char *p = p_dip;
   while (*p != NUL) {
-    if (STRNCMP(p, "filler", 6) == 0) {
+    if (strncmp(p, "filler", 6) == 0) {
       p += 6;
       diff_flags_new |= DIFF_FILLER;
-    } else if ((STRNCMP(p, "context:", 8) == 0) && ascii_isdigit(p[8])) {
+    } else if ((strncmp(p, "context:", 8) == 0) && ascii_isdigit(p[8])) {
       p += 8;
       diff_context_new = getdigits_int(&p, false, diff_context_new);
-    } else if (STRNCMP(p, "iblank", 6) == 0) {
+    } else if (strncmp(p, "iblank", 6) == 0) {
       p += 6;
       diff_flags_new |= DIFF_IBLANK;
-    } else if (STRNCMP(p, "icase", 5) == 0) {
+    } else if (strncmp(p, "icase", 5) == 0) {
       p += 5;
       diff_flags_new |= DIFF_ICASE;
-    } else if (STRNCMP(p, "iwhiteall", 9) == 0) {
+    } else if (strncmp(p, "iwhiteall", 9) == 0) {
       p += 9;
       diff_flags_new |= DIFF_IWHITEALL;
-    } else if (STRNCMP(p, "iwhiteeol", 9) == 0) {
+    } else if (strncmp(p, "iwhiteeol", 9) == 0) {
       p += 9;
       diff_flags_new |= DIFF_IWHITEEOL;
-    } else if (STRNCMP(p, "iwhite", 6) == 0) {
+    } else if (strncmp(p, "iwhite", 6) == 0) {
       p += 6;
       diff_flags_new |= DIFF_IWHITE;
-    } else if (STRNCMP(p, "horizontal", 10) == 0) {
+    } else if (strncmp(p, "horizontal", 10) == 0) {
       p += 10;
       diff_flags_new |= DIFF_HORIZONTAL;
-    } else if (STRNCMP(p, "vertical", 8) == 0) {
+    } else if (strncmp(p, "vertical", 8) == 0) {
       p += 8;
       diff_flags_new |= DIFF_VERTICAL;
-    } else if ((STRNCMP(p, "foldcolumn:", 11) == 0) && ascii_isdigit(p[11])) {
+    } else if ((strncmp(p, "foldcolumn:", 11) == 0) && ascii_isdigit(p[11])) {
       p += 11;
       diff_foldcolumn_new = getdigits_int(&p, false, diff_foldcolumn_new);
-    } else if (STRNCMP(p, "hiddenoff", 9) == 0) {
+    } else if (strncmp(p, "hiddenoff", 9) == 0) {
       p += 9;
       diff_flags_new |= DIFF_HIDDEN_OFF;
-    } else if (STRNCMP(p, "closeoff", 8) == 0) {
+    } else if (strncmp(p, "closeoff", 8) == 0) {
       p += 8;
       diff_flags_new |= DIFF_CLOSE_OFF;
-    } else if (STRNCMP(p, "followwrap", 10) == 0) {
+    } else if (strncmp(p, "followwrap", 10) == 0) {
       p += 10;
       diff_flags_new |= DIFF_FOLLOWWRAP;
-    } else if (STRNCMP(p, "indent-heuristic", 16) == 0) {
+    } else if (strncmp(p, "indent-heuristic", 16) == 0) {
       p += 16;
       diff_indent_heuristic = XDF_INDENT_HEURISTIC;
-    } else if (STRNCMP(p, "internal", 8) == 0) {
+    } else if (strncmp(p, "internal", 8) == 0) {
       p += 8;
       diff_flags_new |= DIFF_INTERNAL;
-    } else if (STRNCMP(p, "algorithm:", 10) == 0) {
+    } else if (strncmp(p, "algorithm:", 10) == 0) {
       p += 10;
-      if (STRNCMP(p, "myers", 5) == 0) {
+      if (strncmp(p, "myers", 5) == 0) {
         p += 5;
         diff_algorithm_new = 0;
-      } else if (STRNCMP(p, "minimal", 7) == 0) {
+      } else if (strncmp(p, "minimal", 7) == 0) {
         p += 7;
         diff_algorithm_new = XDF_NEED_MINIMAL;
-      } else if (STRNCMP(p, "patience", 8) == 0) {
+      } else if (strncmp(p, "patience", 8) == 0) {
         p += 8;
         diff_algorithm_new = XDF_PATIENCE_DIFF;
-      } else if (STRNCMP(p, "histogram", 9) == 0) {
+      } else if (strncmp(p, "histogram", 9) == 0) {
         p += 9;
         diff_algorithm_new = XDF_HISTOGRAM_DIFF;
       } else {
         return FAIL;
       }
-    } else if ((STRNCMP(p, "linematch:", 10) == 0) && ascii_isdigit(p[10])) {
+    } else if ((strncmp(p, "linematch:", 10) == 0) && ascii_isdigit(p[10])) {
       p += 10;
       linematch_lines_new = getdigits_int(&p, false, linematch_lines_new);
       diff_flags_new |= DIFF_LINEMATCH;
@@ -2629,7 +2632,7 @@ bool diff_find_change(win_T *wp, linenr_T lnum, int *startp, int *endp)
       break;
     }
   }
-  if (dp->is_linematched) {
+  if (dp != NULL && dp->is_linematched) {
     while (dp && dp->df_next
            && lnum == dp->df_count[idx] + dp->df_lnum[idx]
            && dp->df_next->df_lnum[idx] == lnum) {
@@ -2650,8 +2653,7 @@ bool diff_find_change(win_T *wp, linenr_T lnum, int *startp, int *endp)
   bool added = true;
 
   linenr_T off = lnum - dp->df_lnum[idx];
-  int i;
-  for (i = 0; i < DB_COUNT; i++) {
+  for (int i = 0; i < DB_COUNT; i++) {
     if ((curtab->tp_diffbuf[i] != NULL) && (i != idx)) {
       // Skip lines that are not in the other change (filler lines).
       if (off >= dp->df_count[i]) {
@@ -2944,7 +2946,7 @@ void ex_diffgetput(exarg_T *eap)
     // Need to make the other buffer the current buffer to be able to make
     // changes in it.
 
-    // set curwin/curbuf to buf and save a few things
+    // Set curwin/curbuf to buf and save a few things.
     aucmd_prepbuf(&aco, curtab->tp_diffbuf[idx_other]);
   }
 
@@ -3101,6 +3103,9 @@ static void diffgetput(const int addr_count, const int idx_cur, const int idx_fr
         if (buf_empty && (curbuf->b_ml.ml_line_count == 2)) {
           // Added the first line into an empty buffer, need to
           // delete the dummy empty line.
+          // This has a side effect of incrementing curbuf->deleted_bytes,
+          // which results in inaccurate reporting of the byte count of
+          // previous contents in buffer-update events.
           buf_empty = false;
           ml_delete((linenr_T)2, false);
         }
@@ -3142,6 +3147,7 @@ static void diffgetput(const int addr_count, const int idx_cur, const int idx_fr
           }
         }
       }
+      extmark_adjust(curbuf, lnum, lnum + count - 1, (long)MAXLNUM, added, kExtmarkUndo);
       changed_lines(lnum, 0, lnum + count, added, true);
 
       if (did_free) {
@@ -3407,7 +3413,7 @@ static int parse_diff_ed(char *line, diffhunk_T *hunk)
   linenr_T f1 = getdigits_int32(&p, true, 0);
   if (*p == ',') {
     p++;
-    l1 = getdigits(&p, true, 0);
+    l1 = getdigits_long(&p, true, 0);
   } else {
     l1 = f1;
   }
@@ -3415,10 +3421,10 @@ static int parse_diff_ed(char *line, diffhunk_T *hunk)
     return FAIL;        // invalid diff format
   }
   int difftype = (uint8_t)(*p++);
-  long f2 = getdigits(&p, true, 0);
+  long f2 = getdigits_long(&p, true, 0);
   if (*p == ',') {
     p++;
-    l2 = getdigits(&p, true, 0);
+    l2 = getdigits_long(&p, true, 0);
   } else {
     l2 = f2;
   }
@@ -3456,18 +3462,18 @@ static int parse_diff_unified(char *line, diffhunk_T *hunk)
     long oldcount;
     long newline;
     long newcount;
-    long oldline = getdigits(&p, true, 0);
+    long oldline = getdigits_long(&p, true, 0);
     if (*p == ',') {
       p++;
-      oldcount = getdigits(&p, true, 0);
+      oldcount = getdigits_long(&p, true, 0);
     } else {
       oldcount = 1;
     }
     if (*p++ == ' ' && *p++ == '+') {
-      newline = getdigits(&p, true, 0);
+      newline = getdigits_long(&p, true, 0);
       if (*p == ',') {
         p++;
-        newcount = getdigits(&p, true, 0);
+        newcount = getdigits_long(&p, true, 0);
       } else {
         newcount = 1;
       }

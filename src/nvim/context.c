@@ -5,7 +5,9 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "nvim/api/private/converter.h"
 #include "nvim/api/private/helpers.h"
@@ -23,8 +25,6 @@
 #include "nvim/message.h"
 #include "nvim/option.h"
 #include "nvim/shada.h"
-#include "nvim/types.h"
-#include "nvim/vim.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "context.c.generated.h"
@@ -263,12 +263,12 @@ static inline void ctx_save_funcs(Context *ctx, bool scriptonly)
   Error err = ERROR_INIT;
 
   HASHTAB_ITER(func_tbl_get(), hi, {
-    const char_u *const name = hi->hi_key;
-    bool islambda = (STRNCMP(name, "<lambda>", 8) == 0);
-    bool isscript = (name[0] == K_SPECIAL);
+    const char *const name = hi->hi_key;
+    bool islambda = (strncmp(name, "<lambda>", 8) == 0);
+    bool isscript = ((uint8_t)name[0] == K_SPECIAL);
 
     if (!islambda && (!scriptonly || isscript)) {
-      size_t cmd_len = sizeof("func! ") + STRLEN(name);
+      size_t cmd_len = sizeof("func! ") + strlen(name);
       char *cmd = xmalloc(cmd_len);
       snprintf(cmd, cmd_len, "func! %s", name);
       String func_body = nvim_exec(VIML_INTERNAL_CALL, cstr_as_string(cmd),

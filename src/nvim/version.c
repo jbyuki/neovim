@@ -29,6 +29,7 @@
 #include "nvim/highlight_defs.h"
 #include "nvim/lua/executor.h"
 #include "nvim/mbyte.h"
+#include "nvim/memory.h"
 #include "nvim/message.h"
 #include "nvim/option_defs.h"
 #include "nvim/os/os_defs.h"
@@ -503,7 +504,7 @@ static const int included_patches[] = {
   // 2004,
   2003,
   2002,
-  // 2001,
+  2001,
   2000,
   // 1999,
   // 1998,
@@ -555,7 +556,7 @@ static const int included_patches[] = {
   1952,
   1951,
   1950,
-  // 1949,
+  1949,
   1948,
   1947,
   1946,
@@ -805,7 +806,7 @@ static const int included_patches[] = {
   1702,
   1701,
   // 1700,
-  // 1699,
+  1699,
   1698,
   1697,
   1696,
@@ -1304,7 +1305,7 @@ static const int included_patches[] = {
   1203,
   1202,
   1201,
-  // 1200,
+  1200,
   1199,
   1198,
   1197,
@@ -1371,7 +1372,7 @@ static const int included_patches[] = {
   // 1136,
   1135,
   1134,
-  // 1133,
+  1133,
   1132,
   1131,
   1130,
@@ -1684,7 +1685,7 @@ static const int included_patches[] = {
   823,
   822,
   821,
-  // 820,
+  820,
   819,
   818,
   817,
@@ -2629,21 +2630,6 @@ static void version_msg(char *s)
   version_msg_wrap(s, false);
 }
 
-/// List all features.
-/// This does not use list_in_columns (as in Vim), because there are only a
-/// few, and we do not start at a new line.
-static void list_features(void)
-{
-  version_msg(_("\n\nFeatures: "));
-  for (int i = 0; features[i] != NULL; i++) {
-    version_msg(features[i]);
-    if (features[i + 1] != NULL) {
-      version_msg(" ");
-    }
-  }
-  version_msg("\nSee \":help feature-compile\"\n\n");
-}
-
 /// List string items nicely aligned in columns.
 /// When "size" is < 0 then the last entry is marked with NULL.
 /// The entry with index "current" is inclosed in [].
@@ -2735,24 +2721,7 @@ void list_version(void)
   msg(version_cflags);
 #endif
 
-#ifdef HAVE_PATHDEF
-
-  if ((*compiled_user != NUL) || (*compiled_sys != NUL)) {
-    msg_puts(_("\nCompiled "));
-
-    if (*compiled_user != NUL) {
-      msg_puts(_("by "));
-      msg_puts((const char *)compiled_user);
-    }
-
-    if (*compiled_sys != NUL) {
-      msg_puts("@");
-      msg_puts((const char *)compiled_sys);
-    }
-  }
-#endif  // ifdef HAVE_PATHDEF
-
-  list_features();
+  version_msg("\n\n");
 
 #ifdef SYS_VIMRC_FILE
   version_msg(_("   system vimrc file: \""));
@@ -2795,24 +2764,18 @@ void maybe_intro_message(void)
 /// @param colon true for ":intro"
 void intro_message(int colon)
 {
-  int i;
-  long row;
-  long blanklines;
-  int sponsor;
-  char *p;
   static char *(lines[]) = {
     N_(NVIM_VERSION_LONG),
     "",
     N_("Nvim is open source and freely distributable"),
-    N_("https://neovim.io/#chat"),
+    "https://neovim.io/#chat",
     "",
     N_("type  :help nvim<Enter>       if you are new! "),
     N_("type  :checkhealth<Enter>     to optimize Nvim"),
     N_("type  :q<Enter>               to exit         "),
     N_("type  :help<Enter>            for help        "),
     "",
-    N_("type  :help news<Enter> to see changes in")
-    " v" STR(NVIM_VERSION_MAJOR) "." STR(NVIM_VERSION_MINOR),
+    N_("type  :help news<Enter> to see changes in v%s.%s"),
     "",
     N_("Help poor children in Uganda!"),
     N_("type  :help iccf<Enter>       for information "),
@@ -2822,7 +2785,7 @@ void intro_message(int colon)
   size_t lines_size = ARRAY_SIZE(lines);
   assert(lines_size <= LONG_MAX);
 
-  blanklines = Rows - ((long)lines_size - 1L);
+  long blanklines = Rows - ((long)lines_size - 1L);
 
   // Don't overwrite a statusline.  Depends on 'cmdheight'.
   if (p_ls > 1) {
@@ -2835,17 +2798,27 @@ void intro_message(int colon)
 
   // Show the sponsor and register message one out of four times, the Uganda
   // message two out of four times.
-  sponsor = (int)time(NULL);
+  int sponsor = (int)time(NULL);
   sponsor = ((sponsor & 2) == 0) - ((sponsor & 4) == 0);
 
   // start displaying the message lines after half of the blank lines
-  row = blanklines / 2;
+  long row = blanklines / 2;
 
   if (((row >= 2) && (Columns >= 50)) || colon) {
-    for (i = 0; i < (int)ARRAY_SIZE(lines); i++) {
-      p = lines[i];
+    for (int i = 0; i < (int)ARRAY_SIZE(lines); i++) {
+      char *p = lines[i];
+      char *mesg = NULL;
+      int mesg_size = 0;
 
-      if (sponsor != 0) {
+      if (strstr(p, "news") != NULL) {
+        p = _(p);
+        mesg_size = snprintf(NULL, 0, p,
+                             STR(NVIM_VERSION_MAJOR), STR(NVIM_VERSION_MINOR));
+        assert(mesg_size > 0);
+        mesg = xmallocz((size_t)mesg_size);
+        snprintf(mesg, (size_t)mesg_size + 1, p,
+                 STR(NVIM_VERSION_MAJOR), STR(NVIM_VERSION_MINOR));
+      } else if (sponsor != 0) {
         if (strstr(p, "children") != NULL) {
           p = sponsor < 0
               ? N_("Sponsor Vim development!")
@@ -2854,15 +2827,25 @@ void intro_message(int colon)
           p = sponsor < 0
               ? N_("type  :help sponsor<Enter>    for information ")
               : N_("type  :help register<Enter>   for information ");
-        } else if (strstr(p, "Orphans") != NULL) {
-          p = N_("menu  Help->Sponsor/Register  for information    ");
         }
       }
 
-      if (*p != NUL) {
-        do_intro_line(row, _(p), 0);
+      if (mesg == NULL) {
+        if (*p != NUL) {
+          mesg = _(p);
+        } else {
+          mesg = "";
+        }
+      }
+
+      if (*mesg != NUL) {
+        do_intro_line(row, mesg, 0);
       }
       row++;
+
+      if (mesg_size > 0) {
+        XFREE_CLEAR(mesg);
+      }
     }
   }
 

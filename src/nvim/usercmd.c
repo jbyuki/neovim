@@ -25,8 +25,10 @@
 #include "nvim/keycodes.h"
 #include "nvim/lua/executor.h"
 #include "nvim/macros.h"
+#include "nvim/mapping.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
+#include "nvim/menu.h"
 #include "nvim/message.h"
 #include "nvim/option_defs.h"
 #include "nvim/os/input.h"
@@ -87,12 +89,15 @@ static const char *command_complete[] = {
   [EXPAND_SYNTIME] = "syntime",
   [EXPAND_SETTINGS] = "option",
   [EXPAND_PACKADD] = "packadd",
+  [EXPAND_RUNTIME] = "runtime",
   [EXPAND_SHELLCMD] = "shellcmd",
   [EXPAND_SIGN] = "sign",
   [EXPAND_TAGS] = "tag",
   [EXPAND_TAGS_LISTFILES] = "tag_listfiles",
   [EXPAND_USER] = "user",
   [EXPAND_USER_VARS] = "var",
+  [EXPAND_BREAKPOINT] = "breakpoint",
+  [EXPAND_SCRIPTNAMES] = "scriptnames",
 };
 
 /// List of names of address types.  Must be alphabetical for completion.
@@ -220,6 +225,7 @@ char *find_ucmd(exarg_T *eap, char *p, int *full, expand_T *xp, int *complp)
   return p;
 }
 
+/// Set completion context for :command
 const char *set_context_in_user_cmd(expand_T *xp, const char *arg_in)
 {
   const char *arg = arg_in;
@@ -269,6 +275,47 @@ const char *set_context_in_user_cmd(expand_T *xp, const char *arg_in)
 
   // And finally comes a normal command.
   return (const char *)skipwhite(p);
+}
+
+/// Set the completion context for the argument of a user defined command.
+const char *set_context_in_user_cmdarg(const char *cmd FUNC_ATTR_UNUSED, const char *arg,
+                                       uint32_t argt, int context, expand_T *xp, bool forceit)
+{
+  if (context == EXPAND_NOTHING) {
+    return NULL;
+  }
+
+  if (argt & EX_XFILE) {
+    // EX_XFILE: file names are handled above.
+    xp->xp_context = context;
+    return NULL;
+  }
+
+  if (context == EXPAND_MENUS) {
+    return (const char *)set_context_in_menu_cmd(xp, cmd, (char *)arg, forceit);
+  }
+  if (context == EXPAND_COMMANDS) {
+    return arg;
+  }
+  if (context == EXPAND_MAPPINGS) {
+    return set_context_in_map_cmd(xp, "map", (char *)arg, forceit, false, false,
+                                  CMD_map);
+  }
+  // Find start of last argument.
+  const char *p = arg;
+  while (*p) {
+    if (*p == ' ') {
+      // argument starts after a space
+      arg = p + 1;
+    } else if (*p == '\\' && *(p + 1) != NUL) {
+      p++;  // skip over escaped character
+    }
+    MB_PTR_ADV(p);
+  }
+  xp->xp_pattern = (char *)arg;
+  xp->xp_context = context;
+
+  return NULL;
 }
 
 char *expand_user_command_name(int idx)
@@ -406,7 +453,7 @@ static void uc_list(char *name, size_t name_len)
 
       // Skip commands which don't match the requested prefix and
       // commands filtered out.
-      if (STRNCMP(name, cmd->uc_name, name_len) != 0
+      if (strncmp(name, cmd->uc_name, name_len) != 0
           || message_filtered(cmd->uc_name)) {
         continue;
       }
@@ -484,15 +531,13 @@ static void uc_list(char *name, size_t name_len)
       if (a & (EX_RANGE | EX_COUNT)) {
         if (a & EX_COUNT) {
           // -count=N
-          snprintf((char *)IObuff + len, IOSIZE, "%" PRId64 "c",
-                   (int64_t)cmd->uc_def);
+          snprintf(IObuff + len, IOSIZE, "%" PRId64 "c", cmd->uc_def);
           len += (int)strlen(IObuff + len);
         } else if (a & EX_DFLALL) {
           IObuff[len++] = '%';
         } else if (cmd->uc_def >= 0) {
           // -range=N
-          snprintf((char *)IObuff + len, IOSIZE, "%" PRId64 "",
-                   (int64_t)cmd->uc_def);
+          snprintf(IObuff + len, IOSIZE, "%" PRId64 "", cmd->uc_def);
           len += (int)strlen(IObuff + len);
         } else {
           IObuff[len++] = '.';
@@ -529,7 +574,7 @@ static void uc_list(char *name, size_t name_len)
       } while (len < 25 - over);
 
       IObuff[len] = '\0';
-      msg_outtrans((char *)IObuff);
+      msg_outtrans(IObuff);
 
       if (cmd->uc_luaref != LUA_NOREF) {
         char *fn = nlua_funcref_str(cmd->uc_luaref);
@@ -570,7 +615,7 @@ int parse_addr_type_arg(char *value, int vallen, cmd_addr_T *addr_type_arg)
 
   for (i = 0; addr_type_complete[i].expand != ADDR_NONE; i++) {
     a = (int)strlen(addr_type_complete[i].name) == vallen;
-    b = STRNCMP(value, addr_type_complete[i].name, vallen) == 0;
+    b = strncmp(value, addr_type_complete[i].name, (size_t)vallen) == 0;
     if (a && b) {
       *addr_type_arg = addr_type_complete[i].expand;
       break;
@@ -618,7 +663,7 @@ int parse_compl_arg(const char *value, int vallen, int *complp, uint32_t *argt, 
       continue;
     }
     if ((int)strlen(command_complete[i]) == valend
-        && STRNCMP(value, command_complete[i], valend) == 0) {
+        && strncmp(value, command_complete[i], (size_t)valend) == 0) {
       *complp = i;
       if (i == EXPAND_BUFFERS) {
         *argt |= EX_BUFNAME;
@@ -653,7 +698,7 @@ int parse_compl_arg(const char *value, int vallen, int *complp, uint32_t *argt, 
 }
 
 static int uc_scan_attr(char *attr, size_t len, uint32_t *argt, long *def, int *flags, int *complp,
-                        char_u **compl_arg, cmd_addr_T *addr_type_arg)
+                        char **compl_arg, cmd_addr_T *addr_type_arg)
   FUNC_ATTR_NONNULL_ALL
 {
   char *p;
@@ -764,7 +809,7 @@ invalid_count:
         return FAIL;
       }
 
-      if (parse_compl_arg(val, (int)vallen, complp, argt, (char **)compl_arg)
+      if (parse_compl_arg(val, (int)vallen, complp, argt, compl_arg)
           == FAIL) {
         return FAIL;
       }
@@ -815,9 +860,9 @@ char *uc_validate_name(char *name)
 /// This function takes ownership of compl_arg, compl_luaref, and luaref.
 ///
 /// @return  OK if the command is created, FAIL otherwise.
-int uc_add_command(char *name, size_t name_len, const char *rep, uint32_t argt, long def, int flags,
-                   int compl, char *compl_arg, LuaRef compl_luaref, LuaRef preview_luaref,
-                   cmd_addr_T addr_type, LuaRef luaref, bool force)
+int uc_add_command(char *name, size_t name_len, const char *rep, uint32_t argt, int64_t def,
+                   int flags, int compl, char *compl_arg, LuaRef compl_luaref,
+                   LuaRef preview_luaref, cmd_addr_T addr_type, LuaRef luaref, bool force)
   FUNC_ATTR_NONNULL_ARG(1, 3)
 {
   ucmd_T *cmd = NULL;
@@ -848,7 +893,7 @@ int uc_add_command(char *name, size_t name_len, const char *rep, uint32_t argt, 
 
     cmd = USER_CMD_GA(gap, i);
     len = strlen(cmd->uc_name);
-    cmp = STRNCMP(name, cmd->uc_name, name_len);
+    cmp = strncmp(name, cmd->uc_name, name_len);
     if (cmp == 0) {
       if (name_len < len) {
         cmp = -1;
@@ -941,9 +986,9 @@ void ex_command(exarg_T *eap)
   while (*p == '-') {
     p++;
     end = skiptowhite(p);
-    if (uc_scan_attr(p, (size_t)(end - p), &argt, &def, &flags, &compl, (char_u **)&compl_arg,
+    if (uc_scan_attr(p, (size_t)(end - p), &argt, &def, &flags, &compl, &compl_arg,
                      &addr_type_arg) == FAIL) {
-      return;
+      goto theend;
     }
     p = skipwhite(end);
   }
@@ -953,7 +998,7 @@ void ex_command(exarg_T *eap)
   end = uc_validate_name(name);
   if (!end) {
     emsg(_("E182: Invalid command name"));
-    return;
+    goto theend;
   }
   name_len = (size_t)(end - name);
 
@@ -964,14 +1009,19 @@ void ex_command(exarg_T *eap)
     uc_list(name, name_len);
   } else if (!ASCII_ISUPPER(*name)) {
     emsg(_("E183: User defined commands must start with an uppercase letter"));
-  } else if (name_len <= 4 && STRNCMP(name, "Next", name_len) == 0) {
+  } else if (name_len <= 4 && strncmp(name, "Next", name_len) == 0) {
     emsg(_("E841: Reserved name, cannot be used for user defined command"));
   } else if (compl > 0 && (argt & EX_EXTRA) == 0) {
     emsg(_(e_complete_used_without_allowing_arguments));
   } else {
     uc_add_command(name, name_len, p, argt, def, flags, compl, compl_arg, LUA_NOREF, LUA_NOREF,
                    addr_type_arg, LUA_NOREF, eap->forceit);
+
+    return;  // success
   }
+
+theend:
+  xfree(compl_arg);
 }
 
 /// ":comclear"
@@ -1007,7 +1057,7 @@ void ex_delcommand(exarg_T *eap)
   const char *arg = eap->arg;
   bool buffer_only = false;
 
-  if (STRNCMP(arg, "-buffer", 7) == 0 && ascii_iswhite(arg[7])) {
+  if (strncmp(arg, "-buffer", 7) == 0 && ascii_iswhite(arg[7])) {
     buffer_only = true;
     arg = skipwhite(arg + 7);
   }
@@ -1373,7 +1423,7 @@ static size_t uc_check_code(char *code, size_t len, char *buf, ucmd_T *cmd, exar
     ct_NONE,
   } type = ct_NONE;
 
-  if ((vim_strchr("qQfF", *p) != NULL) && p[1] == '-') {
+  if ((vim_strchr("qQfF", (uint8_t)(*p)) != NULL) && p[1] == '-') {
     quote = (*p == 'q' || *p == 'Q') ? 1 : 2;
     p += 2;
     l -= 2;
@@ -1381,7 +1431,7 @@ static size_t uc_check_code(char *code, size_t len, char *buf, ucmd_T *cmd, exar
 
   l++;
   if (l <= 1) {
-    type = ct_NONE;
+    // type = ct_NONE;
   } else if (STRNICMP(p, "args>", l) == 0) {
     type = ct_ARGS;
   } else if (STRNICMP(p, "bang>", l) == 0) {
@@ -1488,13 +1538,13 @@ static size_t uc_check_code(char *code, size_t len, char *buf, ucmd_T *cmd, exar
   case ct_RANGE:
   case ct_COUNT: {
     char num_buf[20];
-    long num = (type == ct_LINE1) ? eap->line1 :
-               (type == ct_LINE2) ? eap->line2 :
-               (type == ct_RANGE) ? eap->addr_count :
-               (eap->addr_count > 0) ? eap->line2 : cmd->uc_def;
+    int64_t num = (type == ct_LINE1) ? eap->line1 :
+                  (type == ct_LINE2) ? eap->line2 :
+                  (type == ct_RANGE) ? eap->addr_count :
+                  (eap->addr_count > 0) ? eap->line2 : cmd->uc_def;
     size_t num_len;
 
-    snprintf(num_buf, sizeof(num_buf), "%" PRId64, (int64_t)num);
+    snprintf(num_buf, sizeof(num_buf), "%" PRId64, num);
     num_len = strlen(num_buf);
     result = num_len;
 
@@ -1575,7 +1625,7 @@ int do_ucmd(exarg_T *eap, bool preview)
   if (eap->cmdidx == CMD_USER) {
     cmd = USER_CMD(eap->useridx);
   } else {
-    cmd = USER_CMD_GA(&curbuf->b_ucmds, eap->useridx);
+    cmd = USER_CMD_GA(&prevwin_curwin()->w_buffer->b_ucmds, eap->useridx);
   }
 
   if (preview) {
@@ -1603,10 +1653,10 @@ int do_ucmd(exarg_T *eap, bool preview)
         end = vim_strchr(start + 1, '>');
       }
       if (buf != NULL) {
-        for (ksp = p; *ksp != NUL && (char_u)(*ksp) != K_SPECIAL; ksp++) {}
-        if ((char_u)(*ksp) == K_SPECIAL
+        for (ksp = p; *ksp != NUL && (uint8_t)(*ksp) != K_SPECIAL; ksp++) {}
+        if ((uint8_t)(*ksp) == K_SPECIAL
             && (start == NULL || ksp < start || end == NULL)
-            && ((char_u)ksp[1] == KS_SPECIAL && ksp[2] == KE_FILLER)) {
+            && ((uint8_t)ksp[1] == KS_SPECIAL && ksp[2] == KE_FILLER)) {
           // K_SPECIAL has been put in the buffer as K_SPECIAL
           // KS_SPECIAL KE_FILLER, like for mappings, but
           // do_cmdline() doesn't handle that, so convert it back.
@@ -1699,8 +1749,8 @@ Dictionary commands_array(buf_T *buf)
     Dictionary d = ARRAY_DICT_INIT;
     ucmd_T *cmd = USER_CMD_GA(gap, i);
 
-    PUT(d, "name", STRING_OBJ(cstr_to_string((char *)cmd->uc_name)));
-    PUT(d, "definition", STRING_OBJ(cstr_to_string((char *)cmd->uc_rep)));
+    PUT(d, "name", STRING_OBJ(cstr_to_string(cmd->uc_name)));
+    PUT(d, "definition", STRING_OBJ(cstr_to_string(cmd->uc_rep)));
     PUT(d, "script_id", INTEGER_OBJ(cmd->uc_script_ctx.sc_sid));
     PUT(d, "bang", BOOLEAN_OBJ(!!(cmd->uc_argt & EX_BANG)));
     PUT(d, "bar", BOOLEAN_OBJ(!!(cmd->uc_argt & EX_TRLBAR)));
@@ -1726,12 +1776,12 @@ Dictionary commands_array(buf_T *buf)
     PUT(d, "complete", (cmd_compl == NULL
                         ? NIL : STRING_OBJ(cstr_to_string(cmd_compl))));
     PUT(d, "complete_arg", cmd->uc_compl_arg == NULL
-        ? NIL : STRING_OBJ(cstr_to_string((char *)cmd->uc_compl_arg)));
+        ? NIL : STRING_OBJ(cstr_to_string(cmd->uc_compl_arg)));
 
     Object obj = NIL;
     if (cmd->uc_argt & EX_COUNT) {
       if (cmd->uc_def >= 0) {
-        snprintf(str, sizeof(str), "%" PRId64, (int64_t)cmd->uc_def);
+        snprintf(str, sizeof(str), "%" PRId64, cmd->uc_def);
         obj = STRING_OBJ(cstr_to_string(str));    // -count=N
       } else {
         obj = STRING_OBJ(cstr_to_string("0"));    // -count
@@ -1744,7 +1794,7 @@ Dictionary commands_array(buf_T *buf)
       if (cmd->uc_argt & EX_DFLALL) {
         obj = STRING_OBJ(cstr_to_string("%"));    // -range=%
       } else if (cmd->uc_def >= 0) {
-        snprintf(str, sizeof(str), "%" PRId64, (int64_t)cmd->uc_def);
+        snprintf(str, sizeof(str), "%" PRId64, cmd->uc_def);
         obj = STRING_OBJ(cstr_to_string(str));    // -range=N
       } else {
         obj = STRING_OBJ(cstr_to_string("."));    // -range
@@ -1762,7 +1812,7 @@ Dictionary commands_array(buf_T *buf)
     }
     PUT(d, "addr", obj);
 
-    PUT(rv, (char *)cmd->uc_name, DICTIONARY_OBJ(d));
+    PUT(rv, cmd->uc_name, DICTIONARY_OBJ(d));
   }
   return rv;
 }

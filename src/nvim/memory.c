@@ -14,6 +14,7 @@
 #include "nvim/api/extmark.h"
 #include "nvim/arglist.h"
 #include "nvim/ascii.h"
+#include "nvim/buffer_updates.h"
 #include "nvim/context.h"
 #include "nvim/decoration_provider.h"
 #include "nvim/eval.h"
@@ -30,7 +31,6 @@
 #include "nvim/message.h"
 #include "nvim/sign.h"
 #include "nvim/ui.h"
-#include "nvim/ui_compositor.h"
 #include "nvim/usercmd.h"
 #include "nvim/vim.h"
 
@@ -121,9 +121,7 @@ void *xmalloc(size_t size)
 {
   void *ret = try_malloc(size);
   if (!ret) {
-    mch_errmsg(e_outofmem);
-    mch_errmsg("\n");
-    preserve_exit();
+    preserve_exit(e_outofmem);
   }
   return ret;
 }
@@ -152,9 +150,7 @@ void *xcalloc(size_t count, size_t size)
     try_to_free_memory();
     ret = calloc(allocated_count, allocated_size);
     if (!ret) {
-      mch_errmsg(e_outofmem);
-      mch_errmsg("\n");
-      preserve_exit();
+      preserve_exit(e_outofmem);
     }
   }
   return ret;
@@ -174,9 +170,7 @@ void *xrealloc(void *ptr, size_t size)
     try_to_free_memory();
     ret = realloc(ptr, allocated_size);
     if (!ret) {
-      mch_errmsg(e_outofmem);
-      mch_errmsg("\n");
-      preserve_exit();
+      preserve_exit(e_outofmem);
     }
   }
   return ret;
@@ -194,8 +188,7 @@ void *xmallocz(size_t size)
 {
   size_t total_size = size + 1;
   if (total_size < size) {
-    mch_errmsg(_("Vim: Data too large to fit into virtual memory space\n"));
-    preserve_exit();
+    preserve_exit(_("Vim: Data too large to fit into virtual memory space\n"));
   }
 
   void *ret = xmalloc(total_size);
@@ -553,7 +546,7 @@ static void arena_free_reuse_blks(void)
   }
 }
 
-/// Finnish the allocations in an arena.
+/// Finish the allocations in an arena.
 ///
 /// This does not immediately free the memory, but leaves existing allocated
 /// objects valid, and returns an opaque ArenaMem handle, which can be used to
@@ -762,11 +755,7 @@ void free_all_mem(void)
   p_hi = 0;
   init_history();
 
-  qf_free_all(NULL);
-  // Free all location lists
-  FOR_ALL_TAB_WINDOWS(tab, win) {
-    qf_free_all(win);
-  }
+  free_quickfix();
 
   // Close all script inputs.
   close_all_scripts();
@@ -812,6 +801,11 @@ void free_all_mem(void)
     bufref_T bufref;
     set_bufref(&bufref, buf);
     nextbuf = buf->b_next;
+
+    // Since options (in addition to other stuff) have been freed above we need to ensure no
+    // callbacks are called, so free them before closing the buffer.
+    buf_free_callbacks(buf);
+
     close_buffer(NULL, buf, DOBUF_WIPE, false, false);
     // Didn't work, try next one.
     buf = bufref_valid(&bufref) ? nextbuf : firstbuf;
@@ -828,7 +822,6 @@ void free_all_mem(void)
   decor_free_all_mem();
 
   ui_free_all_mem();
-  ui_comp_free_all_mem();
   nlua_free_all_mem();
 
   // should be last, in case earlier free functions deallocates arenas

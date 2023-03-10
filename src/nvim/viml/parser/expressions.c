@@ -376,7 +376,7 @@ LexExprToken viml_pexpr_next_token(ParserState *const pstate, const int flags)
       }
       if (exp_start) {
         vim_str2nr(pline.data + exp_start, NULL, NULL, 0, NULL, &exp_part,
-                   (int)(ret.len - exp_start), false);
+                   (int)(ret.len - exp_start), false, NULL);
       }
       if (exp_negative) {
         exp_part += frac_size;
@@ -394,7 +394,7 @@ LexExprToken viml_pexpr_next_token(ParserState *const pstate, const int flags)
       int len;
       int prep;
       vim_str2nr(pline.data, &prep, &len, STR2NR_ALL, NULL,
-                 &ret.data.num.val.integer, (int)pline.size, false);
+                 &ret.data.num.val.integer, (int)pline.size, false, NULL);
       ret.len = (size_t)len;
       const uint8_t bases[] = {
         [0] = 10,
@@ -1825,8 +1825,8 @@ static void parse_quoted_string(ParserState *const pstate, ExprASTNode *const no
           if (p[1] != '*') {
             flags |= FSK_SIMPLIFY;
           }
-          const size_t special_len = trans_special((const char_u **)&p, (size_t)(e - p),
-                                                   (char_u *)v_p, flags, false, NULL);
+          const size_t special_len = trans_special(&p, (size_t)(e - p),
+                                                   v_p, flags, false, NULL);
           if (special_len != 0) {
             v_p += special_len;
           } else {
@@ -2497,7 +2497,6 @@ viml_pexpr_parse_bracket_closing_error:
           NEW_NODE_WITH_CUR_POS(cur_node, kExprNodeListLiteral);
           *top_node_p = cur_node;
           kvi_push(ast_stack, &cur_node->children);
-          want_node = kENodeValue;
           if (cur_pt == kEPTAssignment) {
             // Additional assignment parse type allows to easily forbid nested
             // lists.

@@ -64,7 +64,7 @@ struct msgchunk_S {
   char sb_eol;                  // true when line ends after this text
   int sb_msg_col;               // column in which text starts
   int sb_attr;                  // text attributes
-  char sb_text[1];              // text to be displayed, actually longer
+  char sb_text[];               // text to be displayed
 };
 
 // Magic chars used in confirm dialog strings
@@ -214,7 +214,7 @@ void msg_grid_validate(void)
 }
 
 /// Displays the string 's' on the status line
-/// When terminal not initialized (yet) mch_errmsg(..) is used.
+/// When terminal not initialized (yet) os_errmsg(..) is used.
 ///
 /// @return  true if wait_return() not called
 int msg(char *s)
@@ -369,14 +369,13 @@ bool msg_attr_keep(const char *s, int attr, bool keep, bool multiline)
 char *msg_strtrunc(char *s, int force)
 {
   char *buf = NULL;
-  int len;
-  int room;
 
   // May truncate message to avoid a hit-return prompt
   if ((!msg_scroll && !need_wait_return && shortmess(SHM_TRUNCALL)
        && !exmode_active && msg_silent == 0 && !ui_has(kUIMessages))
       || force) {
-    len = vim_strsize(s);
+    int room;
+    int len = vim_strsize(s);
     if (msg_scrolled != 0) {
       // Use all the columns.
       room = (Rows - msg_row) * Columns - 1;
@@ -491,10 +490,10 @@ int smsg(const char *s, ...)
   va_list arglist;
 
   va_start(arglist, s);
-  vim_vsnprintf((char *)IObuff, IOSIZE, s, arglist);
+  vim_vsnprintf(IObuff, IOSIZE, s, arglist);
   va_end(arglist);
 
-  return msg((char *)IObuff);
+  return msg(IObuff);
 }
 
 int smsg_attr(int attr, const char *s, ...)
@@ -503,7 +502,7 @@ int smsg_attr(int attr, const char *s, ...)
   va_list arglist;
 
   va_start(arglist, s);
-  vim_vsnprintf((char *)IObuff, IOSIZE, s, arglist);
+  vim_vsnprintf(IObuff, IOSIZE, s, arglist);
   va_end(arglist);
   return msg_attr((const char *)IObuff, attr);
 }
@@ -514,7 +513,7 @@ int smsg_attr_keep(int attr, const char *s, ...)
   va_list arglist;
 
   va_start(arglist, s);
-  vim_vsnprintf((char *)IObuff, IOSIZE, s, arglist);
+  vim_vsnprintf(IObuff, IOSIZE, s, arglist);
   va_end(arglist);
   return msg_attr_keep((const char *)IObuff, attr, true, false);
 }
@@ -764,7 +763,7 @@ static bool emsg_multiline(const char *s, bool multiline)
 /// emsg() - display an error message
 ///
 /// Rings the bell, if appropriate, and calls message() to do the real work
-/// When terminal not initialized (yet) mch_errmsg(..) is used.
+/// When terminal not initialized (yet) os_errmsg(..) is used.
 ///
 /// @return true if wait_return() not called
 bool emsg(const char *s)
@@ -774,7 +773,7 @@ bool emsg(const char *s)
 
 void emsg_invreg(int name)
 {
-  semsg(_("E354: Invalid register name: '%s'"), transchar(name));
+  semsg(_("E354: Invalid register name: '%s'"), transchar_buf(NULL, name));
 }
 
 /// Print an error message with unknown number of arguments
@@ -881,10 +880,10 @@ void msg_schedule_semsg(const char *const fmt, ...)
 {
   va_list ap;
   va_start(ap, fmt);
-  vim_vsnprintf((char *)IObuff, IOSIZE, fmt, ap);
+  vim_vsnprintf(IObuff, IOSIZE, fmt, ap);
   va_end(ap);
 
-  char *s = xstrdup((char *)IObuff);
+  char *s = xstrdup(IObuff);
   loop_schedule_deferred(&main_loop, event_create(msg_semsg_event, 1, s));
 }
 
@@ -919,11 +918,13 @@ char *msg_trunc_attr(char *s, bool force, int attr)
 /// @note: May change the message by replacing a character with '<'.
 char *msg_may_trunc(bool force, char *s)
 {
-  int room;
+  if (ui_has(kUIMessages)) {
+    return s;
+  }
 
-  room = (Rows - cmdline_row - 1) * Columns + sc_col - 1;
+  int room = (Rows - cmdline_row - 1) * Columns + sc_col - 1;
   if ((force || (shortmess(SHM_TRUNC) && !exmode_active))
-      && (int)STRLEN(s) - room > 0) {
+      && (int)strlen(s) - room > 0) {
     int size = vim_strsize(s);
 
     // There may be room anyway when there are multibyte chars.
@@ -1031,7 +1032,6 @@ void ex_messages(void *const eap_p)
 {
   const exarg_T *const eap = (const exarg_T *)eap_p;
   struct msg_hist *p;
-  int c = 0;
 
   if (strcmp(eap->arg, "clear") == 0) {
     int keep = eap->addr_count == 0 ? 0 : eap->line2;
@@ -1050,6 +1050,7 @@ void ex_messages(void *const eap_p)
   p = first_msg_hist;
 
   if (eap->addr_count != 0) {
+    int c = 0;
     // Count total messages
     for (; p != NULL && !got_int; p = p->next) {
       c++;
@@ -1083,7 +1084,7 @@ void ex_messages(void *const eap_p)
         } else if (p->msg && p->msg[0]) {
           Array content_entry = ARRAY_DICT_INIT;
           ADD(content_entry, INTEGER_OBJ(p->attr));
-          ADD(content_entry, STRING_OBJ(cstr_to_string((char *)(p->msg))));
+          ADD(content_entry, STRING_OBJ(cstr_to_string(p->msg)));
           ADD(content, ARRAY_OBJ(content_entry));
         }
         ADD(entry, ARRAY_OBJ(content));
@@ -1468,9 +1469,9 @@ void msg_putchar_attr(int c, int attr)
     buf[2] = (char)K_THIRD(c);
     buf[3] = NUL;
   } else {
-    buf[utf_char2bytes(c, (char *)buf)] = NUL;
+    buf[utf_char2bytes(c, buf)] = NUL;
   }
-  msg_puts_attr((const char *)buf, attr);
+  msg_puts_attr(buf, attr);
 }
 
 void msg_outnum(long n)
@@ -1530,7 +1531,7 @@ char *msg_outtrans_one(char *p, int attr)
     msg_outtrans_len_attr(p, l, attr);
     return p + l;
   }
-  msg_puts_attr((const char *)transchar_byte(*p), attr);
+  msg_puts_attr((const char *)transchar_byte_buf(NULL, (uint8_t)(*p)), attr);
   return p + 1;
 }
 
@@ -1540,7 +1541,6 @@ int msg_outtrans_len_attr(const char *msgstr, int len, int attr)
   const char *str = msgstr;
   const char *plain_start = msgstr;
   char *s;
-  int mb_l;
   int c;
   int save_got_int = got_int;
 
@@ -1563,7 +1563,7 @@ int msg_outtrans_len_attr(const char *msgstr, int len, int attr)
   // Normal characters are printed several at a time.
   while (--len >= 0 && !got_int) {
     // Don't include composing chars after the end.
-    mb_l = utfc_ptr2len_len(str, len + 1);
+    int mb_l = utfc_ptr2len_len(str, len + 1);
     if (mb_l > 1) {
       c = utf_ptr2char(str);
       if (vim_isprintc(c)) {
@@ -1576,14 +1576,14 @@ int msg_outtrans_len_attr(const char *msgstr, int len, int attr)
           msg_puts_attr_len(plain_start, str - plain_start, attr);
         }
         plain_start = str + mb_l;
-        msg_puts_attr((const char *)transchar(c),
+        msg_puts_attr((const char *)transchar_buf(NULL, c),
                       (attr == 0 ? HL_ATTR(HLF_8) : attr));
         retval += char2cells(c);
       }
       len -= mb_l - 1;
       str += mb_l;
     } else {
-      s = (char *)transchar_byte((uint8_t)(*str));
+      s = (char *)transchar_byte_buf(NULL, (uint8_t)(*str));
       if (s[1] != NUL) {
         // Unprintable char: print the printable chars so far and the
         // translation of the unprintable char.
@@ -1665,7 +1665,7 @@ int msg_outtrans_special(const char *strstart, bool from, int maxlen)
     }
     if (text[0] != NUL && text[1] == NUL) {
       // single-byte character or illegal byte
-      text = (char *)transchar_byte((uint8_t)text[0]);
+      text = (char *)transchar_byte_buf(NULL, (uint8_t)text[0]);
     }
     const int len = vim_strsize((char *)text);
     if (maxlen > 0 && retval + len >= maxlen) {
@@ -1911,7 +1911,7 @@ void msg_prt_line(char *s, int list)
         s--;
       } else if (c != NUL && (n = byte2cells(c)) > 1) {
         n_extra = n - 1;
-        p_extra = (char *)transchar_byte(c);
+        p_extra = (char *)transchar_byte_buf(NULL, c);
         c_extra = NUL;
         c_final = NUL;
         c = (unsigned char)(*p_extra++);
@@ -2137,7 +2137,7 @@ static void msg_puts_display(const char *str, int maxlen, int attr, int recurse)
   int t_col = 0;  // Screen cells todo, 0 when "t_s" not used.
   int l;
   int cw;
-  const char *sb_str = (char *)str;
+  const char *sb_str = str;
   int sb_col = msg_col;
   int wrap;
   int did_last_char;
@@ -2150,8 +2150,8 @@ static void msg_puts_display(const char *str, int maxlen, int attr, int recurse)
       msg_ext_last_attr = attr;
     }
     // Concat pieces with the same highlight
-    size_t len = STRNLEN(str, maxlen);             // -V781
-    ga_concat_len(&msg_ext_last_chunk, (char *)str, len);
+    size_t len = strnlen(str, (size_t)maxlen);  // -V781
+    ga_concat_len(&msg_ext_last_chunk, str, len);
     msg_ext_cur_len += len;
     return;
   }
@@ -2512,7 +2512,7 @@ static void store_sb_text(char **sb_str, char *s, int attr, int *sb_col, int fin
   }
 
   if (s > *sb_str) {
-    mp = xmalloc((sizeof(msgchunk_T) + (size_t)(s - *sb_str)));
+    mp = xmalloc(offsetof(msgchunk_T, sb_text) + (size_t)(s - *sb_str) + 1);
     mp->sb_eol = (char)finish;
     mp->sb_msg_col = *sb_col;
     mp->sb_attr = attr;
@@ -2650,12 +2650,11 @@ void msg_sb_eol(void)
 static msgchunk_T *disp_sb_line(int row, msgchunk_T *smp)
 {
   msgchunk_T *mp = smp;
-  char *p;
 
   for (;;) {
     msg_row = row;
     msg_col = mp->sb_msg_col;
-    p = mp->sb_text;
+    char *p = mp->sb_text;
     if (*p == '\n') {       // don't display the line break
       p++;
     }
@@ -2726,9 +2725,9 @@ static void msg_puts_printf(const char *str, const ptrdiff_t maxlen)
       memcpy(p, s, (size_t)len);
       *(p + len) = '\0';
       if (info_message) {
-        mch_msg(buf);
+        os_msg(buf);
       } else {
-        mch_errmsg(buf);
+        os_errmsg(buf);
       }
     }
 
@@ -2765,7 +2764,6 @@ static int do_more_prompt(int typed_char)
   int oldState = State;
   int c;
   int retval = false;
-  int toscroll;
   bool to_redraw = false;
   msgchunk_T *mp_last = NULL;
   msgchunk_T *mp;
@@ -2807,7 +2805,7 @@ static int do_more_prompt(int typed_char)
       c = get_keystroke(resize_events);
     }
 
-    toscroll = 0;
+    int toscroll = 0;
     switch (c) {
     case BS:                    // scroll one line back
     case K_BS:
@@ -3003,31 +3001,36 @@ static int do_more_prompt(int typed_char)
 }
 
 #if defined(MSWIN)
-void mch_errmsg(char *str)
+/// Headless (no UI) error message handler.
+static void do_msg(const char *str, bool errmsg)
 {
+  static bool did_err = false;
   assert(str != NULL);
   wchar_t *utf16str;
   int r = utf8_to_utf16(str, -1, &utf16str);
-  if (r != 0) {
+  if (r != 0 && !did_err) {
+    did_err = true;
     fprintf(stderr, "utf8_to_utf16 failed: %d", r);
-  } else {
-    fwprintf(stderr, L"%ls", utf16str);
+    ELOG("utf8_to_utf16 failed: %d", r);
+  } else if (r == 0) {
+    if (errmsg) {
+      fwprintf(stderr, L"%ls", utf16str);
+    } else {
+      wprintf(L"%ls", utf16str);
+    }
     xfree(utf16str);
   }
 }
 
-/// Give a message.  To be used when the UI is not initialized yet.
-void mch_msg(char *str)
+void os_errmsg(const char *str)
 {
-  assert(str != NULL);
-  wchar_t *utf16str;
-  int r = utf8_to_utf16(str, -1, &utf16str);
-  if (r != 0) {
-    fprintf(stderr, "utf8_to_utf16 failed: %d", r);
-  } else {
-    wprintf(L"%ls", utf16str);
-    xfree(utf16str);
-  }
+  do_msg(str, true);
+}
+
+/// Headless (no UI) message handler.
+void os_msg(const char *str)
+{
+  do_msg(str, false);
 }
 #endif  // MSWIN
 
@@ -3442,8 +3445,8 @@ void give_warning(char *message, bool hl)
 
 void give_warning2(char *const message, char *const a1, bool hl)
 {
-  vim_snprintf((char *)IObuff, IOSIZE, message, a1);
-  give_warning((char *)IObuff, hl);
+  vim_snprintf(IObuff, IOSIZE, message, a1);
+  give_warning(IObuff, hl);
 }
 
 /// Advance msg cursor to column "col".
@@ -3500,7 +3503,6 @@ int do_dialog(int type, char *title, char *message, char *buttons, int dfltbutto
 {
   int retval = 0;
   char *hotkeys;
-  int c;
   int i;
 
   if (silent_mode      // No dialogs in silent mode ("ex -s")
@@ -3523,7 +3525,7 @@ int do_dialog(int type, char *title, char *message, char *buttons, int dfltbutto
 
   for (;;) {
     // Get a typed character directly from the user.
-    c = get_keystroke(NULL);
+    int c = get_keystroke(NULL);
     switch (c) {
     case CAR:                 // User accepts default option
     case NL:

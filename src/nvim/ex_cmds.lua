@@ -1105,12 +1105,6 @@ module.cmds = {
     func='ex_helptags',
   },
   {
-    command='hardcopy',
-    flags=bit.bor(RANGE, COUNT, EXTRA, TRLBAR, DFLALL, BANG),
-    addr_type='ADDR_LINES',
-    func='ex_hardcopy',
-  },
-  {
     command='highlight',
     flags=bit.bor(BANG, EXTRA, TRLBAR, SBOXOK, CMDWIN, LOCK_OK),
     addr_type='ADDR_NONE',
@@ -2393,7 +2387,7 @@ module.cmds = {
   },
   {
     command='scriptnames',
-    flags=bit.bor(BANG, RANGE, COUNT, TRLBAR, CMDWIN, LOCK_OK),
+    flags=bit.bor(BANG, FILES, RANGE, COUNT, TRLBAR, CMDWIN, LOCK_OK),
     addr_type='ADDR_OTHER',
     func='ex_scriptnames',
   },
@@ -2932,6 +2926,12 @@ module.cmds = {
     flags=bit.bor(RANGE, BANG, TRLBAR, ZEROR),
     addr_type='ADDR_OTHER',
     func='ex_tag',
+  },
+  {
+    command='trust',
+    flags=bit.bor(EXTRA, FILE1, TRLBAR, LOCK_OK),
+    addr_type='ADDR_NONE',
+    func='ex_trust',
   },
   {
     command='try',

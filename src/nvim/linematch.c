@@ -1,3 +1,6 @@
+// This is an open source non-commercial project. Dear PVS-Studio, please check
+// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -6,7 +9,6 @@
 #include "nvim/linematch.h"
 #include "nvim/macros.h"
 #include "nvim/memory.h"
-#include "nvim/vim.h"
 
 // struct for running the diff linematch algorithm
 typedef struct {
@@ -27,7 +29,7 @@ static size_t line_len(const char *s)
   if (end) {
     return (size_t)(end - s);
   }
-  return STRLEN(s);
+  return strlen(s);
 }
 
 /// Same as matching_chars but ignore whitespace
@@ -82,7 +84,7 @@ static void update_path_flat(diffcmppath_T *diffcmppath, int score, size_t to, s
   diffcmppath[to].df_path_idx = path_idx + 1;
 }
 
-#define MATCH_CHAR_MAX_LEN 500
+#define MATCH_CHAR_MAX_LEN 800
 
 /// Return matching characters between "s1" and "s2" whilst respecting sequence order.
 /// Consider the case of two strings 'AAACCC' and 'CCCAAA', the
@@ -99,8 +101,8 @@ static void update_path_flat(diffcmppath_T *diffcmppath, int score, size_t to, s
 /// @param s2
 static int matching_chars(const char *s1, const char *s2)
 {
-  size_t s1len = MIN(MATCH_CHAR_MAX_LEN, line_len(s1));
-  size_t s2len = MIN(MATCH_CHAR_MAX_LEN, line_len(s2));
+  size_t s1len = MIN(MATCH_CHAR_MAX_LEN - 1, line_len(s1));
+  size_t s2len = MIN(MATCH_CHAR_MAX_LEN - 1, line_len(s2));
   int matrix[2][MATCH_CHAR_MAX_LEN] = { 0 };
   bool icur = 1;  // save space by storing only two rows for i axis
   for (size_t i = 0; i < s1len; i++) {
@@ -159,6 +161,9 @@ void fastforward_buf_to_lnum(const char **s, long lnum)
 {
   for (long i = 0; i < lnum - 1; i++) {
     *s = strchr(*s, '\n');
+    if (!*s) {
+      return;
+    }
     (*s)++;
   }
 }
@@ -287,18 +292,18 @@ static void populate_tensor(int *df_iters, const size_t ch_dim, diffcmppath_T *d
 
 /// algorithm to find an optimal alignment of lines of a diff block with 2 or
 /// more files. The algorithm is generalized to work for any number of files
-/// which corresponds to another dimmension added to the tensor used in the
+/// which corresponds to another dimension added to the tensor used in the
 /// algorithm
 ///
 /// for questions and information about the linematch algorithm please contact
 /// Jonathon White (jonathonwhite@protonmail.com)
 ///
-/// for explanation, a summary of the algorithm in 3 dimmensions (3 files
+/// for explanation, a summary of the algorithm in 3 dimensions (3 files
 ///     compared) follows
 ///
 /// The 3d case (for 3 buffers) of the algorithm implemented when diffopt
 /// 'linematch' is enabled. The algorithm constructs a 3d tensor to
-/// compare a diff between 3 buffers. The dimmensions of the tensor are
+/// compare a diff between 3 buffers. The dimensions of the tensor are
 /// the length of the diff in each buffer plus 1 A path is constructed by
 /// moving from one edge of the cube/3d tensor to the opposite edge.
 /// Motions from one cell of the cube to the next represent decisions. In
@@ -321,7 +326,7 @@ static void populate_tensor(int *df_iters, const size_t ch_dim, diffcmppath_T *d
 /// the one which results in the local highest score.  The total highest
 /// scored path is, then in the end represented by the cell in the
 /// opposite corner from the start location.  The entire algorithm
-/// consits of populating the 3d cube with the optimal paths from which
+/// consists of populating the 3d cube with the optimal paths from which
 /// it may have came.
 ///
 /// Optimizations:

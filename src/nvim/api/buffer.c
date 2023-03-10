@@ -16,6 +16,7 @@
 #include "nvim/api/buffer.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
+#include "nvim/api/private/validate.h"
 #include "nvim/ascii.h"
 #include "nvim/autocmd.h"
 #include "nvim/buffer.h"
@@ -90,7 +91,7 @@ Integer nvim_buf_line_count(Buffer buffer, Error *err)
 ///
 /// Example (Lua): capture buffer updates in a global `events` variable
 /// (use "print(vim.inspect(events))" to see its contents):
-/// <pre>
+/// <pre>lua
 ///   events = {}
 ///   vim.api.nvim_buf_attach(0, false, {
 ///     on_lines=function(...) table.insert(events, {...}) end})
@@ -185,11 +186,9 @@ Boolean nvim_buf_attach(uint64_t channel_id, Buffer buffer, Boolean send_buffer,
     if (is_lua) {
       for (size_t j = 0; cbs[j].name; j++) {
         if (strequal(cbs[j].name, k.data)) {
-          if (v->type != kObjectTypeLuaRef) {
-            api_set_error(err, kErrorTypeValidation,
-                          "%s is not a function", cbs[j].name);
+          VALIDATE_T(cbs[j].name, kObjectTypeLuaRef, v->type, {
             goto error;
-          }
+          });
           *(cbs[j].dest) = v->data.luaref;
           v->data.luaref = LUA_NOREF;
           key_used = true;
@@ -200,26 +199,23 @@ Boolean nvim_buf_attach(uint64_t channel_id, Buffer buffer, Boolean send_buffer,
       if (key_used) {
         continue;
       } else if (strequal("utf_sizes", k.data)) {
-        if (v->type != kObjectTypeBoolean) {
-          api_set_error(err, kErrorTypeValidation, "utf_sizes must be boolean");
+        VALIDATE_T("utf_sizes", kObjectTypeBoolean, v->type, {
           goto error;
-        }
+        });
         cb.utf_sizes = v->data.boolean;
         key_used = true;
       } else if (strequal("preview", k.data)) {
-        if (v->type != kObjectTypeBoolean) {
-          api_set_error(err, kErrorTypeValidation, "preview must be boolean");
+        VALIDATE_T("preview", kObjectTypeBoolean, v->type, {
           goto error;
-        }
+        });
         cb.preview = v->data.boolean;
         key_used = true;
       }
     }
 
-    if (!key_used) {
-      api_set_error(err, kErrorTypeValidation, "unexpected key: %s", k.data);
+    VALIDATE_S(key_used, "'opts' key", k.data, {
       goto error;
-    }
+    });
   }
 
   return buf_updates_register(buf, channel_id, cb, send_buffer);
@@ -257,6 +253,9 @@ void nvim__buf_redraw_range(Buffer buffer, Integer first, Integer last, Error *e
   buf_T *buf = find_buffer_by_handle(buffer, err);
   if (!buf) {
     return;
+  }
+  if (last < 0) {
+    last = buf->b_ml.ml_line_count;
   }
 
   redraw_buf_range_later(buf, (linenr_T)first + 1, (linenr_T)last);
@@ -303,10 +302,9 @@ ArrayOf(String) nvim_buf_get_lines(uint64_t channel_id,
   start = normalize_index(buf, start, true, &oob);
   end = normalize_index(buf, end, true, &oob);
 
-  if (strict_indexing && oob) {
-    api_set_error(err, kErrorTypeValidation, "Index out of bounds");
+  VALIDATE((!strict_indexing || !oob), "%s", "Index out of bounds", {
     return rv;
-  }
+  });
 
   if (start >= end) {
     // Return 0-length array
@@ -329,28 +327,6 @@ end:
   }
 
   return rv;
-}
-
-static bool check_string_array(Array arr, bool disallow_nl, Error *err)
-{
-  for (size_t i = 0; i < arr.size; i++) {
-    if (arr.items[i].type != kObjectTypeString) {
-      api_set_error(err,
-                    kErrorTypeValidation,
-                    "All items in the replacement array must be strings");
-      return false;
-    }
-    // Disallow newlines in the middle of the line.
-    if (disallow_nl) {
-      const String l = arr.items[i].data.string;
-      if (memchr(l.data, NL, l.size)) {
-        api_set_error(err, kErrorTypeValidation,
-                      "String cannot contain newlines");
-        return false;
-      }
-    }
-  }
-  return true;
 }
 
 /// Sets (replaces) a line-range in the buffer.
@@ -389,20 +365,15 @@ void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integ
   start = normalize_index(buf, start, true, &oob);
   end = normalize_index(buf, end, true, &oob);
 
-  if (strict_indexing && oob) {
-    api_set_error(err, kErrorTypeValidation, "Index out of bounds");
+  VALIDATE((!strict_indexing || !oob), "%s", "Index out of bounds", {
     return;
-  }
-
-  if (start > end) {
-    api_set_error(err,
-                  kErrorTypeValidation,
-                  "Argument \"start\" is higher than \"end\"");
+  });
+  VALIDATE((start <= end), "%s", "'start' is higher than 'end'", {
     return;
-  }
+  });
 
   bool disallow_nl = (channel_id != VIML_INTERNAL_CALL);
-  if (!check_string_array(replacement, disallow_nl, err)) {
+  if (!check_string_array(replacement, "replacement string", disallow_nl, err)) {
     return;
   }
 
@@ -459,10 +430,9 @@ void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integ
   for (size_t i = 0; i < to_replace; i++) {
     int64_t lnum = start + (int64_t)i;
 
-    if (lnum >= MAXLNUM) {
-      api_set_error(err, kErrorTypeValidation, "Index value is too high");
+    VALIDATE(lnum < MAXLNUM, "%s", "Index out of bounds", {
       goto end;
-    }
+    });
 
     if (ml_replace((linenr_T)lnum, lines[i], false) == FAIL) {
       api_set_error(err, kErrorTypeException, "Failed to replace line");
@@ -479,10 +449,9 @@ void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integ
   for (size_t i = to_replace; i < new_len; i++) {
     int64_t lnum = start + (int64_t)i - 1;
 
-    if (lnum >= MAXLNUM) {
-      api_set_error(err, kErrorTypeValidation, "Index value is too high");
+    VALIDATE(lnum < MAXLNUM, "%s", "Index out of bounds", {
       goto end;
-    }
+    });
 
     if (ml_append((linenr_T)lnum, lines[i], 0, false) == FAIL) {
       api_set_error(err, kErrorTypeException, "Failed to insert line");
@@ -569,16 +538,14 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
   // check range is ordered and everything!
   // start_row, end_row within buffer len (except add text past the end?)
   start_row = normalize_index(buf, start_row, false, &oob);
-  if (oob) {
-    api_set_error(err, kErrorTypeValidation, "start_row out of bounds");
+  VALIDATE_RANGE((!oob), "start_row", {
     return;
-  }
+  });
 
   end_row = normalize_index(buf, end_row, false, &oob);
-  if (oob) {
-    api_set_error(err, kErrorTypeValidation, "end_row out of bounds");
+  VALIDATE_RANGE((!oob), "end_row", {
     return;
-  }
+  });
 
   char *str_at_start = NULL;
   char *str_at_end = NULL;
@@ -586,26 +553,24 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
   // Another call to ml_get_buf() may free the line, so make a copy.
   str_at_start = xstrdup(ml_get_buf(buf, (linenr_T)start_row, false));
   size_t len_at_start = strlen(str_at_start);
-  if (start_col < 0 || (size_t)start_col > len_at_start) {
-    api_set_error(err, kErrorTypeValidation, "start_col out of bounds");
+  VALIDATE_RANGE((start_col >= 0 && (size_t)start_col <= len_at_start), "start_col", {
     goto early_end;
-  }
+  });
 
   // Another call to ml_get_buf() may free the line, so make a copy.
   str_at_end = xstrdup(ml_get_buf(buf, (linenr_T)end_row, false));
   size_t len_at_end = strlen(str_at_end);
-  if (end_col < 0 || (size_t)end_col > len_at_end) {
-    api_set_error(err, kErrorTypeValidation, "end_col out of bounds");
+  VALIDATE_RANGE((end_col >= 0 && (size_t)end_col <= len_at_end), "end_col", {
     goto early_end;
-  }
+  });
 
-  if (start_row > end_row || (end_row == start_row && start_col > end_col)) {
-    api_set_error(err, kErrorTypeValidation, "start is higher than end");
+  VALIDATE((start_row <= end_row && !(end_row == start_row && start_col > end_col)),
+           "%s", "'start' is higher than 'end'", {
     goto early_end;
-  }
+  });
 
   bool disallow_nl = (channel_id != VIML_INTERNAL_CALL);
-  if (!check_string_array(replacement, disallow_nl, err)) {
+  if (!check_string_array(replacement, "replacement string", disallow_nl, err)) {
     goto early_end;
   }
 
@@ -708,10 +673,9 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
   for (size_t i = 0; i < to_replace; i++) {
     int64_t lnum = start_row + (int64_t)i;
 
-    if (lnum >= MAXLNUM) {
-      api_set_error(err, kErrorTypeValidation, "Index value is too high");
+    VALIDATE((lnum < MAXLNUM), "%s", "Index out of bounds", {
       goto end;
-    }
+    });
 
     if (ml_replace((linenr_T)lnum, lines[i], false) == FAIL) {
       api_set_error(err, kErrorTypeException, "Failed to replace line");
@@ -726,10 +690,9 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
   for (size_t i = to_replace; i < new_len; i++) {
     int64_t lnum = start_row + (int64_t)i - 1;
 
-    if (lnum >= MAXLNUM) {
-      api_set_error(err, kErrorTypeValidation, "Index value is too high");
+    VALIDATE((lnum < MAXLNUM), "%s", "Index out of bounds", {
       goto end;
-    }
+    });
 
     if (ml_append((linenr_T)lnum, lines[i], 0, false) == FAIL) {
       api_set_error(err, kErrorTypeException, "Failed to insert line");
@@ -806,10 +769,9 @@ ArrayOf(String) nvim_buf_get_text(uint64_t channel_id, Buffer buffer,
 {
   Array rv = ARRAY_DICT_INIT;
 
-  if (opts.size > 0) {
-    api_set_error(err, kErrorTypeValidation, "opts dict isn't empty");
+  VALIDATE((opts.size == 0), "%s", "opts dict isn't empty", {
     return rv;
-  }
+  });
 
   buf_T *buf = find_buffer_by_handle(buffer, err);
 
@@ -826,18 +788,16 @@ ArrayOf(String) nvim_buf_get_text(uint64_t channel_id, Buffer buffer,
   start_row = normalize_index(buf, start_row, false, &oob);
   end_row = normalize_index(buf, end_row, false, &oob);
 
-  if (oob) {
-    api_set_error(err, kErrorTypeValidation, "Index out of bounds");
+  VALIDATE((!oob), "%s", "Index out of bounds", {
     return rv;
-  }
+  });
 
   // nvim_buf_get_lines doesn't care if the start row is greater than the end
   // row (it will just return an empty array), but nvim_buf_get_text does in
   // order to maintain symmetry with nvim_buf_set_text.
-  if (start_row > end_row) {
-    api_set_error(err, kErrorTypeValidation, "start is higher than end");
+  VALIDATE((start_row <= end_row), "%s", "'start' is higher than 'end'", {
     return rv;
-  }
+  });
 
   bool replace_nl = (channel_id != VIML_INTERNAL_CALL);
 
@@ -917,10 +877,9 @@ Integer nvim_buf_get_offset(Buffer buffer, Integer index, Error *err)
     return -1;
   }
 
-  if (index < 0 || index > buf->b_ml.ml_line_count) {
-    api_set_error(err, kErrorTypeValidation, "Index out of bounds");
+  VALIDATE((index >= 0 && index <= buf->b_ml.ml_line_count), "%s", "Index out of bounds", {
     return 0;
-  }
+  });
 
   return ml_find_line_or_offset(buf, (int)index + 1, NULL, true);
 }
@@ -1128,8 +1087,9 @@ void nvim_buf_delete(Buffer buffer, Dictionary opts, Error *err)
     } else if (strequal("unload", k.data)) {
       unload = api_object_to_bool(v, "unload", false, err);
     } else {
-      api_set_error(err, kErrorTypeValidation, "unexpected key: %s", k.data);
-      return;
+      VALIDATE_S(false, "'opts' key", k.data, {
+        return;
+      });
     }
   }
 
@@ -1184,20 +1144,16 @@ Boolean nvim_buf_del_mark(Buffer buffer, String name, Error *err)
     return res;
   }
 
-  if (name.size != 1) {
-    api_set_error(err, kErrorTypeValidation,
-                  "Mark name must be a single character");
+  VALIDATE_S((name.size == 1), "mark name (must be a single char)", name.data, {
     return res;
-  }
+  });
 
   fmark_T *fm = mark_get(buf, curwin, NULL, kMarkAllNoResolve, *name.data);
 
   // fm is NULL when there's no mark with the given name
-  if (fm == NULL) {
-    api_set_error(err, kErrorTypeValidation, "Invalid mark name: '%c'",
-                  *name.data);
+  VALIDATE_S((fm != NULL), "mark name", name.data, {
     return res;
-  }
+  });
 
   // mark.lnum is 0 when the mark is not valid in the buffer, or is not set.
   if (fm->mark.lnum != 0 && fm->fnum == buf->handle) {
@@ -1234,11 +1190,9 @@ Boolean nvim_buf_set_mark(Buffer buffer, String name, Integer line, Integer col,
     return res;
   }
 
-  if (name.size != 1) {
-    api_set_error(err, kErrorTypeValidation,
-                  "Mark name must be a single character");
+  VALIDATE_S((name.size == 1), "mark name (must be a single char)", name.data, {
     return res;
-  }
+  });
 
   res = set_mark(buf, name, line, col, err);
 
@@ -1267,21 +1221,18 @@ ArrayOf(Integer, 2) nvim_buf_get_mark(Buffer buffer, String name, Error *err)
     return rv;
   }
 
-  if (name.size != 1) {
-    api_set_error(err, kErrorTypeValidation,
-                  "Mark name must be a single character");
+  VALIDATE_S((name.size == 1), "mark name (must be a single char)", name.data, {
     return rv;
-  }
+  });
 
   fmark_T *fm;
   pos_T pos;
   char mark = *name.data;
 
   fm = mark_get(buf, curwin, NULL, kMarkAllNoResolve, mark);
-  if (fm == NULL) {
-    api_set_error(err, kErrorTypeValidation, "Invalid mark name");
+  VALIDATE_S((fm != NULL), "mark name", name.data, {
     return rv;
-  }
+  });
   // (0, 0) uppercase/file mark set in another buffer.
   if (fm->fnum != buf->handle) {
     pos.lnum = 0;

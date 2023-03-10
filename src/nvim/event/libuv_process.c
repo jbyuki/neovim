@@ -1,6 +1,7 @@
 // This is an open source non-commercial project. Dear PVS-Studio, please check
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
+#include <assert.h>
 #include <stdint.h>
 #include <uv.h>
 
@@ -12,6 +13,7 @@
 #include "nvim/log.h"
 #include "nvim/macros.h"
 #include "nvim/os/os.h"
+#include "nvim/ui_client.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "event/libuv_process.c.generated.h"
@@ -40,11 +42,19 @@ int libuv_process_spawn(LibuvProcess *uvproc)
 #endif
   uvproc->uvopts.exit_cb = exit_cb;
   uvproc->uvopts.cwd = proc->cwd;
+
   uvproc->uvopts.stdio = uvproc->uvstdio;
   uvproc->uvopts.stdio_count = 3;
   uvproc->uvstdio[0].flags = UV_IGNORE;
   uvproc->uvstdio[1].flags = UV_IGNORE;
   uvproc->uvstdio[2].flags = UV_IGNORE;
+
+  if (ui_client_forward_stdin) {
+    assert(UI_CLIENT_STDIN_FD == 3);
+    uvproc->uvopts.stdio_count = 4;
+    uvproc->uvstdio[3].data.fd = 0;
+    uvproc->uvstdio[3].flags = UV_INHERIT_FD;
+  }
   uvproc->uv.data = proc;
 
   if (proc->env) {
@@ -77,6 +87,9 @@ int libuv_process_spawn(LibuvProcess *uvproc)
     uvproc->uvstdio[2].flags = UV_CREATE_PIPE | UV_WRITABLE_PIPE;
     uvproc->uvstdio[2].data.stream = STRUCT_CAST(uv_stream_t,
                                                  &proc->err.uv.pipe);
+  } else if (proc->fwd_err) {
+    uvproc->uvstdio[2].flags = UV_INHERIT_FD;
+    uvproc->uvstdio[2].data.fd = STDERR_FILENO;
   }
 
   int status;

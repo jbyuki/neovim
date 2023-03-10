@@ -55,8 +55,6 @@ return {
       full_name='aleph', abbreviation='al',
       short_desc=N_("ASCII code of the letter Aleph (Hebrew)"),
       type='number', scope={'global'},
-      redraw={'curswant'},
-      varname='p_aleph',
       defaults={if_true=224}
     },
     {
@@ -1071,16 +1069,16 @@ return {
     },
     {
       full_name='hkmap', abbreviation='hk',
-      short_desc=N_("Hebrew keyboard mapping"),
+      short_desc=N_("No description"),
       type='bool', scope={'global'},
-      varname='p_hkmap',
+      varname='p_force_off',
       defaults={if_true=false}
     },
     {
       full_name='hkmapp', abbreviation='hkp',
-      short_desc=N_("phonetic Hebrew keyboard mapping"),
+      short_desc=N_("No description"),
       type='bool', scope={'global'},
-      varname='p_hkmapp',
+      varname='p_force_off',
       defaults={if_true=false}
     },
     {
@@ -1740,65 +1738,6 @@ return {
       defaults={if_true=false}
     },
     {
-      full_name='printdevice', abbreviation='pdev',
-      short_desc=N_("name of the printer to be used for :hardcopy"),
-      type='string', scope={'global'},
-      secure=true,
-      varname='p_pdev',
-      defaults={if_true=""}
-    },
-    {
-      full_name='printencoding', abbreviation='penc',
-      short_desc=N_("encoding to be used for printing"),
-      type='string', scope={'global'},
-      varname='p_penc',
-      defaults={if_true=""}
-    },
-    {
-      full_name='printexpr', abbreviation='pexpr',
-      short_desc=N_("expression used to print PostScript for :hardcopy"),
-      type='string', scope={'global'},
-      secure=true,
-      varname='p_pexpr',
-      defaults={if_true=""}
-    },
-    {
-      full_name='printfont', abbreviation='pfn',
-      short_desc=N_("name of the font to be used for :hardcopy"),
-      type='string', scope={'global'},
-      varname='p_pfn',
-      defaults={if_true="courier"}
-    },
-    {
-      full_name='printheader', abbreviation='pheader',
-      short_desc=N_("format of the header used for :hardcopy"),
-      type='string', scope={'global'},
-      varname='p_header',
-      defaults={if_true="%<%f%h%m%=Page %N"}
-    },
-    {
-      full_name='printmbcharset', abbreviation='pmbcs',
-      short_desc=N_("CJK character set to be used for :hardcopy"),
-      type='string', scope={'global'},
-      varname='p_pmcs',
-      defaults={if_true=""}
-    },
-    {
-      full_name='printmbfont', abbreviation='pmbfn',
-      short_desc=N_("font names to be used for CJK output of :hardcopy"),
-      type='string', scope={'global'},
-      varname='p_pmfn',
-      defaults={if_true=""}
-    },
-    {
-      full_name='printoptions', abbreviation='popt',
-      short_desc=N_("controls the format of :hardcopy output"),
-      type='string', list='onecomma', scope={'global'},
-      deny_duplicates=true,
-      varname='p_popt',
-      defaults={if_true=""}
-    },
-    {
       full_name='prompt',
       short_desc=N_("enable prompt in Ex mode"),
       type='bool', scope={'global'},
@@ -2184,6 +2123,13 @@ return {
       defaults={if_true=true}
     },
     {
+      full_name='showcmdloc', abbreviation='sloc',
+      short_desc=N_("change location of partial command"),
+      type='string', scope={'global'},
+      varname='p_sloc',
+      defaults={if_true="last"}
+    },
+    {
       full_name='showfulltag', abbreviation='sft',
       short_desc=N_("show full tag pattern when completing tag"),
       type='bool', scope={'global'},
@@ -2348,6 +2294,15 @@ return {
       vim=false,
       varname='p_sol',
       defaults={if_true=false}
+    },
+    {
+      full_name='statuscolumn', abbreviation='stc',
+      short_desc=N_("custom format for the status column"),
+      type='string', scope={'window'},
+      redraw={'current_window'},
+      secure=true,
+      alloced=true,
+      defaults={if_true=""}
     },
     {
       full_name='statusline', abbreviation='stl',
@@ -2698,7 +2653,7 @@ return {
       full_name='verbose', abbreviation='vbs',
       short_desc=N_("give informative messages"),
       type='number', scope={'global'},
-      varname='p_verbose',
+      varname='p_verbose', redraw={'ui_option'},
       defaults={if_true=0}
     },
     {

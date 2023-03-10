@@ -1,9 +1,14 @@
 find_package(Gettext REQUIRED)
 find_program(XGETTEXT_PRG xgettext)
 find_program(ICONV_PRG iconv)
+mark_as_advanced(
+  GETTEXT_MSGFMT_EXECUTABLE
+  GETTEXT_MSGMERGE_EXECUTABLE
+  ICONV_PRG
+  XGETTEXT_PRG)
 
-option(LANGUAGES "Localizations to build")
-if(NOT LANGUAGES)
+option(ENABLE_LANGUAGES "Localizations to build" ON)
+if(ENABLE_LANGUAGES)
   set(LANGUAGES
     en_GB
     )
@@ -66,7 +71,6 @@ if(HAVE_WORKING_LIBINTL AND GETTEXT_FOUND AND XGETTEXT_PRG AND ICONV_PRG AND FAL
       COMMENT "Checking ${name}.po"
       VERBATIM
       DEPENDS ${poFile})
-    set_target_properties(check-po-${name} PROPERTIES FOLDER po/check)
   endmacro()
 
   macro(BuildPoIconvGenericWithCharset
@@ -76,12 +80,12 @@ if(HAVE_WORKING_LIBINTL AND GETTEXT_FOUND AND XGETTEXT_PRG AND ICONV_PRG AND FAL
 
     add_custom_target(update-po-${lang}
       COMMAND ${CMAKE_COMMAND}
-        -DICONV_PRG=${ICONV_PRG}
-        -DINPUT_FILE=${inputFile}
-        -DOUTPUT_FILE=${outputFile}
-        -DINPUT_ENC=${inputEnc}
-        -DOUTPUT_ENC=${outputEnc}
-        -DOUTPUT_CHARSET=${outputCharSet}
+        -D ICONV_PRG=${ICONV_PRG}
+        -D INPUT_FILE=${inputFile}
+        -D OUTPUT_FILE=${outputFile}
+        -D INPUT_ENC=${inputEnc}
+        -D OUTPUT_ENC=${outputEnc}
+        -D OUTPUT_CHARSET=${outputCharSet}
         -P ${PROJECT_SOURCE_DIR}/cmake/ConvertPo.cmake
       COMMENT "Updating ${outputName}.po"
       DEPENDS ${inputFile})
@@ -153,9 +157,7 @@ if(HAVE_WORKING_LIBINTL AND GETTEXT_FOUND AND XGETTEXT_PRG AND ICONV_PRG AND FAL
 
     BuildMo(${LANGUAGE})
   endforeach()
-  set_target_properties(${UPDATE_PO_TARGETS} PROPERTIES FOLDER po/update)
 
   add_custom_target(translations ALL DEPENDS ${LANGUAGE_MO_FILES})
   add_custom_target(update-po DEPENDS ${UPDATE_PO_TARGETS})
-  set_target_properties(translations update-po PROPERTIES FOLDER po)
 endif()

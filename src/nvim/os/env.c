@@ -34,7 +34,11 @@
 #include "nvim/vim.h"
 
 #ifdef MSWIN
-# include "nvim/mbyte.h"  // for utf8_to_utf16, utf16_to_utf8
+# include "nvim/mbyte.h"
+#endif
+
+#ifdef BACKSLASH_IN_FILENAME
+# include "nvim/fileio.h"
 #endif
 
 #ifdef HAVE__NSGETENVIRON
@@ -488,8 +492,8 @@ void init_homedir(void)
   if (var != NULL) {
     // Change to the directory and get the actual path.  This resolves
     // links.  Don't do it when we can't return.
-    if (os_dirname((char_u *)os_buf, MAXPATHL) == OK && os_chdir(os_buf) == 0) {
-      if (!os_chdir(var) && os_dirname((char_u *)IObuff, IOSIZE) == OK) {
+    if (os_dirname(os_buf, MAXPATHL) == OK && os_chdir(os_buf) == 0) {
+      if (!os_chdir(var) && os_dirname(IObuff, IOSIZE) == OK) {
         var = (char *)IObuff;
       }
       if (os_chdir(os_buf) != 0) {
@@ -500,7 +504,7 @@ void init_homedir(void)
 
   // Fall back to current working directory if home is not found
   if ((var == NULL || *var == NUL)
-      && os_dirname((char_u *)os_buf, sizeof(os_buf)) == OK) {
+      && os_dirname(os_buf, sizeof(os_buf)) == OK) {
     var = os_buf;
   }
 #endif
@@ -543,7 +547,7 @@ void free_homedir(void)
 /// @see {expand_env}
 char *expand_env_save(char *src)
 {
-  return (char *)expand_env_save_opt((char_u *)src, false);
+  return expand_env_save_opt(src, false);
 }
 
 /// Similar to expand_env_save() but when "one" is `true` handle the string as
@@ -551,9 +555,9 @@ char *expand_env_save(char *src)
 /// @param src String containing environment variables to expand
 /// @param one Should treat as only one file name
 /// @see {expand_env}
-char_u *expand_env_save_opt(char_u *src, bool one)
+char *expand_env_save_opt(char *src, bool one)
 {
-  char_u *p = xmalloc(MAXPATHL);
+  char *p = xmalloc(MAXPATHL);
   expand_env_esc(src, p, MAXPATHL, false, one, NULL);
   return p;
 }
@@ -568,7 +572,7 @@ char_u *expand_env_save_opt(char_u *src, bool one)
 /// @param dstlen     Maximum length of the result
 void expand_env(char *src, char *dst, int dstlen)
 {
-  expand_env_esc((char_u *)src, (char_u *)dst, dstlen, false, false, NULL);
+  expand_env_esc(src, dst, dstlen, false, false, NULL);
 }
 
 /// Expand environment variable with path name and escaping.
@@ -580,34 +584,34 @@ void expand_env(char *src, char *dst, int dstlen)
 /// @param esc        Escape spaces in expanded variables
 /// @param one        `srcp` is a single filename
 /// @param prefix     Start again after this (can be NULL)
-void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, bool esc, bool one,
-                    char_u *prefix)
+void expand_env_esc(char *restrict srcp, char *restrict dst, int dstlen, bool esc, bool one,
+                    char *prefix)
   FUNC_ATTR_NONNULL_ARG(1, 2)
 {
-  char_u *tail;
-  char_u *var;
+  char *tail;
+  char *var;
   bool copy_char;
   bool mustfree;  // var was allocated, need to free it later
   bool at_start = true;  // at start of a name
 
-  int prefix_len = (prefix == NULL) ? 0 : (int)STRLEN(prefix);
+  int prefix_len = (prefix == NULL) ? 0 : (int)strlen(prefix);
 
-  char *src = skipwhite((char *)srcp);
+  char *src = skipwhite(srcp);
   dstlen--;  // leave one char space for "\,"
   while (*src && dstlen > 0) {
     // Skip over `=expr`.
     if (src[0] == '`' && src[1] == '=') {
-      var = (char_u *)src;
+      var = src;
       src += 2;
       (void)skip_expr(&src);
       if (*src == '`') {
         src++;
       }
-      size_t len = (size_t)(src - (char *)var);
+      size_t len = (size_t)(src - var);
       if (len > (size_t)dstlen) {
         len = (size_t)dstlen;
       }
-      memcpy((char *)dst, (char *)var, len);
+      memcpy(dst, var, len);
       dst += len;
       dstlen -= (int)len;
       continue;
@@ -620,7 +624,7 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
       // The variable name is copied into dst temporarily, because it may
       // be a string in read-only memory and a NUL needs to be appended.
       if (*src != '~') {  // environment var
-        tail = (char_u *)src + 1;
+        tail = src + 1;
         var = dst;
         int c = dstlen - 1;
 
@@ -634,7 +638,7 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
         } else  // NOLINT
 #endif
         {
-          while (c-- > 0 && *tail != NUL && vim_isIDc(*tail)) {
+          while (c-- > 0 && *tail != NUL && vim_isIDc((uint8_t)(*tail))) {
             *var++ = *tail++;
           }
         }
@@ -649,25 +653,25 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
           }
 #endif
         *var = NUL;
-        var = (char_u *)vim_getenv((char *)dst);
+        var = vim_getenv(dst);
         mustfree = true;
 #if defined(UNIX)
       }
 #endif
       } else if (src[1] == NUL  // home directory
                  || vim_ispathsep(src[1])
-                 || vim_strchr(" ,\t\n", src[1]) != NULL) {
-        var = (char_u *)homedir;
-        tail = (char_u *)src + 1;
+                 || vim_strchr(" ,\t\n", (uint8_t)src[1]) != NULL) {
+        var = homedir;
+        tail = src + 1;
       } else {  // user directory
 #if defined(UNIX)
         // Copy ~user to dst[], so we can put a NUL after it.
-        tail = (char_u *)src;
+        tail = src;
         var = dst;
         int c = dstlen - 1;
         while (c-- > 0
                && *tail
-               && vim_isfilec(*tail)
+               && vim_isfilec((uint8_t)(*tail))
                && !vim_ispathsep(*tail)) {
           *var++ = *tail++;
         }
@@ -675,21 +679,21 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
         // Get the user directory. If this fails the shell is used to expand
         // ~user, which is slower and may fail on old versions of /bin/sh.
         var = (*dst == NUL) ? NULL
-                            : (char_u *)os_get_userdir((char *)dst + 1);
+                            : os_get_userdir(dst + 1);
         mustfree = true;
         if (var == NULL) {
           expand_T xpc;
 
           ExpandInit(&xpc);
           xpc.xp_context = EXPAND_FILES;
-          var = (char_u *)ExpandOne(&xpc, (char *)dst, NULL,
-                                    WILD_ADD_SLASH|WILD_SILENT, WILD_EXPAND_FREE);
+          var = ExpandOne(&xpc, dst, NULL,
+                          WILD_ADD_SLASH|WILD_SILENT, WILD_EXPAND_FREE);
           mustfree = true;
         }
 #else
         // cannot expand user's home directory, so don't try
         var = NULL;
-        tail = (char_u *)"";  // for gcc
+        tail = "";  // for gcc
 #endif  // UNIX
       }
 
@@ -697,7 +701,7 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
       // If 'shellslash' is set change backslashes to forward slashes.
       // Can't use slash_adjust(), p_ssl may be set temporarily.
       if (p_ssl && var != NULL && vim_strchr(var, '\\') != NULL) {
-        char_u *p = xstrdup(var);
+        char *p = xstrdup(var);
 
         if (mustfree) {
           xfree(var);
@@ -710,8 +714,8 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
 
       // If "var" contains white space, escape it with a backslash.
       // Required for ":e ~/tt" when $HOME includes a space.
-      if (esc && var != NULL && strpbrk((char *)var, " \t") != NULL) {
-        char_u *p = vim_strsave_escaped(var, (char_u *)" \t");
+      if (esc && var != NULL && strpbrk(var, " \t") != NULL) {
+        char *p = vim_strsave_escaped(var, " \t");
 
         if (mustfree) {
           xfree(var);
@@ -721,13 +725,13 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
       }
 
       if (var != NULL && *var != NUL
-          && (STRLEN(var) + STRLEN(tail) + 1 < (unsigned)dstlen)) {
+          && (strlen(var) + strlen(tail) + 1 < (unsigned)dstlen)) {
         STRCPY(dst, var);
-        dstlen -= (int)STRLEN(var);
-        int c = (int)STRLEN(var);
+        dstlen -= (int)strlen(var);
+        int c = (int)strlen(var);
         // if var[] ends in a path separator and tail[] starts
         // with it, skip a character
-        if (after_pathsep((char *)dst, (char *)dst + c)
+        if (after_pathsep(dst, dst + c)
 #if defined(BACKSLASH_IN_FILENAME)
             && dst[-1] != ':'
 #endif
@@ -735,7 +739,7 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
           tail++;
         }
         dst += c;
-        src = (char *)tail;
+        src = tail;
         copy_char = false;
       }
       if (mustfree) {
@@ -749,18 +753,18 @@ void expand_env_esc(char_u *restrict srcp, char_u *restrict dst, int dstlen, boo
       // ":edit foo ~ foo".
       at_start = false;
       if (src[0] == '\\' && src[1] != NUL) {
-        *dst++ = (char_u)(*src++);
+        *dst++ = *src++;
         dstlen--;
       } else if ((src[0] == ' ' || src[0] == ',') && !one) {
         at_start = true;
       }
       if (dstlen > 0) {
-        *dst++ = (char_u)(*src++);
+        *dst++ = *src++;
         dstlen--;
 
         if (prefix != NULL
-            && src - prefix_len >= (char *)srcp
-            && STRNCMP(src - prefix_len, prefix, prefix_len) == 0) {
+            && src - prefix_len >= srcp
+            && strncmp(src - prefix_len, prefix, (size_t)prefix_len) == 0) {
           at_start = true;
         }
       }
@@ -1056,7 +1060,7 @@ size_t home_replace(const buf_T *const buf, const char *src, char *const dst, si
   }
 
   if (buf != NULL && buf->b_help) {
-    const size_t dlen = STRLCPY(dst, path_tail((char *)src), dstlen);
+    const size_t dlen = xstrlcpy(dst, path_tail((char *)src), dstlen);
     return MIN(dlen, dstlen - 1);
   }
 
@@ -1176,7 +1180,7 @@ char *get_env_name(expand_T *xp, int idx)
   assert(idx >= 0);
   char *envname = os_getenvname_at_index((size_t)idx);
   if (envname) {
-    STRLCPY(xp->xp_buf, envname, EXPAND_BUF_LEN);
+    xstrlcpy(xp->xp_buf, envname, EXPAND_BUF_LEN);
     xfree(envname);
     return xp->xp_buf;
   }
@@ -1198,7 +1202,7 @@ bool os_setenv_append_path(const char *fname)
 // No prescribed maximum on unix.
 # define MAX_ENVPATHLEN INT_MAX
 #endif
-  if (!path_is_absolute((char_u *)fname)) {
+  if (!path_is_absolute(fname)) {
     internal_error("os_setenv_append_path()");
     return false;
   }

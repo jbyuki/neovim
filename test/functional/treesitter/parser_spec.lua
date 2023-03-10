@@ -4,8 +4,9 @@ local clear = helpers.clear
 local eq = helpers.eq
 local insert = helpers.insert
 local exec_lua = helpers.exec_lua
+local pcall_err = helpers.pcall_err
 local feed = helpers.feed
-local iswin = helpers.iswin
+local is_os = helpers.is_os
 local skip = helpers.skip
 
 before_each(clear)
@@ -124,6 +125,18 @@ void ui_refresh(void)
     }, res)
   end)
 
+  it('does not get parser for empty filetype', function()
+    insert(test_text);
+
+    eq('.../treesitter.lua:0: There is no parser available for buffer 1 and one'
+         .. ' could not be created because lang could not be determined. Either'
+         .. ' pass lang or set the buffer filetype',
+      pcall_err(exec_lua, 'vim.treesitter.get_parser(0)'))
+
+    -- Must provide language for buffers with an empty filetype
+    exec_lua("vim.treesitter.get_parser(0, 'c')")
+  end)
+
   it('allows to get a child by field', function()
     insert(test_text);
 
@@ -182,8 +195,9 @@ void ui_refresh(void)
     local firstrun = q(1)
     local manyruns = q(100)
 
-    -- First run should be at least 4x slower.
-    assert(400 * manyruns < firstrun, ('firstrun: %d ms, manyruns: %d ms'):format(firstrun / 1000, manyruns / 1000))
+    -- First run should be at least 400x slower than an 100 subsequent runs.
+    local factor = is_os('win') and 300 or 400
+    assert(factor * manyruns < firstrun, ('firstrun: %f ms, manyruns: %f ms'):format(firstrun / 1e6, manyruns / 1e6))
   end)
 
   it('support query and iter by capture', function()
@@ -277,6 +291,9 @@ end]]
       function fake_node:end_()
         return 3, 0, 23
       end
+      function fake_node:range()
+        return 3, 0, 3, 0
+      end
       return vim.treesitter.get_node_text(fake_node, 0) == nil
     ]])
     eq(true, result)
@@ -295,6 +312,9 @@ end]]
       end
       function fake_node:end_()
         return 1, 0, 7
+      end
+      function fake_node:range()
+        return 1, 0, 1, 0
       end
       return vim.treesitter.get_node_text(fake_node, 0) == ''
     ]])
@@ -632,6 +652,17 @@ int x = INT_MAX;
           {1, 26, 1, 65}, -- READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
           {2, 29, 2, 68}  -- READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
         }, get_ranges())
+
+        helpers.feed('ggo<esc>')
+        eq(5, exec_lua("return #parser:children().c:trees()"))
+        eq({
+          {0, 0, 8, 0},   -- root tree
+          {4, 14, 4, 17}, -- VALUE 123
+          {5, 15, 5, 18}, -- VALUE1 123
+          {6, 15, 6, 18}, -- VALUE2 123
+          {2, 26, 2, 65}, -- READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
+          {3, 29, 3, 68}  -- READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
+        }, get_ranges())
       end)
     end)
 
@@ -651,6 +682,18 @@ int x = INT_MAX;
                           -- VALUE1 123
                           -- VALUE2 123
           {1, 26, 2, 68}  -- READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
+                          -- READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
+        }, get_ranges())
+
+        helpers.feed('ggo<esc>')
+        eq("table", exec_lua("return type(parser:children().c)"))
+        eq(2, exec_lua("return #parser:children().c:trees()"))
+        eq({
+          {0, 0, 8, 0},   -- root tree
+          {4, 14, 6, 18}, -- VALUE 123
+                          -- VALUE1 123
+                          -- VALUE2 123
+          {2, 26, 3, 68}  -- READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
                           -- READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
         }, get_ranges())
       end)
@@ -681,10 +724,22 @@ int x = INT_MAX;
           {1, 26, 2, 68}  -- READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
                           -- READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
         }, get_ranges())
+
+        helpers.feed('ggo<esc>')
+        eq("table", exec_lua("return type(parser:children().c)"))
+        eq(2, exec_lua("return #parser:children().c:trees()"))
+        eq({
+          {0, 0, 8, 0},   -- root tree
+          {4, 14, 6, 18}, -- VALUE 123
+                          -- VALUE1 123
+                          -- VALUE2 123
+          {2, 26, 3, 68}  -- READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
+                          -- READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
+        }, get_ranges())
       end)
 
       it("should not inject bad languages", function()
-        skip(iswin())
+        skip(is_os('win'))
         exec_lua([=[
         vim.treesitter.add_directive("inject-bad!", function(match, _, _, pred, metadata)
           metadata.language = "{"
@@ -728,7 +783,7 @@ int x = INT_MAX;
         return list
         ]]
 
-        eq({ 'offset!', 'set!' }, res_list)
+        eq({ 'gsub!', 'offset!', 'set!' }, res_list)
       end)
     end)
   end)
@@ -828,5 +883,69 @@ int x = INT_MAX;
         end)
       end)
     end)
+  end)
+
+  it("can fold via foldexpr", function()
+    insert(test_text)
+
+    local function get_fold_levels()
+      return exec_lua([[
+        local res = {}
+        for i = 1, vim.api.nvim_buf_line_count(0) do
+          res[i] = vim.treesitter.foldexpr(i)
+        end
+        return res
+      ]])
+    end
+
+    exec_lua([[vim.treesitter.get_parser(0, "c")]])
+
+    eq({
+      [1] = '>1',
+      [2] = '1',
+      [3] = '1',
+      [4] = '1',
+      [5] = '>2',
+      [6] = '2',
+      [7] = '2',
+      [8] = '1',
+      [9] = '1',
+      [10] = '>2',
+      [11] = '2',
+      [12] = '2',
+      [13] = '2',
+      [14] = '2',
+      [15] = '>3',
+      [16] = '3',
+      [17] = '3',
+      [18] = '2',
+      [19] = '1' }, get_fold_levels())
+
+    helpers.command('1,2d')
+    helpers.poke_eventloop()
+
+    exec_lua([[vim.treesitter.get_parser():parse()]])
+
+    helpers.poke_eventloop()
+    helpers.sleep(100)
+
+    eq({
+      [1] = '0',
+      [2] = '0',
+      [3] = '>1',
+      [4] = '1',
+      [5] = '1',
+      [6] = '0',
+      [7] = '0',
+      [8] = '>1',
+      [9] = '1',
+      [10] = '1',
+      [11] = '1',
+      [12] = '1',
+      [13] = '>2',
+      [14] = '2',
+      [15] = '2',
+      [16] = '1',
+      [17] = '0' }, get_fold_levels())
   end)
 end)

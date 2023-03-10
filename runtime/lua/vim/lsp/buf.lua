@@ -162,11 +162,11 @@ end
 ---         Predicate used to filter clients. Receives a client as argument and must return a
 ---         boolean. Clients matching the predicate are included. Example:
 ---
----         <pre>
----         -- Never request typescript-language-server for formatting
----         vim.lsp.buf.format {
----           filter = function(client) return client.name ~= "tsserver" end
----         }
+---         <pre>lua
+---           -- Never request typescript-language-server for formatting
+---           vim.lsp.buf.format {
+---             filter = function(client) return client.name ~= "tsserver" end
+---           }
 ---         </pre>
 ---
 ---     - async boolean|nil
@@ -197,18 +197,19 @@ function M.format(options)
     clients = vim.tbl_filter(options.filter, clients)
   end
 
-  clients = vim.tbl_filter(function(client)
-    return client.supports_method('textDocument/formatting')
-  end, clients)
-
-  if #clients == 0 then
-    vim.notify('[LSP] Format request failed, no matching language servers.')
-  end
-
   local mode = api.nvim_get_mode().mode
   local range = options.range
   if not range and mode == 'v' or mode == 'V' then
     range = range_from_selection()
+  end
+  local method = range and 'textDocument/rangeFormatting' or 'textDocument/formatting'
+
+  clients = vim.tbl_filter(function(client)
+    return client.supports_method(method)
+  end, clients)
+
+  if #clients == 0 then
+    vim.notify('[LSP] Format request failed, no matching language servers.')
   end
 
   ---@private
@@ -221,7 +222,6 @@ function M.format(options)
     return params
   end
 
-  local method = range and 'textDocument/rangeFormatting' or 'textDocument/formatting'
   if options.async then
     local do_format
     do_format = function(idx, client)
@@ -383,7 +383,7 @@ end
 
 --- Lists all the references to the symbol under the cursor in the quickfix window.
 ---
----@param context (table) Context for the request
+---@param context (table|nil) Context for the request
 ---@see https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_references
 ---@param options table|nil additional options
 ---     - on_list: (function) handler for list results. See |lsp-on-list-handler|
@@ -464,7 +464,7 @@ end
 ---
 function M.list_workspace_folders()
   local workspace_folders = {}
-  for _, client in pairs(vim.lsp.buf_get_clients()) do
+  for _, client in pairs(vim.lsp.get_active_clients({ bufnr = 0 })) do
     for _, folder in pairs(client.workspace_folders or {}) do
       table.insert(workspace_folders, folder.name)
     end
@@ -487,9 +487,9 @@ function M.add_workspace_folder(workspace_folder)
   end
   local params = util.make_workspace_params(
     { { uri = vim.uri_from_fname(workspace_folder), name = workspace_folder } },
-    { {} }
+    {}
   )
-  for _, client in pairs(vim.lsp.buf_get_clients()) do
+  for _, client in pairs(vim.lsp.get_active_clients({ bufnr = 0 })) do
     local found = false
     for _, folder in pairs(client.workspace_folders or {}) do
       if folder.name == workspace_folder then
@@ -522,7 +522,7 @@ function M.remove_workspace_folder(workspace_folder)
     { {} },
     { { uri = vim.uri_from_fname(workspace_folder), name = workspace_folder } }
   )
-  for _, client in pairs(vim.lsp.buf_get_clients()) do
+  for _, client in pairs(vim.lsp.get_active_clients({ bufnr = 0 })) do
     for idx, folder in pairs(client.workspace_folders) do
       if folder.name == workspace_folder then
         vim.lsp.buf_notify(0, 'workspace/didChangeWorkspaceFolders', params)
@@ -555,11 +555,10 @@ end
 --- Send request to the server to resolve document highlights for the current
 --- text document position. This request can be triggered by a  key mapping or
 --- by events such as `CursorHold`, e.g.:
----
---- <pre>
---- autocmd CursorHold  <buffer> lua vim.lsp.buf.document_highlight()
---- autocmd CursorHoldI <buffer> lua vim.lsp.buf.document_highlight()
---- autocmd CursorMoved <buffer> lua vim.lsp.buf.clear_references()
+--- <pre>vim
+---   autocmd CursorHold  <buffer> lua vim.lsp.buf.document_highlight()
+---   autocmd CursorHoldI <buffer> lua vim.lsp.buf.document_highlight()
+---   autocmd CursorMoved <buffer> lua vim.lsp.buf.clear_references()
 --- </pre>
 ---
 --- Note: Usage of |vim.lsp.buf.document_highlight()| requires the following highlight groups
@@ -734,6 +733,7 @@ end
 ---               List of LSP `CodeActionKind`s used to filter the code actions.
 ---               Most language servers support values like `refactor`
 ---               or `quickfix`.
+---        - triggerKind (number|nil): The reason why code actions were requested.
 ---  - filter: (function|nil)
 ---           Predicate taking an `CodeAction` and returning a boolean.
 ---  - apply: (boolean|nil)
@@ -747,6 +747,7 @@ end
 ---           using mark-like indexing. See |api-indexing|
 ---
 ---@see https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_codeAction
+---@see vim.lsp.protocol.constants.CodeActionTriggerKind
 function M.code_action(options)
   validate({ options = { options, 't', true } })
   options = options or {}
@@ -756,6 +757,9 @@ function M.code_action(options)
     options = { options = options }
   end
   local context = options.context or {}
+  if not context.triggerKind then
+    context.triggerKind = vim.lsp.protocol.CodeActionTriggerKind.Invoked
+  end
   if not context.diagnostics then
     local bufnr = api.nvim_get_current_buf()
     context.diagnostics = vim.lsp.diagnostic.get_line_diagnostics(bufnr)

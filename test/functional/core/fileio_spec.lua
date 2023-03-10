@@ -15,26 +15,28 @@ local request = helpers.request
 local retry = helpers.retry
 local rmdir = helpers.rmdir
 local matches = helpers.matches
+local meths = helpers.meths
 local mkdir = helpers.mkdir
 local sleep = helpers.sleep
 local read_file = helpers.read_file
 local tmpname = helpers.tmpname
 local trim = helpers.trim
 local currentdir = helpers.funcs.getcwd
-local iswin = helpers.iswin
 local assert_alive = helpers.assert_alive
+local check_close = helpers.check_close
 local expect_exit = helpers.expect_exit
 local write_file = helpers.write_file
 local Screen = require('test.functional.ui.screen')
 local feed_command = helpers.feed_command
-local isCI = helpers.isCI
 local skip = helpers.skip
+local is_os = helpers.is_os
+local is_ci = helpers.is_ci
 
 describe('fileio', function()
   before_each(function()
   end)
   after_each(function()
-    expect_exit(command, ':qall!')
+    check_close()
     os.remove('Xtest_startup_shada')
     os.remove('Xtest_startup_file1')
     os.remove('Xtest_startup_file1~')
@@ -90,7 +92,7 @@ describe('fileio', function()
   end)
 
   it('backup #9709', function()
-    skip(isCI('cirrus'))
+    skip(is_ci('cirrus'))
     clear({ args={ '-i', 'Xtest_startup_shada',
                    '--cmd', 'set directory=Xtest_startup_swapdir' } })
 
@@ -110,7 +112,7 @@ describe('fileio', function()
   end)
 
   it('backup with full path #11214', function()
-    skip(isCI('cirrus'))
+    skip(is_ci('cirrus'))
     clear()
     mkdir('Xtest_backupdir')
     command('set backup')
@@ -123,7 +125,7 @@ describe('fileio', function()
 
     -- Backup filename = fullpath, separators replaced with "%".
     local backup_file_name = string.gsub(currentdir()..'/Xtest_startup_file1',
-      iswin() and '[:/\\]' or '/', '%%') .. '~'
+      is_os('win') and '[:/\\]' or '/', '%%') .. '~'
     local foo_contents = trim(read_file('Xtest_backupdir/'..backup_file_name))
     local foobar_contents = trim(read_file('Xtest_startup_file1'))
 
@@ -132,7 +134,7 @@ describe('fileio', function()
   end)
 
   it('backup symlinked files #11349', function()
-    skip(isCI('cirrus'))
+    skip(is_ci('cirrus'))
     clear()
 
     local initial_content = 'foo'
@@ -153,8 +155,8 @@ describe('fileio', function()
   end)
 
 
-  it('backup symlinked files in first avialable backupdir #11349', function()
-    skip(isCI('cirrus'))
+  it('backup symlinked files in first available backupdir #11349', function()
+    skip(is_ci('cirrus'))
     clear()
 
     local initial_content = 'foo'
@@ -260,30 +262,35 @@ end)
 describe('tmpdir', function()
   local tmproot_pat = [=[.*[/\\]nvim%.[^/\\]+]=]
   local testlog = 'Xtest_tmpdir_log'
-  local faketmp
+  local os_tmpdir
 
   before_each(function()
     -- Fake /tmp dir so that we can mess it up.
-    faketmp = tmpname()
-    os.remove(faketmp)
-    mkdir(faketmp)
+    os_tmpdir = tmpname()
+    os.remove(os_tmpdir)
+    mkdir(os_tmpdir)
   end)
 
   after_each(function()
-    expect_exit(command, ':qall!')
+    check_close()
     os.remove(testlog)
   end)
 
-  it('failure modes', function()
-    clear({ env={ NVIM_LOG_FILE=testlog, TMPDIR=faketmp, } })
-    assert_nolog('tempdir is not a directory', testlog)
-    assert_nolog('tempdir has invalid permissions', testlog)
-
+  local function get_tmproot()
     -- Tempfiles typically look like: "…/nvim.<user>/xxx/0".
     --  - "…/nvim.<user>/xxx/" is the per-process tmpdir, not shared with other Nvims.
     --  - "…/nvim.<user>/" is the tmpdir root, shared by all Nvims (normally).
     local tmproot = (funcs.tempname()):match(tmproot_pat)
     ok(tmproot:len() > 4, 'tmproot like "nvim.foo"', tmproot)
+    return tmproot
+  end
+
+  it('failure modes', function()
+    clear({ env={ NVIM_LOG_FILE=testlog, TMPDIR=os_tmpdir, } })
+    assert_nolog('tempdir is not a directory', testlog)
+    assert_nolog('tempdir has invalid permissions', testlog)
+
+    local tmproot = get_tmproot()
 
     -- Test how Nvim handles invalid tmpdir root (by hostile users or accidents).
     --
@@ -291,33 +298,63 @@ describe('tmpdir', function()
     expect_exit(command, ':qall!')
     rmdir(tmproot)
     write_file(tmproot, '')  -- Not a directory, vim_mktempdir() should skip it.
-    clear({ env={ NVIM_LOG_FILE=testlog, TMPDIR=faketmp, } })
+    clear({ env={ NVIM_LOG_FILE=testlog, TMPDIR=os_tmpdir, } })
     matches(tmproot_pat, funcs.stdpath('run'))  -- Tickle vim_mktempdir().
     -- Assert that broken tmpdir root was handled.
-    retry(nil, 1000, function()
-      assert_log('tempdir root not a directory', testlog, 100)
-    end)
+    assert_log('tempdir root not a directory', testlog, 100)
 
     -- "…/nvim.<user>/" has wrong permissions:
-    skip(iswin(), 'TODO(justinmk): need setfperm/getfperm on Windows. #8244')
+    skip(is_os('win'), 'TODO(justinmk): need setfperm/getfperm on Windows. #8244')
     os.remove(testlog)
     os.remove(tmproot)
     mkdir(tmproot)
     funcs.setfperm(tmproot, 'rwxr--r--')  -- Invalid permissions, vim_mktempdir() should skip it.
-    clear({ env={ NVIM_LOG_FILE=testlog, TMPDIR=faketmp, } })
+    clear({ env={ NVIM_LOG_FILE=testlog, TMPDIR=os_tmpdir, } })
     matches(tmproot_pat, funcs.stdpath('run'))  -- Tickle vim_mktempdir().
     -- Assert that broken tmpdir root was handled.
-    retry(nil, 1000, function()
-      assert_log('tempdir root has invalid permissions', testlog, 100)
-    end)
+    assert_log('tempdir root has invalid permissions', testlog, 100)
   end)
 
   it('too long', function()
-    local bigname = ('%s/%s'):format(faketmp, ('x'):rep(666))
+    local bigname = ('%s/%s'):format(os_tmpdir, ('x'):rep(666))
     mkdir(bigname)
     clear({ env={ NVIM_LOG_FILE=testlog, TMPDIR=bigname, } })
     matches(tmproot_pat, funcs.stdpath('run'))  -- Tickle vim_mktempdir().
     local len = (funcs.tempname()):len()
     ok(len > 4 and len < 256, '4 < len < 256', tostring(len))
+  end)
+
+  it('disappeared #1432', function()
+    clear({ env={ NVIM_LOG_FILE=testlog, TMPDIR=os_tmpdir, } })
+    assert_nolog('tempdir disappeared', testlog)
+
+    local function rm_tmpdir()
+      local tmpname1 = funcs.tempname()
+      local tmpdir1 = funcs.fnamemodify(tmpname1, ':h')
+      eq(funcs.stdpath('run'), tmpdir1)
+
+      rmdir(tmpdir1)
+      retry(nil, 1000, function()
+        eq(0, funcs.isdirectory(tmpdir1))
+      end)
+      local tmpname2 = funcs.tempname()
+      local tmpdir2 = funcs.fnamemodify(tmpname2, ':h')
+      neq(tmpdir1, tmpdir2)
+    end
+
+    -- Your antivirus hates you...
+    rm_tmpdir()
+    assert_log('tempdir disappeared', testlog, 100)
+    funcs.tempname()
+    funcs.tempname()
+    funcs.tempname()
+    eq('', meths.get_vvar('errmsg'))
+    rm_tmpdir()
+    funcs.tempname()
+    funcs.tempname()
+    funcs.tempname()
+    eq('E5431: tempdir disappeared (2 times)', meths.get_vvar('errmsg'))
+    rm_tmpdir()
+    eq('E5431: tempdir disappeared (3 times)', meths.get_vvar('errmsg'))
   end)
 end)

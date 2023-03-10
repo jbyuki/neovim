@@ -60,6 +60,7 @@ end)()
 --- Splits a string at each instance of a separator.
 ---
 ---@see |vim.split()|
+---@see |luaref-patterns|
 ---@see https://www.lua.org/pil/20.2.html
 ---@see http://lua-users.org/wiki/StringLibraryTutorial
 ---
@@ -102,18 +103,18 @@ end
 --- Splits a string at each instance of a separator.
 ---
 --- Examples:
---- <pre>
----  split(":aa::b:", ":")     => {'','aa','','b',''}
----  split("axaby", "ab?")     => {'','x','y'}
----  split("x*yz*o", "*", {plain=true})  => {'x','yz','o'}
----  split("|x|y|z|", "|", {trimempty=true}) => {'x', 'y', 'z'}
+--- <pre>lua
+---  split(":aa::b:", ":")                   --> {'','aa','','b',''}
+---  split("axaby", "ab?")                   --> {'','x','y'}
+---  split("x*yz*o", "*", {plain=true})      --> {'x','yz','o'}
+---  split("|x|y|z|", "|", {trimempty=true}) --> {'x', 'y', 'z'}
 --- </pre>
 ---
 ---@see |vim.gsplit()|
 ---
 ---@param s string String to split
 ---@param sep string Separator or pattern
----@param kwargs ({plain: boolean, trimempty: boolean}|nil) Keyword arguments:
+---@param kwargs (table|nil) Keyword arguments:
 ---       - plain: (boolean) If `true` use `sep` literally (passed to string.find)
 ---       - trimempty: (boolean) If `true` remove empty items from the front
 ---         and back of the list
@@ -383,7 +384,7 @@ end
 --- Return `nil` if the key does not exist.
 ---
 --- Examples:
---- <pre>
+--- <pre>lua
 ---  vim.tbl_get({ key = { nested_key = true }}, 'key', 'nested_key') == true
 ---  vim.tbl_get({ key = {}}, 'key', 'nested_key') == nil
 --- </pre>
@@ -395,15 +396,14 @@ end
 function vim.tbl_get(o, ...)
   local keys = { ... }
   if #keys == 0 then
-    return
+    return nil
   end
   for i, k in ipairs(keys) do
-    if type(o[k]) ~= 'table' and next(keys, i) then
-      return nil
-    end
     o = o[k]
     if o == nil then
-      return
+      return nil
+    elseif type(o) ~= 'table' and next(keys, i) then
+      return nil
     end
   end
   return o
@@ -418,8 +418,8 @@ end
 ---@generic T: table
 ---@param dst T List which will be modified and appended to
 ---@param src table List from which values will be inserted
----@param start (number|nil) Start index on src. Defaults to 1
----@param finish (number|nil) Final index on src. Defaults to `#src`
+---@param start (integer|nil) Start index on src. Defaults to 1
+---@param finish (integer|nil) Final index on src. Defaults to `#src`
 ---@return T dst
 function vim.list_extend(dst, src, start, finish)
   vim.validate({
@@ -456,6 +456,33 @@ function vim.tbl_flatten(t)
   end
   _tbl_flatten(t)
   return result
+end
+
+--- Enumerate a table sorted by its keys.
+---
+---@see Based on https://github.com/premake/premake-core/blob/master/src/base/table.lua
+---
+---@param t table List-like table
+---@return iterator over sorted keys and their values
+function vim.spairs(t)
+  assert(type(t) == 'table', string.format('Expected table, got %s', type(t)))
+
+  -- collect the keys
+  local keys = {}
+  for k in pairs(t) do
+    table.insert(keys, k)
+  end
+  table.sort(keys)
+
+  -- Return the iterator function.
+  -- TODO(justinmk): Return "iterator function, table {t}, and nil", like pairs()?
+  local i = 0
+  return function()
+    i = i + 1
+    if keys[i] then
+      return keys[i], t[keys[i]]
+    end
+  end
 end
 
 --- Tests if a Lua table can be treated as an array.
@@ -495,14 +522,14 @@ end
 
 --- Counts the number of non-nil values in table `t`.
 ---
---- <pre>
---- vim.tbl_count({ a=1, b=2 }) => 2
---- vim.tbl_count({ 1, 2 }) => 2
+--- <pre>lua
+--- vim.tbl_count({ a=1, b=2 })  --> 2
+--- vim.tbl_count({ 1, 2 })      --> 2
 --- </pre>
 ---
 ---@see https://github.com/Tieske/Penlight/blob/master/lua/pl/tablex.lua
 ---@param t table Table
----@return number Number of non-nil values in table
+---@return integer Number of non-nil values in table
 function vim.tbl_count(t)
   vim.validate({ t = { t, 't' } })
 
@@ -517,8 +544,8 @@ end
 ---
 ---@generic T
 ---@param list T[] (list) Table
----@param start number Start range of slice
----@param finish number End range of slice
+---@param start integer|nil Start range of slice
+---@param finish integer|nil End range of slice
 ---@return T[] (list) Copy of table sliced from start to finish (inclusive)
 function vim.list_slice(list, start, finish)
   local new_list = {}
@@ -530,6 +557,7 @@ end
 
 --- Trim whitespace (Lua pattern "%s") from both sides of a string.
 ---
+---@see |luaref-patterns|
 ---@see https://www.lua.org/pil/20.2.html
 ---@param s string String to trim
 ---@return string String with whitespace removed from its beginning and end
@@ -571,7 +599,7 @@ end
 --- Validates a parameter specification (types and values).
 ---
 --- Usage example:
---- <pre>
+--- <pre>lua
 ---  function user.new(name, age, hobbies)
 ---    vim.validate{
 ---      name={name, 'string'},
@@ -583,24 +611,24 @@ end
 --- </pre>
 ---
 --- Examples with explicit argument values (can be run directly):
---- <pre>
+--- <pre>lua
 ---  vim.validate{arg1={{'foo'}, 'table'}, arg2={'foo', 'string'}}
----     => NOP (success)
+---     --> NOP (success)
 ---
 ---  vim.validate{arg1={1, 'table'}}
----     => error('arg1: expected table, got number')
+---     --> error('arg1: expected table, got number')
 ---
 ---  vim.validate{arg1={3, function(a) return (a % 2) == 0 end, 'even number'}}
----     => error('arg1: expected even number, got 3')
+---     --> error('arg1: expected even number, got 3')
 --- </pre>
 ---
 --- If multiple types are valid they can be given as a list.
---- <pre>
+--- <pre>lua
 ---  vim.validate{arg1={{'foo'}, {'table', 'string'}}, arg2={'foo', {'table', 'string'}}}
----     => NOP (success)
+---     --> NOP (success)
 ---
 ---  vim.validate{arg1={1, {'string', table'}}}
----     => error('arg1: expected string|table, got number')
+---     --> error('arg1: expected string|table, got number')
 ---
 --- </pre>
 ---
@@ -735,7 +763,7 @@ end
 --- If {create} is `nil`, this will create a defaulttable whose constructor function is
 --- this function, effectively allowing to create nested tables on the fly:
 ---
---- <pre>
+--- <pre>lua
 --- local a = vim.defaulttable()
 --- a.b.c = 1
 --- </pre>

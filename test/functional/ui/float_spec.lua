@@ -25,36 +25,6 @@ describe('float window', function()
     clear()
     command('hi VertSplit gui=reverse')
   end)
-  local attrs = {
-    [0] = {bold=true, foreground=Screen.colors.Blue},
-    [1] = {background = Screen.colors.LightMagenta},
-    [2] = {background = Screen.colors.LightMagenta, bold = true, foreground = Screen.colors.Blue1},
-    [3] = {bold = true},
-    [4] = {bold = true, reverse = true},
-    [5] = {reverse = true},
-    [6] = {background = Screen.colors.LightMagenta, bold = true, reverse = true},
-    [7] = {foreground = Screen.colors.Grey100, background = Screen.colors.Red},
-    [8] = {bold = true, foreground = Screen.colors.SeaGreen4},
-    [9] = {background = Screen.colors.LightGrey, underline = true},
-    [10] = {background = Screen.colors.LightGrey, underline = true, bold = true, foreground = Screen.colors.Magenta},
-    [11] = {bold = true, foreground = Screen.colors.Magenta},
-    [12] = {background = Screen.colors.Red, bold = true, foreground = Screen.colors.Blue1},
-    [13] = {background = Screen.colors.WebGray},
-    [14] = {foreground = Screen.colors.Brown},
-    [15] = {background = Screen.colors.Grey20},
-    [16] = {background = Screen.colors.Grey20, bold = true, foreground = Screen.colors.Blue1},
-    [17] = {background = Screen.colors.Yellow},
-    [18] = {foreground = Screen.colors.Brown, background = Screen.colors.Grey20},
-    [19] = {foreground = Screen.colors.DarkBlue, background = Screen.colors.WebGray},
-    [20] = {bold = true, foreground = Screen.colors.Brown},
-    [21] = {background = Screen.colors.Gray90},
-    [22] = {background = Screen.colors.LightRed},
-    [23] = {foreground = Screen.colors.Black, background = Screen.colors.White};
-    [24] = {foreground = Screen.colors.Black, background = Screen.colors.Grey80};
-    [25] = {blend = 100, background = Screen.colors.Gray0};
-    [26] = {blend = 80, background = Screen.colors.Gray0};
-    [27] = {background = Screen.colors.LightGray};
-  }
 
   it('behavior', function()
     -- Create three windows and test that ":wincmd <direction>" changes to the
@@ -196,6 +166,29 @@ describe('float window', function()
 
     eq(9, pos[1])
     eq(7, pos[2])
+  end)
+
+  it('opened with correct position relative to the mouse', function()
+    meths.input_mouse('left', 'press', '', 0, 10, 10)
+    local pos = exec_lua([[
+      local bufnr = vim.api.nvim_create_buf(false, true)
+
+      local opts = {
+        width = 10,
+        height = 10,
+        col = 1,
+        row = 2,
+        relative = 'mouse',
+        style = 'minimal'
+      }
+
+      local win_id = vim.api.nvim_open_win(bufnr, false, opts)
+
+      return vim.api.nvim_win_get_position(win_id)
+    ]])
+
+    eq(12, pos[1])
+    eq(11, pos[2])
   end)
 
   it('opened with correct position relative to the cursor', function()
@@ -419,6 +412,15 @@ describe('float window', function()
       call sort(winids)
     ]])
     eq(winids, eval('winids'))
+  end)
+
+  it('no crash with bufpos and non-existent window', function()
+    command('new')
+    local closed_win = meths.get_current_win().id
+    command('close')
+    local buf = meths.create_buf(false,false)
+    meths.open_win(buf, true, {relative='win', win=closed_win, width=1, height=1, bufpos={0,0}})
+    assert_alive()
   end)
 
   it("no segfault when setting minimal style after clearing local 'fillchars' #19510", function()
@@ -724,10 +726,41 @@ describe('float window', function()
   end)
 
   local function with_ext_multigrid(multigrid)
-    local screen
+    local screen, attrs
     before_each(function()
       screen = Screen.new(40,7)
       screen:attach {ext_multigrid=multigrid}
+      attrs = {
+        [0] = {bold=true, foreground=Screen.colors.Blue},
+        [1] = {background = Screen.colors.LightMagenta},
+        [2] = {background = Screen.colors.LightMagenta, bold = true, foreground = Screen.colors.Blue1},
+        [3] = {bold = true},
+        [4] = {bold = true, reverse = true},
+        [5] = {reverse = true},
+        [6] = {background = Screen.colors.LightMagenta, bold = true, reverse = true},
+        [7] = {foreground = Screen.colors.Grey100, background = Screen.colors.Red},
+        [8] = {bold = true, foreground = Screen.colors.SeaGreen4},
+        [9] = {background = Screen.colors.LightGrey, underline = true},
+        [10] = {background = Screen.colors.LightGrey, underline = true, bold = true, foreground = Screen.colors.Magenta},
+        [11] = {bold = true, foreground = Screen.colors.Magenta},
+        [12] = {background = Screen.colors.Red, bold = true, foreground = Screen.colors.Blue1},
+        [13] = {background = Screen.colors.WebGray},
+        [14] = {foreground = Screen.colors.Brown},
+        [15] = {background = Screen.colors.Grey20},
+        [16] = {background = Screen.colors.Grey20, bold = true, foreground = Screen.colors.Blue1},
+        [17] = {background = Screen.colors.Yellow},
+        [18] = {foreground = Screen.colors.Brown, background = Screen.colors.Grey20},
+        [19] = {foreground = Screen.colors.DarkBlue, background = Screen.colors.WebGray},
+        [20] = {bold = true, foreground = Screen.colors.Brown},
+        [21] = {background = Screen.colors.Gray90},
+        [22] = {background = Screen.colors.LightRed},
+        [23] = {foreground = Screen.colors.Black, background = Screen.colors.White};
+        [24] = {foreground = Screen.colors.Black, background = Screen.colors.Grey80};
+        [25] = {blend = 100, background = Screen.colors.Gray0};
+        [26] = {blend = 80, background = Screen.colors.Gray0};
+        [27] = {background = Screen.colors.LightGray};
+        [28] = {foreground = Screen.colors.DarkBlue, background = Screen.colors.LightGray};
+      }
       screen:set_default_attr_ids(attrs)
     end)
 
@@ -1319,6 +1352,54 @@ describe('float window', function()
       end
     end)
 
+    it("would not break 'minimal' style with statuscolumn set", function()
+      command('set number')
+      command('set signcolumn=yes')
+      command('set colorcolumn=1')
+      command('set cursorline')
+      command('set foldcolumn=1')
+      command('set statuscolumn=%l%s%C')
+      command('hi NormalFloat guibg=#333333')
+      feed('ix<cr>y<cr><esc>gg')
+      meths.open_win(0, false, {relative='editor', width=20, height=4, row=4, col=10, style='minimal'})
+      if multigrid then
+        screen:expect{grid=[[
+        ## grid 1
+          [2:----------------------------------------]|
+          [2:----------------------------------------]|
+          [2:----------------------------------------]|
+          [2:----------------------------------------]|
+          [2:----------------------------------------]|
+          [2:----------------------------------------]|
+          [3:----------------------------------------]|
+        ## grid 2
+          {20:1}{19:   }{20:   }{22:^x}{21:                                }|
+          {14:2}{19:   }{14:   }{22:y}                                |
+          {14:3}{19:   }{14:   }{22: }                                |
+          {0:~                                       }|
+          {0:~                                       }|
+          {0:~                                       }|
+        ## grid 3
+                                                  |
+        ## grid 4
+          {15:x                   }|
+          {15:y                   }|
+          {15:                    }|
+          {15:                    }|
+        ]], float_pos={[4] = {{id = 1001}, "NW", 1, 4, 10, true}}}
+      else
+        screen:expect{grid=[[
+          {20:1}{19:   }{20:   }{22:^x}{21:                                }|
+          {14:2}{19:   }{14:   }{22:y}                                |
+          {14:3}{19:   }{14:   }{22: }  {15:x                   }          |
+          {0:~         }{15:y                   }{0:          }|
+          {0:~         }{15:                    }{0:          }|
+          {0:~         }{15:                    }{0:          }|
+                                                  |
+        ]]}
+      end
+    end)
+
     it('can have border', function()
       local buf = meths.create_buf(false, false)
       meths.buf_set_lines(buf, 0, -1, true, {' halloj! ',
@@ -1728,6 +1809,28 @@ describe('float window', function()
           border='single', title_pos='left',
          }))
     end)
+
+    it('validate title_pos in nvim_win_get_config', function()
+      local title_pos = exec_lua([[
+        local bufnr = vim.api.nvim_create_buf(false, false)
+        local opts = {
+          relative = 'editor',
+          col = 2,
+          row = 5,
+          height = 2,
+          width = 9,
+          border = 'double',
+          title = 'Test',
+          title_pos = 'center'
+        }
+
+        local win_id = vim.api.nvim_open_win(bufnr, true, opts)
+        return vim.api.nvim_win_get_config(win_id).title_pos
+      ]])
+
+      eq('center', title_pos)
+    end)
+
 
     it('border with title', function()
       local buf = meths.create_buf(false, false)
@@ -3068,6 +3171,66 @@ describe('float window', function()
         ]]}
       end
 
+      command('set laststatus=0')
+      command('botright vnew')
+      if multigrid then
+        screen:expect{grid=[[
+        ## grid 1
+          [2:----]{5:│}[6:--------------------]|
+          [2:----]{5:│}[6:--------------------]|
+          [2:----]{5:│}[6:--------------------]|
+          [2:----]{5:│}[6:--------------------]|
+          [2:----]{5:│}[6:--------------------]|
+          [2:----]{5:│}[6:--------------------]|
+          [2:----]{5:│}[6:--------------------]|
+          [2:----]{5:│}[6:--------------------]|
+          [2:----]{5:│}[6:--------------------]|
+          [3:-------------------------]|
+        ## grid 2
+          exam|
+          ple |
+          text|
+           tha|
+          t is|
+           wid|
+          er t|
+          han |
+          the |
+        ## grid 3
+                                   |
+        ## grid 5
+          {1:some info!  }|
+        ## grid 6
+          ^                    |
+          {0:~                   }|
+          {0:~                   }|
+          {0:~                   }|
+          {0:~                   }|
+          {0:~                   }|
+          {0:~                   }|
+          {0:~                   }|
+          {0:~                   }|
+        ]], float_pos={
+          [5] = { {
+              id = 1002
+            }, "SW", 2, 8, 0, true }
+        }}
+      else
+        screen:expect{grid=[[
+          exam{5:│}^                    |
+          ple {5:│}{0:~                   }|
+          text{5:│}{0:~                   }|
+           tha{5:│}{0:~                   }|
+          t is{5:│}{0:~                   }|
+           wid{5:│}{0:~                   }|
+          er t{5:│}{0:~                   }|
+          {1:some info!  }{0:             }|
+          the {5:│}{0:~                   }|
+                                   |
+        ]]}
+      end
+      command('close')
+
       meths.win_set_config(win, {relative='win', bufpos={1,32}, anchor='NW', col=-2})
       if multigrid then
         screen:expect{grid=[[
@@ -3156,6 +3319,54 @@ describe('float window', function()
                                    |
                  {1:some info!  }      |
           more text                |
+          {0:~                        }|
+          {0:~                        }|
+          {0:~                        }|
+          {0:~                        }|
+                                   |
+        ]]}
+      end
+
+      command('%fold')
+      if multigrid then
+        screen:expect{grid=[[
+        ## grid 1
+          [2:-------------------------]|
+          [2:-------------------------]|
+          [2:-------------------------]|
+          [2:-------------------------]|
+          [2:-------------------------]|
+          [2:-------------------------]|
+          [2:-------------------------]|
+          [2:-------------------------]|
+          [2:-------------------------]|
+          [3:-------------------------]|
+        ## grid 2
+          {28:^+--  5 lines: just some··}|
+          {0:~                        }|
+          {0:~                        }|
+          {0:~                        }|
+          {0:~                        }|
+          {0:~                        }|
+          {0:~                        }|
+          {0:~                        }|
+          {0:~                        }|
+        ## grid 3
+                                   |
+        ## grid 5
+          {1:some info!  }|
+        ]], float_pos={
+          [5] = { {
+              id = 1002
+            }, "NW", 2, 2, 0, true }
+        }}
+      else
+        screen:expect{grid=[[
+          {28:^+--  5 lines: just some··}|
+          {0:~                        }|
+          {1:some info!  }{0:             }|
+          {0:~                        }|
+          {0:~                        }|
           {0:~                        }|
           {0:~                        }|
           {0:~                        }|
@@ -8712,6 +8923,34 @@ describe('float window', function()
                                                   |
         ]]}
       end
+    end)
+
+    describe('no crash after moving and closing float window #21547', function()
+      local function test_float_move_close(cmd)
+        local float_opts = {relative = 'editor', row = 1, col = 1, width = 10, height = 10}
+        meths.open_win(meths.create_buf(false, false), true, float_opts)
+        if multigrid then
+          screen:expect({float_pos = {[4] = {{id = 1001}, 'NW', 1, 1, 1, true}}})
+        end
+        command(cmd)
+        exec_lua([[
+          vim.api.nvim_win_set_config(0, {relative = 'editor', row = 2, col = 2})
+          vim.api.nvim_win_close(0, {})
+          vim.api.nvim_echo({{''}}, false, {})
+        ]])
+        if multigrid then
+          screen:expect({float_pos = {}})
+        end
+        assert_alive()
+      end
+
+      it('if WinClosed autocommand flushes UI', function()
+        test_float_move_close('autocmd WinClosed * ++once redraw')
+      end)
+
+      it('if closing buffer flushes UI', function()
+        test_float_move_close('autocmd BufWinLeave * ++once redraw')
+      end)
     end)
   end
 

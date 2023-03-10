@@ -42,6 +42,11 @@ Developer guidelines
   make distclean
   make  # Nvim build system uses ninja automatically, if available.
   ```
+- Install `ccache` for faster rebuilds of Nvim. Nvim will use it automatically
+  if it's found. To disable caching use:
+  ```
+  CCACHE_DISABLE=true make
+  ```
 
 Pull requests (PRs)
 ---------------------
@@ -93,7 +98,7 @@ the VCS/git logs more valuable. The general structure of a commit message is:
 ```
 
 - Prefix the commit subject with one of these [_types_](https://github.com/commitizen/conventional-commit-types/blob/master/index.json):
-    - `build`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `test`, `vim-patch`, `dist`
+    - `build`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `test`, `vim-patch`
     - You can **ignore this for "fixup" commits** or any commits you expect to be squashed.
 - Append optional scope to _type_ such as `(lsp)`, `(treesitter)`, `(float)`, …
 - _Description_ shouldn't start with a capital letter or end in a period.
@@ -116,10 +121,7 @@ Each pull request must pass the automated builds on [Cirrus CI] and [GitHub Acti
 
 - CI builds are compiled with [`-Werror`][gcc-warnings], so compiler warnings
   will fail the build.
-- If any tests fail, the build will fail.
-  See [test/README.md#running-tests][run-tests] to run tests locally.
-  Passing locally doesn't guarantee passing the CI build, because of the
-  different compilers and platforms tested against.
+- If any tests fail, the build will fail. See [test/README.md#running-tests][run-tests] to run tests locally.
 - CI runs [ASan] and other analyzers.
     - To run valgrind locally: `VALGRIND=1 make test`
     - To run Clang ASan/UBSan locally: `CC=clang make CMAKE_FLAGS="-DCLANG_ASAN_UBSAN=ON"`
@@ -127,6 +129,8 @@ Each pull request must pass the automated builds on [Cirrus CI] and [GitHub Acti
   neighbors_, to encourage incrementally updating the legacy style to meet our
   [style](#style). (See [#3174][3174] for background.)
 - CI for FreeBSD runs on [Cirrus CI].
+- To see CI results faster in your PR, you can temporarily set `TEST_FILE` in
+  [test.yml](https://github.com/neovim/neovim/blob/e35b9020b16985eee26e942f9a3f6b045bc3809b/.github/workflows/test.yml#L29).
 
 ### Clang scan-build
 
@@ -183,7 +187,7 @@ master build. To view the defects, just request access; you will be approved.
   ```
 - When running Neovim, use
   ```
-  UBSAN_OPTIONS=print_stacktrace=1 ASAN_OPTIONS=log_path=/tmp/nvim_asan nvim args...
+  UBSAN_OPTIONS=print_stacktrace=1 ASAN_OPTIONS=log_path=/tmp/nvim_asan,handle_abort=1,handle_sigill=1 nvim args...
   ```
 - If Neovim exits unexpectedly, check `/tmp/nvim_asan.{PID}` (or your preferred `log_path`) for log files with error messages.
 
@@ -247,10 +251,9 @@ You can lint a single file (but this will _not_ exclude legacy errors):
 For managing includes in C files, use [include-what-you-use].
 
 - [Install include-what-you-use][include-what-you-use-install]
-- To see which includes needs fixing just use the cmake preset `iwyu`:
+- To see which includes needs fixing use the cmake preset `iwyu`:
   ```
-  cmake --preset iwyu
-  cmake --build --preset iwyu
+  cmake --workflow --preset iwyu
   ```
 - There's also a make target that automatically fixes the suggestions from
   IWYU:

@@ -4,10 +4,12 @@ local clear, feed = helpers.clear, helpers.feed
 local source = helpers.source
 local command = helpers.command
 local assert_alive = helpers.assert_alive
-local uname = helpers.uname
+local poke_eventloop = helpers.poke_eventloop
 local exec = helpers.exec
 local eval = helpers.eval
 local eq = helpers.eq
+local is_os = helpers.is_os
+local meths = helpers.meths
 
 local function new_screen(opt)
   local screen = Screen.new(25, 5)
@@ -717,7 +719,7 @@ describe('cmdline redraw', function()
   end)
 
   it('with <Cmd>', function()
-    if string.find(uname(), 'bsd') then
+    if is_os('bsd') then
       pending('FIXME #10804')
     end
     command('cmap a <Cmd>call sin(0)<CR>')  -- no-op
@@ -1350,5 +1352,58 @@ describe('cmdheight=0', function()
       {1:~                             }│{1:~                            }|
       {1:~                             }│{1:~                            }|
     ]])
+  end)
+
+  it('no assert failure with showcmd', function()
+    command('set showcmd cmdheight=0')
+    feed('d')
+    screen:expect([[
+      ^                         |
+      {1:~                        }|
+      {1:~                        }|
+      {1:~                        }|
+      {1:~                        }|
+    ]])
+    assert_alive()
+  end)
+
+  it('can only be resized to 0 if set explicitly', function()
+    command('set laststatus=2')
+    command('resize +1')
+    screen:expect([[
+      ^                         |
+      {1:~                        }|
+      {1:~                        }|
+      {2:[No Name]                }|
+                               |
+    ]])
+    command('set cmdheight=0')
+    command('resize -1')
+    command('resize +1')
+    screen:expect([[
+      ^                         |
+      {1:~                        }|
+      {1:~                        }|
+      {1:~                        }|
+      {2:[No Name]                }|
+    ]])
+  end)
+
+  it("cannot be resized at all with external messages", function()
+    clear()
+    screen = new_screen({rgb=true, ext_messages=true})
+    command('set laststatus=2 mouse=a')
+    command('resize -1')
+    screen:expect([[
+      ^                         |
+      {1:~                        }|
+      {1:~                        }|
+      {1:~                        }|
+      {3:[No Name]                }|
+    ]])
+    meths.input_mouse('left', 'press', '', 0, 6, 10)
+    poke_eventloop()
+    meths.input_mouse('left', 'drag', '', 0, 5, 10)
+    screen:expect_unchanged()
   end)
 end)

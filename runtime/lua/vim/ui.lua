@@ -1,6 +1,7 @@
 local M = {}
 
---- Prompts the user to pick a single item from a collection of entries
+--- Prompts the user to pick from a list of items, allowing arbitrary (potentially asynchronous)
+--- work until `on_choice`.
 ---
 ---@param items table Arbitrary items
 ---@param opts table Additional options
@@ -21,7 +22,7 @@ local M = {}
 ---
 ---
 --- Example:
---- <pre>
+--- <pre>lua
 --- vim.ui.select({ 'tabs', 'spaces' }, {
 ---     prompt = 'Select tabs or spaces:',
 ---     format_item = function(item)
@@ -35,7 +36,6 @@ local M = {}
 ---     end
 --- end)
 --- </pre>
-
 function M.select(items, opts, on_choice)
   vim.validate({
     items = { items, 'table', false },
@@ -55,7 +55,8 @@ function M.select(items, opts, on_choice)
   end
 end
 
---- Prompts the user for input
+--- Prompts the user for input, allowing arbitrary (potentially asynchronous) work until
+--- `on_confirm`.
 ---
 ---@param opts table Additional options. See |input()|
 ---     - prompt (string|nil)
@@ -78,7 +79,7 @@ end
 ---               `nil` if the user aborted the dialog.
 ---
 --- Example:
---- <pre>
+--- <pre>lua
 --- vim.ui.input({ prompt = 'Enter value for shiftwidth: ' }, function(input)
 ---     vim.o.shiftwidth = tonumber(input)
 --- end)

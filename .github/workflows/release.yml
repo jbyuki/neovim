@@ -25,9 +25,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf automake build-essential cmake gettext libtool-bin locales ninja-build pkg-config unzip
+        run: ./.github/scripts/install_deps.sh
       - if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name != 'nightly')
         run: printf 'NVIM_BUILD_TYPE=Release\n' >> $GITHUB_ENV
       - if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name == 'nightly')
@@ -35,8 +33,10 @@ jobs:
       - name: Build release
         id: build
         run: |
-          CC=gcc-10 make CMAKE_BUILD_TYPE=${NVIM_BUILD_TYPE} CMAKE_EXTRA_FLAGS="-DCMAKE_INSTALL_PREFIX:PATH="
-          printf 'version=%s\n' "$(./build/bin/nvim --version | head -n 3 | sed -z 's/\n/%0A/g')" >> $GITHUB_OUTPUT
+          CC=gcc-10 make CMAKE_BUILD_TYPE=${NVIM_BUILD_TYPE} CMAKE_EXTRA_FLAGS="-DCI_BUILD=OFF -DCMAKE_INSTALL_PREFIX:PATH="
+          printf 'version<<END\n' >> $GITHUB_OUTPUT
+          ./build/bin/nvim --version | head -n 3 >> $GITHUB_OUTPUT
+          printf 'END\n' >> $GITHUB_OUTPUT
           printf 'release=%s\n' "$(./build/bin/nvim --version | head -n 1)" >> $GITHUB_OUTPUT
           make DESTDIR="$GITHUB_WORKSPACE/build/release/nvim-linux64" install
           cd "$GITHUB_WORKSPACE/build/"
@@ -72,7 +72,7 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get update
-          apt-get install -y autoconf automake build-essential cmake gettext libtool-bin locales ninja-build pkg-config unzip
+          apt-get install -y build-essential cmake gettext locales ninja-build pkg-config unzip
       - if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name != 'nightly')
         run: CC=gcc-10 make appimage-latest
       - if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name == 'nightly')
@@ -91,48 +91,14 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - name: Install brew packages
-        run: |
-          brew update --quiet
-          brew install automake ninja
+      - name: Install dependencies
+        run: ./.github/scripts/install_deps.sh
       - if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name != 'nightly')
         run: printf 'NVIM_BUILD_TYPE=Release\n' >> $GITHUB_ENV
       - if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name == 'nightly')
         run: printf 'NVIM_BUILD_TYPE=RelWithDebInfo\n' >> $GITHUB_ENV
-      - name: Provision universal `libintl`
-        run: |
-          GETTEXT_PREFIX="$(brew --prefix gettext)"
-          printf 'GETTEXT_PREFIX=%s\n' "$GETTEXT_PREFIX" >> $GITHUB_ENV
-          bottle_tag="arm64_big_sur"
-          brew fetch --bottle-tag="$bottle_tag" gettext
-          cd "$(mktemp -d)"
-          tar xf "$(brew --cache)"/**/*gettext*${bottle_tag}*.tar.gz
-          lipo gettext/*/lib/libintl.a "${GETTEXT_PREFIX}/lib/libintl.a" -create -output libintl.a
-          mv -f libintl.a /usr/local/lib/
-      - name: Ensure static linkage to `libintl`
-        run: |
-          # We're about to mangle `gettext`, so let's remove any potentially broken
-          # installs (e.g. curl, git) as those could interfere with our build.
-          brew uninstall $(brew uses --installed --recursive gettext)
-          brew unlink gettext
-          ln -sf "$(brew --prefix)/opt/$(readlink "${GETTEXT_PREFIX}")/bin"/* /usr/local/bin/
-          ln -sf "$(brew --prefix)/opt/$(readlink "${GETTEXT_PREFIX}")/include"/* /usr/local/include/
-          rm -f "$GETTEXT_PREFIX"
-      - name: Build release
-        run: |
-          export MACOSX_DEPLOYMENT_TARGET="$(sw_vers -productVersion | cut -f1 -d.)"
-          OSX_FLAGS="-DCMAKE_OSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET} -DCMAKE_OSX_ARCHITECTURES=arm64\;x86_64"
-          make CMAKE_BUILD_TYPE=${NVIM_BUILD_TYPE} \
-               CMAKE_EXTRA_FLAGS="-DCMAKE_INSTALL_PREFIX:PATH= $OSX_FLAGS" \
-               DEPS_CMAKE_FLAGS="$OSX_FLAGS"
-          make DESTDIR="$GITHUB_WORKSPACE/build/release/nvim-macos" install
-          cd "$GITHUB_WORKSPACE/build/"
-          # Make sure we build everything for M1 as well
-          for macho in bin/* lib/nvim/parser/*.so
-          do
-          lipo -info "$macho" | grep -q arm64 || exit 1
-          done
-          cpack -C "$NVIM_BUILD_TYPE"
+      - name: Build universal binary
+        run: ./.github/scripts/build_universal_macos.sh
       - uses: actions/upload-artifact@v3
         with:
           name: nvim-macos
@@ -141,24 +107,27 @@ jobs:
 
   windows:
     runs-on: windows-2019
-    env:
-      DEPS_BUILD_DIR: ${{ format('{0}/nvim-deps', github.workspace) }}
-      DEPS_PREFIX: ${{ format('{0}/nvim-deps/usr', github.workspace) }}
-      CMAKE_BUILD_TYPE: "RelWithDebInfo"
     name: windows (MSVC_64)
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
       - name: Set env
-        run: ./.github/workflows/env.ps1
+        run: |
+          $installationPath = vswhere.exe -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($installationPath -and (Test-Path "$installationPath\Common7\Tools\vsdevcmd.bat")) {
+            & "${env:COMSPEC}" /s /c "`"$installationPath\Common7\Tools\vsdevcmd.bat`" -arch=x64 -no_logo && set" | ForEach-Object {
+              $name, $value = $_ -split '=', 2
+              "$name=$value" >> $env:GITHUB_ENV
+            }
+          }
       - name: Build deps
         run: |
-          cmake -S cmake.deps -B $env:DEPS_BUILD_DIR -G Ninja -DCMAKE_BUILD_TYPE='RelWithDebInfo'
-          cmake --build $env:DEPS_BUILD_DIR
+          cmake -S cmake.deps -B .deps -G Ninja -DCMAKE_BUILD_TYPE='RelWithDebInfo'
+          cmake --build .deps
       - name: build package
         run: |
-          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE='RelWithDebInfo' -DDEPS_PREFIX="$env:DEPS_PREFIX"
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE='RelWithDebInfo' -D CI_BUILD=OFF
           cmake --build build --target package
       - uses: actions/upload-artifact@v3
         with:
@@ -254,7 +223,7 @@ jobs:
     steps:
       - if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name != 'nightly')
         name: Publish stable
-        uses: vedantmgoyal2009/winget-releaser@v1
+        uses: vedantmgoyal2009/winget-releaser@v2
         with:
           identifier: Neovim.Neovim
           release-tag: ${{ github.event.inputs.tag_name || github.ref_name }}
@@ -269,7 +238,7 @@ jobs:
           "version=$VERSION" >> $env:GITHUB_OUTPUT
       - if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name == 'nightly')
         name: Publish nightly
-        uses: vedantmgoyal2009/winget-releaser@v1
+        uses: vedantmgoyal2009/winget-releaser@v2
         with:
           identifier: Neovim.Neovim.Nightly
           version: ${{ steps.get-version.outputs.version }}

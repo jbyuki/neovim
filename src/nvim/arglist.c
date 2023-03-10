@@ -13,9 +13,9 @@
 #include "nvim/ascii.h"
 #include "nvim/buffer.h"
 #include "nvim/charset.h"
-#include "nvim/eval.h"
 #include "nvim/eval/typval.h"
 #include "nvim/eval/typval_defs.h"
+#include "nvim/eval/window.h"
 #include "nvim/ex_cmds.h"
 #include "nvim/ex_cmds2.h"
 #include "nvim/ex_cmds_defs.h"
@@ -29,7 +29,7 @@
 #include "nvim/memline_defs.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
-#include "nvim/option_defs.h"
+#include "nvim/option.h"
 #include "nvim/os/input.h"
 #include "nvim/path.h"
 #include "nvim/pos.h"
@@ -380,7 +380,7 @@ static void arglist_del_files(garray_T *alist_ga)
     if (p == NULL) {
       break;
     }
-    regmatch.regprog = vim_regcomp(p, p_magic ? RE_MAGIC : 0);
+    regmatch.regprog = vim_regcomp(p, magic_isset() ? RE_MAGIC : 0);
     if (regmatch.regprog == NULL) {
       xfree(p);
       break;
@@ -619,8 +619,6 @@ void ex_argument(exarg_T *eap)
 /// Edit file "argn" of the argument lists.
 void do_argfile(exarg_T *eap, int argn)
 {
-  int other;
-  char *p;
   int old_arg_idx = curwin->w_arg_idx;
 
   if (argn < 0 || argn >= ARGCOUNT) {
@@ -631,58 +629,58 @@ void do_argfile(exarg_T *eap, int argn)
     } else {
       emsg(_("E165: Cannot go beyond last file"));
     }
+
+    return;
+  }
+
+  setpcmark();
+
+  // split window or create new tab page first
+  if (*eap->cmd == 's' || cmdmod.cmod_tab != 0) {
+    if (win_split(0, 0) == FAIL) {
+      return;
+    }
+    RESET_BINDING(curwin);
   } else {
-    setpcmark();
-
-    // split window or create new tab page first
-    if (*eap->cmd == 's' || cmdmod.cmod_tab != 0) {
-      if (win_split(0, 0) == FAIL) {
-        return;
-      }
-      RESET_BINDING(curwin);
-    } else {
-      // if 'hidden' set, only check for changed file when re-editing
-      // the same buffer
-      other = true;
-      if (buf_hide(curbuf)) {
-        p = fix_fname(alist_name(&ARGLIST[argn]));
-        other = otherfile(p);
-        xfree(p);
-      }
-      if ((!buf_hide(curbuf) || !other)
-          && check_changed(curbuf, CCGD_AW
-                           | (other ? 0 : CCGD_MULTWIN)
-                           | (eap->forceit ? CCGD_FORCEIT : 0)
-                           | CCGD_EXCMD)) {
-        return;
-      }
+    // if 'hidden' set, only check for changed file when re-editing
+    // the same buffer
+    int other = true;
+    if (buf_hide(curbuf)) {
+      char *p = fix_fname(alist_name(&ARGLIST[argn]));
+      other = otherfile(p);
+      xfree(p);
     }
-
-    curwin->w_arg_idx = argn;
-    if (argn == ARGCOUNT - 1 && curwin->w_alist == &global_alist) {
-      arg_had_last = true;
+    if ((!buf_hide(curbuf) || !other)
+        && check_changed(curbuf, CCGD_AW
+                         | (other ? 0 : CCGD_MULTWIN)
+                         | (eap->forceit ? CCGD_FORCEIT : 0)
+                         | CCGD_EXCMD)) {
+      return;
     }
+  }
 
-    // Edit the file; always use the last known line number.
-    // When it fails (e.g. Abort for already edited file) restore the
-    // argument index.
-    if (do_ecmd(0, alist_name(&ARGLIST[curwin->w_arg_idx]), NULL,
-                eap, ECMD_LAST,
-                (buf_hide(curwin->w_buffer) ? ECMD_HIDE : 0)
-                + (eap->forceit ? ECMD_FORCEIT : 0), curwin) == FAIL) {
-      curwin->w_arg_idx = old_arg_idx;
-    } else if (eap->cmdidx != CMD_argdo) {
-      // like Vi: set the mark where the cursor is in the file.
-      setmark('\'');
-    }
+  curwin->w_arg_idx = argn;
+  if (argn == ARGCOUNT - 1 && curwin->w_alist == &global_alist) {
+    arg_had_last = true;
+  }
+
+  // Edit the file; always use the last known line number.
+  // When it fails (e.g. Abort for already edited file) restore the
+  // argument index.
+  if (do_ecmd(0, alist_name(&ARGLIST[curwin->w_arg_idx]), NULL,
+              eap, ECMD_LAST,
+              (buf_hide(curwin->w_buffer) ? ECMD_HIDE : 0)
+              + (eap->forceit ? ECMD_FORCEIT : 0), curwin) == FAIL) {
+    curwin->w_arg_idx = old_arg_idx;
+  } else if (eap->cmdidx != CMD_argdo) {
+    // like Vi: set the mark where the cursor is in the file.
+    setmark('\'');
   }
 }
 
 /// ":next", and commands that behave like it.
 void ex_next(exarg_T *eap)
 {
-  int i;
-
   // check for changed buffer now, if this fails the argument list is not
   // redefined.
   if (buf_hide(curbuf)
@@ -690,6 +688,7 @@ void ex_next(exarg_T *eap)
       || !check_changed(curbuf, CCGD_AW
                         | (eap->forceit ? CCGD_FORCEIT : 0)
                         | CCGD_EXCMD)) {
+    int i;
     if (*eap->arg != NUL) {                 // redefine file list
       if (do_arglist(eap->arg, AL_SET, 0, true) == FAIL) {
         return;
@@ -1092,7 +1091,7 @@ static void do_arg_all(int count, int forceit, int keep_tabs)
   last_curtab = curtab;
   win_enter(lastwin, false);
 
-  // Open upto "count" windows.
+  // Open up to "count" windows.
   arg_all_open_windows(&aall, count);
 
   // Remove the "lock" on the argument list.

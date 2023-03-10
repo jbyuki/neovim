@@ -6,6 +6,7 @@ local command, exec = helpers.command, helpers.exec
 local eval = helpers.eval
 local feed_command, eq = helpers.feed_command, helpers.eq
 local curbufmeths = helpers.curbufmeths
+local funcs = helpers.funcs
 local meths = helpers.meths
 
 describe('colorscheme compatibility', function()
@@ -13,7 +14,9 @@ describe('colorscheme compatibility', function()
     clear()
   end)
 
-  it('t_Co is set to 256 by default', function()
+  it('&t_Co exists and is set to 256 by default', function()
+    eq(1, funcs.exists('&t_Co'))
+    eq(1, funcs.exists('+t_Co'))
     eq('256', eval('&t_Co'))
   end)
 end)
@@ -1403,7 +1406,7 @@ describe('ColorColumn highlight', function()
   before_each(function()
     clear()
     screen = Screen.new(40, 15)
-    Screen:set_default_attr_ids({
+    screen:set_default_attr_ids({
       [1] = {background = Screen.colors.LightRed},  -- ColorColumn
       [2] = {background = Screen.colors.Grey90},  -- CursorLine
       [3] = {foreground = Screen.colors.Brown},  -- LineNr

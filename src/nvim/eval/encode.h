@@ -4,6 +4,7 @@
 #include <msgpack.h>
 #include <msgpack/pack.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "nvim/eval.h"
 #include "nvim/eval/typval.h"
@@ -47,7 +48,7 @@ static inline ListReaderState encode_init_lrstate(const list_T *const list)
     .offset = 0,
     .li_length = (TV_LIST_ITEM_TV(tv_list_first(list))->vval.v_string == NULL
                   ? 0
-                  : STRLEN(TV_LIST_ITEM_TV(tv_list_first(list))->vval.v_string)),
+                  : strlen(TV_LIST_ITEM_TV(tv_list_first(list))->vval.v_string)),
   };
 }
 

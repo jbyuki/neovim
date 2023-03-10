@@ -23,7 +23,6 @@ typedef struct term_input {
   int in_fd;
   // Phases: -1=all 0=disabled 1=first-chunk 2=continue 3=last-chunk
   int8_t paste;
-  bool waiting;
   bool ttimeout;
   int8_t waiting_for_bg_response;
   int8_t waiting_for_csiu_response;
@@ -35,23 +34,17 @@ typedef struct term_input {
   Loop *loop;
   Stream read_stream;
   RBuffer *key_buffer;
-  uv_mutex_t key_buffer_mutex;
-  uv_cond_t key_buffer_cond;
   TUIData *tui_data;
 } TermInput;
 
-#ifdef INCLUDE_GENERATED_DECLARATIONS
-# include "tui/input.h.generated.h"
-#endif
-
-#ifdef UNIT_TESTING
 typedef enum {
   kIncomplete = -1,
   kNotApplicable = 0,
   kComplete = 1,
 } HandleState;
 
-HandleState ut_handle_background_color(TermInput *input);
+#ifdef INCLUDE_GENERATED_DECLARATIONS
+# include "tui/input.h.generated.h"
 #endif
 
 #endif  // NVIM_TUI_INPUT_H

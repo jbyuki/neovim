@@ -117,23 +117,44 @@ M['window/showMessageRequest'] = function(_, result)
 end
 
 --see: https://microsoft.github.io/language-server-protocol/specifications/specification-current/#client_registerCapability
-M['client/registerCapability'] = function(_, _, ctx)
-  local client_id = ctx.client_id
-  local warning_tpl = 'The language server %s triggers a registerCapability '
-    .. 'handler despite dynamicRegistration set to false. '
-    .. 'Report upstream, this warning is harmless'
-  local client = vim.lsp.get_client_by_id(client_id)
-  local client_name = client and client.name or string.format('id=%d', client_id)
-  local warning = string.format(warning_tpl, client_name)
-  log.warn(warning)
+M['client/registerCapability'] = function(_, result, ctx)
+  local log_unsupported = false
+  for _, reg in ipairs(result.registrations) do
+    if reg.method == 'workspace/didChangeWatchedFiles' then
+      require('vim.lsp._watchfiles').register(reg, ctx)
+    else
+      log_unsupported = true
+    end
+  end
+  if log_unsupported then
+    local client_id = ctx.client_id
+    local warning_tpl = 'The language server %s triggers a registerCapability '
+      .. 'handler despite dynamicRegistration set to false. '
+      .. 'Report upstream, this warning is harmless'
+    local client = vim.lsp.get_client_by_id(client_id)
+    local client_name = client and client.name or string.format('id=%d', client_id)
+    local warning = string.format(warning_tpl, client_name)
+    log.warn(warning)
+  end
+  return vim.NIL
+end
+
+--see: https://microsoft.github.io/language-server-protocol/specifications/specification-current/#client_unregisterCapability
+M['client/unregisterCapability'] = function(_, result, ctx)
+  for _, unreg in ipairs(result.unregisterations) do
+    if unreg.method == 'workspace/didChangeWatchedFiles' then
+      require('vim.lsp._watchfiles').unregister(unreg, ctx)
+    end
+  end
   return vim.NIL
 end
 
 --see: https://microsoft.github.io/language-server-protocol/specifications/specification-current/#workspace_applyEdit
 M['workspace/applyEdit'] = function(_, workspace_edit, ctx)
-  if not workspace_edit then
-    return
-  end
+  assert(
+    workspace_edit,
+    'workspace/applyEdit must be called with `ApplyWorkspaceEditParams`. Server is violating the specification'
+  )
   -- TODO(ashkan) Do something more with label?
   local client_id = ctx.client_id
   local client = vim.lsp.get_client_by_id(client_id)
@@ -313,13 +334,15 @@ M['textDocument/completion'] = function(_, result, _, _)
 end
 
 --- |lsp-handler| for the method "textDocument/hover"
---- <pre>
---- vim.lsp.handlers["textDocument/hover"] = vim.lsp.with(
----   vim.lsp.handlers.hover, {
----     -- Use a sharp border with `FloatBorder` highlights
----     border = "single"
----   }
---- )
+--- <pre>lua
+---   vim.lsp.handlers["textDocument/hover"] = vim.lsp.with(
+---     vim.lsp.handlers.hover, {
+---       -- Use a sharp border with `FloatBorder` highlights
+---       border = "single",
+---       -- add the title in hover float window
+---       title = "hover"
+---     }
+---   )
 --- </pre>
 ---@param config table Configuration table.
 ---     - border:     (default=nil)
@@ -333,7 +356,9 @@ function M.hover(_, result, ctx, config)
     return
   end
   if not (result and result.contents) then
-    vim.notify('No information available')
+    if config.silent ~= true then
+      vim.notify('No information available')
+    end
     return
   end
   local markdown_lines = util.convert_input_to_markdown_lines(result.contents)
@@ -397,13 +422,13 @@ M['textDocument/implementation'] = location_handler
 
 --- |lsp-handler| for the method "textDocument/signatureHelp".
 --- The active parameter is highlighted with |hl-LspSignatureActiveParameter|.
---- <pre>
---- vim.lsp.handlers["textDocument/signatureHelp"] = vim.lsp.with(
----   vim.lsp.handlers.signature_help, {
----     -- Use a sharp border with `FloatBorder` highlights
----     border = "single"
----   }
---- )
+--- <pre>lua
+---   vim.lsp.handlers["textDocument/signatureHelp"] = vim.lsp.with(
+---     vim.lsp.handlers.signature_help, {
+---       -- Use a sharp border with `FloatBorder` highlights
+---       border = "single"
+---     }
+---   )
 --- </pre>
 ---@param config table Configuration table.
 ---     - border:     (default=nil)
@@ -577,7 +602,10 @@ M['window/showDocument'] = function(_, result, ctx, _)
     range = result.selection,
   }
 
-  local success = util.show_document(location, client.offset_encoding, true, result.takeFocus)
+  local success = util.show_document(location, client.offset_encoding, {
+    reuse_win = true,
+    focus = result.takeFocus,
+  })
   return { success = success or false }
 end
 

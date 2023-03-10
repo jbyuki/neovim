@@ -55,7 +55,7 @@ static const struct modmasktable {
 
 #define MOD_KEYS_ENTRY_SIZE 5
 
-static char_u modifier_keys_table[] = {
+static uint8_t modifier_keys_table[] = {
   //  mod mask      with modifier               without modifier
   MOD_MASK_SHIFT, '&', '9',                   '@', '1',         // begin
   MOD_MASK_SHIFT, '&', '0',                   '@', '2',         // cancel
@@ -403,22 +403,24 @@ int name_to_mod_mask(int c)
 int simplify_key(const int key, int *modifiers)
   FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_NONNULL_ALL
 {
-  if (*modifiers & (MOD_MASK_SHIFT | MOD_MASK_CTRL | MOD_MASK_ALT)) {
-    // TAB is a special case.
-    if (key == TAB && (*modifiers & MOD_MASK_SHIFT)) {
-      *modifiers &= ~MOD_MASK_SHIFT;
-      return K_S_TAB;
-    }
-    const int key0 = KEY2TERMCAP0(key);
-    const int key1 = KEY2TERMCAP1(key);
-    for (int i = 0; modifier_keys_table[i] != NUL; i += MOD_KEYS_ENTRY_SIZE) {
-      if (key0 == modifier_keys_table[i + 3]
-          && key1 == modifier_keys_table[i + 4]
-          && (*modifiers & modifier_keys_table[i])) {
-        *modifiers &= ~modifier_keys_table[i];
-        return TERMCAP2KEY(modifier_keys_table[i + 1],
-                           modifier_keys_table[i + 2]);
-      }
+  if (!(*modifiers & (MOD_MASK_SHIFT | MOD_MASK_CTRL | MOD_MASK_ALT))) {
+    return key;
+  }
+
+  // TAB is a special case.
+  if (key == TAB && (*modifiers & MOD_MASK_SHIFT)) {
+    *modifiers &= ~MOD_MASK_SHIFT;
+    return K_S_TAB;
+  }
+  const int key0 = KEY2TERMCAP0(key);
+  const int key1 = KEY2TERMCAP1(key);
+  for (int i = 0; modifier_keys_table[i] != NUL; i += MOD_KEYS_ENTRY_SIZE) {
+    if (key0 == modifier_keys_table[i + 3]
+        && key1 == modifier_keys_table[i + 4]
+        && (*modifiers & modifier_keys_table[i])) {
+      *modifiers &= ~modifier_keys_table[i];
+      return TERMCAP2KEY(modifier_keys_table[i + 1],
+                         modifier_keys_table[i + 2]);
     }
   }
   return key;
@@ -472,7 +474,7 @@ char_u *get_special_key_name(int c, int modifiers)
 
   int i, idx;
   int table_idx;
-  char_u *s;
+  char *s;
 
   string[0] = '<';
   idx = 1;
@@ -541,7 +543,7 @@ char_u *get_special_key_name(int c, int modifiers)
       } else {
         s = transchar(c);
         while (*s) {
-          string[idx++] = *s++;
+          string[idx++] = (uint8_t)(*s++);
         }
       }
     }
@@ -570,7 +572,7 @@ char_u *get_special_key_name(int c, int modifiers)
 /// @param[out]  did_simplify  found <C-H>, etc.
 ///
 /// @return Number of characters added to dst, zero for no match.
-unsigned int trans_special(const char_u **const srcp, const size_t src_len, char_u *const dst,
+unsigned int trans_special(const char **const srcp, const size_t src_len, char *const dst,
                            const int flags, const bool escape_ks, bool *const did_simplify)
   FUNC_ATTR_NONNULL_ARG(1, 3) FUNC_ATTR_WARN_UNUSED_RESULT
 {
@@ -588,27 +590,27 @@ unsigned int trans_special(const char_u **const srcp, const size_t src_len, char
 /// When "escape_ks" is true escape K_SPECIAL bytes in the character.
 /// The sequence is not NUL terminated.
 /// This is how characters in a string are encoded.
-unsigned int special_to_buf(int key, int modifiers, bool escape_ks, char_u *dst)
+unsigned int special_to_buf(int key, int modifiers, bool escape_ks, char *dst)
 {
   unsigned int dlen = 0;
 
   // Put the appropriate modifier in a string.
   if (modifiers != 0) {
-    dst[dlen++] = K_SPECIAL;
-    dst[dlen++] = KS_MODIFIER;
-    dst[dlen++] = (char_u)modifiers;
+    dst[dlen++] = (char)(uint8_t)K_SPECIAL;
+    dst[dlen++] = (char)(uint8_t)KS_MODIFIER;
+    dst[dlen++] = (char)(uint8_t)modifiers;
   }
 
   if (IS_SPECIAL(key)) {
-    dst[dlen++] = K_SPECIAL;
-    dst[dlen++] = (char_u)KEY2TERMCAP0(key);
-    dst[dlen++] = KEY2TERMCAP1(key);
+    dst[dlen++] = (char)(uint8_t)K_SPECIAL;
+    dst[dlen++] = (char)(uint8_t)KEY2TERMCAP0(key);
+    dst[dlen++] = (char)(uint8_t)KEY2TERMCAP1(key);
   } else if (escape_ks) {
-    char_u *after = add_char2buf(key, dst + dlen);
+    char *after = add_char2buf(key, dst + dlen);
     assert(after >= dst && (uintmax_t)(after - dst) <= UINT_MAX);
     dlen = (unsigned int)(after - dst);
   } else {
-    dlen += (unsigned int)utf_char2bytes(key, (char *)dst + dlen);
+    dlen += (unsigned int)utf_char2bytes(key, dst + dlen);
   }
 
   return dlen;
@@ -623,19 +625,18 @@ unsigned int special_to_buf(int key, int modifiers, bool escape_ks, char_u *dst)
 /// @param[out]  did_simplify  FSK_SIMPLIFY and found <C-H>, etc.
 ///
 /// @return Key and modifiers or 0 if there is no match.
-int find_special_key(const char_u **const srcp, const size_t src_len, int *const modp,
+int find_special_key(const char **const srcp, const size_t src_len, int *const modp,
                      const int flags, bool *const did_simplify)
   FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_NONNULL_ARG(1, 3)
 {
-  const char_u *last_dash;
-  const char_u *end_of_name;
-  const char_u *src;
-  const char_u *bp;
-  const char_u *const end = *srcp + src_len - 1;
+  const char *last_dash;
+  const char *end_of_name;
+  const char *src;
+  const char *bp;
+  const char *const end = *srcp + src_len - 1;
   const bool in_string = flags & FSK_IN_STRING;
   int modifiers;
   int bit;
-  int key;
   uvarnumber_T n;
   int l;
 
@@ -657,7 +658,7 @@ int find_special_key(const char_u **const srcp, const size_t src_len, int *const
     if (*bp == '-') {
       last_dash = bp;
       if (bp + 1 <= end) {
-        l = utfc_ptr2len_len((char *)bp + 1, (int)(end - bp) + 1);
+        l = utfc_ptr2len_len(bp + 1, (int)(end - bp) + 1);
         // Anything accepted, like <C-?>.
         // <C-"> or <M-"> are not special in strings as " is
         // the string delimiter. With a backslash it works: <M-\">
@@ -672,7 +673,7 @@ int find_special_key(const char_u **const srcp, const size_t src_len, int *const
     if (end - bp > 3 && bp[0] == 't' && bp[1] == '_') {
       bp += 3;  // skip t_xx, xx may be '-' or '>'
     } else if (end - bp > 4 && STRNICMP(bp, "char-", 5) == 0) {
-      vim_str2nr((char *)bp + 5, NULL, &l, STR2NR_ALL, NULL, NULL, 0, true);
+      vim_str2nr(bp + 5, NULL, &l, STR2NR_ALL, NULL, NULL, 0, true, NULL);
       if (l == 0) {
         emsg(_(e_invarg));
         return 0;
@@ -683,13 +684,14 @@ int find_special_key(const char_u **const srcp, const size_t src_len, int *const
   }
 
   if (bp <= end && *bp == '>') {  // found matching '>'
+    int key;
     end_of_name = bp + 1;
 
     // Which modifiers are given?
     modifiers = 0x0;
     for (bp = src + 1; bp < last_dash; bp++) {
       if (*bp != '-') {
-        bit = name_to_mod_mask(*bp);
+        bit = name_to_mod_mask((uint8_t)(*bp));
         if (bit == 0x0) {
           break;                // Illegal modifier name
         }
@@ -702,7 +704,7 @@ int find_special_key(const char_u **const srcp, const size_t src_len, int *const
       if (STRNICMP(last_dash + 1, "char-", 5) == 0
           && ascii_isdigit(last_dash[6])) {
         // <Char-123> or <Char-033> or <Char-0x33>
-        vim_str2nr((char *)last_dash + 6, NULL, &l, STR2NR_ALL, NULL, &n, 0, true);
+        vim_str2nr(last_dash + 6, NULL, &l, STR2NR_ALL, NULL, &n, 0, true, NULL);
         if (l == 0) {
           emsg(_(e_invarg));
           return 0;
@@ -716,10 +718,10 @@ int find_special_key(const char_u **const srcp, const size_t src_len, int *const
           // Special case for a double-quoted string
           off = l = 2;
         } else {
-          l = utfc_ptr2len((char *)last_dash + 1);
+          l = utfc_ptr2len(last_dash + 1);
         }
         if (modifiers != 0 && last_dash[l + 1] == '>') {
-          key = utf_ptr2char((char *)last_dash + off);
+          key = utf_ptr2char(last_dash + off);
         } else {
           key = get_special_key_code(last_dash + off);
           if (!(flags & FSK_KEEP_X_KEY)) {
@@ -820,18 +822,18 @@ int find_special_key_in_table(int c)
 ///                   a termcap name.
 ///
 /// @return Key code or 0 if not found.
-int get_special_key_code(const char_u *name)
+int get_special_key_code(const char *name)
   FUNC_ATTR_NONNULL_ALL FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT
 {
   for (int i = 0; key_names_table[i].name != NULL; i++) {
     const char *const table_name = key_names_table[i].name;
     int j;
-    for (j = 0; ascii_isident(name[j]) && table_name[j] != NUL; j++) {
-      if (TOLOWER_ASC(table_name[j]) != TOLOWER_ASC(name[j])) {
+    for (j = 0; ascii_isident((uint8_t)name[j]) && table_name[j] != NUL; j++) {
+      if (TOLOWER_ASC(table_name[j]) != TOLOWER_ASC((uint8_t)name[j])) {
         break;
       }
     }
-    if (!ascii_isident(name[j]) && table_name[j] == NUL) {
+    if (!ascii_isident((uint8_t)name[j]) && table_name[j] == NUL) {
       return key_names_table[i].key;
     }
   }
@@ -885,11 +887,11 @@ char *replace_termcodes(const char *const from, const size_t from_len, char **co
 {
   ssize_t i;
   size_t slen;
-  char_u key;
+  char key;
   size_t dlen = 0;
-  const char_u *src;
-  const char_u *const end = (char_u *)from + from_len - 1;
-  char_u *result;          // buffer for resulting string
+  const char *src;
+  const char *const end = from + from_len - 1;
+  char *result;          // buffer for resulting string
 
   const bool do_backslash = !(cpo_flags & FLAG_CPO_BSLASH);  // backslash is a special character
   const bool do_special = !(flags & REPTERM_NO_SPECIAL);
@@ -901,12 +903,12 @@ char *replace_termcodes(const char *const from, const size_t from_len, char **co
   const size_t buf_len = allocated ? from_len * 6 + 1 : 128;
   result = allocated ? xmalloc(buf_len) : *bufp;
 
-  src = (char_u *)from;
+  src = from;
 
   // Check for #n at start only: function key n
   if ((flags & REPTERM_FROM_PART) && from_len > 1 && src[0] == '#'
       && ascii_isdigit(src[1])) {  // function key
-    result[dlen++] = K_SPECIAL;
+    result[dlen++] = (char)K_SPECIAL;
     result[dlen++] = 'k';
     if (src[1] == '0') {
       result[dlen++] = ';';     // #0 is F10 is "k;"
@@ -923,7 +925,7 @@ char *replace_termcodes(const char *const from, const size_t from_len, char **co
     }
     // Check for special <> keycodes, like "<C-S-LeftMouse>"
     if (do_special && ((flags & REPTERM_DO_LT) || ((end - src) >= 3
-                                                   && STRNCMP(src, "<lt>", 4) != 0))) {
+                                                   && strncmp(src, "<lt>", 4) != 0))) {
       // Replace <SID> by K_SNR <script-nr> _.
       // (room: 5 * 6 = 30 bytes; needed: 3 + <nr> + 1 <= 14)
       if (end - src >= 4 && STRNICMP(src, "<SID>", 5) == 0) {
@@ -931,12 +933,12 @@ char *replace_termcodes(const char *const from, const size_t from_len, char **co
           emsg(_(e_usingsid));
         } else {
           src += 5;
-          result[dlen++] = K_SPECIAL;
-          result[dlen++] = KS_EXTRA;
+          result[dlen++] = (char)K_SPECIAL;
+          result[dlen++] = (char)KS_EXTRA;
           result[dlen++] = KE_SNR;
-          snprintf((char *)result + dlen, buf_len - dlen, "%" PRId64,
+          snprintf(result + dlen, buf_len - dlen, "%" PRId64,
                    (int64_t)current_sctx.sc_sid);
-          dlen += STRLEN(result + dlen);
+          dlen += strlen(result + dlen);
           result[dlen++] = '_';
           continue;
         }
@@ -952,7 +954,8 @@ char *replace_termcodes(const char *const from, const size_t from_len, char **co
     }
 
     if (do_special) {
-      char_u *p, *s, len;
+      char *p, *s;
+      int len;
 
       // Replace <Leader> by the value of "mapleader".
       // Replace <LocalLeader> by the value of "maplocalleader".
@@ -970,8 +973,8 @@ char *replace_termcodes(const char *const from, const size_t from_len, char **co
 
       if (len != 0) {
         // Allow up to 8 * 6 characters for "mapleader".
-        if (p == NULL || *p == NUL || STRLEN(p) > 8 * 6) {
-          s = (char_u *)"\\";
+        if (p == NULL || *p == NUL || strlen(p) > 8 * 6) {
+          s = "\\";
         } else {
           s = p;
         }
@@ -1002,9 +1005,9 @@ char *replace_termcodes(const char *const from, const size_t from_len, char **co
     for (i = utfc_ptr2len_len((char *)src, (int)(end - src) + 1); i > 0; i--) {
       // If the character is K_SPECIAL, replace it with K_SPECIAL
       // KS_SPECIAL KE_FILLER.
-      if (*src == K_SPECIAL) {
-        result[dlen++] = K_SPECIAL;
-        result[dlen++] = KS_SPECIAL;
+      if (*src == (char)K_SPECIAL) {
+        result[dlen++] = (char)K_SPECIAL;
+        result[dlen++] = (char)KS_SPECIAL;
         result[dlen++] = KE_FILLER;
       } else {
         result[dlen++] = *src;
@@ -1030,20 +1033,20 @@ char *replace_termcodes(const char *const from, const size_t from_len, char **co
 /// @param[out]  s  Buffer to add to. Must have at least MB_MAXBYTES + 1 bytes.
 ///
 /// @return Pointer to after the added bytes.
-char_u *add_char2buf(int c, char_u *s)
+char *add_char2buf(int c, char *s)
   FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT
 {
-  char_u temp[MB_MAXBYTES + 1];
-  const int len = utf_char2bytes(c, (char *)temp);
+  char temp[MB_MAXBYTES + 1];
+  const int len = utf_char2bytes(c, temp);
   for (int i = 0; i < len; i++) {
     c = (uint8_t)temp[i];
     // Need to escape K_SPECIAL like in the typeahead buffer.
     if (c == K_SPECIAL) {
-      *s++ = K_SPECIAL;
-      *s++ = KS_SPECIAL;
+      *s++ = (char)(uint8_t)K_SPECIAL;
+      *s++ = (char)(uint8_t)KS_SPECIAL;
       *s++ = KE_FILLER;
     } else {
-      *s++ = (char_u)c;
+      *s++ = (char)(uint8_t)c;
     }
   }
   return s;
@@ -1056,10 +1059,10 @@ char *vim_strsave_escape_ks(char *p)
   // Need a buffer to hold up to three times as much.  Four in case of an
   // illegal utf-8 byte:
   // 0xc0 -> 0xc3 - 0x80 -> 0xc3 K_SPECIAL KS_SPECIAL KE_FILLER
-  char_u *res = xmalloc(strlen(p) * 4 + 1);
-  char_u *d = res;
-  for (char_u *s = (char_u *)p; *s != NUL;) {
-    if (s[0] == K_SPECIAL && s[1] != NUL && s[2] != NUL) {
+  char *res = xmalloc(strlen(p) * 4 + 1);
+  char *d = res;
+  for (char *s = p; *s != NUL;) {
+    if ((uint8_t)s[0] == K_SPECIAL && s[1] != NUL && s[2] != NUL) {
       // Copy special key unmodified.
       *d++ = *s++;
       *d++ = *s++;
@@ -1067,20 +1070,20 @@ char *vim_strsave_escape_ks(char *p)
     } else {
       // Add character, possibly multi-byte to destination, escaping
       // K_SPECIAL. Be careful, it can be an illegal byte!
-      d = add_char2buf(utf_ptr2char((char *)s), d);
-      s += utf_ptr2len((char *)s);
+      d = add_char2buf(utf_ptr2char(s), d);
+      s += utf_ptr2len(s);
     }
   }
   *d = NUL;
 
-  return (char *)res;
+  return res;
 }
 
 /// Remove escaping from K_SPECIAL characters.  Reverse of
 /// vim_strsave_escape_ks().  Works in-place.
-void vim_unescape_ks(char_u *p)
+void vim_unescape_ks(char *p)
 {
-  char_u *s = p, *d = p;
+  char_u *s = (char_u *)p, *d = (char_u *)p;
 
   while (*s != NUL) {
     if (s[0] == K_SPECIAL && s[1] == KS_SPECIAL && s[2] == KE_FILLER) {
@@ -1091,16 +1094,4 @@ void vim_unescape_ks(char_u *p)
     }
   }
   *d = NUL;
-}
-
-/// Logs a single key as a human-readable keycode.
-void log_key(int log_level, int key)
-{
-  if (log_level < MIN_LOG_LEVEL) {
-    return;
-  }
-  char *keyname = key == K_EVENT
-    ? "K_EVENT"
-    : (char *)get_special_key_name(key, mod_mask);
-  LOG(log_level, "input: %s", keyname);
 }

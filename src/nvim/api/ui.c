@@ -12,7 +12,9 @@
 #include "klib/kvec.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
+#include "nvim/api/private/validate.h"
 #include "nvim/api/ui.h"
+#include "nvim/autocmd.h"
 #include "nvim/channel.h"
 #include "nvim/event/loop.h"
 #include "nvim/event/wstream.h"
@@ -31,46 +33,11 @@
 #include "nvim/ui.h"
 #include "nvim/vim.h"
 
-typedef struct {
-  uint64_t channel_id;
-
-#define UI_BUF_SIZE 4096  ///< total buffer size for pending msgpack data.
-  /// guaranteed size available for each new event (so packing of simple events
-  /// and the header of grid_line will never fail)
-#define EVENT_BUF_SIZE 256
-  char buf[UI_BUF_SIZE];  ///< buffer of packed but not yet sent msgpack data
-  char *buf_wptr;  ///< write head of buffer
-  const char *cur_event;  ///< name of current event (might get multiple arglists)
-  Array call_buf;  ///< buffer for constructing a single arg list (max 16 elements!)
-
-  // state for write_cb, while packing a single arglist to msgpack. This
-  // might fail due to buffer overflow.
-  size_t pack_totlen;
-  bool buf_overflow;
-  char *temp_buf;
-
-  // We start packing the two outermost msgpack arrays before knowing the total
-  // number of elements. Thus track the location where array size will need
-  // to be written in the msgpack buffer, once the specific array is finished.
-  char *nevents_pos;
-  char *ncalls_pos;
-  uint32_t nevents;  ///< number of distinct events (top-level args to "redraw"
-  uint32_t ncalls;  ///< number of calls made to the current event (plus one for the name!)
-  bool flushed_events;  ///< events where sent to client without "flush" event
-
-  int hl_id;  // Current highlight for legacy put event.
-  Integer cursor_row, cursor_col;  // Intended visible cursor position.
-
-  // Position of legacy cursor, used both for drawing and visible user cursor.
-  Integer client_row, client_col;
-  bool wildmenu_active;
-} UIData;
-
 #define BUF_POS(data) ((size_t)((data)->buf_wptr - (data)->buf))
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "api/ui.c.generated.h"
-# include "ui_events_remote.generated.h"
+# include "ui_events_remote.generated.h"  // IWYU pragma: export
 #endif
 
 static PMap(uint64_t) connected_uis = MAP_INIT;
@@ -145,9 +112,11 @@ void remote_ui_disconnect(uint64_t channel_id)
   UIData *data = ui->data;
   kv_destroy(data->call_buf);
   pmap_del(uint64_t)(&connected_uis, channel_id);
-  xfree(data);
-  ui->data = NULL;  // Flag UI as "stopped".
   ui_detach_impl(ui, channel_id);
+
+  // Destroy `ui`.
+  XFREE_CLEAR(ui->term_name);
+  XFREE_CLEAR(ui->term_background);
   xfree(ui);
 }
 
@@ -198,41 +167,9 @@ void nvim_ui_attach(uint64_t channel_id, Integer width, Integer height, Dictiona
   UI *ui = xcalloc(1, sizeof(UI));
   ui->width = (int)width;
   ui->height = (int)height;
-  ui->pum_nlines = 0;
-  ui->pum_pos = false;
-  ui->pum_width = 0.0;
-  ui->pum_height = 0.0;
   ui->pum_row = -1.0;
   ui->pum_col = -1.0;
   ui->rgb = true;
-  ui->override = false;
-  ui->grid_resize = remote_ui_grid_resize;
-  ui->grid_clear = remote_ui_grid_clear;
-  ui->grid_cursor_goto = remote_ui_grid_cursor_goto;
-  ui->mode_info_set = remote_ui_mode_info_set;
-  ui->update_menu = remote_ui_update_menu;
-  ui->busy_start = remote_ui_busy_start;
-  ui->busy_stop = remote_ui_busy_stop;
-  ui->mouse_on = remote_ui_mouse_on;
-  ui->mouse_off = remote_ui_mouse_off;
-  ui->mode_change = remote_ui_mode_change;
-  ui->grid_scroll = remote_ui_grid_scroll;
-  ui->hl_attr_define = remote_ui_hl_attr_define;
-  ui->hl_group_set = remote_ui_hl_group_set;
-  ui->raw_line = remote_ui_raw_line;
-  ui->bell = remote_ui_bell;
-  ui->visual_bell = remote_ui_visual_bell;
-  ui->default_colors_set = remote_ui_default_colors_set;
-  ui->flush = remote_ui_flush;
-  ui->suspend = remote_ui_suspend;
-  ui->set_title = remote_ui_set_title;
-  ui->set_icon = remote_ui_set_icon;
-  ui->option_set = remote_ui_option_set;
-  ui->msg_set_pos = remote_ui_msg_set_pos;
-  ui->event = remote_ui_event;
-  ui->inspect = remote_ui_inspect;
-  ui->win_viewport = remote_ui_win_viewport;
-
   CLEAR_FIELD(ui->ui_ext);
 
   for (size_t i = 0; i < options.size; i++) {
@@ -254,7 +191,7 @@ void nvim_ui_attach(uint64_t channel_id, Integer width, Integer height, Dictiona
     ui->ui_ext[kUICmdline] = true;
   }
 
-  UIData *data = xmalloc(sizeof(UIData));
+  UIData *data = ui->data;
   data->channel_id = channel_id;
   data->cur_event = NULL;
   data->hl_id = 0;
@@ -264,12 +201,12 @@ void nvim_ui_attach(uint64_t channel_id, Integer width, Integer height, Dictiona
   data->flushed_events = false;
   data->ncalls_pos = NULL;
   data->ncalls = 0;
+  data->ncells_pending = 0;
   data->buf_wptr = data->buf;
   data->temp_buf = NULL;
   data->wildmenu_active = false;
   data->call_buf = (Array)ARRAY_DICT_INIT;
   kv_ensure_space(data->call_buf, 16);
-  ui->data = data;
 
   pmap_put(uint64_t)(&connected_uis, channel_id, ui);
   ui_attach_impl(ui, channel_id);
@@ -283,6 +220,19 @@ void ui_attach(uint64_t channel_id, Integer width, Integer height, Boolean enabl
   PUT(opts, "rgb", BOOLEAN_OBJ(enable_rgb));
   nvim_ui_attach(channel_id, width, height, opts, err);
   api_free_dictionary(opts);
+}
+
+/// Tells the nvim server if focus was gained or lost by the GUI
+void nvim_ui_set_focus(uint64_t channel_id, Boolean gained, Error *error)
+  FUNC_API_SINCE(11) FUNC_API_REMOTE_ONLY
+{
+  if (!pmap_has(uint64_t)(&connected_uis, channel_id)) {
+    api_set_error(error, kErrorTypeException,
+                  "UI not attached to channel: %" PRId64, channel_id);
+    return;
+  }
+
+  do_autocmd_focusgained((bool)gained);
 }
 
 /// Deactivates UI events on the channel.
@@ -301,6 +251,10 @@ void nvim_ui_detach(uint64_t channel_id, Error *err)
   }
   remote_ui_disconnect(channel_id);
 }
+
+// TODO(bfredl): use me to detach a specific ui from the server
+void remote_ui_stop(UI *ui)
+{}
 
 void nvim_ui_try_resize(uint64_t channel_id, Integer width, Integer height, Error *err)
   FUNC_API_SINCE(1) FUNC_API_REMOTE_ONLY
@@ -336,22 +290,20 @@ void nvim_ui_set_option(uint64_t channel_id, String name, Object value, Error *e
   ui_set_option(ui, false, name, value, error);
 }
 
-static void ui_set_option(UI *ui, bool init, String name, Object value, Error *error)
+static void ui_set_option(UI *ui, bool init, String name, Object value, Error *err)
 {
   if (strequal(name.data, "override")) {
-    if (value.type != kObjectTypeBoolean) {
-      api_set_error(error, kErrorTypeValidation, "override must be a Boolean");
+    VALIDATE_T("override", kObjectTypeBoolean, value.type, {
       return;
-    }
+    });
     ui->override = value.data.boolean;
     return;
   }
 
   if (strequal(name.data, "rgb")) {
-    if (value.type != kObjectTypeBoolean) {
-      api_set_error(error, kErrorTypeValidation, "rgb must be a Boolean");
+    VALIDATE_T("rgb", kObjectTypeBoolean, value.type, {
       return;
-    }
+    });
     ui->rgb = value.data.boolean;
     // A little drastic, but only takes effect for legacy uis. For linegrid UI
     // only changes metadata for nvim_list_uis(), no refresh needed.
@@ -362,45 +314,62 @@ static void ui_set_option(UI *ui, bool init, String name, Object value, Error *e
   }
 
   if (strequal(name.data, "term_name")) {
-    if (value.type != kObjectTypeString) {
-      api_set_error(error, kErrorTypeValidation, "term_name must be a String");
+    VALIDATE_T("term_name", kObjectTypeString, value.type, {
       return;
-    }
+    });
     set_tty_option("term", string_to_cstr(value.data.string));
+    ui->term_name = string_to_cstr(value.data.string);
     return;
   }
 
   if (strequal(name.data, "term_colors")) {
-    if (value.type != kObjectTypeInteger) {
-      api_set_error(error, kErrorTypeValidation, "term_colors must be a Integer");
+    VALIDATE_T("term_colors", kObjectTypeInteger, value.type, {
       return;
-    }
+    });
     t_colors = (int)value.data.integer;
+    ui->term_colors = (int)value.data.integer;
     return;
   }
 
   if (strequal(name.data, "term_background")) {
-    if (value.type != kObjectTypeString) {
-      api_set_error(error, kErrorTypeValidation, "term_background must be a String");
+    VALIDATE_T("term_background", kObjectTypeString, value.type, {
       return;
-    }
+    });
     set_tty_background(value.data.string.data);
+    ui->term_background = string_to_cstr(value.data.string);
     return;
   }
 
   if (strequal(name.data, "stdin_fd")) {
-    if (value.type != kObjectTypeInteger || value.data.integer < 0) {
-      api_set_error(error, kErrorTypeValidation, "stdin_fd must be a non-negative Integer");
+    VALIDATE_T("stdin_fd", kObjectTypeInteger, value.type, {
       return;
-    }
-
-    if (starting != NO_SCREEN) {
-      api_set_error(error, kErrorTypeValidation,
-                    "stdin_fd can only be used with first attached ui");
+    });
+    VALIDATE_INT((value.data.integer >= 0), "stdin_fd", value.data.integer, {
       return;
-    }
+    });
+    VALIDATE((starting == NO_SCREEN), "%s", "stdin_fd can only be used with first attached UI", {
+      return;
+    });
 
     stdin_fd = (int)value.data.integer;
+    return;
+  }
+
+  if (strequal(name.data, "stdin_tty")) {
+    VALIDATE_T("stdin_tty", kObjectTypeBoolean, value.type, {
+      return;
+    });
+    stdin_isatty = value.data.boolean;
+    ui->stdin_tty = value.data.boolean;
+    return;
+  }
+
+  if (strequal(name.data, "stdout_tty")) {
+    VALIDATE_T("stdout_tty", kObjectTypeBoolean, value.type, {
+      return;
+    });
+    stdout_isatty = value.data.boolean;
+    ui->stdout_tty = value.data.boolean;
     return;
   }
 
@@ -410,17 +379,15 @@ static void ui_set_option(UI *ui, bool init, String name, Object value, Error *e
   for (UIExtension i = 0; i < kUIExtCount; i++) {
     if (strequal(name.data, ui_ext_names[i])
         || (i == kUIPopupmenu && is_popupmenu)) {
-      if (value.type != kObjectTypeBoolean) {
-        api_set_error(error, kErrorTypeValidation, "%s must be a Boolean",
-                      name.data);
+      VALIDATE_EXP((value.type == kObjectTypeBoolean), name.data, "Boolean",
+                   api_typename(value.type), {
         return;
-      }
+      });
       bool boolval = value.data.boolean;
       if (!init && i == kUILinegrid && boolval != ui->ui_ext[i]) {
-        // There shouldn't be a reason for an UI to do this ever
+        // There shouldn't be a reason for a UI to do this ever
         // so explicitly don't support this.
-        api_set_error(error, kErrorTypeValidation,
-                      "ext_linegrid option cannot be changed");
+        api_set_error(err, kErrorTypeValidation, "ext_linegrid option cannot be changed");
       }
       ui->ui_ext[i] = boolval;
       if (!init) {
@@ -430,8 +397,7 @@ static void ui_set_option(UI *ui, bool init, String name, Object value, Error *e
     }
   }
 
-  api_set_error(error, kErrorTypeValidation, "No such UI option: %s",
-                name.data);
+  api_set_error(err, kErrorTypeValidation, "No such UI option: %s", name.data);
 }
 
 /// Tell Nvim to resize a grid. Triggers a grid_resize event with the requested
@@ -655,7 +621,7 @@ static void push_call(UI *ui, const char *name, Array args)
   data->ncalls++;
 }
 
-static void remote_ui_grid_clear(UI *ui, Integer grid)
+void remote_ui_grid_clear(UI *ui, Integer grid)
 {
   UIData *data = ui->data;
   Array args = data->call_buf;
@@ -666,12 +632,14 @@ static void remote_ui_grid_clear(UI *ui, Integer grid)
   push_call(ui, name, args);
 }
 
-static void remote_ui_grid_resize(UI *ui, Integer grid, Integer width, Integer height)
+void remote_ui_grid_resize(UI *ui, Integer grid, Integer width, Integer height)
 {
   UIData *data = ui->data;
   Array args = data->call_buf;
   if (ui->ui_ext[kUILinegrid]) {
     ADD_C(args, INTEGER_OBJ(grid));
+  } else {
+    data->client_col = -1;  // force cursor update
   }
   ADD_C(args, INTEGER_OBJ(width));
   ADD_C(args, INTEGER_OBJ(height));
@@ -679,8 +647,8 @@ static void remote_ui_grid_resize(UI *ui, Integer grid, Integer width, Integer h
   push_call(ui, name, args);
 }
 
-static void remote_ui_grid_scroll(UI *ui, Integer grid, Integer top, Integer bot, Integer left,
-                                  Integer right, Integer rows, Integer cols)
+void remote_ui_grid_scroll(UI *ui, Integer grid, Integer top, Integer bot, Integer left,
+                           Integer right, Integer rows, Integer cols)
 {
   UIData *data = ui->data;
   if (ui->ui_ext[kUILinegrid]) {
@@ -716,8 +684,8 @@ static void remote_ui_grid_scroll(UI *ui, Integer grid, Integer top, Integer bot
   }
 }
 
-static void remote_ui_default_colors_set(UI *ui, Integer rgb_fg, Integer rgb_bg, Integer rgb_sp,
-                                         Integer cterm_fg, Integer cterm_bg)
+void remote_ui_default_colors_set(UI *ui, Integer rgb_fg, Integer rgb_bg, Integer rgb_sp,
+                                  Integer cterm_fg, Integer cterm_bg)
 {
   if (!ui->ui_ext[kUITermColors]) {
     HL_SET_DEFAULT_COLORS(rgb_fg, rgb_bg, rgb_sp);
@@ -747,8 +715,8 @@ static void remote_ui_default_colors_set(UI *ui, Integer rgb_fg, Integer rgb_bg,
   }
 }
 
-static void remote_ui_hl_attr_define(UI *ui, Integer id, HlAttrs rgb_attrs, HlAttrs cterm_attrs,
-                                     Array info)
+void remote_ui_hl_attr_define(UI *ui, Integer id, HlAttrs rgb_attrs, HlAttrs cterm_attrs,
+                              Array info)
 {
   if (!ui->ui_ext[kUILinegrid]) {
     return;
@@ -773,7 +741,7 @@ static void remote_ui_hl_attr_define(UI *ui, Integer id, HlAttrs rgb_attrs, HlAt
   push_call(ui, "hl_attr_define", args);
 }
 
-static void remote_ui_highlight_set(UI *ui, int id)
+void remote_ui_highlight_set(UI *ui, int id)
 {
   UIData *data = ui->data;
   Array args = data->call_buf;
@@ -789,7 +757,7 @@ static void remote_ui_highlight_set(UI *ui, int id)
 }
 
 /// "true" cursor used only for input focus
-static void remote_ui_grid_cursor_goto(UI *ui, Integer grid, Integer row, Integer col)
+void remote_ui_grid_cursor_goto(UI *ui, Integer grid, Integer row, Integer col)
 {
   if (ui->ui_ext[kUILinegrid]) {
     UIData *data = ui->data;
@@ -807,7 +775,7 @@ static void remote_ui_grid_cursor_goto(UI *ui, Integer grid, Integer row, Intege
 }
 
 /// emulated cursor used both for drawing and for input focus
-static void remote_ui_cursor_goto(UI *ui, Integer row, Integer col)
+void remote_ui_cursor_goto(UI *ui, Integer row, Integer col)
 {
   UIData *data = ui->data;
   if (data->client_row == row && data->client_col == col) {
@@ -821,7 +789,7 @@ static void remote_ui_cursor_goto(UI *ui, Integer row, Integer col)
   push_call(ui, "cursor_goto", args);
 }
 
-static void remote_ui_put(UI *ui, const char *cell)
+void remote_ui_put(UI *ui, const char *cell)
 {
   UIData *data = ui->data;
   data->client_col++;
@@ -830,9 +798,9 @@ static void remote_ui_put(UI *ui, const char *cell)
   push_call(ui, "put", args);
 }
 
-static void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startcol, Integer endcol,
-                               Integer clearcol, Integer clearattr, LineFlags flags,
-                               const schar_T *chunk, const sattr_T *attrs)
+void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startcol, Integer endcol,
+                        Integer clearcol, Integer clearattr, LineFlags flags, const schar_T *chunk,
+                        const sattr_T *attrs)
 {
   UIData *data = ui->data;
   if (ui->ui_ext[kUILinegrid]) {
@@ -882,18 +850,25 @@ static void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startc
             mpack_uint(buf, repeat);
           }
         }
+        data->ncells_pending += MIN(repeat, 2);
         last_hl = attrs[i];
         repeat = 0;
       }
     }
     if (endcol < clearcol) {
       nelem++;
+      data->ncells_pending += 1;
       mpack_array(buf, 3);
       mpack_str(buf, " ");
       mpack_uint(buf, (uint32_t)clearattr);
       mpack_uint(buf, (uint32_t)(clearcol - endcol));
     }
     mpack_w2(&lenpos, nelem);
+
+    if (data->ncells_pending > 500) {
+      // pass of cells to UI to let it start processing them
+      remote_ui_flush_buf(ui);
+    }
   } else {
     for (int i = 0; i < endcol - startcol; i++) {
       remote_ui_cursor_goto(ui, row, startcol + i);
@@ -924,7 +899,7 @@ static void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startc
 ///
 /// This might happen multiple times before the actual ui_flush, if the
 /// total redraw size is large!
-static void remote_ui_flush_buf(UI *ui)
+void remote_ui_flush_buf(UI *ui)
 {
   UIData *data = ui->data;
   if (!data->nevents_pos) {
@@ -945,13 +920,15 @@ static void remote_ui_flush_buf(UI *ui)
   // we have sent events to the client, but possibly not yet the final "flush"
   // event.
   data->flushed_events = true;
+
+  data->ncells_pending = 0;
 }
 
 /// An intentional flush (vsync) when Nvim is finished redrawing the screen
 ///
 /// Clients can know this happened by a final "flush" event at the end of the
 /// "redraw" batch.
-static void remote_ui_flush(UI *ui)
+void remote_ui_flush(UI *ui)
 {
   UIData *data = ui->data;
   if (data->nevents > 0 || data->flushed_events) {
@@ -996,7 +973,7 @@ static Array translate_firstarg(UI *ui, Array args, Arena *arena)
   return new_args;
 }
 
-static void remote_ui_event(UI *ui, char *name, Array args)
+void remote_ui_event(UI *ui, char *name, Array args)
 {
   Arena arena = ARENA_EMPTY;
   UIData *data = ui->data;
@@ -1063,7 +1040,7 @@ free_ret:
   arena_mem_free(arena_finish(&arena));
 }
 
-static void remote_ui_inspect(UI *ui, Dictionary *info)
+void remote_ui_inspect(UI *ui, Dictionary *info)
 {
   UIData *data = ui->data;
   PUT(*info, "chan", INTEGER_OBJ((Integer)data->channel_id));

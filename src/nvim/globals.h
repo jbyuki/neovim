@@ -75,6 +75,10 @@
 # define VIMRC_FILE     ".nvimrc"
 #endif
 
+#ifndef VIMRC_LUA_FILE
+# define VIMRC_LUA_FILE ".nvim.lua"
+#endif
+
 EXTERN struct nvim_stats_s {
   int64_t fsync;
   int64_t redraw;
@@ -320,12 +324,9 @@ EXTERN int garbage_collect_at_exit INIT(= false);
 #define SID_STR         (-10)     // for sourcing a string with no script item
 
 // Script CTX being sourced or was sourced to define the current function.
-EXTERN sctx_T current_sctx INIT(= { 0 COMMA 0 COMMA 0 });
+EXTERN sctx_T current_sctx INIT(= { 0, 0, 0 });
 // ID of the current channel making a client API call
 EXTERN uint64_t current_channel_id INIT(= 0);
-
-// ID of the client channel. Used by ui client
-EXTERN uint64_t ui_client_channel_id INIT(= 0);
 
 EXTERN bool did_source_packages INIT(= false);
 
@@ -418,12 +419,22 @@ EXTERN win_T *prevwin INIT(= NULL);  // previous window
 // -V:FOR_ALL_WINDOWS_IN_TAB:501
 #define FOR_ALL_WINDOWS_IN_TAB(wp, tp) \
   for (win_T *wp = ((tp) == curtab) \
-              ? firstwin : (tp)->tp_firstwin; wp != NULL; wp = wp->w_next)
+       ? firstwin : (tp)->tp_firstwin; wp != NULL; wp = wp->w_next)
 
 EXTERN win_T *curwin;        // currently active window
 
-EXTERN win_T *aucmd_win;     // window used in aucmd_prepbuf()
-EXTERN int aucmd_win_used INIT(= false);  // aucmd_win is being used
+typedef struct {
+  win_T *auc_win;     ///< Window used in aucmd_prepbuf().  When not NULL the
+                      ///< window has been allocated.
+  bool auc_win_used;  ///< This auc_win is being used.
+} aucmdwin_T;
+
+/// When executing autocommands for a buffer that is not in any window, a
+/// special window is created to handle the side effects.  When autocommands
+/// nest we may need more than one.
+EXTERN kvec_t(aucmdwin_T) aucmd_win_vec INIT(= KV_INITIAL_VALUE);
+#define aucmd_win (aucmd_win_vec.items)
+#define AUCMD_WIN_COUNT ((int)aucmd_win_vec.size)
 
 // The window layout is kept in a tree of frames.  topframe points to the top
 // of the tree.
@@ -480,9 +491,12 @@ EXTERN bool exiting INIT(= false);
 // internal value of v:dying
 EXTERN int v_dying INIT(= 0);
 // is stdin a terminal?
-EXTERN int stdin_isatty INIT(= true);
+EXTERN bool stdin_isatty INIT(= true);
 // is stdout a terminal?
-EXTERN int stdout_isatty INIT(= true);
+EXTERN bool stdout_isatty INIT(= true);
+// is stderr a terminal?
+EXTERN bool stderr_isatty INIT(= true);
+
 /// filedesc set by embedder for reading first buffer like `cmd | nvim -`
 EXTERN int stdin_fd INIT(= -1);
 
@@ -504,7 +518,7 @@ EXTERN int allbuf_lock INIT(= 0);
 /// not allowed then.
 EXTERN int sandbox INIT(= 0);
 
-/// Batch-mode: "-es" or "-Es" commandline argument was given.
+/// Batch-mode: "-es", "-Es", "-l" commandline argument was given.
 EXTERN int silent_mode INIT(= false);
 
 /// Start position of active Visual selection.
@@ -760,7 +774,7 @@ EXTERN bool g_tag_at_cursor INIT(= false);  // whether the tag command comes
 
 EXTERN int replace_offset INIT(= 0);        // offset for replace_push()
 
-EXTERN char_u *escape_chars INIT(= (char_u *)" \t\\\"|");  // need backslash in cmd line
+EXTERN char *escape_chars INIT(= " \t\\\"|");  // need backslash in cmd line
 
 EXTERN int keep_help_flag INIT(= false);  // doing :ta from help file
 
@@ -775,7 +789,7 @@ EXTERN int redir_reg INIT(= 0);             // message redirection register
 EXTERN int redir_vname INIT(= 0);           // message redirection variable
 EXTERN garray_T *capture_ga INIT(= NULL);   // captured output for execute()
 
-EXTERN char_u langmap_mapchar[256];     // mapping for language keys
+EXTERN uint8_t langmap_mapchar[256];     // mapping for language keys
 
 EXTERN int save_p_ls INIT(= -1);        // Save 'laststatus' setting
 EXTERN int save_p_wmh INIT(= -1);       // Save 'winminheight' setting
@@ -792,8 +806,6 @@ enum {
 extern char *default_vim_dir;
 extern char *default_vimruntime_dir;
 extern char *default_lib_dir;
-extern char_u *compiled_user;
-extern char_u *compiled_sys;
 #endif
 
 // When a window has a local directory, the absolute path of the global
@@ -811,7 +823,7 @@ EXTERN int cmdwin_type INIT(= 0);    ///< type of cmdline window or 0
 EXTERN int cmdwin_result INIT(= 0);  ///< result of cmdline window or 0
 EXTERN int cmdwin_level INIT(= 0);   ///< cmdline recursion level
 
-EXTERN char_u no_lines_msg[] INIT(= N_("--No lines in buffer--"));
+EXTERN char no_lines_msg[] INIT(= N_("--No lines in buffer--"));
 
 // When ":global" is used to number of substitutions and changed lines is
 // accumulated until it's finished.
@@ -820,7 +832,7 @@ EXTERN long sub_nsubs;       // total number of substitutions
 EXTERN linenr_T sub_nlines;  // total number of lines changed
 
 // table to store parsed 'wildmode'
-EXTERN char_u wim_flags[4];
+EXTERN uint8_t wim_flags[4];
 
 // whether titlestring and iconstring contains statusline syntax
 #define STL_IN_ICON    1
@@ -829,9 +841,6 @@ EXTERN int stl_syntax INIT(= 0);
 
 // don't use 'hlsearch' temporarily
 EXTERN bool no_hlsearch INIT(= false);
-
-// Page number used for %N in 'pageheader' and 'guitablabel'.
-EXTERN linenr_T printer_page_num;
 
 EXTERN bool typebuf_was_filled INIT(= false);     // received text from client
                                                   // or from feedkeys()
@@ -991,7 +1000,6 @@ EXTERN char e_fnametoolong[] INIT(= N_("E856: Filename too long"));
 EXTERN char e_float_as_string[] INIT(= N_("E806: using Float as a String"));
 EXTERN char e_cannot_edit_other_buf[] INIT(= N_("E788: Not allowed to edit another buffer now"));
 
-EXTERN char e_autocmd_err[] INIT(= N_("E5500: autocmd has thrown an exception: %s"));
 EXTERN char e_cmdmap_err[] INIT(= N_("E5520: <Cmd> mapping must end with <CR>"));
 EXTERN char e_cmdmap_repeated[]
 INIT(= N_("E5521: <Cmd> mapping must end with <CR> before second <Cmd>"));
@@ -1013,16 +1021,17 @@ EXTERN char e_highlight_group_name_invalid_char[] INIT(= N_("E5248: Invalid char
 
 EXTERN char e_highlight_group_name_too_long[] INIT(= N_("E1249: Highlight group name too long"));
 
+EXTERN char e_invalid_line_number_nr[] INIT(= N_("E966: Invalid line number: %ld"));
+
 EXTERN char e_undobang_cannot_redo_or_move_branch[]
 INIT(= N_("E5767: Cannot use :undo! to redo or move to a different undo branch"));
+
+EXTERN char e_trustfile[] INIT(= N_("E5570: Cannot update trust file: %s"));
 
 EXTERN char top_bot_msg[] INIT(= N_("search hit TOP, continuing at BOTTOM"));
 EXTERN char bot_top_msg[] INIT(= N_("search hit BOTTOM, continuing at TOP"));
 
 EXTERN char line_msg[] INIT(= N_(" line "));
-
-// For undo we need to know the lowest time possible.
-EXTERN time_t starttime;
 
 EXTERN FILE *time_fd INIT(= NULL);  // where to write startup timing
 
@@ -1033,7 +1042,7 @@ EXTERN int vim_ignored;
 
 // stdio is an RPC channel (--embed).
 EXTERN bool embedded_mode INIT(= false);
-// Do not start a UI nor read/write to stdio (unless embedding).
+// Do not start UI (--headless, -l) nor read/write to stdio (unless embedding).
 EXTERN bool headless_mode INIT(= false);
 
 // uncrustify:on
@@ -1073,7 +1082,9 @@ typedef enum {
 // Only filled for Win32.
 EXTERN char windowsVersion[20] INIT(= { 0 });
 
-EXTERN int exit_need_delay INIT(= 0);
+/// While executing a regexp and set to OPTION_MAGIC_ON or OPTION_MAGIC_OFF this
+/// overrules p_magic.  Otherwise set to OPTION_MAGIC_NOT_SET.
+EXTERN optmagic_T magic_overruled INIT(= OPTION_MAGIC_NOT_SET);
 
 /// Skip win_fix_cursor() call for 'splitkeep' when cmdwin is closed.
 EXTERN bool skip_win_fix_cursor INIT(= false);

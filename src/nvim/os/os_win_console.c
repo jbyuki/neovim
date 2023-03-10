@@ -10,11 +10,12 @@
 # include "os/os_win_console.c.generated.h"
 #endif
 
+static char origTitle[256] = { 0 };
 static HWND hWnd = NULL;
 static HICON hOrigIconSmall = NULL;
 static HICON hOrigIcon = NULL;
 
-int os_get_conin_fd(void)
+int os_open_conin_fd(void)
 {
   const HANDLE conin_handle = CreateFile("CONIN$",
                                          GENERIC_READ | GENERIC_WRITE,
@@ -30,7 +31,7 @@ int os_get_conin_fd(void)
 void os_replace_stdin_to_conin(void)
 {
   close(STDIN_FILENO);
-  const int conin_fd = os_get_conin_fd();
+  const int conin_fd = os_open_conin_fd();
   assert(conin_fd == STDIN_FILENO);
 }
 
@@ -91,4 +92,16 @@ void os_icon_init(void)
       os_icon_set(hVimIcon, hVimIcon);
     }
   }
+}
+
+/// Saves the original Windows console title.
+void os_title_save(void)
+{
+  GetConsoleTitle(origTitle, sizeof(origTitle));
+}
+
+/// Resets the original Windows console title.
+void os_title_reset(void)
+{
+  SetConsoleTitle(origTitle);
 }

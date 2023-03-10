@@ -16,6 +16,8 @@
 
 #include "auto/config.h"
 #include "nvim/gettext.h"
+#include "nvim/globals.h"
+#include "nvim/log.h"
 #include "nvim/macros.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
@@ -24,6 +26,10 @@
 #include "nvim/os/os_defs.h"
 #include "nvim/rbuffer.h"
 #include "nvim/types.h"
+
+#ifdef MSWIN
+# include "nvim/os/os_win_console.h"
+#endif
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "os/fileio.c.generated.h"
@@ -165,6 +171,30 @@ FileDescriptor *file_open_fd_new(int *const error, const int fd, const int flags
     return NULL;
   }
   return fp;
+}
+
+/// Opens standard input as a FileDescriptor.
+FileDescriptor *file_open_stdin(void)
+  FUNC_ATTR_MALLOC FUNC_ATTR_WARN_UNUSED_RESULT
+{
+  int error;
+  int stdin_dup_fd;
+  if (stdin_fd > 0) {
+    stdin_dup_fd = stdin_fd;
+  } else {
+    stdin_dup_fd = os_dup(STDIN_FILENO);
+#ifdef MSWIN
+    // Replace the original stdin with the console input handle.
+    os_replace_stdin_to_conin();
+#endif
+  }
+  FileDescriptor *const stdin_dup = file_open_fd_new(&error, stdin_dup_fd,
+                                                     kFileReadOnly|kFileNonBlocking);
+  assert(stdin_dup != NULL);
+  if (error != 0) {
+    ELOG("failed to open stdin: %s", os_strerror(error));
+  }
+  return stdin_dup;
 }
 
 /// Close file and free its buffer

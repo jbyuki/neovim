@@ -4,6 +4,7 @@
 // textobject.c: functions for text objects
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -28,7 +29,6 @@
 #include "nvim/search.h"
 #include "nvim/strings.h"
 #include "nvim/textobject.h"
-#include "nvim/types.h"
 #include "nvim/vim.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -176,7 +176,6 @@ found:
 bool findpar(bool *pincl, int dir, long count, int what, bool both)
 {
   linenr_T curr;
-  bool did_skip;            // true after separating lines have been skipped
   bool first;               // true on first line
   linenr_T fold_first;      // first line of a closed fold
   linenr_T fold_last;       // last line of a closed fold
@@ -186,7 +185,7 @@ bool findpar(bool *pincl, int dir, long count, int what, bool both)
   curr = curwin->w_cursor.lnum;
 
   while (count--) {
-    did_skip = false;
+    bool did_skip = false;  // true after separating lines have been skipped
     for (first = true;; first = false) {
       if (*ml_get(curr) != NUL) {
         did_skip = true;
@@ -237,9 +236,9 @@ bool findpar(bool *pincl, int dir, long count, int what, bool both)
 }
 
 /// check if the string 's' is a nroff macro that is in option 'opt'
-static bool inmacro(char_u *opt, const char_u *s)
+static bool inmacro(char *opt, const char *s)
 {
-  char_u *macro;
+  char *macro;
 
   for (macro = opt; macro[0]; macro++) {
     // Accept two characters in the option being equal to two characters
@@ -266,13 +265,13 @@ static bool inmacro(char_u *opt, const char_u *s)
 /// If 'both' is true also stop at '}'
 bool startPS(linenr_T lnum, int para, bool both)
 {
-  char_u *s;
+  char *s;
 
-  s = (char_u *)ml_get(lnum);
-  if (*s == para || *s == '\f' || (both && *s == '}')) {
+  s = ml_get(lnum);
+  if ((uint8_t)(*s) == para || *s == '\f' || (both && *s == '}')) {
     return true;
   }
-  if (*s == '.' && (inmacro((char_u *)p_sections, s + 1)
+  if (*s == '.' && (inmacro(p_sections, s + 1)
                     || (!para && inmacro(p_para, s + 1)))) {
     return true;
   }
@@ -324,10 +323,6 @@ static int cls(void)
 /// @param bigword  "W", "E" or "B"
 int fwd_word(long count, bool bigword, bool eol)
 {
-  int sclass;               // starting class
-  int i;
-  int last_line;
-
   curwin->w_cursor.coladd = 0;
   cls_bigword = bigword;
   while (--count >= 0) {
@@ -336,12 +331,12 @@ int fwd_word(long count, bool bigword, bool eol)
     if (hasFolding(curwin->w_cursor.lnum, NULL, &curwin->w_cursor.lnum)) {
       coladvance(MAXCOL);
     }
-    sclass = cls();
+    int sclass = cls();  // starting class
 
     // We always move at least one character, unless on the last
     // character in the buffer.
-    last_line = (curwin->w_cursor.lnum == curbuf->b_ml.ml_line_count);
-    i = inc_cursor();
+    int last_line = (curwin->w_cursor.lnum == curbuf->b_ml.ml_line_count);
+    int i = inc_cursor();
     if (i == -1 || (i >= 1 && last_line)) {   // started at last char in file
       return FAIL;
     }
@@ -493,13 +488,11 @@ finished:
 /// @return         FAIL if start of the file was reached.
 int bckend_word(long count, bool bigword, bool eol)
 {
-  int sclass;               // starting class
-  int i;
-
   curwin->w_cursor.coladd = 0;
   cls_bigword = bigword;
   while (--count >= 0) {
-    sclass = cls();
+    int i;
+    int sclass = cls();  // starting class
     if ((i = dec_cursor()) == -1) {
       return FAIL;
     }
@@ -562,10 +555,8 @@ static void back_in_line(void)
 
 static void find_first_blank(pos_T *posp)
 {
-  int c;
-
   while (decl(posp) != -1) {
-    c = gchar_pos(posp);
+    int c = gchar_pos(posp);
     if (!ascii_iswhite(c)) {
       incl(posp);
       break;
@@ -598,7 +589,6 @@ static void findsent_forward(long count, bool at_start_sent)
 int current_word(oparg_T *oap, long count, bool include, bool bigword)
 {
   pos_T start_pos;
-  pos_T pos;
   bool inclusive = true;
   int include_white = false;
 
@@ -703,7 +693,7 @@ int current_word(oparg_T *oap, long count, bool include, bool bigword)
     // word).  Also when "2daw" deletes "word." at the end of the line
     // (cursor is at start of next line).
     // But don't delete white space at start of line (indent).
-    pos = curwin->w_cursor;     // save cursor position
+    pos_T pos = curwin->w_cursor;     // save cursor position
     curwin->w_cursor = start_pos;
     if (oneleft() == OK) {
       back_in_line();
@@ -1040,9 +1030,8 @@ int current_block(oparg_T *oap, long count, bool include, int what, int other)
 /// @return         true if the cursor is on a "<aaa>" tag.  Ignore "<aaa/>".
 static bool in_html_tag(bool end_tag)
 {
-  char_u *line = (char_u *)get_cursor_line_ptr();
-  char_u *p;
-  int c;
+  char *line = get_cursor_line_ptr();
+  char *p;
   int lc = NUL;
   pos_T pos;
 
@@ -1078,7 +1067,7 @@ static bool in_html_tag(bool end_tag)
     if (inc(&pos) < 0) {
       return false;
     }
-    c = *ml_get_pos(&pos);
+    int c = (uint8_t)(*ml_get_pos(&pos));
     if (c == '>') {
       break;
     }
@@ -1097,8 +1086,8 @@ int current_tagblock(oparg_T *oap, long count_arg, bool include)
   pos_T start_pos;
   pos_T end_pos;
   pos_T old_start, old_end;
-  char_u *p;
-  char_u *cp;
+  char *p;
+  char *cp;
   int len;
   bool do_include = include;
   bool save_p_ws = p_ws;
@@ -1165,7 +1154,7 @@ again:
 
   // Search for matching "</aaa>".  First isolate the "aaa".
   inc_cursor();
-  p = (char_u *)get_cursor_pos_ptr();
+  p = get_cursor_pos_ptr();
   for (cp = p;
        *cp != NUL && *cp != '>' && !ascii_iswhite(*cp);
        MB_PTR_ADV(cp)) {}
@@ -1204,7 +1193,7 @@ again:
       }
     }
   } else {
-    char_u *c = (char_u *)get_cursor_pos_ptr();
+    char *c = get_cursor_pos_ptr();
     // Exclude the '<' of the end tag.
     // If the closing tag is on new line, do not decrement cursor, but make
     // operation exclusive, so that the linefeed will be selected
@@ -1441,15 +1430,13 @@ extend:
 /// @param escape  escape characters, can be NULL
 ///
 /// @return        column number of "quotechar" or -1 when not found.
-static int find_next_quote(char_u *line, int col, int quotechar, char_u *escape)
+static int find_next_quote(char *line, int col, int quotechar, char *escape)
 {
-  int c;
-
   for (;;) {
-    c = line[col];
+    int c = (uint8_t)line[col];
     if (c == NUL) {
       return -1;
-    } else if (escape != NULL && vim_strchr((char *)escape, c)) {
+    } else if (escape != NULL && vim_strchr(escape, c)) {
       col++;
       if (line[col] == NUL) {
         return -1;
@@ -1457,7 +1444,7 @@ static int find_next_quote(char_u *line, int col, int quotechar, char_u *escape)
     } else if (c == quotechar) {
       break;
     }
-    col += utfc_ptr2len((char *)line + col);
+    col += utfc_ptr2len(line + col);
   }
   return col;
 }
@@ -1469,23 +1456,21 @@ static int find_next_quote(char_u *line, int col, int quotechar, char_u *escape)
 /// @param escape  escape characters, can be NULL
 ///
 /// @return        the found column or zero.
-static int find_prev_quote(char_u *line, int col_start, int quotechar, char_u *escape)
+static int find_prev_quote(char *line, int col_start, int quotechar, char *escape)
 {
-  int n;
-
   while (col_start > 0) {
     col_start--;
-    col_start -= utf_head_off((char *)line, (char *)line + col_start);
-    n = 0;
+    col_start -= utf_head_off(line, line + col_start);
+    int n = 0;
     if (escape != NULL) {
-      while (col_start - n > 0 && vim_strchr((char *)escape,
-                                             line[col_start - n - 1]) != NULL) {
+      while (col_start - n > 0 && vim_strchr(escape,
+                                             (uint8_t)line[col_start - n - 1]) != NULL) {
         n++;
       }
     }
     if (n & 1) {
       col_start -= n;           // uneven number of escape chars, skip it
-    } else if (line[col_start] == quotechar) {
+    } else if ((uint8_t)line[col_start] == quotechar) {
       break;
     }
   }
@@ -1501,7 +1486,7 @@ static int find_prev_quote(char_u *line, int col_start, int quotechar, char_u *e
 bool current_quote(oparg_T *oap, long count, bool include, int quotechar)
   FUNC_ATTR_NONNULL_ALL
 {
-  char_u *line = (char_u *)get_cursor_line_ptr();
+  char *line = get_cursor_line_ptr();
   int col_end;
   int col_start = curwin->w_cursor.col;
   bool inclusive = false;
@@ -1550,16 +1535,16 @@ bool current_quote(oparg_T *oap, long count, bool include, int quotechar)
     // quotes.
     if (vis_bef_curs) {
       inside_quotes = VIsual.col > 0
-                      && line[VIsual.col - 1] == quotechar
+                      && (uint8_t)line[VIsual.col - 1] == quotechar
                       && line[curwin->w_cursor.col] != NUL
-                      && line[curwin->w_cursor.col + 1] == quotechar;
+                      && (uint8_t)line[curwin->w_cursor.col + 1] == quotechar;
       i = VIsual.col;
       col_end = curwin->w_cursor.col;
     } else {
       inside_quotes = curwin->w_cursor.col > 0
-                      && line[curwin->w_cursor.col - 1] == quotechar
+                      && (uint8_t)line[curwin->w_cursor.col - 1] == quotechar
                       && line[VIsual.col] != NUL
-                      && line[VIsual.col + 1] == quotechar;
+                      && (uint8_t)line[VIsual.col + 1] == quotechar;
       i = curwin->w_cursor.col;
       col_end = VIsual.col;
     }
@@ -1571,14 +1556,14 @@ bool current_quote(oparg_T *oap, long count, bool include, int quotechar)
       if (line[i] == NUL) {
         break;
       }
-      if (line[i++] == quotechar) {
+      if ((uint8_t)line[i++] == quotechar) {
         selected_quote = true;
         break;
       }
     }
   }
 
-  if (!vis_empty && line[col_start] == quotechar) {
+  if (!vis_empty && (uint8_t)line[col_start] == quotechar) {
     // Already selecting something and on a quote character.  Find the
     // next quoted string.
     if (vis_bef_curs) {
@@ -1588,7 +1573,7 @@ bool current_quote(oparg_T *oap, long count, bool include, int quotechar)
       if (col_start < 0) {
         goto abort_search;
       }
-      col_end = find_next_quote(line, col_start + 1, quotechar, (char_u *)curbuf->b_p_qe);
+      col_end = find_next_quote(line, col_start + 1, quotechar, curbuf->b_p_qe);
       if (col_end < 0) {
         // We were on a starting quote perhaps?
         col_end = col_start;
@@ -1596,17 +1581,17 @@ bool current_quote(oparg_T *oap, long count, bool include, int quotechar)
       }
     } else {
       col_end = find_prev_quote(line, col_start, quotechar, NULL);
-      if (line[col_end] != quotechar) {
+      if ((uint8_t)line[col_end] != quotechar) {
         goto abort_search;
       }
-      col_start = find_prev_quote(line, col_end, quotechar, (char_u *)curbuf->b_p_qe);
-      if (line[col_start] != quotechar) {
+      col_start = find_prev_quote(line, col_end, quotechar, curbuf->b_p_qe);
+      if ((uint8_t)line[col_start] != quotechar) {
         // We were on an ending quote perhaps?
         col_start = col_end;
         col_end = curwin->w_cursor.col;
       }
     }
-  } else if (line[col_start] == quotechar || !vis_empty) {
+  } else if ((uint8_t)line[col_start] == quotechar || !vis_empty) {
     int first_col = col_start;
 
     if (!vis_empty) {
@@ -1628,7 +1613,7 @@ bool current_quote(oparg_T *oap, long count, bool include, int quotechar)
         goto abort_search;
       }
       // Find close quote character.
-      col_end = find_next_quote(line, col_start + 1, quotechar, (char_u *)curbuf->b_p_qe);
+      col_end = find_next_quote(line, col_start + 1, quotechar, curbuf->b_p_qe);
       if (col_end < 0) {
         goto abort_search;
       }
@@ -1641,8 +1626,8 @@ bool current_quote(oparg_T *oap, long count, bool include, int quotechar)
     }
   } else {
     // Search backward for a starting quote.
-    col_start = find_prev_quote(line, col_start, quotechar, (char_u *)curbuf->b_p_qe);
-    if (line[col_start] != quotechar) {
+    col_start = find_prev_quote(line, col_start, quotechar, curbuf->b_p_qe);
+    if ((uint8_t)line[col_start] != quotechar) {
       // No quote before the cursor, look after the cursor.
       col_start = find_next_quote(line, col_start, quotechar, NULL);
       if (col_start < 0) {
@@ -1651,7 +1636,7 @@ bool current_quote(oparg_T *oap, long count, bool include, int quotechar)
     }
 
     // Find close quote character.
-    col_end = find_next_quote(line, col_start + 1, quotechar, (char_u *)curbuf->b_p_qe);
+    col_end = find_next_quote(line, col_start + 1, quotechar, curbuf->b_p_qe);
     if (col_end < 0) {
       goto abort_search;
     }
@@ -1685,9 +1670,9 @@ bool current_quote(oparg_T *oap, long count, bool include, int quotechar)
         || (vis_bef_curs
             && !selected_quote
             && (inside_quotes
-                || (line[VIsual.col] != quotechar
+                || ((uint8_t)line[VIsual.col] != quotechar
                     && (VIsual.col == 0
-                        || line[VIsual.col - 1] != quotechar))))) {
+                        || (uint8_t)line[VIsual.col - 1] != quotechar))))) {
       VIsual = curwin->w_cursor;
       redraw_curbuf_later(UPD_INVERTED);
     }
@@ -1715,9 +1700,9 @@ bool current_quote(oparg_T *oap, long count, bool include, int quotechar)
       // quote.
       if (inside_quotes
           || (!selected_quote
-              && line[VIsual.col] != quotechar
+              && (uint8_t)line[VIsual.col] != quotechar
               && (line[VIsual.col] == NUL
-                  || line[VIsual.col + 1] != quotechar))) {
+                  || (uint8_t)line[VIsual.col + 1] != quotechar))) {
         dec_cursor();
         VIsual = curwin->w_cursor;
       }

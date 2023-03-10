@@ -55,13 +55,13 @@
 /// this should not be used to specify arbitrary WM screen positions.
 ///
 /// Example (Lua): window-relative float
-/// <pre>
+/// <pre>lua
 ///     vim.api.nvim_open_win(0, false,
 ///       {relative='win', row=3, col=3, width=12, height=3})
 /// </pre>
 ///
 /// Example (Lua): buffer-relative float (travels as buffer is scrolled)
-/// <pre>
+/// <pre>lua
 ///     vim.api.nvim_open_win(0, false,
 ///       {relative='win', width=12, height=3, bufpos={100,10}})
 /// </pre>
@@ -74,6 +74,7 @@
 ///      - "editor" The global editor grid
 ///      - "win"    Window given by the `win` field, or current window.
 ///      - "cursor" Cursor position in current window.
+///      - "mouse"  Mouse position
 ///   - win: |window-ID| for relative="win".
 ///   - anchor: Decides which corner of the float to place at (row,col):
 ///      - "NW" northwest (default)
@@ -114,8 +115,9 @@
 ///                    float where the text should not be edited. Disables
 ///                    'number', 'relativenumber', 'cursorline', 'cursorcolumn',
 ///                    'foldcolumn', 'spell' and 'list' options. 'signcolumn'
-///                    is changed to `auto` and 'colorcolumn' is cleared. The
-///                    end-of-buffer region is hidden by setting `eob` flag of
+///                    is changed to `auto` and 'colorcolumn' is cleared.
+///                    'statuscolumn' is changed to empty. The end-of-buffer
+///                     region is hidden by setting `eob` flag of
 ///                    'fillchars' to a space char, and clearing the
 ///                    |hl-EndOfBuffer| region in 'winhighlight'.
 ///   - border: Style of (optional) window border. This can either be a string
@@ -141,7 +143,7 @@
 ///     will only make vertical borders but not horizontal ones.
 ///     By default, `FloatBorder` highlight is used, which links to `WinSeparator`
 ///     when not defined.  It could also be specified by character:
-///       [ {"+", "MyCorner"}, {"x", "MyBorder"} ].
+///       [ ["+", "MyCorner"], ["x", "MyBorder"] ].
 ///   - title: Title (optional) in window border, String or list.
 ///     List is [text, highlight] tuples. if is string the default
 ///     highlight group is `FloatTitle`.
@@ -276,7 +278,7 @@ Dictionary nvim_win_get_config(Window window, Error *err)
         String s = cstrn_to_string((const char *)config->border_chars[i], sizeof(schar_T));
 
         int hi_id = config->border_hl_ids[i];
-        char *hi_name = (char *)syn_id2name(hi_id);
+        char *hi_name = syn_id2name(hi_id);
         if (hi_name[0]) {
           ADD(tuple, STRING_OBJ(s));
           ADD(tuple, STRING_OBJ(cstr_to_string((const char *)hi_name)));
@@ -299,7 +301,15 @@ Dictionary nvim_win_get_config(Window window, Error *err)
           ADD(titles, ARRAY_OBJ(tuple));
         }
         PUT(rv, "title", ARRAY_OBJ(titles));
-        PUT(rv, "title_pos", INTEGER_OBJ(config->title_pos));
+        char *title_pos;
+        if (config->title_pos == kAlignLeft) {
+          title_pos = "left";
+        } else if (config->title_pos == kAlignCenter) {
+          title_pos = "center";
+        } else {
+          title_pos = "right";
+        }
+        PUT(rv, "title_pos", CSTR_TO_OBJ(title_pos));
       }
     }
   }
@@ -340,6 +350,8 @@ static bool parse_float_relative(String relative, FloatRelative *out)
     *out = kFloatRelativeWindow;
   } else if (striequal(str, "cursor")) {
     *out = kFloatRelativeCursor;
+  } else if (striequal(str, "mouse")) {
+    *out = kFloatRelativeMouse;
   } else {
     return false;
   }
@@ -382,7 +394,7 @@ static void parse_border_title(Object title, Object title_pos, FloatConfig *fcon
     return;
   }
 
-  if (title.type == kObjectTypeArray && title.data.array.size == 0) {
+  if (title.data.array.size == 0) {
     api_set_error(err, kErrorTypeValidation, "title cannot be an empty array");
     return;
   }
@@ -391,7 +403,6 @@ static void parse_border_title(Object title, Object title_pos, FloatConfig *fcon
   fconfig->title_chunks = parse_virt_text(title.data.array, err, &fconfig->title_width);
 
   fconfig->title = true;
-  return;
 }
 
 static bool parse_title_pos(Object title_pos, FloatConfig *fconfig, Error *err)
