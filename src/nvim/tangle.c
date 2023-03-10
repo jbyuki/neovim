@@ -472,12 +472,12 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 		} else if(new_line.type == REFERENCE) {
 			size_t len = fp - line;
 			char* prefix = xmalloc(len+1);
-			STRNCPY(prefix, line, len);
+			strncpy(prefix, line, len);
 			prefix[len] = '\0';
 
 			len = (lp+1)-(fp+1);
 			char* name = xmalloc(len+1);
-			STRNCPY(name, fp+1, len);
+			strncpy(name, fp+1, len);
 			name[len] = '\0';
 
 
@@ -511,7 +511,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			// len = 0 if fp+1 == lp
 			size_t len = lp - (fp+1);
 			char* name = xmalloc(len + 1);
-			STRNCPY(name, fp+2, len);
+			strncpy(name, fp+2, len);
 			name[len] = '\0';
 
 			Section* section = (Section*)xcalloc(1, sizeof(Section));
@@ -628,12 +628,12 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 		} else if(new_line.type == REFERENCE) {
 			size_t len = fp - line;
 			char* prefix = xmalloc(len+1);
-			STRNCPY(prefix, line, len);
+			strncpy(prefix, line, len);
 			prefix[len] = '\0';
 
 			len = (lp+1)-(fp+1);
 			char* name = xmalloc(len+1);
-			STRNCPY(name, fp+1, len);
+			strncpy(name, fp+1, len);
 			name[len] = '\0';
 
 
@@ -675,7 +675,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			// len = 0 if fp+1 == lp
 			size_t len = lp - (fp+1);
 			char* name = xmalloc(len + 1);
-			STRNCPY(name, fp+2, len);
+			strncpy(name, fp+2, len);
 			name[len] = '\0';
 
 			Section* section = (Section*)xcalloc(1, sizeof(Section));
@@ -847,12 +847,12 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 		} else if(new_line.type == REFERENCE) {
 			size_t len = fp - line;
 			char* prefix = xmalloc(len+1);
-			STRNCPY(prefix, line, len);
+			strncpy(prefix, line, len);
 			prefix[len] = '\0';
 
 			len = (lp+1)-(fp+1);
 			char* name = xmalloc(len+1);
-			STRNCPY(name, fp+1, len);
+			strncpy(name, fp+1, len);
 			name[len] = '\0';
 
 
@@ -937,7 +937,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			// len = 0 if fp+1 == lp
 			size_t len = lp - (fp+1);
 			char* name = xmalloc(len + 1);
-			STRNCPY(name, fp+2, len);
+			strncpy(name, fp+2, len);
 			name[len] = '\0';
 
 			if(strcmp(old_line->name, name) != 0) {
@@ -1414,7 +1414,7 @@ void tangle_parse(buf_T *buf)
           // len = 0 if fp+1 == lp
           size_t len = lp - (fp+1);
           char* name = xmalloc(len + 1);
-          STRNCPY(name, fp+2, len);
+          strncpy(name, fp+2, len);
           name[len] = '\0';
 
           Section* section = (Section*)xcalloc(1, sizeof(Section));
@@ -1464,12 +1464,12 @@ void tangle_parse(buf_T *buf)
         } else {
           size_t len = fp - line;
           char* prefix = xmalloc(len+1);
-          STRNCPY(prefix, line, len);
+          strncpy(prefix, line, len);
           prefix[len] = '\0';
 
           len = (lp+1)-(fp+1);
           char* name = xmalloc(len+1);
-          STRNCPY(name, fp+1, len);
+          strncpy(name, fp+1, len);
           name[len] = '\0';
 
           Line l;

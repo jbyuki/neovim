@@ -519,7 +519,6 @@ String buf_get_text(buf_T *buf, int64_t lnum, int64_t start_col, int64_t end_col
 			return rv;
 		}
 
-<<<<<<< HEAD
 		return cstrn_as_string((char *)&bufstr[start_col], (size_t)(end_col - start_col));
 	} else {
 		// Convert tangle lnum to untangled one
@@ -557,9 +556,6 @@ String buf_get_text(buf_T *buf, int64_t lnum, int64_t start_col, int64_t end_col
 		xfree(allocated);
 		return rv;
 	}
-=======
-  return cstrn_as_string(&bufstr[start_col], (size_t)(end_col - start_col));
->>>>>>> 29a43ef8affbb9ecbae03b75db346205ffe9ec14
 }
 
 void api_free_string(String value)

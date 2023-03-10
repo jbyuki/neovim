@@ -561,12 +561,9 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
 
     if (val < 0 || (val > line_count && strict)) {
       api_set_error(err, kErrorTypeValidation, "end_row value outside range");
-  // if (HAS_KEY(opts->end_row)) {
-    // VALIDATE_T("end_row", kObjectTypeInteger, opts->end_row.type, {
       goto error;
-    });
+    }
 
-    Integer val = opts->end_row.data.integer;
     VALIDATE_RANGE((val >= 0 && !(val > buf->b_ml.ml_line_count && strict)), "end_row", {
       goto error;
     });
@@ -580,12 +577,9 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
 
     if (val < 0 || val > MAXCOL) {
       api_set_error(err, kErrorTypeValidation, "end_col value outside range");
-  // if (HAS_KEY(opts->end_col)) {
-    // VALIDATE_T("end_col", kObjectTypeInteger, opts->end_col.type, {
       goto error;
-    });
+    }
 
-    Integer val = opts->end_col.data.integer;
     VALIDATE_RANGE((val >= 0 && val <= MAXCOL), "end_col", {
       goto error;
     });
@@ -781,26 +775,12 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
     has_decor = true;
   }
 
-  VALIDATE_RANGE((line >= 0), "line", {
-    goto error;
-  } else if (line > line_count) {
-    if (strict) {
-      api_set_error(err, kErrorTypeValidation, "line value outside range");
+  if (line > buf->b_ml.ml_line_count) {
+    VALIDATE_RANGE(!strict, "line", {
       goto error;
-    } else {
-      line = line_count;
-    }
-  } else if (line < line_count) {
-// =======
-  // });
-
-  // if (line > buf->b_ml.ml_line_count) {
-    // VALIDATE_RANGE(!strict, "line", {
-      // goto error;
-    // });
-    // line = buf->b_ml.ml_line_count;
-  // } else if (line < buf->b_ml.ml_line_count) {
-// >>>>>>> 29a43ef8affbb9ecbae03b75db346205ffe9ec14
+    });
+    line = buf->b_ml.ml_line_count;
+  } else if (line < buf->b_ml.ml_line_count) {
     len = ephemeral ? MAXCOL : strlen(ml_get_buf(buf, (linenr_T)line + 1, false));
   }
 

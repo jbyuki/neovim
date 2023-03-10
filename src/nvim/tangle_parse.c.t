@@ -68,7 +68,7 @@ default: op = 0; break;
 // len = 0 if fp+1 == lp
 size_t len = lp - (fp+1);
 char* name = xmalloc(len + 1);
-STRNCPY(name, fp+2, len);
+strncpy(name, fp+2, len);
 name[len] = '\0';
 
 @section_struct+=
@@ -160,13 +160,13 @@ l.parent_section = section;
 @get_whitespace_before+=
 size_t len = fp - line;
 char* prefix = xmalloc(len+1);
-STRNCPY(prefix, line, len);
+strncpy(prefix, line, len);
 prefix[len] = '\0';
 
 @get_reference_name+=
 len = (lp+1)-(fp+1);
 char* name = xmalloc(len+1);
-STRNCPY(name, fp+1, len);
+strncpy(name, fp+1, len);
 name[len] = '\0';
 
 @includes+=
