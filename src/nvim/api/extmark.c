@@ -564,7 +564,7 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
       goto error;
     }
 
-    VALIDATE_RANGE((val >= 0 && !(val > buf->b_ml.ml_line_count && strict)), "end_row", {
+    VALIDATE_RANGE((val >= 0 && !(val > line_count && strict)), "end_row", {
       goto error;
     });
     line2 = (int)val;

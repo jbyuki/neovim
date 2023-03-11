@@ -253,10 +253,11 @@ end, { force = true })
 vim.api.nvim_create_user_command("T", function()
   require"tangle-debug".define_autocmd()
   vim.cmd [[set tangle]]
-  require"tangle-debug".enable_virt()
-	local bufs = vim.api.nvim_tangle_get_bufs(0)
-  require"tangle-debug".capture_dummy_bufs(bufs[1])
+  -- require"tangle-debug".enable_virt()
+	-- local bufs = vim.api.nvim_tangle_get_bufs(0)
+  -- require"tangle-debug".capture_dummy_bufs(bufs[1])
 end, { force = true })
 
 print("special init.lua loaded.")
 -- vim:foldmethod=marker:
+
