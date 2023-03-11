@@ -569,16 +569,18 @@ line = tree_delete(curbuf->tgl_tree, lnum-1);
 
 @if_deleted_line_is_reference+=
 else if(line->type == REFERENCE) {
+  int n, bytes;
+  get_tangle_line_size(line, &n, &bytes);
 	if(prev_section == cur_section) {
-	        int n, bytes;
-		get_tangle_line_size(line, &n, &bytes);
 		deleted_from_prev += n;
 		deleted_from_prev_bytes += bytes;
 	}
 
 	Line* old_line = line;
+  @get_offset_of_removed_reference
 	@remove_old_line_reference
 	remove_line_from_section(line);
+  @change_line_delete_reference
 }
 
 
@@ -754,4 +756,6 @@ int get_buf_line_count_tangle(buf_T* buf)
 	SectionList* list = pmap_get(cstr_t)(&buf->parent_tgl->sections, buf->b_fname);
 	return list->n;
 }
+
+
 

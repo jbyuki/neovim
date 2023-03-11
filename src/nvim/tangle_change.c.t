@@ -172,3 +172,9 @@ else {
 
 @change_line_delete_text+=
 tangle_deleted_lines(offset, 1, cur_section, bytes);
+
+@get_offset_of_removed_reference+=
+int offset = relative_offset_section(line);
+
+@change_line_delete_reference+=
+tangle_deleted_lines(offset, n, cur_section, bytes);

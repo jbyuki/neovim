@@ -1188,17 +1188,20 @@ void tangle_delete_lines(int count)
 
 			remove_line_from_section(line);
 			tangle_deleted_lines(offset, 1, cur_section, bytes);
+
 		}
 
 		else if(line->type == REFERENCE) {
+		  int n, bytes;
+		  get_tangle_line_size(line, &n, &bytes);
 			if(prev_section == cur_section) {
-			        int n, bytes;
-				get_tangle_line_size(line, &n, &bytes);
 				deleted_from_prev += n;
 				deleted_from_prev_bytes += bytes;
 			}
 
 			Line* old_line = line;
+		  int offset = relative_offset_section(line);
+
 			{
 			SectionList* old_list = get_section_list(&curbuf->sections, old_line->name);
 			LineRef line_ref = { .section = old_line->parent_section, .id = old_line->id };
@@ -1206,6 +1209,7 @@ void tangle_delete_lines(int count)
 			}
 
 			remove_line_from_section(line);
+		  tangle_deleted_lines(offset, n, cur_section, bytes);
 		}
 
 
@@ -1322,6 +1326,8 @@ int get_buf_line_count_tangle(buf_T* buf)
 	SectionList* list = pmap_get(cstr_t)(&buf->parent_tgl->sections, buf->b_fname);
 	return list->n;
 }
+
+
 
 void tangle_update(buf_T* buf)
 {
