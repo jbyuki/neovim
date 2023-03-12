@@ -496,6 +496,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			kv_push(list->refs, line_ref);
 
 
+
 		} else if(new_line.type == SECTION) {
 			buf_T* buf = curbuf;
 			Section* cur_section;
@@ -1210,6 +1211,7 @@ void tangle_delete_lines(int count)
 
 			remove_line_from_section(line);
 		  tangle_deleted_lines(offset, n, cur_section, bytes);
+
 		}
 
 
@@ -1600,10 +1602,14 @@ int find_first_parent(Line* line, int lnum, SectionList** root_section_list)
 
 void get_tangle_buf_line(buf_T* parent_buf, Line* line, int* lnum, buf_T** tangle_buf)
 {
-	SectionList* list;
-	int offset = relative_offset_section(line);
-	*lnum = find_first_parent(line, offset, &list);
-	buf_T* buf = pmap_get(cstr_t)(&parent_buf->tgl_bufs, list->name);
-	*tangle_buf = buf;
+  SectionList* list;
+  int offset = relative_offset_section(line);
+  *lnum = find_first_parent(line, offset, &list);
+  if(*lnum != -1) {
+    buf_T* buf = pmap_get(cstr_t)(&parent_buf->tgl_bufs, list->name);
+    *tangle_buf = buf;
+  } else {
+    *tangle_buf = NULL;
+  }
 }
 

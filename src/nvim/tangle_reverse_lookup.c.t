@@ -37,9 +37,13 @@ else {
 @define_functions+=
 void get_tangle_buf_line(buf_T* parent_buf, Line* line, int* lnum, buf_T** tangle_buf)
 {
-	SectionList* list;
-	int offset = relative_offset_section(line);
-	*lnum = find_first_parent(line, offset, &list);
-	buf_T* buf = pmap_get(cstr_t)(&parent_buf->tgl_bufs, list->name);
-	*tangle_buf = buf;
+  SectionList* list;
+  int offset = relative_offset_section(line);
+  *lnum = find_first_parent(line, offset, &list);
+  if(*lnum != -1) {
+    buf_T* buf = pmap_get(cstr_t)(&parent_buf->tgl_bufs, list->name);
+    *tangle_buf = buf;
+  } else {
+    *tangle_buf = NULL;
+  }
 }

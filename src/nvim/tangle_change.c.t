@@ -178,3 +178,6 @@ int offset = relative_offset_section(line);
 
 @change_line_delete_reference+=
 tangle_deleted_lines(offset, n, cur_section, bytes);
+
+@changed_text_to_reference+=
+

@@ -85,3 +85,4 @@ test.txt
 /contrib/result-*
 
 CMakeUserPresets.json
+/init.lua

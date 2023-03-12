@@ -61,6 +61,7 @@ if(old_line->type == TEXT) {
 		@changed_text_to_text
 	} else if(new_line.type == REFERENCE) {
 		@insert_text_to_reference
+    @changed_text_to_reference
 	} else if(new_line.type == SECTION) {
 		@insert_text_to_section
 	}
