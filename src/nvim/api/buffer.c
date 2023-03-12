@@ -786,7 +786,19 @@ FUNC_API_SINCE(9)
 
   bool oob = false;
   start_row = normalize_index(buf, start_row, false, &oob);
+  VALIDATE((!oob), "%s", "Index out of bounds", {
+      return rv;
+      });
+
+  bool add_emptyline = false;
+  int old_end_row = end_row;
   end_row = normalize_index(buf, end_row, false, &oob);
+
+  // Ad-hoc solution for querying last empty line
+  if(oob && end_row == old_end_row && end_col == 0) {
+    oob = false;
+    add_emptyline = true;
+  }
 
   VALIDATE((!oob), "%s", "Index out of bounds", {
       return rv;
@@ -803,7 +815,7 @@ FUNC_API_SINCE(9)
 
   size_t size = (size_t)(end_row - start_row) + 1;
 
-  init_line_array(lstate, &rv, size);
+  init_line_array(lstate, &rv, size + (add_emptyline ? 1 : 0));
 
   if (start_row == end_row) {
     String line = buf_get_text(buf, start_row, start_col, end_col, err);
@@ -811,6 +823,9 @@ FUNC_API_SINCE(9)
       goto end;
     }
     push_linestr(lstate, &rv, line.data, line.size, 0, replace_nl);
+    if(add_emptyline) {
+      push_linestr(lstate, &rv, "", 0, 1, replace_nl);
+    }
     return rv;
   }
 
@@ -831,6 +846,10 @@ FUNC_API_SINCE(9)
 
   str = buf_get_text(buf, end_row, 0, end_col, err);
   push_linestr(lstate, &rv, str.data, str.size, (int)(size - 1), replace_nl);
+
+  if(add_emptyline) {
+    push_linestr(lstate, &rv, "", 0, (int)(size), replace_nl);
+  }
 
   if (ERROR_SET(err)) {
     goto end;
