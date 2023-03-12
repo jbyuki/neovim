@@ -60,6 +60,7 @@ if(old_line->type == TEXT) {
 		@update_text_to_text_total
 		@changed_text_to_text
 	} else if(new_line.type == REFERENCE) {
+    @get_offset_of_old_line
 		@insert_text_to_reference
     @changed_text_to_reference
 	} else if(new_line.type == SECTION) {
@@ -117,7 +118,9 @@ else if(old_line->type == REFERENCE) {
 	if(new_line.type == TEXT) {
 		@insert_reference_to_text
 	} else if(new_line.type == REFERENCE) {
+    @get_offset_of_old_line
 		@insert_reference_to_reference
+    @change_reference_to_reference
 	} else if(new_line.type == SECTION) {
 		@insert_reference_to_section
 	}

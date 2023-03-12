@@ -97,11 +97,11 @@ if(list->root) {
 
 	aco_save_T aco;
 	aucmd_prepbuf(&aco, dummy_buf);
+  extmark_splice(curbuf, 
+      offset, 0,
+      0, 0, old_byte, 
+      1, 0, new_byte, kExtmarkUndo);
 	changed_lines(offset+1, old, offset+1, new, true);
-	extmark_splice(curbuf, 
-			offset, 0,
-			0, 0, old_byte, 
-			1, 0, new_byte, kExtmarkUndo);
 	aucmd_restbuf(&aco);
 }
 
@@ -179,5 +179,11 @@ int offset = relative_offset_section(line);
 @change_line_delete_reference+=
 tangle_deleted_lines(offset, n, cur_section, bytes);
 
-@changed_text_to_reference+=
+@get_offset_of_old_line+=
+int offset = relative_offset_section(old_line);
 
+@changed_text_to_reference+=
+tangle_inserted_lines(offset, 1, n, old_line->parent_section);
+
+@change_reference_to_reference+=
+tangle_inserted_lines(offset, old_n, new_n, old_line->parent_section);

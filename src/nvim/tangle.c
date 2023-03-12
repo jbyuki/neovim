@@ -311,11 +311,11 @@ void tangle_inserted_lines(int offset, int old, int new, Section* section)
 
 		aco_save_T aco;
 		aucmd_prepbuf(&aco, dummy_buf);
+	  extmark_splice(curbuf, 
+	      offset, 0,
+	      0, 0, old_byte, 
+	      1, 0, new_byte, kExtmarkUndo);
 		changed_lines(offset+1, old, offset+1, new, true);
-		extmark_splice(curbuf, 
-				offset, 0,
-				0, 0, old_byte, 
-				1, 0, new_byte, kExtmarkUndo);
 		aucmd_restbuf(&aco);
 	}
 
@@ -470,6 +470,8 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			tangle_inserted_bytes(offset, linecol, old, new, old_line->parent_section);
 
 		} else if(new_line.type == REFERENCE) {
+	    int offset = relative_offset_section(old_line);
+
 			size_t len = fp - line;
 			char* prefix = xmalloc(len+1);
 			strncpy(prefix, line, len);
@@ -496,6 +498,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			kv_push(list->refs, line_ref);
 
 
+	    tangle_inserted_lines(offset, 1, n, old_line->parent_section);
 
 		} else if(new_line.type == SECTION) {
 			buf_T* buf = curbuf;
@@ -627,6 +630,8 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 
 
 		} else if(new_line.type == REFERENCE) {
+	    int offset = relative_offset_section(old_line);
+
 			size_t len = fp - line;
 			char* prefix = xmalloc(len+1);
 			strncpy(prefix, line, len);
@@ -661,6 +666,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			kv_push(list->refs, line_ref);
 
 
+	    tangle_inserted_lines(offset, old_n, new_n, old_line->parent_section);
 		} else if(new_line.type == SECTION) {
 			buf_T* buf = curbuf;
 			Section* cur_section;
