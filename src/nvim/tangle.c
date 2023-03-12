@@ -310,8 +310,8 @@ void tangle_inserted_lines(int offset, int old, int new, int old_byte, int new_b
 		aucmd_prepbuf(&aco, dummy_buf);
 	  extmark_splice(curbuf, 
 	      offset, 0,
-	      0, 0, (bcount_t)old_byte, 
-	      1, 0, (bcount_t)new_byte, kExtmarkUndo);
+	      old, 0, (bcount_t)old_byte, 
+	      new, 0, (bcount_t)new_byte, kExtmarkUndo);
 		changed_lines(offset+1, old, offset+1, new, true);
 		aucmd_restbuf(&aco);
 	}
@@ -464,7 +464,10 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			update_count_recursively(old_line->parent_section, 0, new_line.len - old_line->len);
 
 			int offset = relative_offset_section(old_line);
-			tangle_inserted_bytes(offset, linecol, old, new, old_line->parent_section);
+			Section* parent_section = old_line->parent_section;
+			*old_line = new_line;
+
+			tangle_inserted_bytes(offset, linecol, old, new, parent_section);
 
 		} else if(new_line.type == REFERENCE) {
 	    int offset = relative_offset_section(old_line);
@@ -498,7 +501,11 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			kv_push(list->refs, line_ref);
 
 
-	    tangle_inserted_lines(offset, 1, n, old_line->len, total, old_line->parent_section);
+	    Section* parent_section = old_line->parent_section;
+	    int old_line_len = old_line->len;
+	    *old_line = new_line;
+
+	    tangle_inserted_lines(offset, 1, n, old_line_len, total, parent_section);
 
 		} else if(new_line.type == SECTION) {
 			buf_T* buf = curbuf;
@@ -666,8 +673,11 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			kv_push(list->refs, line_ref);
 
 
+	    Section* parent_section = old_line->parent_section;
+	    *old_line = new_line;
+
 	    if(old_n > 0 || new_n > 0) {
-	      tangle_inserted_lines(offset, old_n, new_n, old_bytes, new_bytes, old_line->parent_section);
+	      tangle_inserted_lines(offset, old_n, new_n, old_bytes, new_bytes, parent_section);
 	    }
 		} else if(new_line.type == SECTION) {
 			buf_T* buf = curbuf;
