@@ -77,7 +77,7 @@ int offset = relative_offset_section(old_line);
 tangle_inserted_bytes(offset, linecol, old, new, old_line->parent_section);
 
 @define_functions+=
-void tangle_inserted_lines(int offset, int old, int new, Section* section)
+void tangle_inserted_lines(int offset, int old, int new, int old_byte, int new_byte, Section* section)
 {
 	@get_offset_to_parent_list
 	@if_root_send_inserted_lines
@@ -92,15 +92,12 @@ SectionList* list = section->parent;
 if(list->root) {
 	buf_T* dummy_buf = pmap_get(cstr_t)(&curbuf->tgl_bufs, list->name);
 
-  bcount_t new_byte = 1;
-  bcount_t old_byte = 0;
-
 	aco_save_T aco;
 	aucmd_prepbuf(&aco, dummy_buf);
   extmark_splice(curbuf, 
       offset, 0,
-      0, 0, old_byte, 
-      1, 0, new_byte, kExtmarkUndo);
+      0, 0, (bcount_t)old_byte, 
+      1, 0, (bcount_t)new_byte, kExtmarkUndo);
 	changed_lines(offset+1, old, offset+1, new, true);
 	aucmd_restbuf(&aco);
 }
@@ -111,13 +108,13 @@ else {
 		LineRef line_ref = kv_A(list->refs, i);
 		Line* parent_line;
 		int parent_offset = get_line_from_ref(line_ref, &parent_line);
-		tangle_inserted_lines(offset + parent_offset, old, new, parent_line->parent_section);
+		tangle_inserted_lines(offset + parent_offset, old, new, old_byte, new_byte, parent_line->parent_section);
 	}
 }
 
 @change_open_line+=
 int offset = relative_offset_section(pl);
-tangle_inserted_lines(offset, 0, 1, pl->parent_section);
+tangle_inserted_lines(offset, 0, 1, 0, 1, pl->parent_section);
 
 
 @collect_lnum_to_delete_text+=
@@ -182,8 +179,14 @@ tangle_deleted_lines(offset, n, cur_section, bytes);
 @get_offset_of_old_line+=
 int offset = relative_offset_section(old_line);
 
+@get_old_line_size+=
+int old_n, old_bytes;
+get_tangle_line_size(old_line, &old_n, &old_bytes);
+
 @changed_text_to_reference+=
-tangle_inserted_lines(offset, 1, n, old_line->parent_section);
+tangle_inserted_lines(offset, 1, n, old_line->len, total, old_line->parent_section);
 
 @change_reference_to_reference+=
-tangle_inserted_lines(offset, old_n, new_n, old_line->parent_section);
+if(old_n > 0 || new_n > 0) {
+  tangle_inserted_lines(offset, old_n, new_n, old_bytes, new_bytes, old_line->parent_section);
+}

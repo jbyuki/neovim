@@ -294,7 +294,7 @@ int get_line_from_ref(LineRef line_ref, Line** line)
 	return offset;
 }
 
-void tangle_inserted_lines(int offset, int old, int new, Section* section)
+void tangle_inserted_lines(int offset, int old, int new, int old_byte, int new_byte, Section* section)
 {
 	Section* section_iter = section->pprev;
 	while(section_iter) {
@@ -306,15 +306,12 @@ void tangle_inserted_lines(int offset, int old, int new, Section* section)
 	if(list->root) {
 		buf_T* dummy_buf = pmap_get(cstr_t)(&curbuf->tgl_bufs, list->name);
 
-	  bcount_t new_byte = 1;
-	  bcount_t old_byte = 0;
-
 		aco_save_T aco;
 		aucmd_prepbuf(&aco, dummy_buf);
 	  extmark_splice(curbuf, 
 	      offset, 0,
-	      0, 0, old_byte, 
-	      1, 0, new_byte, kExtmarkUndo);
+	      0, 0, (bcount_t)old_byte, 
+	      1, 0, (bcount_t)new_byte, kExtmarkUndo);
 		changed_lines(offset+1, old, offset+1, new, true);
 		aucmd_restbuf(&aco);
 	}
@@ -324,7 +321,7 @@ void tangle_inserted_lines(int offset, int old, int new, Section* section)
 			LineRef line_ref = kv_A(list->refs, i);
 			Line* parent_line;
 			int parent_offset = get_line_from_ref(line_ref, &parent_line);
-			tangle_inserted_lines(offset + parent_offset, old, new, parent_line->parent_section);
+			tangle_inserted_lines(offset + parent_offset, old, new, old_byte, new_byte, parent_line->parent_section);
 		}
 	}
 
@@ -472,6 +469,9 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 		} else if(new_line.type == REFERENCE) {
 	    int offset = relative_offset_section(old_line);
 
+	    int old_n, old_bytes;
+	    get_tangle_line_size(old_line, &old_n, &old_bytes);
+
 			size_t len = fp - line;
 			char* prefix = xmalloc(len+1);
 			strncpy(prefix, line, len);
@@ -498,7 +498,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			kv_push(list->refs, line_ref);
 
 
-	    tangle_inserted_lines(offset, 1, n, old_line->parent_section);
+	    tangle_inserted_lines(offset, 1, n, old_line->len, total, old_line->parent_section);
 
 		} else if(new_line.type == SECTION) {
 			buf_T* buf = curbuf;
@@ -666,7 +666,9 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 			kv_push(list->refs, line_ref);
 
 
-	    tangle_inserted_lines(offset, old_n, new_n, old_line->parent_section);
+	    if(old_n > 0 || new_n > 0) {
+	      tangle_inserted_lines(offset, old_n, new_n, old_bytes, new_bytes, old_line->parent_section);
+	    }
 		} else if(new_line.type == SECTION) {
 			buf_T* buf = curbuf;
 			Section* cur_section;
@@ -1125,7 +1127,7 @@ void tangle_open_line()
 	l.type = TEXT;
 	l.pnext = NULL;
 	l.pprev = NULL;
-	l.len = 0;
+	l.len = 1;
 
 	buf_T* buf = curbuf;
 	l.id = ++buf->line_counter;
@@ -1140,7 +1142,7 @@ void tangle_open_line()
 
 
 	int offset = relative_offset_section(pl);
-	tangle_inserted_lines(offset, 0, 1, pl->parent_section);
+	tangle_inserted_lines(offset, 0, 1, 0, 1, pl->parent_section);
 
 
 }

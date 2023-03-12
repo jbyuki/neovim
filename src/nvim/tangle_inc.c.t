@@ -61,6 +61,7 @@ if(old_line->type == TEXT) {
 		@changed_text_to_text
 	} else if(new_line.type == REFERENCE) {
     @get_offset_of_old_line
+    @get_old_line_size
 		@insert_text_to_reference
     @changed_text_to_reference
 	} else if(new_line.type == SECTION) {
@@ -479,7 +480,7 @@ Line l;
 l.type = TEXT;
 l.pnext = NULL;
 l.pprev = NULL;
-l.len = 0;
+l.len = 1;
 
 @append_text_line_based_on_dir+=
 Line* pl = tree_insert(curbuf->tgl_tree, lnum-1, &l);
