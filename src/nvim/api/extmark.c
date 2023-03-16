@@ -19,6 +19,7 @@
 #include "nvim/drawscreen.h"
 #include "nvim/extmark.h"
 #include "nvim/highlight_group.h"
+#include "nvim/lua/executor.h"
 #include "nvim/mbyte.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
@@ -790,6 +791,18 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
     }
   } else if (line2 >= 0) {
     col2 = 0;
+  }
+
+  for (size_t i = 0; i < kv_size(buf->update_callbacks); i++) {
+    BufUpdateCallbacks cb = kv_A(buf->update_callbacks, i);
+    if(cb.on_extmark != LUA_NOREF) {
+      MAXSIZE_TEMP_ARRAY(args, 1);
+
+      // the first argument is always the buffer handle
+      ADD_C(args, BUFFER_OBJ(buf->handle));
+
+      nlua_call_ref(cb.on_extmark, "extmark", args, false, NULL);
+    }
   }
 
   // TODO(bfredl): synergize these two branches even more
