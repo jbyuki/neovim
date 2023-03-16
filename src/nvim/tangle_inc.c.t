@@ -761,6 +761,3 @@ int get_buf_line_count_tangle(buf_T* buf)
 	SectionList* list = pmap_get(cstr_t)(&buf->parent_tgl->sections, buf->b_fname);
 	return list->n;
 }
-
-
-

@@ -114,10 +114,10 @@ else {
 	}
 }
 
+
 @change_open_line+=
 int offset = relative_offset_section(pl);
-tangle_inserted_lines(offset, 0, 1, 0, 1, pl->parent_section);
-
+tangle_inserted_text(offset-1, prev_l->len-1, 0, 0, 0, 1, 0, 1, pl->parent_section);
 
 @collect_lnum_to_delete_text+=
 int offset = relative_offset_section(line);
@@ -196,4 +196,38 @@ Section* parent_section = old_line->parent_section;
 @update_line
 if(old_n > 0 || new_n > 0) {
   tangle_inserted_lines(offset, old_n, new_n, old_bytes, new_bytes, parent_section);
+}
+
+@define_functions+=
+void tangle_inserted_text(int offset, colnr_T col, int oldcol, int newcol, int oldrow, int newrow, int old_byte, int new_byte, Section* section)
+{
+	@get_offset_to_parent_list
+	@if_root_send_text_changes
+	@otherwise_recurse_on_references_for_text_changes
+}
+
+@if_root_send_text_changes+=
+SectionList* list = section->parent;
+if(list->root) {
+	buf_T* dummy_buf = pmap_get(cstr_t)(&curbuf->tgl_bufs, list->name);
+
+	aco_save_T aco;
+	aucmd_prepbuf(&aco, dummy_buf);
+  extmark_splice(curbuf, 
+      offset, col,
+      oldrow, oldcol, (bcount_t)old_byte, 
+      newrow, newcol, (bcount_t)new_byte, kExtmarkUndo);
+	changed_lines(offset+1, oldrow, offset+1, newrow, true);
+	aucmd_restbuf(&aco);
+}
+
+@otherwise_recurse_on_references_for_text_changes+=
+else {
+	for (size_t i = 0; i < kv_size(list->refs); i++) {
+		LineRef line_ref = kv_A(list->refs, i);
+		Line* parent_line;
+		int parent_offset = get_line_from_ref(line_ref, &parent_line);
+		int pre_offset = strlen(parent_line->prefix);
+		tangle_inserted_text(offset + parent_offset, col+pre_offset, oldcol, newcol, oldrow, newrow, old_byte, new_byte, parent_line->parent_section);
+	}
 }

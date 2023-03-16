@@ -325,6 +325,7 @@ void tangle_inserted_lines(int offset, int old, int new, int old_byte, int new_b
 		}
 	}
 
+
 }
 
 void tangle_deleted_lines(int offset, int count, Section* section, int old_byte)
@@ -371,6 +372,39 @@ void deleted_lines_mark_tangle(linenr_T lnum, long count, int old_byte)
                       new_row, 0, new_byte, kExtmarkNoUndo);
 
   changed_lines(lnum, 0, lnum + (linenr_T)count, (linenr_T)(-count), true);
+}
+
+void tangle_inserted_text(int offset, colnr_T col, int oldcol, int newcol, int oldrow, int newrow, int old_byte, int new_byte, Section* section)
+{
+	Section* section_iter = section->pprev;
+	while(section_iter) {
+		offset += section_iter->n;
+		section_iter = section_iter->pprev;
+	}
+
+	SectionList* list = section->parent;
+	if(list->root) {
+		buf_T* dummy_buf = pmap_get(cstr_t)(&curbuf->tgl_bufs, list->name);
+
+		aco_save_T aco;
+		aucmd_prepbuf(&aco, dummy_buf);
+	  extmark_splice(curbuf, 
+	      offset, col,
+	      oldrow, oldcol, (bcount_t)old_byte, 
+	      newrow, newcol, (bcount_t)new_byte, kExtmarkUndo);
+		changed_lines(offset+1, oldrow, offset+1, newrow, true);
+		aucmd_restbuf(&aco);
+	}
+
+	else {
+		for (size_t i = 0; i < kv_size(list->refs); i++) {
+			LineRef line_ref = kv_A(list->refs, i);
+			Line* parent_line;
+			int parent_offset = get_line_from_ref(line_ref, &parent_line);
+			int pre_offset = strlen(parent_line->prefix);
+			tangle_inserted_text(offset + parent_offset, col+pre_offset, oldcol, newcol, oldrow, newrow, old_byte, new_byte, parent_line->parent_section);
+		}
+	}
 }
 
 int tangle_convert_lnum_to_untangled(buf_T* buf, const char* root, int lnum, char* prefix)
@@ -679,6 +713,7 @@ void update_current_tangle_line(Line* old_line, int rel, int linecol, int old, i
 	    if(old_n > 0 || new_n > 0) {
 	      tangle_inserted_lines(offset, old_n, new_n, old_bytes, new_bytes, parent_section);
 	    }
+
 		} else if(new_line.type == SECTION) {
 			buf_T* buf = curbuf;
 			Section* cur_section;
@@ -1152,8 +1187,7 @@ void tangle_open_line()
 
 
 	int offset = relative_offset_section(pl);
-	tangle_inserted_lines(offset, 0, 1, 0, 1, pl->parent_section);
-
+	tangle_inserted_text(offset-1, prev_l->len-1, 0, 0, 0, 1, 0, 1, pl->parent_section);
 
 }
 
@@ -1346,9 +1380,6 @@ int get_buf_line_count_tangle(buf_T* buf)
 	SectionList* list = pmap_get(cstr_t)(&buf->parent_tgl->sections, buf->b_fname);
 	return list->n;
 }
-
-
-
 void tangle_update(buf_T* buf)
 {
 	const char* name;
