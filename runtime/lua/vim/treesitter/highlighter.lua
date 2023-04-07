@@ -280,11 +280,13 @@ function TSHighlighter._on_line(_, _win, buf, line, _)
     buf, line = _on_buf_line(buf, line)
   end
 
+
   local self = TSHighlighter.active[buf]
   if not self then
     return
   end
 
+  self:reset_highlight_state()
   on_line_impl(self, buf, line, false)
 end
 

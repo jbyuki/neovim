@@ -7,14 +7,15 @@ local test = vim.api.nvim_create_buf(false, true)
 vim.api.nvim_buf_set_lines(test, 0, -1, true, lines)
 vim.bo[test].filetype = "cpp"
 
-local bufnr = 3
+local bufnr = 2
 vim.api.nvim_buf_attach(test, 0, {
-  on_extmark = function(_, buf, ns, start_row, start_col, end_col, end_row, hl, priority, spell)
+  on_extmark = function(_, buf, ns, start_row, start_col, end_col, end_row, hl, priority, conceal, spell)
     vim.api.nvim_buf_set_extmark(bufnr, ns, start_row, start_col, {
       end_line = end_row,
       end_col = end_col,
       hl_group = hl,
       ephemeral = true,
+      conceal = conceal,
       priority = priority, -- Low but leaves room below
       spell = spell
     })
