@@ -376,7 +376,6 @@ describe('highlight', function()
 
     -- Vertical cursor: highlights char-at-cursor. #8983
     command('set guicursor=a:block-blinkon175')
-    feed('<esc>gg$vhhh')
     screen:expect([[
         line1 foo{1:^ bar}     |
                           |
@@ -2431,6 +2430,23 @@ describe("'winhighlight' highlight", function()
       more text                               |
       {4:[No Name]                        }{1:1,1 All}|
                                               |
+    ]]}
+  end)
+
+  it('can link to empty highlight group', function()
+    command 'hi NormalNC guibg=Red' -- czerwone time
+    command 'set winhl=NormalNC:Normal'
+    command 'split'
+
+    screen:expect{grid=[[
+      ^                    |
+      {0:~                   }|
+      {0:~                   }|
+      {3:[No Name]           }|
+                          |
+      {0:~                   }|
+      {4:[No Name]           }|
+                          |
     ]]}
   end)
 end)

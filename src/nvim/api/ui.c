@@ -727,8 +727,8 @@ void remote_ui_hl_attr_define(UI *ui, Integer id, HlAttrs rgb_attrs, HlAttrs cte
   ADD_C(args, INTEGER_OBJ(id));
   MAXSIZE_TEMP_DICT(rgb, HLATTRS_DICT_SIZE);
   MAXSIZE_TEMP_DICT(cterm, HLATTRS_DICT_SIZE);
-  hlattrs2dict(&rgb, rgb_attrs, true);
-  hlattrs2dict(&cterm, rgb_attrs, false);
+  hlattrs2dict(&rgb, NULL, rgb_attrs, true, false);
+  hlattrs2dict(&cterm, NULL, rgb_attrs, false, false);
   ADD_C(args, DICTIONARY_OBJ(rgb));
   ADD_C(args, DICTIONARY_OBJ(cterm));
 
@@ -751,7 +751,7 @@ void remote_ui_highlight_set(UI *ui, int id)
   }
   data->hl_id = id;
   MAXSIZE_TEMP_DICT(dict, HLATTRS_DICT_SIZE);
-  hlattrs2dict(&dict, syn_attr2entry(id), ui->rgb);
+  hlattrs2dict(&dict, NULL, syn_attr2entry(id), ui->rgb, false);
   ADD_C(args, DICTIONARY_OBJ(dict));
   push_call(ui, "highlight_set", args);
 }
@@ -843,7 +843,7 @@ void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startcol, Int
         uint32_t csize = (repeat > 1) ? 3 : ((attrs[i] != last_hl) ? 2 : 1);
         nelem++;
         mpack_array(buf, csize);
-        mpack_str(buf, (const char *)chunk[i]);
+        mpack_str(buf, chunk[i]);
         if (csize >= 2) {
           mpack_uint(buf, (uint32_t)attrs[i]);
           if (csize >= 3) {
@@ -873,7 +873,7 @@ void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startcol, Int
     for (int i = 0; i < endcol - startcol; i++) {
       remote_ui_cursor_goto(ui, row, startcol + i);
       remote_ui_highlight_set(ui, attrs[i]);
-      remote_ui_put(ui, (const char *)chunk[i]);
+      remote_ui_put(ui, chunk[i]);
       if (utf_ambiguous_width(utf_ptr2char((char *)chunk[i]))) {
         data->client_col = -1;  // force cursor update
       }
@@ -950,7 +950,7 @@ static Array translate_contents(UI *ui, Array contents, Arena *arena)
     int attr = (int)item.items[0].data.integer;
     if (attr) {
       Dictionary rgb_attrs = arena_dict(arena, HLATTRS_DICT_SIZE);
-      hlattrs2dict(&rgb_attrs, syn_attr2entry(attr), ui->rgb);
+      hlattrs2dict(&rgb_attrs, NULL, syn_attr2entry(attr), ui->rgb, false);
       ADD(new_item, DICTIONARY_OBJ(rgb_attrs));
     } else {
       ADD(new_item, DICTIONARY_OBJ((Dictionary)ARRAY_DICT_INIT));

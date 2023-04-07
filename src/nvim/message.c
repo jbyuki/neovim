@@ -216,13 +216,13 @@ void msg_grid_validate(void)
 /// When terminal not initialized (yet) os_errmsg(..) is used.
 ///
 /// @return  true if wait_return() not called
-int msg(char *s)
+int msg(const char *s)
 {
   return msg_attr_keep(s, 0, false, false);
 }
 
 /// Like msg() but keep it silent when 'verbosefile' is set.
-int verb_msg(char *s)
+int verb_msg(const char *s)
 {
   verbose_enter();
   int n = msg_attr_keep(s, 0, false, false);
@@ -278,8 +278,7 @@ void msg_multiattr(HlMessage hl_msg, const char *kind, bool history)
   msg_ext_set_kind(kind);
   for (uint32_t i = 0; i < kv_size(hl_msg); i++) {
     HlMessageChunk chunk = kv_A(hl_msg, i);
-    msg_multiline_attr((const char *)chunk.text.data, chunk.attr,
-                       true, &need_clear);
+    msg_multiline_attr(chunk.text.data, chunk.attr, true, &need_clear);
   }
   if (history && kv_size(hl_msg)) {
     add_msg_hist_multiattr(NULL, 0, 0, true, hl_msg);
@@ -305,7 +304,7 @@ bool msg_attr_keep(const char *s, int attr, bool keep, bool multiline)
 
   // Skip messages not match ":filter pattern".
   // Don't filter when there is an error.
-  if (!emsg_on_display && message_filtered((char *)s)) {
+  if (!emsg_on_display && message_filtered(s)) {
     return true;
   }
 
@@ -333,7 +332,7 @@ bool msg_attr_keep(const char *s, int attr, bool keep, bool multiline)
 
   // Truncate the message if needed.
   msg_start();
-  buf = msg_strtrunc((char *)s, false);
+  buf = msg_strtrunc(s, false);
   if (buf != NULL) {
     s = buf;
   }
@@ -349,8 +348,8 @@ bool msg_attr_keep(const char *s, int attr, bool keep, bool multiline)
   }
   retval = msg_end();
 
-  if (keep && retval && vim_strsize((char *)s) < (Rows - cmdline_row - 1) * Columns + sc_col) {
-    set_keep_msg((char *)s, 0);
+  if (keep && retval && vim_strsize(s) < (Rows - cmdline_row - 1) * Columns + sc_col) {
+    set_keep_msg(s, 0);
   }
 
   need_fileinfo = false;
@@ -365,7 +364,7 @@ bool msg_attr_keep(const char *s, int attr, bool keep, bool multiline)
 /// @return  an allocated string or NULL when no truncating is done.
 ///
 /// @param force  always truncate
-char *msg_strtrunc(char *s, int force)
+char *msg_strtrunc(const char *s, int force)
 {
   char *buf = NULL;
 
@@ -395,7 +394,7 @@ char *msg_strtrunc(char *s, int force)
 
 /// Truncate a string "s" to "buf" with cell width "room".
 /// "s" and "buf" may be equal.
-void trunc_string(char *s, char *buf, int room_in, int buflen)
+void trunc_string(const char *s, char *buf, int room_in, int buflen)
 {
   int room = room_in - 3;  // "..." takes 3 chars
   int half;
@@ -503,7 +502,7 @@ int smsg_attr(int attr, const char *s, ...)
   va_start(arglist, s);
   vim_vsnprintf(IObuff, IOSIZE, s, arglist);
   va_end(arglist);
-  return msg_attr((const char *)IObuff, attr);
+  return msg_attr(IObuff, attr);
 }
 
 int smsg_attr_keep(int attr, const char *s, ...)
@@ -514,7 +513,7 @@ int smsg_attr_keep(int attr, const char *s, ...)
   va_start(arglist, s);
   vim_vsnprintf(IObuff, IOSIZE, s, arglist);
   va_end(arglist);
-  return msg_attr_keep((const char *)IObuff, attr, true, false);
+  return msg_attr_keep(IObuff, attr, true, false);
 }
 
 // Remember the last sourcing name/lnum used in an error message, so that it
@@ -862,7 +861,7 @@ void siemsg(const char *s, ...)
 }
 
 /// Give an "Internal error" message.
-void internal_error(char *where)
+void internal_error(const char *where)
 {
   siemsg(_(e_intern2), where);
 }
@@ -1327,7 +1326,7 @@ static void hit_return_msg(void)
 }
 
 /// Set "keep_msg" to "s".  Free the old value and check for NULL pointer.
-void set_keep_msg(char *s, int attr)
+void set_keep_msg(const char *s, int attr)
 {
   xfree(keep_msg);
   if (s != NULL && msg_silent == 0) {
@@ -1489,17 +1488,17 @@ void msg_outnum(long n)
   msg_puts(buf);
 }
 
-void msg_home_replace(char *fname)
+void msg_home_replace(const char *fname)
 {
   msg_home_replace_attr(fname, 0);
 }
 
-void msg_home_replace_hl(char *fname)
+void msg_home_replace_hl(const char *fname)
 {
   msg_home_replace_attr(fname, HL_ATTR(HLF_D));
 }
 
-static void msg_home_replace_attr(char *fname, int attr)
+static void msg_home_replace_attr(const char *fname, int attr)
 {
   char *name = home_replace_save(NULL, fname);
   msg_outtrans_attr(name, attr);
@@ -1511,7 +1510,7 @@ static void msg_home_replace_attr(char *fname, int attr)
 /// Use attributes 'attr'.
 ///
 /// @return  the number of characters it takes on the screen.
-int msg_outtrans(char *str)
+int msg_outtrans(const char *str)
 {
   return msg_outtrans_attr(str, 0);
 }
@@ -1530,7 +1529,7 @@ int msg_outtrans_len(const char *str, int len)
 /// Handles multi-byte characters.
 ///
 /// @return  pointer to the next character.
-char *msg_outtrans_one(char *p, int attr)
+const char *msg_outtrans_one(const char *p, int attr)
 {
   int l;
 
@@ -1538,7 +1537,7 @@ char *msg_outtrans_one(char *p, int attr)
     msg_outtrans_len_attr(p, l, attr);
     return p + l;
   }
-  msg_puts_attr((const char *)transchar_byte_buf(NULL, (uint8_t)(*p)), attr);
+  msg_puts_attr(transchar_byte_buf(NULL, (uint8_t)(*p)), attr);
   return p + 1;
 }
 
@@ -1562,7 +1561,7 @@ int msg_outtrans_len_attr(const char *msgstr, int len, int attr)
 
   // If the string starts with a composing character first draw a space on
   // which the composing char can be drawn.
-  if (utf_iscomposing(utf_ptr2char((char *)msgstr))) {
+  if (utf_iscomposing(utf_ptr2char(msgstr))) {
     msg_puts_attr(" ", attr);
   }
 
@@ -1583,14 +1582,13 @@ int msg_outtrans_len_attr(const char *msgstr, int len, int attr)
           msg_puts_attr_len(plain_start, str - plain_start, attr);
         }
         plain_start = str + mb_l;
-        msg_puts_attr((const char *)transchar_buf(NULL, c),
-                      (attr == 0 ? HL_ATTR(HLF_8) : attr));
+        msg_puts_attr(transchar_buf(NULL, c), attr == 0 ? HL_ATTR(HLF_8) : attr);
         retval += char2cells(c);
       }
       len -= mb_l - 1;
       str += mb_l;
     } else {
-      s = (char *)transchar_byte_buf(NULL, (uint8_t)(*str));
+      s = transchar_byte_buf(NULL, (uint8_t)(*str));
       if (s[1] != NUL) {
         // Unprintable char: print the printable chars so far and the
         // translation of the unprintable char.
@@ -1598,7 +1596,7 @@ int msg_outtrans_len_attr(const char *msgstr, int len, int attr)
           msg_puts_attr_len(plain_start, str - plain_start, attr);
         }
         plain_start = str + 1;
-        msg_puts_attr((const char *)s, attr == 0 ? HL_ATTR(HLF_8) : attr);
+        msg_puts_attr(s, attr == 0 ? HL_ATTR(HLF_8) : attr);
         retval += (int)strlen(s);
       } else {
         retval++;
@@ -1617,11 +1615,11 @@ int msg_outtrans_len_attr(const char *msgstr, int len, int attr)
   return retval;
 }
 
-void msg_make(char *arg)
+void msg_make(const char *arg)
 {
   int i;
-  static char *str = "eeffoc";
-  static char *rs = "Plon#dqg#vxjduB";
+  static const char *str = "eeffoc";
+  static const char *rs = "Plon#dqg#vxjduB";
 
   arg = skipwhite(arg);
   for (i = 5; *arg && i >= 0; i--) {
@@ -1672,9 +1670,9 @@ int msg_outtrans_special(const char *strstart, bool from, int maxlen)
     }
     if (text[0] != NUL && text[1] == NUL) {
       // single-byte character or illegal byte
-      text = (char *)transchar_byte_buf(NULL, (uint8_t)text[0]);
+      text = transchar_byte_buf(NULL, (uint8_t)text[0]);
     }
-    const int len = vim_strsize((char *)text);
+    const int len = vim_strsize(text);
     if (maxlen > 0 && retval + len >= maxlen) {
       break;
     }
@@ -1778,7 +1776,7 @@ const char *str2special(const char **const sp, const bool replace_spaces, const 
       || c < ' '
       || (replace_spaces && c == ' ')
       || (replace_lt && c == '<')) {
-    return (const char *)get_special_key_name(c, modifiers);
+    return get_special_key_name(c, modifiers);
   }
   buf[0] = (char)c;
   buf[1] = NUL;
@@ -1807,20 +1805,20 @@ void str2specialbuf(const char *sp, char *buf, size_t len)
 }
 
 /// print line for :print or :list command
-void msg_prt_line(char *s, int list)
+void msg_prt_line(const char *s, int list)
 {
   int c;
   int col = 0;
   int n_extra = 0;
   int c_extra = 0;
   int c_final = 0;
-  char *p_extra = NULL;  // init to make SASC shut up
+  const char *p_extra = NULL;  // init to make SASC shut up
   int n;
   int attr = 0;
-  char *lead = NULL;
+  const char *lead = NULL;
   bool in_multispace = false;
   int multispace_pos = 0;
-  char *trail = NULL;
+  const char *trail = NULL;
   int l;
 
   if (curwin->w_p_list) {
@@ -1918,7 +1916,7 @@ void msg_prt_line(char *s, int list)
         s--;
       } else if (c != NUL && (n = byte2cells(c)) > 1) {
         n_extra = n - 1;
-        p_extra = (char *)transchar_byte_buf(NULL, c);
+        p_extra = transchar_byte_buf(NULL, c);
         c_extra = NUL;
         c_final = NUL;
         c = (unsigned char)(*p_extra++);
@@ -1966,7 +1964,7 @@ void msg_prt_line(char *s, int list)
 /// Use grid_puts() to output one multi-byte character.
 ///
 /// @return  the pointer "s" advanced to the next character.
-static char *screen_puts_mbyte(char *s, int l, int attr)
+static const char *screen_puts_mbyte(const char *s, int l, int attr)
 {
   int cw;
   attr = hl_combine_attr(HL_ATTR(HLF_MSG), attr);
@@ -2012,12 +2010,12 @@ void msg_puts_title(const char *s)
 /// Show a message in such a way that it always fits in the line.  Cut out a
 /// part in the middle and replace it with "..." when necessary.
 /// Does not handle multi-byte characters!
-void msg_outtrans_long_attr(char *longstr, int attr)
+void msg_outtrans_long_attr(const char *longstr, int attr)
 {
   msg_outtrans_long_len_attr(longstr, (int)strlen(longstr), attr);
 }
 
-void msg_outtrans_long_len_attr(char *longstr, int len, int attr)
+void msg_outtrans_long_len_attr(const char *longstr, int len, int attr)
 {
   int slen = len;
   int room;
@@ -2212,7 +2210,7 @@ static void msg_puts_display(const char *str, int maxlen, int attr, int recurse)
         } else {
           l = utfc_ptr2len(s);
         }
-        s = screen_puts_mbyte((char *)s, l, attr);
+        s = screen_puts_mbyte(s, l, attr);
         did_last_char = true;
       } else {
         did_last_char = false;
@@ -2229,7 +2227,7 @@ static void msg_puts_display(const char *str, int maxlen, int attr, int recurse)
 
       if (p_more) {
         // Store text for scrolling back.
-        store_sb_text((char **)&sb_str, (char *)s, attr, &sb_col, true);
+        store_sb_text(&sb_str, s, attr, &sb_col, true);
       }
 
       inc_msg_scrolled();
@@ -2274,7 +2272,7 @@ static void msg_puts_display(const char *str, int maxlen, int attr, int recurse)
 
     if (wrap && p_more && !recurse) {
       // Store text for scrolling back.
-      store_sb_text((char **)&sb_str, (char *)s, attr, &sb_col, true);
+      store_sb_text(&sb_str, s, attr, &sb_col, true);
     }
 
     if (*s == '\n') {               // go to next line
@@ -2312,7 +2310,7 @@ static void msg_puts_display(const char *str, int maxlen, int attr, int recurse)
       // characters and draw them all at once later.
       if (cmdmsg_rl || (cw > 1 && msg_col + t_col >= Columns - 1)) {
         if (l > 1) {
-          s = screen_puts_mbyte((char *)s, l, attr) - 1;
+          s = screen_puts_mbyte(s, l, attr) - 1;
         } else {
           msg_screen_putchar(*s, attr);
         }
@@ -2333,7 +2331,7 @@ static void msg_puts_display(const char *str, int maxlen, int attr, int recurse)
     t_puts(&t_col, t_s, s, attr);
   }
   if (p_more && !recurse && !(s == sb_str + 1 && *sb_str == '\n')) {
-    store_sb_text((char **)&sb_str, (char *)s, attr, &sb_col, false);
+    store_sb_text(&sb_str, s, attr, &sb_col, false);
   }
 
   msg_check();
@@ -2341,7 +2339,7 @@ static void msg_puts_display(const char *str, int maxlen, int attr, int recurse)
 
 /// @return  true when ":filter pattern" was used and "msg" does not match
 ///          "pattern".
-bool message_filtered(char *msg)
+bool message_filtered(const char *msg)
 {
   if (cmdmod.cmod_filter_regmatch.regprog == NULL) {
     return false;
@@ -2507,7 +2505,7 @@ static sb_clear_T do_clear_sb_text = SB_CLEAR_NONE;
 /// @param sb_str  start of string
 /// @param s  just after string
 /// @param finish  line ends
-static void store_sb_text(char **sb_str, char *s, int attr, int *sb_col, int finish)
+static void store_sb_text(const char **sb_str, const char *s, int attr, int *sb_col, int finish)
 {
   msgchunk_T *mp;
 
@@ -2681,7 +2679,7 @@ static void t_puts(int *t_col, const char *t_s, const char *s, int attr)
   attr = hl_combine_attr(HL_ATTR(HLF_MSG), attr);
   // Output postponed text.
   msg_didout = true;  // Remember that line is not empty.
-  grid_puts_len(&msg_grid_adj, (char *)t_s, (int)(s - t_s), msg_row, msg_col, attr);
+  grid_puts_len(&msg_grid_adj, t_s, (int)(s - t_s), msg_row, msg_col, attr);
   msg_col += *t_col;
   *t_col = 0;
   // If the string starts with a composing character don't increment the
@@ -3308,7 +3306,7 @@ static void redir_write(const char *const str, const ptrdiff_t maxlen)
       write_reg_contents(redir_reg, s, (ssize_t)len, true);
     }
     if (redir_vname) {
-      var_redir_str((char *)s, (int)maxlen);
+      var_redir_str(s, (int)maxlen);
     }
 
     // Write and adjust the current column.
@@ -3417,7 +3415,7 @@ int verbose_open(void)
 
 /// Give a warning message (for searching).
 /// Use 'w' highlighting and may repeat the message after redrawing
-void give_warning(char *message, bool hl)
+void give_warning(const char *message, bool hl)
   FUNC_ATTR_NONNULL_ARG(1)
 {
   // Don't do this for ":silent".
@@ -3440,7 +3438,7 @@ void give_warning(char *message, bool hl)
     msg_ext_set_kind("wmsg");
   }
 
-  if (msg_attr((const char *)message, keep_msg_attr) && msg_scrolled == 0) {
+  if (msg_attr(message, keep_msg_attr) && msg_scrolled == 0) {
     set_keep_msg(message, keep_msg_attr);
   }
   msg_didout = false;  // Overwrite this message.
@@ -3450,7 +3448,7 @@ void give_warning(char *message, bool hl)
   no_wait_return--;
 }
 
-void give_warning2(char *const message, char *const a1, bool hl)
+void give_warning2(const char *const message, const char *const a1, bool hl)
 {
   vim_snprintf(IObuff, IOSIZE, message, a1);
   give_warning(IObuff, hl);

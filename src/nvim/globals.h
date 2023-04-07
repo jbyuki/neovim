@@ -169,7 +169,7 @@ EXTERN char *edit_submode_extra INIT(= NULL);   // appended to edit_submode
 EXTERN hlf_T edit_submode_highl;                // highl. method for extra info
 
 // state for putting characters in the message area
-EXTERN int cmdmsg_rl INIT(= false);  // cmdline is drawn right to left
+EXTERN bool cmdmsg_rl INIT(= false);  // cmdline is drawn right to left
 EXTERN int msg_col;
 EXTERN int msg_row;
 EXTERN int msg_scrolled;        // Number of screen lines that windows have
@@ -224,7 +224,7 @@ EXTERN bool did_wait_return INIT(= false);   // wait_return() was used and
                                              // nothing written since then
 EXTERN bool need_maketitle INIT(= true);     // call maketitle() soon
 
-EXTERN int quit_more INIT(= false);         // 'q' hit at "--more--" msg
+EXTERN bool quit_more INIT(= false);        // 'q' hit at "--more--" msg
 EXTERN int vgetc_busy INIT(= 0);            // when inside vgetc() then > 0
 
 EXTERN bool didset_vim INIT(= false);         // did set $VIM ourselves
@@ -233,7 +233,7 @@ EXTERN bool didset_vimruntime INIT(= false);  // idem for $VIMRUNTIME
 /// Lines left before a "more" message.  Ex mode needs to be able to reset this
 /// after you type something.
 EXTERN int lines_left INIT(= -1);           // lines left for listing
-EXTERN int msg_no_more INIT(= false);       // don't use more prompt, truncate
+EXTERN bool msg_no_more INIT(= false);      // don't use more prompt, truncate
                                             // messages
 
 EXTERN int ex_nesting_level INIT(= 0);          // nesting level
@@ -275,7 +275,7 @@ EXTERN int trylevel INIT(= 0);
 /// non-zero (and ":silent!" was not used) or an exception is being thrown at
 /// the time an error is detected.  It is set to false when "trylevel" gets
 /// zero again and there was no error or interrupt or throw.
-EXTERN int force_abort INIT(= false);
+EXTERN bool force_abort INIT(= false);
 
 /// "msg_list" points to a variable in the stack of do_cmdline() which keeps
 /// the list of arguments of several emsg() calls, one of which is to be
@@ -308,8 +308,8 @@ EXTERN except_T *caught_stack INIT(= NULL);
 /// "garbage_collect_at_exit" indicates garbagecollect(1) was called.
 ///
 EXTERN bool may_garbage_collect INIT(= false);
-EXTERN int want_garbage_collect INIT(= false);
-EXTERN int garbage_collect_at_exit INIT(= false);
+EXTERN bool want_garbage_collect INIT(= false);
+EXTERN bool garbage_collect_at_exit INIT(= false);
 
 // Special values for current_SID.
 #define SID_MODELINE    (-1)      // when using a modeline
@@ -360,19 +360,19 @@ EXTERN linenr_T search_last_line INIT(= MAXLNUM);  // for :{first},{LAST}s/pat
 
 EXTERN bool no_smartcase INIT(= false);          // don't use 'smartcase' once
 
-EXTERN int need_check_timestamps INIT(= false);  // need to check file
-                                                 // timestamps asap
-EXTERN int did_check_timestamps INIT(= false);   // did check timestamps
-                                                 // recently
-EXTERN int no_check_timestamps INIT(= 0);        // Don't check timestamps
+EXTERN bool need_check_timestamps INIT(= false);  // need to check file
+                                                  // timestamps asap
+EXTERN bool did_check_timestamps INIT(= false);   // did check timestamps
+                                                  // recently
+EXTERN int no_check_timestamps INIT(= 0);         // Don't check timestamps
 
-EXTERN int autocmd_busy INIT(= false);           // Is apply_autocmds() busy?
+EXTERN bool autocmd_busy INIT(= false);          // Is apply_autocmds() busy?
 EXTERN int autocmd_no_enter INIT(= false);       // *Enter autocmds disabled
 EXTERN int autocmd_no_leave INIT(= false);       // *Leave autocmds disabled
 EXTERN int modified_was_set;                     // did ":set modified"
-EXTERN int did_filetype INIT(= false);           // FileType event found
+EXTERN bool did_filetype INIT(= false);          // FileType event found
 // value for did_filetype when starting to execute autocommands
-EXTERN int keep_filetype INIT(= false);
+EXTERN bool keep_filetype INIT(= false);
 
 // When deleting the current buffer, another one must be loaded.
 // If we know which one is preferred, au_new_curbuf is set to it.
@@ -398,7 +398,7 @@ EXTERN int mouse_dragging INIT(= 0);          // extending Visual area with
 EXTERN vimmenu_T *root_menu INIT(= NULL);
 // While defining the system menu, sys_menu is true.  This avoids
 // overruling of menus that the user already defined.
-EXTERN int sys_menu INIT(= false);
+EXTERN bool sys_menu INIT(= false);
 
 // All windows are linked in a list. firstwin points to the first entry,
 // lastwin to the last entry (can be the same as firstwin) and curwin to the
@@ -501,7 +501,7 @@ EXTERN bool stderr_isatty INIT(= true);
 EXTERN int stdin_fd INIT(= -1);
 
 // true when doing full-screen output, otherwise only writing some messages.
-EXTERN int full_screen INIT(= false);
+EXTERN bool full_screen INIT(= false);
 
 /// Non-zero when only "safe" commands are allowed
 EXTERN int secure INIT(= 0);
@@ -519,14 +519,14 @@ EXTERN int allbuf_lock INIT(= 0);
 EXTERN int sandbox INIT(= 0);
 
 /// Batch-mode: "-es", "-Es", "-l" commandline argument was given.
-EXTERN int silent_mode INIT(= false);
+EXTERN bool silent_mode INIT(= false);
 
 /// Start position of active Visual selection.
 EXTERN pos_T VIsual;
 /// Whether Visual mode is active.
-EXTERN int VIsual_active INIT(= false);
+EXTERN bool VIsual_active INIT(= false);
 /// Whether Select mode is active.
-EXTERN int VIsual_select INIT(= false);
+EXTERN bool VIsual_select INIT(= false);
 /// Register name for Select mode
 EXTERN int VIsual_select_reg INIT(= 0);
 /// Restart Select mode when next cmd finished
@@ -536,7 +536,7 @@ EXTERN int VIsual_reselect;
 /// Type of Visual mode.
 EXTERN int VIsual_mode INIT(= 'v');
 /// true when redoing Visual.
-EXTERN int redo_VIsual_busy INIT(= false);
+EXTERN bool redo_VIsual_busy INIT(= false);
 
 // The Visual area is remembered for reselection.
 EXTERN int resel_VIsual_mode INIT(= NUL);       // 'v', 'V', or Ctrl-V
@@ -704,8 +704,8 @@ EXTERN char os_buf[                         ///< Buffer for the os/ layer
 // When non-zero, postpone redrawing.
 EXTERN int RedrawingDisabled INIT(= 0);
 
-EXTERN int readonlymode INIT(= false);      // Set to true for "view"
-EXTERN int recoverymode INIT(= false);      // Set to true for "-r" option
+EXTERN bool readonlymode INIT(= false);      // Set to true for "view"
+EXTERN bool recoverymode INIT(= false);      // Set to true for "-r" option
 
 // typeahead buffer
 EXTERN typebuf_T typebuf INIT(= { NULL, NULL, 0, 0, 0, 0, 0, 0, 0 });
@@ -714,13 +714,13 @@ EXTERN typebuf_T typebuf INIT(= { NULL, NULL, 0, 0, 0, 0, 0, 0, 0 });
 /// :normal argument was exhausted.
 EXTERN bool typebuf_was_empty INIT(= false);
 
-EXTERN int ex_normal_busy INIT(= 0);     // recursiveness of ex_normal()
-EXTERN int ex_normal_lock INIT(= 0);     // forbid use of ex_normal()
-EXTERN int ignore_script INIT(= false);  // ignore script input
-EXTERN int stop_insert_mode;             // for ":stopinsert"
-EXTERN bool KeyTyped;                    // true if user typed current char
-EXTERN int KeyStuffed;                   // true if current char from stuffbuf
-EXTERN int maptick INIT(= 0);            // tick for each non-mapped char
+EXTERN int ex_normal_busy INIT(= 0);      // recursiveness of ex_normal()
+EXTERN int expr_map_lock INIT(= 0);       // running expr mapping, prevent use of ex_normal() and text changes
+EXTERN bool ignore_script INIT(= false);  // ignore script input
+EXTERN int stop_insert_mode;              // for ":stopinsert"
+EXTERN bool KeyTyped;                     // true if user typed current char
+EXTERN int KeyStuffed;                    // true if current char from stuffbuf
+EXTERN int maptick INIT(= 0);             // tick for each non-mapped char
 
 EXTERN int must_redraw INIT(= 0);           // type of redraw necessary
 EXTERN bool skip_redraw INIT(= false);      // skip redraw once
@@ -776,7 +776,7 @@ EXTERN int replace_offset INIT(= 0);        // offset for replace_push()
 
 EXTERN char *escape_chars INIT(= " \t\\\"|");  // need backslash in cmd line
 
-EXTERN int keep_help_flag INIT(= false);  // doing :ta from help file
+EXTERN bool keep_help_flag INIT(= false);  // doing :ta from help file
 
 // When a string option is NULL (which only happens in out-of-memory
 // situations), it is set to empty_option, to avoid having to check for NULL
@@ -866,172 +866,172 @@ EXTERN linenr_T spell_redraw_lnum INIT(= 0);
 
 // The error messages that can be shared are included here.
 // Excluded are errors that are only used once and debugging messages.
-EXTERN char e_abort[] INIT(= N_("E470: Command aborted"));
-EXTERN char e_afterinit[] INIT(= N_("E905: Cannot set this option after startup"));
-EXTERN char e_api_spawn_failed[] INIT(= N_("E903: Could not spawn API job"));
-EXTERN char e_argreq[] INIT(= N_("E471: Argument required"));
-EXTERN char e_backslash[] INIT(= N_("E10: \\ should be followed by /, ? or &"));
-EXTERN char e_cmdwin[] INIT(= N_("E11: Invalid in command-line window; <CR> executes, CTRL-C quits"));
-EXTERN char e_curdir[] INIT(= N_("E12: Command not allowed in secure mode in current dir or tag search"));
-EXTERN char e_command_too_recursive[] INIT(= N_("E169: Command too recursive"));
-EXTERN char e_endif[] INIT(= N_("E171: Missing :endif"));
-EXTERN char e_endtry[] INIT(= N_("E600: Missing :endtry"));
-EXTERN char e_endwhile[] INIT(= N_("E170: Missing :endwhile"));
-EXTERN char e_endfor[] INIT(= N_("E170: Missing :endfor"));
-EXTERN char e_while[] INIT(= N_("E588: :endwhile without :while"));
-EXTERN char e_for[] INIT(= N_("E588: :endfor without :for"));
-EXTERN char e_exists[] INIT(= N_("E13: File exists (add ! to override)"));
-EXTERN char e_failed[] INIT(= N_("E472: Command failed"));
-EXTERN char e_internal[] INIT(= N_("E473: Internal error"));
-EXTERN char e_intern2[] INIT(= N_("E685: Internal error: %s"));
-EXTERN char e_interr[] INIT(= N_("Interrupted"));
-EXTERN char e_invarg[] INIT(= N_("E474: Invalid argument"));
-EXTERN char e_invarg2[] INIT(= N_("E475: Invalid argument: %s"));
-EXTERN char e_invargval[] INIT(= N_("E475: Invalid value for argument %s"));
-EXTERN char e_invargNval[] INIT(= N_("E475: Invalid value for argument %s: %s"));
-EXTERN char e_duparg2[] INIT(= N_("E983: Duplicate argument: %s"));
-EXTERN char e_invexpr2[] INIT(= N_("E15: Invalid expression: %s"));
-EXTERN char e_invrange[] INIT(= N_("E16: Invalid range"));
-EXTERN char e_invcmd[] INIT(= N_("E476: Invalid command"));
-EXTERN char e_isadir2[] INIT(= N_("E17: \"%s\" is a directory"));
-EXTERN char e_no_spell[] INIT(= N_("E756: Spell checking is not possible"));
-EXTERN char e_invchan[] INIT(= N_("E900: Invalid channel id"));
-EXTERN char e_invchanjob[] INIT(= N_("E900: Invalid channel id: not a job"));
-EXTERN char e_jobtblfull[] INIT(= N_("E901: Job table is full"));
-EXTERN char e_jobspawn[] INIT(= N_("E903: Process failed to start: %s: \"%s\""));
-EXTERN char e_channotpty[] INIT(= N_("E904: channel is not a pty"));
-EXTERN char e_stdiochan2[] INIT(= N_("E905: Couldn't open stdio channel: %s"));
-EXTERN char e_invstream[] INIT(= N_("E906: invalid stream for channel"));
-EXTERN char e_invstreamrpc[] INIT(= N_("E906: invalid stream for rpc channel, use 'rpc'"));
-EXTERN char e_streamkey[] INIT(= N_("E5210: dict key '%s' already set for buffered stream in channel %" PRIu64));
-EXTERN char e_libcall[] INIT(= N_("E364: Library call failed for \"%s()\""));
-EXTERN char e_fsync[] INIT(= N_("E667: Fsync failed: %s"));
-EXTERN char e_mkdir[] INIT(= N_("E739: Cannot create directory %s: %s"));
-EXTERN char e_markinval[] INIT(= N_("E19: Mark has invalid line number"));
-EXTERN char e_marknotset[] INIT(= N_("E20: Mark not set"));
-EXTERN char e_modifiable[] INIT(= N_("E21: Cannot make changes, 'modifiable' is off"));
-EXTERN char e_nesting[] INIT(= N_("E22: Scripts nested too deep"));
-EXTERN char e_noalt[] INIT(= N_("E23: No alternate file"));
-EXTERN char e_noabbr[] INIT(= N_("E24: No such abbreviation"));
-EXTERN char e_nobang[] INIT(= N_("E477: No ! allowed"));
-EXTERN char e_nogroup[] INIT(= N_("E28: No such highlight group name: %s"));
-EXTERN char e_noinstext[] INIT(= N_("E29: No inserted text yet"));
-EXTERN char e_nolastcmd[] INIT(= N_("E30: No previous command line"));
-EXTERN char e_nomap[] INIT(= N_("E31: No such mapping"));
-EXTERN char e_nomatch[] INIT(= N_("E479: No match"));
-EXTERN char e_nomatch2[] INIT(= N_("E480: No match: %s"));
-EXTERN char e_noname[] INIT(= N_("E32: No file name"));
-EXTERN char e_nopresub[] INIT(= N_("E33: No previous substitute regular expression"));
-EXTERN char e_noprev[] INIT(= N_("E34: No previous command"));
-EXTERN char e_noprevre[] INIT(= N_("E35: No previous regular expression"));
-EXTERN char e_norange[] INIT(= N_("E481: No range allowed"));
-EXTERN char e_noroom[] INIT(= N_("E36: Not enough room"));
-EXTERN char e_notmp[] INIT(= N_("E483: Can't get temp file name"));
-EXTERN char e_notopen[] INIT(= N_("E484: Can't open file %s"));
-EXTERN char e_notopen_2[] INIT(= N_("E484: Can't open file %s: %s"));
-EXTERN char e_notread[] INIT(= N_("E485: Can't read file %s"));
-EXTERN char e_null[] INIT(= N_("E38: Null argument"));
-EXTERN char e_number_exp[] INIT(= N_("E39: Number expected"));
-EXTERN char e_openerrf[] INIT(= N_("E40: Can't open errorfile %s"));
-EXTERN char e_outofmem[] INIT(= N_("E41: Out of memory!"));
-EXTERN char e_patnotf[] INIT(= N_("Pattern not found"));
-EXTERN char e_patnotf2[] INIT(= N_("E486: Pattern not found: %s"));
-EXTERN char e_positive[] INIT(= N_("E487: Argument must be positive"));
-EXTERN char e_prev_dir[] INIT(= N_("E459: Cannot go back to previous directory"));
+EXTERN const char e_abort[] INIT(= N_("E470: Command aborted"));
+EXTERN const char e_afterinit[] INIT(= N_("E905: Cannot set this option after startup"));
+EXTERN const char e_api_spawn_failed[] INIT(= N_("E903: Could not spawn API job"));
+EXTERN const char e_argreq[] INIT(= N_("E471: Argument required"));
+EXTERN const char e_backslash[] INIT(= N_("E10: \\ should be followed by /, ? or &"));
+EXTERN const char e_cmdwin[] INIT(= N_("E11: Invalid in command-line window; <CR> executes, CTRL-C quits"));
+EXTERN const char e_curdir[] INIT(= N_("E12: Command not allowed in secure mode in current dir or tag search"));
+EXTERN const char e_command_too_recursive[] INIT(= N_("E169: Command too recursive"));
+EXTERN const char e_endif[] INIT(= N_("E171: Missing :endif"));
+EXTERN const char e_endtry[] INIT(= N_("E600: Missing :endtry"));
+EXTERN const char e_endwhile[] INIT(= N_("E170: Missing :endwhile"));
+EXTERN const char e_endfor[] INIT(= N_("E170: Missing :endfor"));
+EXTERN const char e_while[] INIT(= N_("E588: :endwhile without :while"));
+EXTERN const char e_for[] INIT(= N_("E588: :endfor without :for"));
+EXTERN const char e_exists[] INIT(= N_("E13: File exists (add ! to override)"));
+EXTERN const char e_failed[] INIT(= N_("E472: Command failed"));
+EXTERN const char e_internal[] INIT(= N_("E473: Internal error"));
+EXTERN const char e_intern2[] INIT(= N_("E685: Internal error: %s"));
+EXTERN const char e_interr[] INIT(= N_("Interrupted"));
+EXTERN const char e_invarg[] INIT(= N_("E474: Invalid argument"));
+EXTERN const char e_invarg2[] INIT(= N_("E475: Invalid argument: %s"));
+EXTERN const char e_invargval[] INIT(= N_("E475: Invalid value for argument %s"));
+EXTERN const char e_invargNval[] INIT(= N_("E475: Invalid value for argument %s: %s"));
+EXTERN const char e_duparg2[] INIT(= N_("E983: Duplicate argument: %s"));
+EXTERN const char e_invexpr2[] INIT(= N_("E15: Invalid expression: %s"));
+EXTERN const char e_invrange[] INIT(= N_("E16: Invalid range"));
+EXTERN const char e_invcmd[] INIT(= N_("E476: Invalid command"));
+EXTERN const char e_isadir2[] INIT(= N_("E17: \"%s\" is a directory"));
+EXTERN const char e_no_spell[] INIT(= N_("E756: Spell checking is not possible"));
+EXTERN const char e_invchan[] INIT(= N_("E900: Invalid channel id"));
+EXTERN const char e_invchanjob[] INIT(= N_("E900: Invalid channel id: not a job"));
+EXTERN const char e_jobtblfull[] INIT(= N_("E901: Job table is full"));
+EXTERN const char e_jobspawn[] INIT(= N_("E903: Process failed to start: %s: \"%s\""));
+EXTERN const char e_channotpty[] INIT(= N_("E904: channel is not a pty"));
+EXTERN const char e_stdiochan2[] INIT(= N_("E905: Couldn't open stdio channel: %s"));
+EXTERN const char e_invstream[] INIT(= N_("E906: invalid stream for channel"));
+EXTERN const char e_invstreamrpc[] INIT(= N_("E906: invalid stream for rpc channel, use 'rpc'"));
+EXTERN const char e_streamkey[] INIT(= N_("E5210: dict key '%s' already set for buffered stream in channel %" PRIu64));
+EXTERN const char e_libcall[] INIT(= N_("E364: Library call failed for \"%s()\""));
+EXTERN const char e_fsync[] INIT(= N_("E667: Fsync failed: %s"));
+EXTERN const char e_mkdir[] INIT(= N_("E739: Cannot create directory %s: %s"));
+EXTERN const char e_markinval[] INIT(= N_("E19: Mark has invalid line number"));
+EXTERN const char e_marknotset[] INIT(= N_("E20: Mark not set"));
+EXTERN const char e_modifiable[] INIT(= N_("E21: Cannot make changes, 'modifiable' is off"));
+EXTERN const char e_nesting[] INIT(= N_("E22: Scripts nested too deep"));
+EXTERN const char e_noalt[] INIT(= N_("E23: No alternate file"));
+EXTERN const char e_noabbr[] INIT(= N_("E24: No such abbreviation"));
+EXTERN const char e_nobang[] INIT(= N_("E477: No ! allowed"));
+EXTERN const char e_nogroup[] INIT(= N_("E28: No such highlight group name: %s"));
+EXTERN const char e_noinstext[] INIT(= N_("E29: No inserted text yet"));
+EXTERN const char e_nolastcmd[] INIT(= N_("E30: No previous command line"));
+EXTERN const char e_nomap[] INIT(= N_("E31: No such mapping"));
+EXTERN const char e_nomatch[] INIT(= N_("E479: No match"));
+EXTERN const char e_nomatch2[] INIT(= N_("E480: No match: %s"));
+EXTERN const char e_noname[] INIT(= N_("E32: No file name"));
+EXTERN const char e_nopresub[] INIT(= N_("E33: No previous substitute regular expression"));
+EXTERN const char e_noprev[] INIT(= N_("E34: No previous command"));
+EXTERN const char e_noprevre[] INIT(= N_("E35: No previous regular expression"));
+EXTERN const char e_norange[] INIT(= N_("E481: No range allowed"));
+EXTERN const char e_noroom[] INIT(= N_("E36: Not enough room"));
+EXTERN const char e_notmp[] INIT(= N_("E483: Can't get temp file name"));
+EXTERN const char e_notopen[] INIT(= N_("E484: Can't open file %s"));
+EXTERN const char e_notopen_2[] INIT(= N_("E484: Can't open file %s: %s"));
+EXTERN const char e_notread[] INIT(= N_("E485: Can't read file %s"));
+EXTERN const char e_null[] INIT(= N_("E38: Null argument"));
+EXTERN const char e_number_exp[] INIT(= N_("E39: Number expected"));
+EXTERN const char e_openerrf[] INIT(= N_("E40: Can't open errorfile %s"));
+EXTERN const char e_outofmem[] INIT(= N_("E41: Out of memory!"));
+EXTERN const char e_patnotf[] INIT(= N_("Pattern not found"));
+EXTERN const char e_patnotf2[] INIT(= N_("E486: Pattern not found: %s"));
+EXTERN const char e_positive[] INIT(= N_("E487: Argument must be positive"));
+EXTERN const char e_prev_dir[] INIT(= N_("E459: Cannot go back to previous directory"));
 
-EXTERN char e_no_errors[] INIT(= N_("E42: No Errors"));
-EXTERN char e_loclist[] INIT(= N_("E776: No location list"));
-EXTERN char e_re_damg[] INIT(= N_("E43: Damaged match string"));
-EXTERN char e_re_corr[] INIT(= N_("E44: Corrupted regexp program"));
-EXTERN char e_readonly[] INIT(= N_("E45: 'readonly' option is set (add ! to override)"));
-EXTERN char e_letwrong[] INIT(= N_("E734: Wrong variable type for %s="));
-EXTERN char e_illvar[] INIT(= N_("E461: Illegal variable name: %s"));
-EXTERN char e_cannot_mod[] INIT(= N_("E995: Cannot modify existing variable"));
-EXTERN char e_readonlyvar[] INIT(= N_("E46: Cannot change read-only variable \"%.*s\""));
-EXTERN char e_stringreq[] INIT(= N_("E928: String required"));
-EXTERN char e_dictreq[] INIT(= N_("E715: Dictionary required"));
-EXTERN char e_blobidx[] INIT(= N_("E979: Blob index out of range: %" PRId64));
-EXTERN char e_invalblob[] INIT(= N_("E978: Invalid operation for Blob"));
-EXTERN char e_toomanyarg[] INIT(= N_("E118: Too many arguments for function: %s"));
-EXTERN char e_dictkey[] INIT(= N_("E716: Key not present in Dictionary: \"%s\""));
-EXTERN char e_listreq[] INIT(= N_("E714: List required"));
-EXTERN char e_listblobreq[] INIT(= N_("E897: List or Blob required"));
-EXTERN char e_listdictarg[] INIT(= N_("E712: Argument of %s must be a List or Dictionary"));
-EXTERN char e_listdictblobarg[] INIT(= N_("E896: Argument of %s must be a List, Dictionary or Blob"));
-EXTERN char e_readerrf[] INIT(= N_("E47: Error while reading errorfile"));
-EXTERN char e_sandbox[] INIT(= N_("E48: Not allowed in sandbox"));
-EXTERN char e_secure[] INIT(= N_("E523: Not allowed here"));
-EXTERN char e_textlock[] INIT(= N_("E565: Not allowed to change text or change window"));
-EXTERN char e_screenmode[] INIT(= N_("E359: Screen mode setting not supported"));
-EXTERN char e_scroll[] INIT(= N_("E49: Invalid scroll size"));
-EXTERN char e_shellempty[] INIT(= N_("E91: 'shell' option is empty"));
-EXTERN char e_signdata[] INIT(= N_("E255: Couldn't read in sign data!"));
-EXTERN char e_swapclose[] INIT(= N_("E72: Close error on swap file"));
-EXTERN char e_tagstack[] INIT(= N_("E73: tag stack empty"));
-EXTERN char e_toocompl[] INIT(= N_("E74: Command too complex"));
-EXTERN char e_longname[] INIT(= N_("E75: Name too long"));
-EXTERN char e_toomsbra[] INIT(= N_("E76: Too many ["));
-EXTERN char e_toomany[] INIT(= N_("E77: Too many file names"));
-EXTERN char e_trailing[] INIT(= N_("E488: Trailing characters"));
-EXTERN char e_trailing_arg[] INIT(= N_("E488: Trailing characters: %s"));
-EXTERN char e_umark[] INIT(= N_("E78: Unknown mark"));
-EXTERN char e_wildexpand[] INIT(= N_("E79: Cannot expand wildcards"));
-EXTERN char e_winheight[] INIT(= N_("E591: 'winheight' cannot be smaller than 'winminheight'"));
-EXTERN char e_winwidth[] INIT(= N_("E592: 'winwidth' cannot be smaller than 'winminwidth'"));
-EXTERN char e_write[] INIT(= N_("E80: Error while writing"));
-EXTERN char e_zerocount[] INIT(= N_("E939: Positive count required"));
-EXTERN char e_usingsid[] INIT(= N_("E81: Using <SID> not in a script context"));
-EXTERN char e_missingparen[] INIT(= N_("E107: Missing parentheses: %s"));
-EXTERN char e_maxmempat[] INIT(= N_("E363: pattern uses more memory than 'maxmempattern'"));
-EXTERN char e_emptybuf[] INIT(= N_("E749: empty buffer"));
-EXTERN char e_nobufnr[] INIT(= N_("E86: Buffer %" PRId64 " does not exist"));
+EXTERN const char e_no_errors[] INIT(= N_("E42: No Errors"));
+EXTERN const char e_loclist[] INIT(= N_("E776: No location list"));
+EXTERN const char e_re_damg[] INIT(= N_("E43: Damaged match string"));
+EXTERN const char e_re_corr[] INIT(= N_("E44: Corrupted regexp program"));
+EXTERN const char e_readonly[] INIT(= N_("E45: 'readonly' option is set (add ! to override)"));
+EXTERN const char e_letwrong[] INIT(= N_("E734: Wrong variable type for %s="));
+EXTERN const char e_illvar[] INIT(= N_("E461: Illegal variable name: %s"));
+EXTERN const char e_cannot_mod[] INIT(= N_("E995: Cannot modify existing variable"));
+EXTERN const char e_readonlyvar[] INIT(= N_("E46: Cannot change read-only variable \"%.*s\""));
+EXTERN const char e_stringreq[] INIT(= N_("E928: String required"));
+EXTERN const char e_dictreq[] INIT(= N_("E715: Dictionary required"));
+EXTERN const char e_blobidx[] INIT(= N_("E979: Blob index out of range: %" PRId64));
+EXTERN const char e_invalblob[] INIT(= N_("E978: Invalid operation for Blob"));
+EXTERN const char e_toomanyarg[] INIT(= N_("E118: Too many arguments for function: %s"));
+EXTERN const char e_dictkey[] INIT(= N_("E716: Key not present in Dictionary: \"%s\""));
+EXTERN const char e_listreq[] INIT(= N_("E714: List required"));
+EXTERN const char e_listblobreq[] INIT(= N_("E897: List or Blob required"));
+EXTERN const char e_listdictarg[] INIT(= N_("E712: Argument of %s must be a List or Dictionary"));
+EXTERN const char e_listdictblobarg[] INIT(= N_("E896: Argument of %s must be a List, Dictionary or Blob"));
+EXTERN const char e_readerrf[] INIT(= N_("E47: Error while reading errorfile"));
+EXTERN const char e_sandbox[] INIT(= N_("E48: Not allowed in sandbox"));
+EXTERN const char e_secure[] INIT(= N_("E523: Not allowed here"));
+EXTERN const char e_textlock[] INIT(= N_("E565: Not allowed to change text or change window"));
+EXTERN const char e_screenmode[] INIT(= N_("E359: Screen mode setting not supported"));
+EXTERN const char e_scroll[] INIT(= N_("E49: Invalid scroll size"));
+EXTERN const char e_shellempty[] INIT(= N_("E91: 'shell' option is empty"));
+EXTERN const char e_signdata[] INIT(= N_("E255: Couldn't read in sign data!"));
+EXTERN const char e_swapclose[] INIT(= N_("E72: Close error on swap file"));
+EXTERN const char e_tagstack[] INIT(= N_("E73: tag stack empty"));
+EXTERN const char e_toocompl[] INIT(= N_("E74: Command too complex"));
+EXTERN const char e_longname[] INIT(= N_("E75: Name too long"));
+EXTERN const char e_toomsbra[] INIT(= N_("E76: Too many ["));
+EXTERN const char e_toomany[] INIT(= N_("E77: Too many file names"));
+EXTERN const char e_trailing[] INIT(= N_("E488: Trailing characters"));
+EXTERN const char e_trailing_arg[] INIT(= N_("E488: Trailing characters: %s"));
+EXTERN const char e_umark[] INIT(= N_("E78: Unknown mark"));
+EXTERN const char e_wildexpand[] INIT(= N_("E79: Cannot expand wildcards"));
+EXTERN const char e_winheight[] INIT(= N_("E591: 'winheight' cannot be smaller than 'winminheight'"));
+EXTERN const char e_winwidth[] INIT(= N_("E592: 'winwidth' cannot be smaller than 'winminwidth'"));
+EXTERN const char e_write[] INIT(= N_("E80: Error while writing"));
+EXTERN const char e_zerocount[] INIT(= N_("E939: Positive count required"));
+EXTERN const char e_usingsid[] INIT(= N_("E81: Using <SID> not in a script context"));
+EXTERN const char e_missingparen[] INIT(= N_("E107: Missing parentheses: %s"));
+EXTERN const char e_maxmempat[] INIT(= N_("E363: pattern uses more memory than 'maxmempattern'"));
+EXTERN const char e_emptybuf[] INIT(= N_("E749: empty buffer"));
+EXTERN const char e_nobufnr[] INIT(= N_("E86: Buffer %" PRId64 " does not exist"));
 
-EXTERN char e_invalpat[] INIT(= N_("E682: Invalid search pattern or delimiter"));
-EXTERN char e_bufloaded[] INIT(= N_("E139: File is loaded in another buffer"));
-EXTERN char e_notset[] INIT(= N_("E764: Option '%s' is not set"));
-EXTERN char e_invalidreg[] INIT(= N_("E850: Invalid register name"));
-EXTERN char e_dirnotf[] INIT(= N_("E919: Directory not found in '%s': \"%s\""));
-EXTERN char e_au_recursive[] INIT(= N_("E952: Autocommand caused recursive behavior"));
-EXTERN char e_menuothermode[] INIT(= N_("E328: Menu only exists in another mode"));
-EXTERN char e_autocmd_close[] INIT(= N_("E813: Cannot close autocmd window"));
-EXTERN char e_listarg[] INIT(= N_("E686: Argument of %s must be a List"));
-EXTERN char e_unsupportedoption[] INIT(= N_("E519: Option not supported"));
-EXTERN char e_fnametoolong[] INIT(= N_("E856: Filename too long"));
-EXTERN char e_float_as_string[] INIT(= N_("E806: using Float as a String"));
-EXTERN char e_cannot_edit_other_buf[] INIT(= N_("E788: Not allowed to edit another buffer now"));
+EXTERN const char e_invalpat[] INIT(= N_("E682: Invalid search pattern or delimiter"));
+EXTERN const char e_bufloaded[] INIT(= N_("E139: File is loaded in another buffer"));
+EXTERN const char e_notset[] INIT(= N_("E764: Option '%s' is not set"));
+EXTERN const char e_invalidreg[] INIT(= N_("E850: Invalid register name"));
+EXTERN const char e_dirnotf[] INIT(= N_("E919: Directory not found in '%s': \"%s\""));
+EXTERN const char e_au_recursive[] INIT(= N_("E952: Autocommand caused recursive behavior"));
+EXTERN const char e_menuothermode[] INIT(= N_("E328: Menu only exists in another mode"));
+EXTERN const char e_autocmd_close[] INIT(= N_("E813: Cannot close autocmd window"));
+EXTERN const char e_listarg[] INIT(= N_("E686: Argument of %s must be a List"));
+EXTERN const char e_unsupportedoption[] INIT(= N_("E519: Option not supported"));
+EXTERN const char e_fnametoolong[] INIT(= N_("E856: Filename too long"));
+EXTERN const char e_float_as_string[] INIT(= N_("E806: using Float as a String"));
+EXTERN const char e_cannot_edit_other_buf[] INIT(= N_("E788: Not allowed to edit another buffer now"));
 
-EXTERN char e_cmdmap_err[] INIT(= N_("E5520: <Cmd> mapping must end with <CR>"));
-EXTERN char e_cmdmap_repeated[]
+EXTERN const char e_cmdmap_err[] INIT(= N_("E5520: <Cmd> mapping must end with <CR>"));
+EXTERN const char e_cmdmap_repeated[]
 INIT(= N_("E5521: <Cmd> mapping must end with <CR> before second <Cmd>"));
 
-EXTERN char e_api_error[] INIT(= N_("E5555: API call: %s"));
+EXTERN const char e_api_error[] INIT(= N_("E5555: API call: %s"));
 
-EXTERN char e_luv_api_disabled[] INIT(= N_("E5560: %s must not be called in a lua loop callback"));
+EXTERN const char e_luv_api_disabled[] INIT(= N_("E5560: %s must not be called in a lua loop callback"));
 
-EXTERN char e_floatonly[] INIT(= N_("E5601: Cannot close window, only floating window would remain"));
-EXTERN char e_floatexchange[] INIT(= N_("E5602: Cannot exchange or rotate float"));
+EXTERN const char e_floatonly[] INIT(= N_("E5601: Cannot close window, only floating window would remain"));
+EXTERN const char e_floatexchange[] INIT(= N_("E5602: Cannot exchange or rotate float"));
 
-EXTERN char e_cannot_define_autocommands_for_all_events[] INIT(= N_("E1155: Cannot define autocommands for ALL events"));
+EXTERN const char e_cannot_define_autocommands_for_all_events[] INIT(= N_("E1155: Cannot define autocommands for ALL events"));
 
-EXTERN char e_resulting_text_too_long[] INIT(= N_("E1240: Resulting text too long"));
+EXTERN const char e_resulting_text_too_long[] INIT(= N_("E1240: Resulting text too long"));
 
-EXTERN char e_line_number_out_of_range[] INIT(= N_("E1247: Line number out of range"));
+EXTERN const char e_line_number_out_of_range[] INIT(= N_("E1247: Line number out of range"));
 
-EXTERN char e_highlight_group_name_invalid_char[] INIT(= N_("E5248: Invalid character in group name"));
+EXTERN const char e_highlight_group_name_invalid_char[] INIT(= N_("E5248: Invalid character in group name"));
 
-EXTERN char e_highlight_group_name_too_long[] INIT(= N_("E1249: Highlight group name too long"));
+EXTERN const char e_highlight_group_name_too_long[] INIT(= N_("E1249: Highlight group name too long"));
 
-EXTERN char e_invalid_line_number_nr[] INIT(= N_("E966: Invalid line number: %ld"));
+EXTERN const char e_invalid_line_number_nr[] INIT(= N_("E966: Invalid line number: %ld"));
 
-EXTERN char e_undobang_cannot_redo_or_move_branch[]
+EXTERN const char e_undobang_cannot_redo_or_move_branch[]
 INIT(= N_("E5767: Cannot use :undo! to redo or move to a different undo branch"));
 
-EXTERN char e_trustfile[] INIT(= N_("E5570: Cannot update trust file: %s"));
+EXTERN const char e_trustfile[] INIT(= N_("E5570: Cannot update trust file: %s"));
 
-EXTERN char top_bot_msg[] INIT(= N_("search hit TOP, continuing at BOTTOM"));
-EXTERN char bot_top_msg[] INIT(= N_("search hit BOTTOM, continuing at TOP"));
+EXTERN const char top_bot_msg[] INIT(= N_("search hit TOP, continuing at BOTTOM"));
+EXTERN const char bot_top_msg[] INIT(= N_("search hit BOTTOM, continuing at TOP"));
 
-EXTERN char line_msg[] INIT(= N_(" line "));
+EXTERN const char line_msg[] INIT(= N_(" line "));
 
 EXTERN FILE *time_fd INIT(= NULL);  // where to write startup timing
 

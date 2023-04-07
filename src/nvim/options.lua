@@ -413,7 +413,7 @@ return {
       alloced=true,
       redraw={'curswant'},
       varname='p_cms',
-      defaults={if_true="/*%s*/"}
+      defaults={if_true=""}
     },
     {
       full_name='compatible', abbreviation='cp',
@@ -2026,7 +2026,7 @@ return {
       varname='p_sp',
       defaults={
         condition='MSWIN',
-        if_true=">%s 2>&1",
+        if_true="2>&1| tee",
         if_false="| tee",
       }
     },

@@ -42,7 +42,7 @@
 # include "match.c.generated.h"
 #endif
 
-static char *e_invalwindow = N_("E957: Invalid window number");
+static const char *e_invalwindow = N_("E957: Invalid window number");
 
 #define SEARCH_HL_PRIORITY 0
 
@@ -98,7 +98,7 @@ static int match_add(win_T *wp, const char *const grp, const char *const pat, in
   if ((hlg_id = syn_check_group(grp, strlen(grp))) == 0) {
     return -1;
   }
-  if (pat != NULL && (regprog = vim_regcomp((char *)pat, RE_MAGIC)) == NULL) {
+  if (pat != NULL && (regprog = vim_regcomp(pat, RE_MAGIC)) == NULL) {
     semsg(_(e_invarg2), pat);
     return -1;
   }
@@ -938,10 +938,9 @@ void f_getmatches(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
         tv_dict_add_list(dict, buf, (size_t)len, l);
       }
     } else {
-      tv_dict_add_str(dict, S_LEN("pattern"), (const char *)cur->mit_pattern);
+      tv_dict_add_str(dict, S_LEN("pattern"), cur->mit_pattern);
     }
-    tv_dict_add_str(dict, S_LEN("group"),
-                    (const char *)syn_id2name(cur->mit_hlg_id));
+    tv_dict_add_str(dict, S_LEN("group"), syn_id2name(cur->mit_hlg_id));
     tv_dict_add_nr(dict, S_LEN("priority"), (varnumber_T)cur->mit_priority);
     tv_dict_add_nr(dict, S_LEN("id"), (varnumber_T)cur->mit_id);
 
@@ -1166,9 +1165,8 @@ void f_matcharg(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     matchitem_T *const m = get_match(curwin, id);
 
     if (m != NULL) {
-      tv_list_append_string(rettv->vval.v_list,
-                            (const char *)syn_id2name(m->mit_hlg_id), -1);
-      tv_list_append_string(rettv->vval.v_list, (const char *)m->mit_pattern, -1);
+      tv_list_append_string(rettv->vval.v_list, syn_id2name(m->mit_hlg_id), -1);
+      tv_list_append_string(rettv->vval.v_list, m->mit_pattern, -1);
     } else {
       tv_list_append_string(rettv->vval.v_list, NULL, 0);
       tv_list_append_string(rettv->vval.v_list, NULL, 0);
@@ -1232,7 +1230,7 @@ void ex_match(exarg_T *eap)
     if (!eap->skip) {
       if (*end != NUL && !ends_excmd(*skipwhite(end + 1))) {
         xfree(g);
-        eap->errmsg = ex_errmsg(e_trailing_arg, (const char *)end);
+        eap->errmsg = ex_errmsg(e_trailing_arg, end);
         return;
       }
       if (*end != *p) {
@@ -1243,8 +1241,7 @@ void ex_match(exarg_T *eap)
 
       c = (uint8_t)(*end);
       *end = NUL;
-      match_add(curwin, (const char *)g, (const char *)p + 1, 10, id,
-                NULL, NULL);
+      match_add(curwin, g, p + 1, 10, id, NULL, NULL);
       xfree(g);
       *end = (char)c;
     }

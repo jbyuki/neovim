@@ -32,7 +32,8 @@ CTRL-L			Clears and redraws the screen.  The redraw may happen
 						*:redraws* *:redrawstatus*
 :redraws[tatus][!]	Redraws the status line and window bar of the current
 			window, or all status lines and window bars if "!" is
-			included. Useful if 'statusline' or 'winbar' includes
+			included. Redraws the commandline instead if it contains
+			the 'ruler'. Useful if 'statusline' or 'winbar' includes
 			an item that doesn't cause automatic updating.
 
 						*:redrawt* *:redrawtabline*
@@ -173,13 +174,12 @@ g8			Print the hex values of the bytes used in the
 			Like ":z" or ":z!", but number the lines.
 
 							*:=*
-:= [flags]		Print the last line number.
-			See |ex-flags| for [flags].
+:=			Without arg: Print the last line number.
+			with args: equivalent to `:lua ={expr}`. see |:lua|
 
-:{range}= [flags]	Prints the last line number in {range}.  For example,
+:{range}=		Prints the last line number in {range}.  For example,
 			this prints the current line number: >
 				:.=
-<			See |ex-flags| for [flags].
 
 :norm[al][!] {commands}					*:norm* *:normal*
 			Execute Normal mode commands {commands}.  This makes

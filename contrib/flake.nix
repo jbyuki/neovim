@@ -16,6 +16,9 @@
           preConfigure = ''
             sed -i cmake.config/versiondef.h.in -e 's/@NVIM_VERSION_PRERELEASE@/-dev-${version}/'
           '';
+          nativeBuildInputs = oa.nativeBuildInputs ++ [
+            final.libiconv
+          ];
         });
 
         # a development binary to help debug issues
@@ -48,7 +51,7 @@
           ] ++ final.lib.optionals final.stdenv.isLinux [
             # https://github.com/google/sanitizers/wiki/AddressSanitizerFlags
             # https://clang.llvm.org/docs/AddressSanitizer.html#symbolizing-the-reports
-            "-DCLANG_ASAN_UBSAN=ON"
+            "-DENABLE_ASAN_UBSAN=ON"
           ];
         });
       };

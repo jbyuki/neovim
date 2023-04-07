@@ -622,3 +622,34 @@ it('K_EVENT does not trigger a statusline redraw unnecessarily', function()
   sleep(50)
   eq(1, eval('g:counter < 50'), 'g:counter=' .. eval('g:counter'))
 end)
+
+it('statusline is redrawn on recording state change #22683', function()
+  clear()
+  local screen = Screen.new(40, 4)
+  screen:attach()
+  command('set ls=2 stl=%{repeat(reg_recording(),5)}')
+  feed('qQ')
+  screen:expect([[
+    ^                                        |
+    ~                                       |
+    QQQQQ                                   |
+    recording @Q                            |
+  ]])
+end)
+
+it('ruler is redrawn in cmdline with redrawstatus #22804', function()
+  clear()
+  local screen = Screen.new(40, 2)
+  screen:attach()
+  command([[
+    let g:n = 'initial value'
+    set ls=1 ru ruf=%{g:n}
+    redraw
+    let g:n = 'other value'
+    redrawstatus
+  ]])
+  screen:expect([[
+    ^                                        |
+                          other value       |
+  ]])
+end)

@@ -76,7 +76,7 @@ jobs:
 
       - if: success() || failure() && steps.abort_job.outputs.status == 'success'
         name: configure
-        run: cmake -B build -G Ninja -D CI_BUILD=OFF
+        run: cmake -B build -G Ninja
 
       - if: "!cancelled()"
         name: Determine if run should be aborted
@@ -132,11 +132,11 @@ jobs:
           - flavor: asan
             cc: clang
             runner: ubuntu-22.04
-            flags: -D CLANG_ASAN_UBSAN=ON
+            flags: -D ENABLE_ASAN_UBSAN=ON
           - flavor: tsan
             cc: clang
             runner: ubuntu-22.04
-            flags: -D CLANG_TSAN=ON
+            flags: -D ENABLE_TSAN=ON
           - flavor: uchar
             cc: gcc
             runner: ubuntu-22.04
@@ -197,7 +197,7 @@ jobs:
 
       - name: Build
         run: |
-          cmake -B build -G Ninja -D CMAKE_INSTALL_PREFIX:PATH=$INSTALL_PREFIX ${{ matrix.flags }}
+          cmake -B build -G Ninja -D CMAKE_INSTALL_PREFIX:PATH=$INSTALL_PREFIX ${{ matrix.flags }} -D CI_BUILD=ON
           cmake --build build
 
       - if: "!cancelled()"
@@ -276,7 +276,7 @@ jobs:
           cmake --build .deps
 
       - name: Configure
-        run: cmake -B build -G "Ninja Multi-Config" -D CMAKE_C_COMPILER=gcc
+        run: cmake -B build -G "Ninja Multi-Config" -D CMAKE_C_COMPILER=gcc -D CI_BUILD=ON
 
       - name: Release
         run: cmake --build build --config Release
@@ -313,7 +313,7 @@ jobs:
 
       - name: Build
         run: |
-          cmake -B build -G Ninja -D CMAKE_BUILD_TYPE='RelWithDebInfo'
+          cmake -B build -G Ninja -D CMAKE_BUILD_TYPE='RelWithDebInfo' -D CI_BUILD=ON
           cmake --build build
 
       - name: Install test deps
@@ -376,13 +376,13 @@ jobs:
             libluajit-5.1-dev \
             libmsgpack-dev \
             libtermkey-dev \
-            libtree-sitter-dev \
             libunibilium-dev \
             libuv1-dev \
             lua-filesystem \
             lua-lpeg \
             lua-mpack \
             luajit
+            # libtree-sitter-dev \
             # libvterm-dev \
             # lua-luv-dev
 
@@ -397,10 +397,13 @@ jobs:
           # dependencies don't have the required version available. We use the
           # bundled versions for these with the hopes of being able to remove them
           # later on.
-          cmake -S cmake.deps -B .deps -G Ninja -D USE_BUNDLED=OFF -D USE_BUNDLED_LUV=ON -D USE_BUNDLED_LIBVTERM=ON
+          cmake -S cmake.deps -B .deps -G Ninja -D USE_BUNDLED=OFF \
+            -D USE_BUNDLED_LUV=ON \
+            -D USE_BUNDLED_LIBVTERM=ON \
+            -D USE_BUNDLED_TS=ON
           cmake --build .deps
 
       - name: Build
         run: |
-          cmake -B build -G Ninja
+          cmake -B build -G Ninja -D CI_BUILD=ON
           cmake --build build

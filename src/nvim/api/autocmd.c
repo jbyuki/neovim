@@ -608,7 +608,7 @@ void nvim_clear_autocmds(Dict(clear_autocmds) *opts, Error *err)
     FOR_ALL_AUEVENTS(event) {
       FOREACH_ITEM(patterns, pat_object, {
         char *pat = pat_object.data.string.data;
-        if (!clear_autocmd(event, (char *)pat, au_group, err)) {
+        if (!clear_autocmd(event, pat, au_group, err)) {
           goto cleanup;
         }
       });
@@ -619,7 +619,7 @@ void nvim_clear_autocmds(Dict(clear_autocmds) *opts, Error *err)
 
       FOREACH_ITEM(patterns, pat_object, {
         char *pat = pat_object.data.string.data;
-        if (!clear_autocmd(event_nr, (char *)pat, au_group, err)) {
+        if (!clear_autocmd(event_nr, pat, au_group, err)) {
           goto cleanup;
         }
       });
@@ -683,11 +683,9 @@ Integer nvim_create_augroup(uint64_t channel_id, String name, Dict(create_augrou
 void nvim_del_augroup_by_id(Integer id, Error *err)
   FUNC_API_SINCE(9)
 {
-  TRY_WRAP({
-    try_start();
+  TRY_WRAP(err, {
     char *name = augroup_name((int)id);
     augroup_del(name, false);
-    try_end(err);
   });
 }
 
@@ -700,10 +698,8 @@ void nvim_del_augroup_by_id(Integer id, Error *err)
 void nvim_del_augroup_by_name(String name, Error *err)
   FUNC_API_SINCE(9)
 {
-  TRY_WRAP({
-    try_start();
+  TRY_WRAP(err, {
     augroup_del(name.data, false);
-    try_end(err);
   });
 }
 

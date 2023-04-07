@@ -1,7 +1,12 @@
 // This is an open source non-commercial project. Dear PVS-Studio, please check
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
-#define EXTERN
+// Make sure extern symbols are exported on Windows
+#ifdef WIN32
+# define EXTERN __declspec(dllexport)
+#else
+# define EXTERN
+#endif
 #include <assert.h>
 #include <limits.h>
 #include <msgpack/pack.h>
@@ -2117,7 +2122,7 @@ static int execute_env(char *env)
   current_sctx.sc_sid = SID_ENV;
   current_sctx.sc_seq = 0;
   current_sctx.sc_lnum = 0;
-  do_cmdline_cmd((char *)initstr);
+  do_cmdline_cmd(initstr);
 
   estack_pop();
   current_sctx = save_current_sctx;
@@ -2148,7 +2153,7 @@ static void print_mainerr(const char *errstr, const char *str)
   os_errmsg(_(errstr));
   if (str != NULL) {
     os_errmsg(": \"");
-    os_errmsg((char *)str);
+    os_errmsg(str);
     os_errmsg("\"");
   }
   os_errmsg(_("\nMore info with \""));

@@ -23,7 +23,7 @@ describe('treesitter parser API', function()
       parser = vim.treesitter.get_parser(0, "c")
       tree = parser:parse()[1]
       root = tree:root()
-      lang = vim.treesitter.inspect_language('c')
+      lang = vim.treesitter.language.inspect('c')
     ]])
 
     eq("<tree>", exec_lua("return tostring(tree)"))
@@ -171,7 +171,7 @@ void ui_refresh(void)
 
   it("supports runtime queries", function()
     local ret = exec_lua [[
-      return require"vim.treesitter.query".get_query("c", "highlights").captures[1]
+      return vim.treesitter.query.get("c", "highlights").captures[1]
     ]]
 
     eq('variable', ret)
@@ -184,7 +184,7 @@ void ui_refresh(void)
         local query, n = ...
         local before = vim.loop.hrtime()
         for i=1,n,1 do
-          cquery = vim.treesitter.parse_query("c", ...)
+          cquery = vim.treesitter.query.parse("c", ...)
         end
         local after = vim.loop.hrtime()
         return after - before
@@ -203,7 +203,7 @@ void ui_refresh(void)
     insert(test_text)
 
     local res = exec_lua([[
-      cquery = vim.treesitter.parse_query("c", ...)
+      cquery = vim.treesitter.query.parse("c", ...)
       parser = vim.treesitter.get_parser(0, "c")
       tree = parser:parse()[1]
       res = {}
@@ -232,7 +232,7 @@ void ui_refresh(void)
     insert(test_text)
 
     local res = exec_lua([[
-      cquery = vim.treesitter.parse_query("c", ...)
+      cquery = vim.treesitter.query.parse("c", ...)
       parser = vim.treesitter.get_parser(0, "c")
       tree = parser:parse()[1]
       res = {}
@@ -326,7 +326,7 @@ end]]
     insert('char* astring = "\\n"; (1 + 1) * 2 != 2;')
 
     local res = exec_lua([[
-      cquery = vim.treesitter.parse_query("c", '([_] @plus (#vim-match? @plus "^\\\\+$"))'..
+      cquery = vim.treesitter.query.parse("c", '([_] @plus (#vim-match? @plus "^\\\\+$"))'..
                                                '([_] @times (#vim-match? @times "^\\\\*$"))'..
                                                '([_] @paren (#vim-match? @paren "^\\\\($"))'..
                                                '([_] @escape (#vim-match? @escape "^\\\\\\\\n$"))'..
@@ -376,7 +376,7 @@ end]]
     ]])
     exec_lua([[
       function get_query_result(query_text)
-        cquery = vim.treesitter.parse_query("c", query_text)
+        cquery = vim.treesitter.query.parse("c", query_text)
         parser = vim.treesitter.get_parser(0, "c")
         tree = parser:parse()[1]
         res = {}
@@ -416,7 +416,7 @@ end]]
     insert('char* astring = "Hello World!";')
 
     local res = exec_lua([[
-      cquery = vim.treesitter.parse_query("c", '([_] @quote (#vim-match? @quote "^\\"$")) ([_] @quote (#lua-match? @quote "^\\"$"))')
+      cquery = vim.treesitter.query.parse("c", '([_] @quote (#vim-match? @quote "^\\"$")) ([_] @quote (#lua-match? @quote "^\\"$"))')
       parser = vim.treesitter.get_parser(0, "c")
       tree = parser:parse()[1]
       res = {}
@@ -449,7 +449,7 @@ end]]
     local custom_query = "((identifier) @main (#is-main? @main))"
 
     local res = exec_lua([[
-    local query = require"vim.treesitter.query"
+    local query = vim.treesitter.query
 
     local function is_main(match, pattern, bufnr, predicate)
       local node = match[ predicate[2] ]
@@ -461,7 +461,7 @@ end]]
 
     query.add_predicate("is-main?", is_main)
 
-    local query = query.parse_query("c", ...)
+    local query = query.parse("c", ...)
 
     local nodes = {}
     for _, node in query:iter_captures(parser:parse()[1]:root(), 0) do
@@ -474,7 +474,7 @@ end]]
     eq({{0, 4, 0, 8}}, res)
 
     local res_list = exec_lua[[
-    local query = require'vim.treesitter.query'
+    local query = vim.treesitter.query
 
     local list = query.list_predicates()
 
@@ -533,7 +533,7 @@ end]]
 
     local res = exec_lua [[
     parser = vim.treesitter.get_parser(0, "c")
-    query = vim.treesitter.parse_query("c", "(declaration) @decl")
+    query = vim.treesitter.query.parse("c", "(declaration) @decl")
 
     local nodes = {}
     for _, node in query:iter_captures(parser:parse()[1]:root(), 0) do
@@ -581,7 +581,7 @@ end]]
     local parser = vim.treesitter.get_string_parser(str, "c")
 
     local nodes = {}
-    local query = vim.treesitter.parse_query("c", '((identifier) @id (eq? @id "foo"))')
+    local query = vim.treesitter.query.parse("c", '((identifier) @id (eq? @id "foo"))')
 
     for _, node in query:iter_captures(parser:parse()[1]:root(), str) do
       table.insert(nodes, { node:range() })
@@ -603,7 +603,7 @@ end]]
     local parser = vim.treesitter.get_string_parser(str, "c")
 
     local nodes = {}
-    local query = vim.treesitter.parse_query("c", '((identifier) @foo)')
+    local query = vim.treesitter.query.parse("c", '((identifier) @foo)')
     local first_child = parser:parse()[1]:root():child(1)
 
     for _, node in query:iter_captures(first_child, str) do
@@ -627,8 +627,8 @@ end]]
     before_each(function()
       insert([[
 int x = INT_MAX;
-#define READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
-#define READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
+#define READ_STRING(x, y) (char *)read_string((x), (size_t)(y))
+#define READ_STRING_OK(x, y) (char *)read_string((x), (size_t)(y))
 #define VALUE 123
 #define VALUE1 123
 #define VALUE2 123
@@ -650,8 +650,8 @@ int x = INT_MAX;
           {3, 14, 3, 17}, -- VALUE 123
           {4, 15, 4, 18}, -- VALUE1 123
           {5, 15, 5, 18}, -- VALUE2 123
-          {1, 26, 1, 65}, -- READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
-          {2, 29, 2, 68}  -- READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
+          {1, 26, 1, 63}, -- READ_STRING(x, y) (char *)read_string((x), (size_t)(y))
+          {2, 29, 2, 66}  -- READ_STRING_OK(x, y) (char *)read_string((x), (size_t)(y))
         }, get_ranges())
 
         helpers.feed('ggo<esc>')
@@ -661,8 +661,8 @@ int x = INT_MAX;
           {4, 14, 4, 17}, -- VALUE 123
           {5, 15, 5, 18}, -- VALUE1 123
           {6, 15, 6, 18}, -- VALUE2 123
-          {2, 26, 2, 65}, -- READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
-          {3, 29, 3, 68}  -- READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
+          {2, 26, 2, 63}, -- READ_STRING(x, y) (char *)read_string((x), (size_t)(y))
+          {3, 29, 3, 66}  -- READ_STRING_OK(x, y) (char *)read_string((x), (size_t)(y))
         }, get_ranges())
       end)
     end)
@@ -682,8 +682,8 @@ int x = INT_MAX;
           {3, 14, 5, 18}, -- VALUE 123
                           -- VALUE1 123
                           -- VALUE2 123
-          {1, 26, 2, 68}  -- READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
-                          -- READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
+          {1, 26, 2, 66}  -- READ_STRING(x, y) (char *)read_string((x), (size_t)(y))
+                          -- READ_STRING_OK(x, y) (char *)read_string((x), (size_t)(y))
         }, get_ranges())
 
         helpers.feed('ggo<esc>')
@@ -694,8 +694,8 @@ int x = INT_MAX;
           {4, 14, 6, 18}, -- VALUE 123
                           -- VALUE1 123
                           -- VALUE2 123
-          {2, 26, 3, 68}  -- READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
-                          -- READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
+          {2, 26, 3, 66}  -- READ_STRING(x, y) (char *)read_string((x), (size_t)(y))
+                          -- READ_STRING_OK(x, y) (char *)read_string((x), (size_t)(y))
         }, get_ranges())
       end)
     end)
@@ -703,7 +703,7 @@ int x = INT_MAX;
     describe("when providing parsing information through a directive", function()
       it("should inject a language", function()
         exec_lua([=[
-        vim.treesitter.add_directive("inject-clang!", function(match, _, _, pred, metadata)
+        vim.treesitter.query.add_directive("inject-clang!", function(match, _, _, pred, metadata)
           metadata.language = "c"
           metadata.combined = true
           metadata.content = pred[2]
@@ -722,8 +722,8 @@ int x = INT_MAX;
           {3, 14, 5, 18}, -- VALUE 123
                           -- VALUE1 123
                           -- VALUE2 123
-          {1, 26, 2, 68}  -- READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
-                          -- READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
+          {1, 26, 2, 66}  -- READ_STRING(x, y) (char *)read_string((x), (size_t)(y))
+                          -- READ_STRING_OK(x, y) (char *)read_string((x), (size_t)(y))
         }, get_ranges())
 
         helpers.feed('ggo<esc>')
@@ -734,14 +734,14 @@ int x = INT_MAX;
           {4, 14, 6, 18}, -- VALUE 123
                           -- VALUE1 123
                           -- VALUE2 123
-          {2, 26, 3, 68}  -- READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
-                          -- READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
+          {2, 26, 3, 66}  -- READ_STRING(x, y) (char *)read_string((x), (size_t)(y))
+                          -- READ_STRING_OK(x, y) (char *)read_string((x), (size_t)(y))
         }, get_ranges())
       end)
 
       it("should not inject bad languages", function()
         exec_lua([=[
-        vim.treesitter.add_directive("inject-bad!", function(match, _, _, pred, metadata)
+        vim.treesitter.query.add_directive("inject-bad!", function(match, _, _, pred, metadata)
           metadata.language = "{"
           metadata.combined = true
           metadata.content = pred[2]
@@ -768,13 +768,13 @@ int x = INT_MAX;
           {3, 15, 3, 16}, -- VALUE 123
           {4, 16, 4, 17}, -- VALUE1 123
           {5, 16, 5, 17}, -- VALUE2 123
-          {1, 26, 1, 65}, -- READ_STRING(x, y) (char_u *)read_string((x), (size_t)(y))
-          {2, 29, 2, 68}  -- READ_STRING_OK(x, y) (char_u *)read_string((x), (size_t)(y))
+          {1, 26, 1, 63}, -- READ_STRING(x, y) (char *)read_string((x), (size_t)(y))
+          {2, 29, 2, 66}  -- READ_STRING_OK(x, y) (char *)read_string((x), (size_t)(y))
         }, get_ranges())
       end)
       it("should list all directives", function()
         local res_list = exec_lua[[
-        local query = require'vim.treesitter.query'
+        local query = vim.treesitter.query
 
         local list = query.list_directives()
 
@@ -820,7 +820,7 @@ int x = INT_MAX;
         local result = exec_lua([[
         local result
 
-        query = vim.treesitter.parse_query("c", '((number_literal) @number (#set! "key" "value"))')
+        query = vim.treesitter.query.parse("c", '((number_literal) @number (#set! "key" "value"))')
         parser = vim.treesitter.get_parser(0, "c")
 
         for pattern, match, metadata in query:iter_matches(parser:parse()[1]:root(), 0) do
@@ -840,10 +840,10 @@ int x = INT_MAX;
           ]])
 
           local result = exec_lua([[
-          local query = require("vim.treesitter.query")
+          local query = vim.treesitter.query
           local value
 
-          query = vim.treesitter.parse_query("c", '((number_literal) @number (#set! @number "key" "value"))')
+          query = vim.treesitter.query.parse("c", '((number_literal) @number (#set! @number "key" "value"))')
           parser = vim.treesitter.get_parser(0, "c")
 
           for pattern, match, metadata in query:iter_matches(parser:parse()[1]:root(), 0) do
@@ -862,10 +862,10 @@ int x = INT_MAX;
           ]])
 
           local result = exec_lua([[
-          local query = require("vim.treesitter.query")
+          local query = vim.treesitter.query
           local result
 
-          query = vim.treesitter.parse_query("c", '((number_literal) @number (#set! @number "key" "value") (#set! @number "key2" "value2"))')
+          query = vim.treesitter.query.parse("c", '((number_literal) @number (#set! @number "key" "value") (#set! @number "key2" "value2"))')
           parser = vim.treesitter.get_parser(0, "c")
 
           for pattern, match, metadata in query:iter_matches(parser:parse()[1]:root(), 0) do
@@ -947,5 +947,49 @@ int x = INT_MAX;
       [15] = '2',
       [16] = '1',
       [17] = '0' }, get_fold_levels())
+  end)
+
+  it('tracks the root range properly (#22911)', function()
+    insert([[
+      int main() {
+        int x = 3;
+      }]])
+
+    local query0 = [[
+      (declaration) @declaration
+      (function_definition) @function
+    ]]
+
+    exec_lua([[
+      vim.treesitter.start(0, 'c')
+    ]])
+
+    local function run_query()
+      return exec_lua([[
+      local query = vim.treesitter.query.parse("c", ...)
+      parser = vim.treesitter.get_parser()
+      tree = parser:parse()[1]
+      res = {}
+      for id, node in query:iter_captures(tree:root()) do
+        table.insert(res, {query.captures[id], node:range()})
+      end
+      return res
+      ]], query0)
+    end
+
+    eq({
+      { 'function', 0, 0, 2, 1 },
+      { 'declaration', 1, 2, 1, 12 }
+    }, run_query())
+
+    helpers.command'normal ggO'
+    insert('int a;')
+
+    eq({
+      { 'declaration', 0, 0, 0, 6 },
+      { 'function', 1, 0, 3, 1 },
+      { 'declaration', 2, 2, 2, 12 }
+    }, run_query())
+
   end)
 end)

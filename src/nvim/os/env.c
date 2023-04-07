@@ -494,7 +494,7 @@ void init_homedir(void)
     // links.  Don't do it when we can't return.
     if (os_dirname(os_buf, MAXPATHL) == OK && os_chdir(os_buf) == 0) {
       if (!os_chdir(var) && os_dirname(IObuff, IOSIZE) == OK) {
-        var = (char *)IObuff;
+        var = IObuff;
       }
       if (os_chdir(os_buf) != 0) {
         emsg(_(e_prev_dir));
@@ -845,7 +845,7 @@ const void *vim_env_iter(const char delim, const char *const val, const void *co
                          const char **const dir, size_t *const len)
   FUNC_ATTR_NONNULL_ARG(2, 4, 5) FUNC_ATTR_WARN_UNUSED_RESULT
 {
-  const char *varval = (const char *)iter;
+  const char *varval = iter;
   if (varval == NULL) {
     varval = val;
   }
@@ -876,7 +876,7 @@ const void *vim_env_iter_rev(const char delim, const char *const val, const void
                              const char **const dir, size_t *const len)
   FUNC_ATTR_NONNULL_ARG(2, 4, 5) FUNC_ATTR_WARN_UNUSED_RESULT
 {
-  const char *varend = (const char *)iter;
+  const char *varend = iter;
   if (varend == NULL) {
     varend = val + strlen(val) - 1;
   }
@@ -1060,7 +1060,7 @@ size_t home_replace(const buf_T *const buf, const char *src, char *const dst, si
   }
 
   if (buf != NULL && buf->b_help) {
-    const size_t dlen = xstrlcpy(dst, path_tail((char *)src), dstlen);
+    const size_t dlen = xstrlcpy(dst, path_tail(src), dstlen);
     return MIN(dlen, dstlen - 1);
   }
 
@@ -1098,7 +1098,7 @@ size_t home_replace(const buf_T *const buf, const char *src, char *const dst, si
   }
 
   if (!one) {
-    src = skipwhite((char *)src);
+    src = skipwhite(src);
   }
   char *dst_p = dst;
   while (*src && dstlen > 0) {

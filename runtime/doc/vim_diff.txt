@@ -34,6 +34,7 @@ Defaults					            *nvim-defaults*
 - 'backspace' defaults to "indent,eol,start"
 - 'backupdir' defaults to .,~/.local/state/nvim/backup// (|xdg|), auto-created
 - 'belloff' defaults to "all"
+- 'commentstring' defaults to ""
 - 'compatible' is always disabled
 - 'complete' excludes "i"
 - 'directory' defaults to ~/.local/state/nvim/swap// (|xdg|), auto-created
@@ -254,6 +255,8 @@ Highlight groups:
   |hl-TermCursorNC|
   |hl-WinSeparator| highlights window separators
   |hl-Whitespace| highlights 'listchars' whitespace
+  |hl-WinBar| highlights 'winbar'
+  |hl-WinBarNC| highlights non-current window 'winbar'
 
 Input/Mappings:
   ALT (|META|) chords always work (even in the |TUI|). Map |<M-| with any key:
@@ -460,6 +463,7 @@ Commands:
   |:doautocmd| does not warn about "No matching autocommands".
   |:wincmd| accepts a count.
   `:write!` does not show a prompt if the file was updated externally.
+  |:=| does not accept |ex-flags|. With an arg it is equivalent to |:lua=|
 
 Command-line:
   The meanings of arrow keys do not change depending on 'wildoptions'.

@@ -11,6 +11,7 @@
 #include "nvim/highlight.h"
 #include "nvim/highlight_group.h"
 #include "nvim/memory.h"
+#include "nvim/move.h"
 #include "nvim/pos.h"
 #include "nvim/sign_defs.h"
 
@@ -86,6 +87,7 @@ void decor_redraw(buf_T *buf, int row1, int row2, Decoration *decor)
 
   if (decor && kv_size(decor->virt_lines)) {
     redraw_buf_line_later(buf, row1 + 1 + (decor->virt_lines_above?0:1), true);
+    changed_line_display_buf(buf);
   }
 }
 
@@ -384,7 +386,7 @@ next_mark:
 }
 
 void decor_redraw_signs(buf_T *buf, int row, int *num_signs, SignTextAttrs sattrs[],
-                        HlPriAttr *num_attrs, HlPriAttr *line_attrs, HlPriAttr *cul_attrs)
+                        HlPriId *num_id, HlPriId *line_id, HlPriId *cul_id)
 {
   if (!buf->b_signs) {
     return;
@@ -420,23 +422,23 @@ void decor_redraw_signs(buf_T *buf, int row, int *num_signs, SignTextAttrs sattr
       if (j < SIGN_SHOW_MAX) {
         sattrs[j] = (SignTextAttrs) {
           .text = decor->sign_text,
-          .hl_attr_id = decor->sign_hl_id == 0 ? 0 : syn_id2attr(decor->sign_hl_id),
+          .hl_id = decor->sign_hl_id,
           .priority = decor->priority
         };
         (*num_signs)++;
       }
     }
 
-    struct { HlPriAttr *dest; int hl; } cattrs[] = {
-      { line_attrs, decor->line_hl_id        },
-      { num_attrs,  decor->number_hl_id      },
-      { cul_attrs,  decor->cursorline_hl_id  },
+    struct { HlPriId *dest; int hl; } cattrs[] = {
+      { line_id, decor->line_hl_id        },
+      { num_id,  decor->number_hl_id      },
+      { cul_id,  decor->cursorline_hl_id  },
       { NULL, -1 },
     };
     for (int i = 0; cattrs[i].dest; i++) {
       if (cattrs[i].hl != 0 && decor->priority >= cattrs[i].dest->priority) {
-        *cattrs[i].dest = (HlPriAttr) {
-          .attr_id = syn_id2attr(cattrs[i].hl),
+        *cattrs[i].dest = (HlPriId) {
+          .hl_id = cattrs[i].hl,
           .priority = decor->priority
         };
       }

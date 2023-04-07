@@ -97,31 +97,31 @@ static int toggle_Magic(int x)
 #define EMSG2_RET_NULL(m, c) \
   return (semsg((m), (c) ? "" : "\\"), rc_did_emsg = true, (void *)NULL)
 #define EMSG3_RET_NULL(m, c, a) \
-  return (semsg((const char *)(m), (c) ? "" : "\\", (a)), rc_did_emsg = true, (void *)NULL)
+  return (semsg((m), (c) ? "" : "\\", (a)), rc_did_emsg = true, (void *)NULL)
 #define EMSG2_RET_FAIL(m, c) \
   return (semsg((m), (c) ? "" : "\\"), rc_did_emsg = true, FAIL)
 #define EMSG_ONE_RET_NULL EMSG2_RET_NULL(_("E369: invalid item in %s%%[]"), reg_magic == MAGIC_ALL)
 
 #define MAX_LIMIT       (32767L << 16L)
 
-static char e_missingbracket[] = N_("E769: Missing ] after %s[");
-static char e_reverse_range[] = N_("E944: Reverse range in character class");
-static char e_large_class[] = N_("E945: Range too large in character class");
-static char e_unmatchedpp[] = N_("E53: Unmatched %s%%(");
-static char e_unmatchedp[] = N_("E54: Unmatched %s(");
-static char e_unmatchedpar[] = N_("E55: Unmatched %s)");
-static char e_z_not_allowed[] = N_("E66: \\z( not allowed here");
-static char e_z1_not_allowed[] = N_("E67: \\z1 - \\z9 not allowed here");
-static char e_missing_sb[] = N_("E69: Missing ] after %s%%[");
-static char e_empty_sb[] = N_("E70: Empty %s%%[]");
-static char e_recursive[] = N_("E956: Cannot use pattern recursively");
-static char e_regexp_number_after_dot_pos_search_chr[]
+static const char e_missingbracket[] = N_("E769: Missing ] after %s[");
+static const char e_reverse_range[] = N_("E944: Reverse range in character class");
+static const char e_large_class[] = N_("E945: Range too large in character class");
+static const char e_unmatchedpp[] = N_("E53: Unmatched %s%%(");
+static const char e_unmatchedp[] = N_("E54: Unmatched %s(");
+static const char e_unmatchedpar[] = N_("E55: Unmatched %s)");
+static const char e_z_not_allowed[] = N_("E66: \\z( not allowed here");
+static const char e_z1_not_allowed[] = N_("E67: \\z1 - \\z9 not allowed here");
+static const char e_missing_sb[] = N_("E69: Missing ] after %s%%[");
+static const char e_empty_sb[] = N_("E70: Empty %s%%[]");
+static const char e_recursive[] = N_("E956: Cannot use pattern recursively");
+static const char e_regexp_number_after_dot_pos_search_chr[]
   = N_("E1204: No Number allowed after .: '\\%%%c'");
-static char e_nfa_regexp_missing_value_in_chr[]
+static const char e_nfa_regexp_missing_value_in_chr[]
   = N_("E1273: (NFA regexp) missing value in '\\%%%c'");
-static char e_atom_engine_must_be_at_start_of_pattern[]
+static const char e_atom_engine_must_be_at_start_of_pattern[]
   = N_("E1281: Atom '\\%%#=%c' must be at the start of the pattern");
-static char e_substitute_nesting_too_deep[] = N_("E1290: substitute nesting too deep");
+static const char e_substitute_nesting_too_deep[] = N_("E1290: substitute nesting too deep");
 
 #define NOT_MULTI       0
 #define MULTI_ONE       1
@@ -2237,12 +2237,12 @@ list_T *reg_submatch_list(int no)
       tv_list_append_string(list, s, ecol);
     }
   } else {
-    s = (const char *)rsm.sm_match->startp[no];
+    s = rsm.sm_match->startp[no];
     if (s == NULL || rsm.sm_match->endp[no] == NULL) {
       return NULL;
     }
     list = tv_list_alloc(1);
-    tv_list_append_string(list, s, (const char *)rsm.sm_match->endp[no] - s);
+    tv_list_append_string(list, s, rsm.sm_match->endp[no] - s);
   }
 
   tv_list_ref(list);
@@ -2304,10 +2304,10 @@ static uint8_t regname[][30] = {
 // Returns the program in allocated memory.
 // Use vim_regfree() to free the memory.
 // Returns NULL for an error.
-regprog_T *vim_regcomp(char *expr_arg, int re_flags)
+regprog_T *vim_regcomp(const char *expr_arg, int re_flags)
 {
   regprog_T *prog = NULL;
-  char *expr = expr_arg;
+  const char *expr = expr_arg;
 
   regexp_engine = (int)p_re;
 
@@ -2403,7 +2403,7 @@ void free_regexp_stuff(void)
 
 #endif
 
-static void report_re_switch(char *pat)
+static void report_re_switch(const char *pat)
 {
   if (p_verbose > 0) {
     verbose_enter();
@@ -2425,7 +2425,7 @@ static void report_re_switch(char *pat)
 /// @param nl
 ///
 /// @return true if there is a match, false if not.
-static bool vim_regexec_string(regmatch_T *rmp, char *line, colnr_T col, bool nl)
+static bool vim_regexec_string(regmatch_T *rmp, const char *line, colnr_T col, bool nl)
 {
   regexec_T rex_save;
   bool rex_in_use_save = rex_in_use;
@@ -2482,7 +2482,7 @@ static bool vim_regexec_string(regmatch_T *rmp, char *line, colnr_T col, bool nl
 
 // Note: "*prog" may be freed and changed.
 // Return true if there is a match, false if not.
-bool vim_regexec_prog(regprog_T **prog, bool ignore_case, char *line, colnr_T col)
+bool vim_regexec_prog(regprog_T **prog, bool ignore_case, const char *line, colnr_T col)
 {
   regmatch_T regmatch = { .regprog = *prog, .rm_ic = ignore_case };
   bool r = vim_regexec_string(&regmatch, line, col, false);
@@ -2492,7 +2492,7 @@ bool vim_regexec_prog(regprog_T **prog, bool ignore_case, char *line, colnr_T co
 
 // Note: "rmp->regprog" may be freed and changed.
 // Return true if there is a match, false if not.
-bool vim_regexec(regmatch_T *rmp, char *line, colnr_T col)
+bool vim_regexec(regmatch_T *rmp, const char *line, colnr_T col)
 {
   return vim_regexec_string(rmp, line, col, false);
 }
@@ -2500,7 +2500,7 @@ bool vim_regexec(regmatch_T *rmp, char *line, colnr_T col)
 // Like vim_regexec(), but consider a "\n" in "line" to be a line break.
 // Note: "rmp->regprog" may be freed and changed.
 // Return true if there is a match, false if not.
-bool vim_regexec_nl(regmatch_T *rmp, char *line, colnr_T col)
+bool vim_regexec_nl(regmatch_T *rmp, const char *line, colnr_T col)
 {
   return vim_regexec_string(rmp, line, col, true);
 }

@@ -723,7 +723,11 @@ void terminal_paste(long count, char **y_array, size_t y_size)
     for (size_t j = 0; j < y_size; j++) {
       if (j) {
         // terminate the previous line
+#ifdef MSWIN
+        terminal_send(curbuf->terminal, "\r\n", 2);
+#else
         terminal_send(curbuf->terminal, "\n", 1);
+#endif
       }
       size_t len = strlen(y_array[j]);
       if (len > buff_len) {
@@ -892,13 +896,13 @@ static int term_moverect(VTermRect dest, VTermRect src, void *data)
   return 1;
 }
 
-static int term_movecursor(VTermPos new, VTermPos old, int visible, void *data)
+static int term_movecursor(VTermPos new_pos, VTermPos old_pos, int visible, void *data)
 {
   Terminal *term = data;
-  term->cursor.row = new.row;
-  term->cursor.col = new.col;
-  invalidate_terminal(term, old.row, old.row + 1);
-  invalidate_terminal(term, new.row, new.row + 1);
+  term->cursor.row = new_pos.row;
+  term->cursor.col = new_pos.col;
+  invalidate_terminal(term, old_pos.row, old_pos.row + 1);
+  invalidate_terminal(term, new_pos.row, new_pos.row + 1);
   return 1;
 }
 

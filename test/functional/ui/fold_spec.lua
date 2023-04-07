@@ -4,7 +4,6 @@ local clear, feed, eq = helpers.clear, helpers.feed, helpers.eq
 local command = helpers.command
 local feed_command = helpers.feed_command
 local insert = helpers.insert
-local expect = helpers.expect
 local funcs = helpers.funcs
 local meths = helpers.meths
 local exec = helpers.exec
@@ -2022,27 +2021,5 @@ describe("folded lines", function()
 
   describe('without ext_multigrid', function()
     with_ext_multigrid(false)
-  end)
-
-  it('no folds remains if :delete makes buffer empty #19671', function()
-    funcs.setline(1, {'foo', 'bar', 'baz'})
-    command('2,3fold')
-    command('%delete')
-    eq(0, funcs.foldlevel(1))
-  end)
-
-  it('multibyte fold markers work #20438', function()
-    meths.win_set_option(0, 'foldmethod', 'marker')
-    meths.win_set_option(0, 'foldmarker', '«,»')
-    insert([[
-      bbbbb
-      bbbbb
-      bbbbb]])
-    feed('zfgg')
-    expect([[
-      bbbbb/*«*/
-      bbbbb
-      bbbbb/*»*/]])
-    eq(1, funcs.foldlevel(1))
   end)
 end)

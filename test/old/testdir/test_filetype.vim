@@ -133,6 +133,7 @@ let s:filename_checks = {
     \ 'cqlang': ['file.cql'],
     \ 'crm': ['file.crm'],
     \ 'crontab': ['crontab', 'crontab.file', '/etc/cron.d/file', 'any/etc/cron.d/file'],
+    \ 'crystal': ['file.cr'],
     \ 'cs': ['file.cs', 'file.csx'],
     \ 'csc': ['file.csc'],
     \ 'csdl': ['file.csdl'],
@@ -191,6 +192,7 @@ let s:filename_checks = {
     \ 'epuppet': ['file.epp'],
     \ 'erlang': ['file.erl', 'file.hrl', 'file.yaws'],
     \ 'eruby': ['file.erb', 'file.rhtml'],
+    \ 'esdl': ['file.esdl'],
     \ 'esmtprc': ['anyesmtprc', 'esmtprc', 'some-esmtprc'],
     \ 'esqlc': ['file.ec', 'file.EC'],
     \ 'esterel': ['file.strl'],
@@ -320,6 +322,7 @@ let s:filename_checks = {
     \ 'latte': ['file.latte', 'file.lte'],
     \ 'ld': ['file.ld'],
     \ 'ldif': ['file.ldif'],
+    \ 'lean': ['file.lean'],
     \ 'ledger': ['file.ldg', 'file.ledger', 'file.journal'],
     \ 'less': ['file.less'],
     \ 'lex': ['file.lex', 'file.l', 'file.lxx', 'file.l++'],
@@ -335,6 +338,7 @@ let s:filename_checks = {
     \ 'lite': ['file.lite', 'file.lt'],
     \ 'litestep': ['/LiteStep/any/file.rc', 'any/LiteStep/any/file.rc'],
     \ 'logcheck': ['/etc/logcheck/file.d-some/file', '/etc/logcheck/file.d/file', 'any/etc/logcheck/file.d-some/file', 'any/etc/logcheck/file.d/file'],
+    \ 'livebook': ['file.livemd'],
     \ 'loginaccess': ['/etc/login.access', 'any/etc/login.access'],
     \ 'logindefs': ['/etc/login.defs', 'any/etc/login.defs'],
     \ 'logtalk': ['file.lgt'],
@@ -410,6 +414,7 @@ let s:filename_checks = {
     \ 'nqc': ['file.nqc'],
     \ 'nroff': ['file.tr', 'file.nr', 'file.roff', 'file.tmac', 'file.mom', 'tmac.file'],
     \ 'nsis': ['file.nsi', 'file.nsh'],
+    \ 'nu': ['env.nu', 'config.nu'],
     \ 'obj': ['file.obj'],
     \ 'obse': ['file.obl', 'file.obse', 'file.oblivion', 'file.obscript'],
     \ 'ocaml': ['file.ml', 'file.mli', 'file.mll', 'file.mly', '.ocamlinit', 'file.mlt', 'file.mlp', 'file.mlip', 'file.mli.cppo', 'file.ml.cppo'],
@@ -449,6 +454,7 @@ let s:filename_checks = {
     \ 'pod': ['file.pod'],
     \ 'poefilter': ['file.filter'],
     \ 'poke': ['file.pk'],
+    \ 'pony': ['file.pony'],
     \ 'postscr': ['file.ps', 'file.pfa', 'file.afm', 'file.eps', 'file.epsf', 'file.epsi', 'file.ai'],
     \ 'pov': ['file.pov'],
     \ 'povini': ['.povrayrc'],
@@ -472,9 +478,11 @@ let s:filename_checks = {
     \ 'pyrex': ['file.pyx', 'file.pxd'],
     \ 'python': ['file.py', 'file.pyw', '.pythonstartup', '.pythonrc', 'file.ptl', 'file.pyi', 'SConstruct'],
     \ 'ql': ['file.ql', 'file.qll'],
+    \ 'qmldir': ['qmldir'],
     \ 'quake': ['anybaseq2/file.cfg', 'anyid1/file.cfg', 'quake3/file.cfg', 'baseq2/file.cfg', 'id1/file.cfg', 'quake1/file.cfg', 'some-baseq2/file.cfg', 'some-id1/file.cfg', 'some-quake1/file.cfg'],
     \ 'quarto': ['file.qmd'],
     \ 'r': ['file.r', '.Rprofile', 'Rprofile', 'Rprofile.site'],
+    \ 'racket': ['file.rkt', 'file.rktd', 'file.rktl'],
     \ 'radiance': ['file.rad', 'file.mat'],
     \ 'raku': ['file.pm6', 'file.p6', 'file.t6', 'file.pod6', 'file.raku', 'file.rakumod', 'file.rakudoc', 'file.rakutest'],
     \ 'raml': ['file.raml'],
@@ -495,6 +503,7 @@ let s:filename_checks = {
     \ 'rnc': ['file.rnc'],
     \ 'rng': ['file.rng'],
     \ 'rnoweb': ['file.rnw', 'file.snw'],
+    \ 'rpgle': ['file.rpgle', 'file.rpgleinc'],
     \ 'robot': ['file.robot', 'file.resource'],
     \ 'robots': ['robots.txt'],
     \ 'ron': ['file.ron'],
@@ -512,7 +521,7 @@ let s:filename_checks = {
     \ 'sather': ['file.sa'],
     \ 'sbt': ['file.sbt'],
     \ 'scala': ['file.scala'],
-    \ 'scheme': ['file.scm', 'file.ss', 'file.sld', 'file.rkt', 'file.rktd', 'file.rktl'],
+    \ 'scheme': ['file.scm', 'file.ss', 'file.sld'],
     \ 'scilab': ['file.sci', 'file.sce'],
     \ 'screen': ['.screenrc', 'screenrc'],
     \ 'scss': ['file.scss'],
@@ -533,6 +542,7 @@ let s:filename_checks = {
     \ 'skill': ['file.il', 'file.ils', 'file.cdf'],
     \ 'cdc': ['file.cdc'],
     \ 'slang': ['file.sl'],
+    \ 'sage': ['file.sage'],
     \ 'slice': ['file.ice'],
     \ 'slpconf': ['/etc/slp.conf', 'any/etc/slp.conf'],
     \ 'slpreg': ['/etc/slp.reg', 'any/etc/slp.reg'],
@@ -587,6 +597,7 @@ let s:filename_checks = {
     \ 'taskdata': ['pending.data', 'completed.data', 'undo.data'],
     \ 'taskedit': ['file.task'],
     \ 'tcl': ['file.tcl', 'file.tm', 'file.tk', 'file.itcl', 'file.itk', 'file.jacl', '.tclshrc', 'tclsh.rc', '.wishrc'],
+    \ 'tablegen': ['file.td'],
     \ 'teal': ['file.tl'],
     \ 'template': ['file.tmpl'],
     \ 'teraterm': ['file.ttl'],
@@ -648,12 +659,14 @@ let s:filename_checks = {
     \ 'vrml': ['file.wrl'],
     \ 'vroom': ['file.vroom'],
     \ 'vue': ['file.vue'],
-    \ 'wast': ['file.wast', 'file.wat'],
+    \ 'wat': ['file.wat'],
+    \ 'wast': ['file.wast'],
     \ 'wdl': ['file.wdl'],
     \ 'webmacro': ['file.wm'],
     \ 'wget': ['.wgetrc', 'wgetrc'],
     \ 'wget2': ['.wget2rc', 'wget2rc'],
     \ 'winbatch': ['file.wbt'],
+    \ 'wit': ['file.wit'],
     \ 'wml': ['file.wml'],
     \ 'wsh': ['file.wsf', 'file.wsc'],
     \ 'wsml': ['file.wsml'],
@@ -1214,23 +1227,7 @@ func Test_fs_file()
   call assert_equal('forth', &filetype)
   bwipe!
 
-  call writefile(['.( Forth displayed inline comment )'], 'Xfile.fs')
-  split Xfile.fs
-  call assert_equal('forth', &filetype)
-  bwipe!
-
   call writefile(['\ Forth line comment'], 'Xfile.fs')
-  split Xfile.fs
-  call assert_equal('forth', &filetype)
-  bwipe!
-
-  " empty line comment - no space required
-  call writefile(['\'], 'Xfile.fs')
-  split Xfile.fs
-  call assert_equal('forth', &filetype)
-  bwipe!
-
-  call writefile(['\G Forth documentation comment '], 'Xfile.fs')
   split Xfile.fs
   call assert_equal('forth', &filetype)
   bwipe!

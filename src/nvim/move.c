@@ -471,6 +471,19 @@ void changed_line_abv_curs_win(win_T *wp)
                    |VALID_CHEIGHT|VALID_TOPLINE);
 }
 
+/// Display of line has changed for "buf", invalidate cursor position and
+/// w_botline.
+void changed_line_display_buf(buf_T *buf)
+{
+  FOR_ALL_WINDOWS_IN_TAB(wp, curtab) {
+    if (wp->w_buffer == buf) {
+      wp->w_valid &= ~(VALID_WROW|VALID_WCOL|VALID_VIRTCOL
+                       |VALID_CROW|VALID_CHEIGHT
+                       |VALID_TOPLINE|VALID_BOTLINE|VALID_BOTLINE_AP);
+    }
+  }
+}
+
 // Make sure the value of curwin->w_botline is valid.
 void validate_botline(win_T *wp)
 {
@@ -2228,7 +2241,7 @@ void do_check_cursorbind(void)
   int old_VIsual_active = VIsual_active;
 
   // loop through the cursorbound windows
-  VIsual_select = VIsual_active = 0;
+  VIsual_select = VIsual_active = false;
   FOR_ALL_WINDOWS_IN_TAB(wp, curtab) {
     curwin = wp;
     curbuf = curwin->w_buffer;

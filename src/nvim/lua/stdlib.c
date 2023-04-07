@@ -287,10 +287,8 @@ int nlua_regex(lua_State *lstate)
   const char *text = luaL_checkstring(lstate, 1);
   regprog_T *prog = NULL;
 
-  TRY_WRAP({
-    try_start();
-    prog = vim_regcomp((char *)text, RE_AUTO | RE_MAGIC | RE_STRICT);
-    try_end(&err);
+  TRY_WRAP(&err, {
+    prog = vim_regcomp(text, RE_AUTO | RE_MAGIC | RE_STRICT);
   });
 
   if (ERROR_SET(&err)) {

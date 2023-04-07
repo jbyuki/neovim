@@ -551,7 +551,7 @@ void spell_suggest(int count)
       vim_snprintf(IObuff, IOSIZE, ":ot \"%.*s\" egnahC",
                    sug.su_badlen, sug.su_badptr);
     }
-    msg_puts((const char *)IObuff);
+    msg_puts(IObuff);
     msg_clr_eos();
     msg_putchar('\n');
 
@@ -570,16 +570,16 @@ void spell_suggest(int count)
       if (cmdmsg_rl) {
         rl_mirror_ascii(IObuff);
       }
-      msg_puts((const char *)IObuff);
+      msg_puts(IObuff);
 
       vim_snprintf(IObuff, IOSIZE, " \"%s\"", wcopy);
-      msg_puts((const char *)IObuff);
+      msg_puts(IObuff);
 
       // The word may replace more than "su_badlen".
       if (sug.su_badlen < stp->st_orglen) {
         vim_snprintf(IObuff, IOSIZE, _(" < \"%.*s\""),
                      stp->st_orglen, sug.su_badptr);
-        msg_puts((const char *)IObuff);
+        msg_puts(IObuff);
       }
 
       if (p_verbose > 0) {
@@ -597,7 +597,7 @@ void spell_suggest(int count)
           rl_mirror_ascii(IObuff + 1);
         }
         msg_advance(30);
-        msg_puts((const char *)IObuff);
+        msg_puts(IObuff);
       }
       msg_putchar('\n');
     }
@@ -2794,7 +2794,7 @@ static void add_sound_suggest(suginfo_T *su, char *goodword, int score, langp_T 
   // remember the words that have been done.
   hash_T hash = hash_hash(goodword);
   const size_t goodword_len = strlen(goodword);
-  hashitem_T *hi = hash_lookup(&slang->sl_sounddone, (const char *)goodword, goodword_len, hash);
+  hashitem_T *hi = hash_lookup(&slang->sl_sounddone, goodword, goodword_len, hash);
   if (HASHITEM_EMPTY(hi)) {
     sft = xmalloc(offsetof(sftword_T, sft_word) + goodword_len + 1);
     sft->sft_score = (int16_t)score;

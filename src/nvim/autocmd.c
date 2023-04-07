@@ -939,10 +939,10 @@ void do_autocmd(exarg_T *eap, char *arg_in, int forceit)
   xfree(envpat);
 }
 
-void do_all_autocmd_events(char *pat, bool once, int nested, char *cmd, bool delete, int group)
+void do_all_autocmd_events(char *pat, bool once, int nested, char *cmd, bool del, int group)
 {
   FOR_ALL_AUEVENTS(event) {
-    if (do_autocmd_event(event, pat, once, nested, cmd, delete, group)
+    if (do_autocmd_event(event, pat, once, nested, cmd, del, group)
         == FAIL) {
       return;
     }
@@ -956,12 +956,12 @@ void do_all_autocmd_events(char *pat, bool once, int nested, char *cmd, bool del
 // If *cmd == NUL: show entries.
 // If forceit == true: delete entries.
 // If group is not AUGROUP_ALL: only use this group.
-int do_autocmd_event(event_T event, char *pat, bool once, int nested, char *cmd, bool delete,
+int do_autocmd_event(event_T event, char *pat, bool once, int nested, char *cmd, bool del,
                      int group)
   FUNC_ATTR_NONNULL_ALL
 {
   // Cannot be used to show all patterns. See au_show_for_event or au_show_for_all_events
-  assert(*pat != NUL || delete);
+  assert(*pat != NUL || del);
 
   AutoPat *ap;
   AutoPat **prev_ap;
@@ -978,7 +978,7 @@ int do_autocmd_event(event_T event, char *pat, bool once, int nested, char *cmd,
   }
 
   // Delete all aupat for an event.
-  if (*pat == NUL && delete) {
+  if (*pat == NUL && del) {
     aupat_del_for_event_and_group(event, findgroup);
     return OK;
   }
@@ -999,7 +999,7 @@ int do_autocmd_event(event_T event, char *pat, bool once, int nested, char *cmd,
       patlen = (int)strlen(buflocal_pat);
     }
 
-    if (delete) {
+    if (del) {
       assert(*pat != NUL);
 
       // Find AutoPat entries with this pattern.
@@ -1495,7 +1495,9 @@ void aucmd_restbuf(aco_save_T *aco)
       }
     }
 win_found:
-
+    // May need to stop Insert mode if we were in a prompt buffer.
+    leaving_window(curwin);
+    // Remove the window.
     win_remove(curwin, NULL);
     pmap_del(handle_T)(&window_handles, curwin->handle);
     if (curwin->w_grid_alloc.chars != NULL) {
@@ -2497,7 +2499,7 @@ bool aupat_is_buflocal(char *pat, int patlen)
 
 int aupat_get_buflocal_nr(char *pat, int patlen)
 {
-  assert(aupat_is_buflocal((char *)pat, patlen));
+  assert(aupat_is_buflocal(pat, patlen));
 
   // "<buffer>"
   if (patlen == 8) {
@@ -2757,4 +2759,33 @@ void do_autocmd_focusgained(bool gained)
   }
 
   recursive = false;
+}
+
+void do_filetype_autocmd(buf_T *buf, bool force)
+{
+  static int ft_recursive = 0;
+
+  if (ft_recursive > 0 && !force) {
+    return;  // disallow recursion
+  }
+
+  char **varp = &buf->b_p_ft;
+  int secure_save = secure;
+
+  // Reset the secure flag, since the value of 'filetype' has
+  // been checked to be safe.
+  secure = 0;
+
+  ft_recursive++;
+  did_filetype = true;
+  // Only pass true for "force" when it is true or
+  // used recursively, to avoid endless recurrence.
+  apply_autocmds(EVENT_FILETYPE, buf->b_p_ft, buf->b_fname, force || ft_recursive == 1, buf);
+  ft_recursive--;
+
+  // Just in case the old "buf" is now invalid
+  if (varp != &(buf->b_p_ft)) {
+    varp = NULL;
+  }
+  secure = secure_save;
 }

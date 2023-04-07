@@ -1,6 +1,5 @@
 local helpers = require('test.functional.helpers')(after_each)
 local lsp_helpers = require('test.functional.plugin.lsp.helpers')
-local lfs = require('lfs')
 
 local assert_log = helpers.assert_log
 local buf_lines = helpers.buf_lines
@@ -24,6 +23,7 @@ local is_ci = helpers.is_ci
 local meths = helpers.meths
 local is_os = helpers.is_os
 local skip = helpers.skip
+local mkdir = helpers.mkdir
 
 local clear_notrace = lsp_helpers.clear_notrace
 local create_server_definition = lsp_helpers.create_server_definition
@@ -3768,7 +3768,7 @@ describe('LSP', function()
     it('sends notifications when files change', function()
       local root_dir = helpers.tmpname()
       os.remove(root_dir)
-      lfs.mkdir(root_dir)
+      mkdir(root_dir)
 
       exec_lua(create_server_definition)
       local result = exec_lua([[
@@ -3783,7 +3783,8 @@ describe('LSP', function()
 
         local expected_messages = 2 -- initialize, initialized
 
-        local msg_wait_timeout = require('vim.lsp._watchfiles')._watchfunc == vim._watch.poll and 2500 or 200
+        local watchfunc = require('vim.lsp._watchfiles')._watchfunc
+        local msg_wait_timeout = watchfunc == vim._watch.poll and 2500 or 200
         local function wait_for_messages()
           assert(vim.wait(msg_wait_timeout, function() return #server.messages == expected_messages end), 'Timed out waiting for expected number of messages. Current messages seen so far: ' .. vim.inspect(server.messages))
         end
@@ -3806,6 +3807,10 @@ describe('LSP', function()
             },
           },
         }, { client_id = client_id })
+
+        if watchfunc == vim._watch.poll then
+          vim.wait(100)
+        end
 
         local path = root_dir .. '/watch'
         local file = io.open(path, 'w')
@@ -3872,14 +3877,14 @@ describe('LSP', function()
 
         local send_event
         require('vim.lsp._watchfiles')._watchfunc = function(_, _, callback)
-          local stoppped = false
+          local stopped = false
           send_event = function(...)
-            if not stoppped then
+            if not stopped then
               callback(...)
             end
           end
           return function()
-            stoppped = true
+            stopped = true
           end
         end
 

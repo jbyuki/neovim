@@ -24,7 +24,7 @@
 #endif
 
 static int validate_option_value_args(Dict(option) *opts, int *scope, int *opt_type, void **from,
-                                      Error *err)
+                                      char **filetype, Error *err)
 {
   if (HAS_KEY(opts->scope)) {
     VALIDATE_T("scope", kObjectTypeString, opts->scope.type, {
@@ -44,8 +44,16 @@ static int validate_option_value_args(Dict(option) *opts, int *scope, int *opt_t
 
   *opt_type = SREQ_GLOBAL;
 
+  if (filetype != NULL && HAS_KEY(opts->filetype)) {
+    VALIDATE_T("scope", kObjectTypeString, opts->filetype.type, {
+      return FAIL;
+    });
+
+    *filetype = opts->filetype.data.string.data;
+  }
+
   if (HAS_KEY(opts->win)) {
-    VALIDATE_T("win", kObjectTypeInteger, opts->win.type, {
+    VALIDATE_T_HANDLE("win", kObjectTypeWindow, opts->win.type, {
       return FAIL;
     });
 
@@ -57,7 +65,7 @@ static int validate_option_value_args(Dict(option) *opts, int *scope, int *opt_t
   }
 
   if (HAS_KEY(opts->buf)) {
-    VALIDATE_T("buf", kObjectTypeInteger, opts->buf.type, {
+    VALIDATE_T_HANDLE("buf", kObjectTypeBuffer, opts->buf.type, {
       return FAIL;
     });
 
@@ -69,15 +77,52 @@ static int validate_option_value_args(Dict(option) *opts, int *scope, int *opt_t
     }
   }
 
+  VALIDATE((!HAS_KEY(opts->filetype)
+            || !(HAS_KEY(opts->buf) || HAS_KEY(opts->scope) || HAS_KEY(opts->win))),
+           "%s", "cannot use 'filetype' with 'scope', 'buf' or 'win'", {
+    return FAIL;
+  });
+
   VALIDATE((!HAS_KEY(opts->scope) || !HAS_KEY(opts->buf)), "%s",
            "cannot use both 'scope' and 'buf'", {
     return FAIL;
   });
+
   VALIDATE((!HAS_KEY(opts->win) || !HAS_KEY(opts->buf)), "%s", "cannot use both 'buf' and 'win'", {
     return FAIL;
   });
 
   return OK;
+}
+
+/// Create a dummy buffer and run the FileType autocmd on it.
+static buf_T *do_ft_buf(char *filetype, aco_save_T *aco, Error *err)
+{
+  if (filetype == NULL) {
+    return NULL;
+  }
+
+  // Allocate a buffer without putting it in the buffer list.
+  buf_T *ftbuf = buflist_new(NULL, NULL, 1, BLN_DUMMY);
+  if (ftbuf == NULL) {
+    api_set_error(err, kErrorTypeException, "Could not create internal buffer");
+    return NULL;
+  }
+
+  // Set curwin/curbuf to buf and save a few things.
+  aucmd_prepbuf(aco, ftbuf);
+
+  TRY_WRAP(err, {
+    set_option_value("bufhidden", 0L, "hide", OPT_LOCAL);
+    set_option_value("buftype", 0L, "nofile", OPT_LOCAL);
+    set_option_value("swapfile", 0L, NULL, OPT_LOCAL);
+    set_option_value("modeline", 0L, NULL, OPT_LOCAL);  // 'nomodeline'
+
+    ftbuf->b_p_ft = xstrdup(filetype);
+    do_filetype_autocmd(ftbuf, false);
+  });
+
+  return ftbuf;
 }
 
 /// Gets the value of an option. The behavior of this function matches that of
@@ -92,6 +137,10 @@ static int validate_option_value_args(Dict(option) *opts, int *scope, int *opt_t
 ///                  - win: |window-ID|. Used for getting window local options.
 ///                  - buf: Buffer number. Used for getting buffer local options.
 ///                         Implies {scope} is "local".
+///                  - filetype: |filetype|. Used to get the default option for a
+///                    specific filetype. Cannot be used with any other option.
+///                    Note: this will trigger |ftplugin| and all |FileType|
+///                    autocommands for the corresponding filetype.
 /// @param[out] err  Error details, if any
 /// @return          Option value
 Object nvim_get_option_value(String name, Dict(option) *opts, Error *err)
@@ -102,14 +151,37 @@ Object nvim_get_option_value(String name, Dict(option) *opts, Error *err)
   int scope = 0;
   int opt_type = SREQ_GLOBAL;
   void *from = NULL;
-  if (!validate_option_value_args(opts, &scope, &opt_type, &from, err)) {
+  char *filetype = NULL;
+
+  if (!validate_option_value_args(opts, &scope, &opt_type, &from, &filetype, err)) {
     return rv;
+  }
+
+  aco_save_T aco;
+
+  buf_T *ftbuf = do_ft_buf(filetype, &aco, err);
+  if (ERROR_SET(err)) {
+    return rv;
+  }
+
+  if (ftbuf != NULL) {
+    assert(!from);
+    from = ftbuf;
   }
 
   long numval = 0;
   char *stringval = NULL;
   getoption_T result = access_option_value_for(name.data, &numval, &stringval, scope, opt_type,
                                                from, true, err);
+
+  if (ftbuf != NULL) {
+    // restore curwin/curbuf and a few other things
+    aucmd_restbuf(&aco);
+
+    assert(curbuf != ftbuf);  // safety check
+    wipe_buffer(ftbuf, false);
+  }
+
   if (ERROR_SET(err)) {
     return rv;
   }
@@ -164,7 +236,7 @@ void nvim_set_option_value(uint64_t channel_id, String name, Object value, Dict(
   int scope = 0;
   int opt_type = SREQ_GLOBAL;
   void *to = NULL;
-  if (!validate_option_value_args(opts, &scope, &opt_type, &to, err)) {
+  if (!validate_option_value_args(opts, &scope, &opt_type, &to, NULL, err)) {
     return;
   }
 
@@ -211,7 +283,7 @@ void nvim_set_option_value(uint64_t channel_id, String name, Object value, Dict(
 /// Gets the option information for all options.
 ///
 /// The dictionary has the full option names as keys and option metadata
-/// dictionaries as detailed at |nvim_get_option_info()|.
+/// dictionaries as detailed at |nvim_get_option_info2()|.
 ///
 /// @return dictionary of all options
 Dictionary nvim_get_all_options_info(Error *err)
@@ -220,7 +292,7 @@ Dictionary nvim_get_all_options_info(Error *err)
   return get_all_vimoptions();
 }
 
-/// Gets the option information for one option
+/// Gets the option information for one option from arbitrary buffer or window
 ///
 /// Resulting dictionary has keys:
 ///     - name: Name of the option (like 'filetype')
@@ -239,15 +311,36 @@ Dictionary nvim_get_all_options_info(Error *err)
 ///     - commalist: List of comma separated values
 ///     - flaglist: List of single char flags
 ///
+/// When {scope} is not provided, the last set information applies to the local
+/// value in the current buffer or window if it is available, otherwise the
+/// global value information is returned. This behavior can be disabled by
+/// explicitly specifying {scope} in the {opts} table.
 ///
-/// @param          name Option name
+/// @param name      Option name
+/// @param opts      Optional parameters
+///                  - scope: One of "global" or "local". Analogous to
+///                  |:setglobal| and |:setlocal|, respectively.
+///                  - win: |window-ID|. Used for getting window local options.
+///                  - buf: Buffer number. Used for getting buffer local options.
+///                         Implies {scope} is "local".
 /// @param[out] err Error details, if any
 /// @return         Option Information
-Dictionary nvim_get_option_info(String name, Error *err)
-  FUNC_API_SINCE(7)
+Dictionary nvim_get_option_info2(String name, Dict(option) *opts, Error *err)
+  FUNC_API_SINCE(11)
 {
-  return get_vimoption(name, err);
+  int scope = 0;
+  int opt_type = SREQ_GLOBAL;
+  void *from = NULL;
+  if (!validate_option_value_args(opts, &scope, &opt_type, &from, NULL, err)) {
+    return (Dictionary)ARRAY_DICT_INIT;
+  }
+
+  buf_T *buf = (opt_type == SREQ_BUF) ? (buf_T *)from : curbuf;
+  win_T *win = (opt_type == SREQ_WIN) ? (win_T *)from : curwin;
+
+  return get_vimoption(name, scope, buf, win, err);
 }
+
 /// Sets the global value of an option.
 ///
 /// @param channel_id
@@ -466,7 +559,7 @@ static getoption_T access_option_value(char *key, long *numval, char **stringval
   if (get) {
     return get_option_value(key, numval, stringval, NULL, opt_flags);
   } else {
-    char *errmsg;
+    const char *errmsg;
     if ((errmsg = set_option_value(key, *numval, *stringval, opt_flags))) {
       if (try_end(err)) {
         return 0;

@@ -827,6 +827,7 @@ void show_cursor_info_later(bool force)
       || curwin->w_buffer->b_ml.ml_line_count != curwin->w_stl_line_count
       || curwin->w_topfill != curwin->w_stl_topfill
       || empty_line != curwin->w_stl_empty
+      || reg_recording != curwin->w_stl_recording
       || state != curwin->w_stl_state) {
     if (curwin->w_status_height || global_stl_height()) {
       curwin->w_redr_status = true;
@@ -851,6 +852,7 @@ void show_cursor_info_later(bool force)
   curwin->w_stl_line_count = curwin->w_buffer->b_ml.ml_line_count;
   curwin->w_stl_topfill = curwin->w_topfill;
   curwin->w_stl_state = state;
+  curwin->w_stl_recording = reg_recording;
 }
 
 /// @return true when postponing displaying the mode message: when not redrawing
@@ -939,9 +941,9 @@ int showmode(void)
           }
           if (length - vim_strsize(edit_submode) > 0) {
             if (edit_submode_pre != NULL) {
-              msg_puts_attr((const char *)edit_submode_pre, attr);
+              msg_puts_attr(edit_submode_pre, attr);
             }
-            msg_puts_attr((const char *)edit_submode, attr);
+            msg_puts_attr(edit_submode, attr);
           }
           if (edit_submode_extra != NULL) {
             msg_puts_attr(" ", attr);  // Add a space in between.
@@ -950,7 +952,7 @@ int showmode(void)
             } else {
               sub_attr = attr;
             }
-            msg_puts_attr((const char *)edit_submode_extra, sub_attr);
+            msg_puts_attr(edit_submode_extra, sub_attr);
           }
         }
       } else {
@@ -1153,6 +1155,7 @@ void comp_col(void)
   }
   set_vim_var_nr(VV_ECHOSPACE, sc_col - 1);
 }
+
 static void redraw_win_signcol(win_T *wp)
 {
   // If we can compute a change in the automatic sizing of the sign column
@@ -1392,10 +1395,12 @@ static void win_update(win_T *wp, DecorProviders *providers)
   int type = wp->w_redr_type;
 
   if (type >= UPD_NOT_VALID) {
-    // TODO(bfredl): should only be implied for CLEAR, not NOT_VALID!
     wp->w_redr_status = true;
-
     wp->w_lines_valid = 0;
+    if (*wp->w_p_stc != NUL) {
+      wp->w_nrwidth_line_count = 0;    // make sure width is reset
+      wp->w_statuscol_line_count = 0;  // make sure width is re-estimated
+    }
   }
 
   // Window is zero-height: Only need to draw the separator
@@ -2677,6 +2682,11 @@ void status_redraw_buf(buf_T *buf)
       wp->w_redr_status = true;
       redraw_later(wp, UPD_VALID);
     }
+  }
+  // Redraw the ruler if it is in the command line and was not marked for redraw above
+  if (p_ru && !curwin->w_status_height && !curwin->w_redr_status) {
+    redraw_cmdline = true;
+    redraw_later(curwin, UPD_VALID);
   }
 }
 

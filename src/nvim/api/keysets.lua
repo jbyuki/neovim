@@ -97,11 +97,13 @@ return {
     "highlights";
     "use_winbar";
     "use_tabline";
+    "use_statuscol_lnum";
   }};
   { 'option', {
     "scope";
     "win";
     "buf";
+    "filetype";
   }};
   { 'highlight', {
     "bold";
@@ -143,6 +145,11 @@ return {
     "reverse";
     "altfont";
     "nocombine";
+  }};
+  { 'get_highlight', {
+    "id";
+    "name";
+    "link";
   }};
   -- Autocmds
   { 'clear_autocmds', {
@@ -225,5 +232,8 @@ return {
   }};
   { 'echo_opts', {
     "verbose";
+  }};
+  { 'exec_opts', {
+    "output";
   }};
 }

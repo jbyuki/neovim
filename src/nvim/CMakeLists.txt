@@ -21,7 +21,7 @@ find_package(Iconv REQUIRED)
 find_package(Libtermkey 0.22 REQUIRED)
 find_package(Libvterm 0.3 REQUIRED)
 find_package(Msgpack 1.0.0 REQUIRED)
-find_package(Treesitter REQUIRED)
+find_package(Treesitter 0.20.8 REQUIRED)
 find_package(Unibilium 2.0 REQUIRED)
 
 target_link_libraries(main_lib INTERFACE
@@ -146,11 +146,7 @@ if(HAS_DIAG_COLOR_FLAG)
   endif()
 endif()
 
-if($ENV{CI})
-    option(CI_BUILD "CI, extra flags will be set" ON)
-else()
-    option(CI_BUILD "CI, extra flags will be set" OFF)
-endif()
+option(CI_BUILD "CI, extra flags will be set" OFF)
 if(CI_BUILD)
   message(STATUS "CI build enabled")
   if(MSVC)
@@ -200,9 +196,9 @@ endif()
 
 option(ENABLE_GCOV "Enable gcov support" OFF)
 if(ENABLE_GCOV)
-  if(CLANG_TSAN)
+  if(ENABLE_TSAN)
     # GCOV and TSAN results in false data race reports
-    message(FATAL_ERROR "ENABLE_GCOV cannot be used with CLANG_TSAN")
+    message(FATAL_ERROR "ENABLE_GCOV cannot be used with ENABLE_TSAN")
   endif()
   message(STATUS "Enabling gcov support")
   target_compile_options(main_lib INTERFACE --coverage)
@@ -271,7 +267,9 @@ set(GENERATED_UNICODE_TABLES ${GENERATED_DIR}/unicode_tables.generated.h)
 set(VIM_MODULE_FILE ${GENERATED_DIR}/lua/vim_module.generated.h)
 set(LUA_EDITOR_MODULE_SOURCE ${PROJECT_SOURCE_DIR}/runtime/lua/vim/_editor.lua)
 set(LUA_SHARED_MODULE_SOURCE ${PROJECT_SOURCE_DIR}/runtime/lua/vim/shared.lua)
+set(LUA_LOADER_MODULE_SOURCE ${PROJECT_SOURCE_DIR}/runtime/lua/vim/loader.lua)
 set(LUA_INSPECT_MODULE_SOURCE ${PROJECT_SOURCE_DIR}/runtime/lua/vim/inspect.lua)
+set(LUA_FS_MODULE_SOURCE ${PROJECT_SOURCE_DIR}/runtime/lua/vim/fs.lua)
 set(LUA_F_MODULE_SOURCE ${PROJECT_SOURCE_DIR}/runtime/lua/vim/F.lua)
 set(LUA_META_MODULE_SOURCE ${PROJECT_SOURCE_DIR}/runtime/lua/vim/_meta.lua)
 set(LUA_FILETYPE_MODULE_SOURCE ${PROJECT_SOURCE_DIR}/runtime/lua/vim/filetype.lua)
@@ -378,7 +376,7 @@ else()
   target_compile_definitions(nvim PRIVATE $<$<CONFIG:Debug>:NVIM_LOG_DEBUG>)
 endif()
 
-if(CLANG_ASAN_UBSAN OR CLANG_MSAN OR CLANG_TSAN)
+if(ENABLE_ASAN_UBSAN OR ENABLE_MSAN OR ENABLE_TSAN)
   target_compile_definitions(main_lib INTERFACE EXITFREE)
 endif()
 
@@ -504,8 +502,10 @@ add_custom_command(
       ${LUA_PRG} ${CHAR_BLOB_GENERATOR} -c ${VIM_MODULE_FILE}
       ${LUA_INIT_PACKAGES_MODULE_SOURCE} "vim._init_packages"
       ${LUA_INSPECT_MODULE_SOURCE} "vim.inspect"
+      ${LUA_FS_MODULE_SOURCE} "vim.fs"
       ${LUA_EDITOR_MODULE_SOURCE} "vim._editor"
       ${LUA_SHARED_MODULE_SOURCE} "vim.shared"
+      ${LUA_LOADER_MODULE_SOURCE} "vim.loader"
       ${LUA_F_MODULE_SOURCE} "vim.F"
       ${LUA_META_MODULE_SOURCE} "vim._meta"
       ${LUA_FILETYPE_MODULE_SOURCE} "vim.filetype"
@@ -515,6 +515,7 @@ add_custom_command(
     ${LUA_INIT_PACKAGES_MODULE_SOURCE}
     ${LUA_EDITOR_MODULE_SOURCE}
     ${LUA_SHARED_MODULE_SOURCE}
+    ${LUA_LOADER_MODULE_SOURCE}
     ${LUA_INSPECT_MODULE_SOURCE}
     ${LUA_F_MODULE_SOURCE}
     ${LUA_META_MODULE_SOURCE}
@@ -741,15 +742,12 @@ if(WIN32)
     "file(MAKE_DIRECTORY \"${PROJECT_BINARY_DIR}/windows_runtime_deps/platforms\")")
   foreach(DEP_FILE IN ITEMS
       cat.exe
-      curl-ca-bundle.crt
-      curl.exe
       diff.exe
       tee.exe
       win32yank.exe
       xxd.exe
 
-      ${NVIMQT_DEPS}
-      )
+      ${NVIMQT_DEPS})
   get_filename_component(DEP_FILE_DIR ${DEP_FILE} DIRECTORY)
   set(EXTERNAL_BLOBS_SCRIPT "${EXTERNAL_BLOBS_SCRIPT}\n"
     "file(COPY \"${DEPS_PREFIX}/bin/${DEP_FILE}\"
@@ -791,8 +789,8 @@ set_target_properties(
 target_compile_definitions(libnvim PRIVATE MAKE_LIB)
 target_link_libraries(libnvim PRIVATE main_lib PUBLIC libuv)
 
-if(CLANG_ASAN_UBSAN)
-  message(STATUS "Enabling Clang address sanitizer and undefined behavior sanitizer for nvim.")
+if(ENABLE_ASAN_UBSAN)
+  message(STATUS "Enabling address sanitizer and undefined behavior sanitizer for nvim.")
   if(CI_BUILD)
     # Try to recover from all sanitize issues so we get reports about all failures
     target_compile_options(nvim PRIVATE -fsanitize-recover=all)
@@ -803,19 +801,18 @@ if(CLANG_ASAN_UBSAN)
     -fno-omit-frame-pointer
     -fno-optimize-sibling-calls
     -fsanitize=address
-    -fsanitize=undefined
-    -fsanitize-blacklist=${PROJECT_SOURCE_DIR}/src/.asan-blacklist)
+    -fsanitize=undefined)
   target_link_libraries(nvim PRIVATE -fsanitize=address -fsanitize=undefined)
-elseif(CLANG_MSAN)
-  message(STATUS "Enabling Clang memory sanitizer for nvim.")
+elseif(ENABLE_MSAN)
+  message(STATUS "Enabling memory sanitizer for nvim.")
   target_compile_options(nvim PRIVATE
     -fsanitize=memory
     -fsanitize-memory-track-origins
     -fno-omit-frame-pointer
     -fno-optimize-sibling-calls)
   target_link_libraries(nvim PRIVATE -fsanitize=memory -fsanitize-memory-track-origins)
-elseif(CLANG_TSAN)
-  message(STATUS "Enabling Clang thread sanitizer for nvim.")
+elseif(ENABLE_TSAN)
+  message(STATUS "Enabling thread sanitizer for nvim.")
   target_compile_options(nvim PRIVATE -fsanitize=thread -fPIE)
   target_link_libraries(nvim PRIVATE -fsanitize=thread)
 endif()

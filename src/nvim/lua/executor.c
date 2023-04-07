@@ -623,7 +623,7 @@ static bool nlua_init_packages(lua_State *lstate, bool is_standalone)
   lua_getglobal(lstate, "require");
   lua_pushstring(lstate, "vim._init_packages");
   if (nlua_pcall(lstate, 1, 0)) {
-    os_errmsg((char *)lua_tostring(lstate, -1));
+    os_errmsg(lua_tostring(lstate, -1));
     os_errmsg("\n");
     return false;
   }
@@ -1105,7 +1105,7 @@ static int nlua_debug(lua_State *lstate)
       tv_clear(&input);
       return 0;
     }
-    if (luaL_loadbuffer(lstate, (const char *)input.vval.v_string,
+    if (luaL_loadbuffer(lstate, input.vval.v_string,
                         strlen(input.vval.v_string), "=(debug command)")) {
       nlua_error(lstate, _("E5115: Error while loading debug string: %.*s"));
     } else if (nlua_pcall(lstate, 0, 0)) {
@@ -1157,27 +1157,28 @@ int nlua_call(lua_State *lstate)
     }
   }
 
-  TRY_WRAP({
-    // TODO(bfredl): this should be simplified in error handling refactor
-    force_abort = false;
-    suppress_errthrow = false;
-    did_throw = false;
-    did_emsg = false;
+  // TODO(bfredl): this should be simplified in error handling refactor
+  force_abort = false;
+  suppress_errthrow = false;
+  did_throw = false;
+  did_emsg = false;
 
-    try_start();
-    typval_T rettv;
-    funcexe_T funcexe = FUNCEXE_INIT;
-    funcexe.fe_firstline = curwin->w_cursor.lnum;
-    funcexe.fe_lastline = curwin->w_cursor.lnum;
-    funcexe.fe_evaluate = true;
+  typval_T rettv;
+  funcexe_T funcexe = FUNCEXE_INIT;
+  funcexe.fe_firstline = curwin->w_cursor.lnum;
+  funcexe.fe_lastline = curwin->w_cursor.lnum;
+  funcexe.fe_evaluate = true;
+
+  TRY_WRAP(&err, {
     // call_func() retval is deceptive, ignore it.  Instead we set `msg_list`
     // (TRY_WRAP) to capture abort-causing non-exception errors.
-    (void)call_func((char *)name, (int)name_len, &rettv, nargs, vim_args, &funcexe);
-    if (!try_end(&err)) {
-      nlua_push_typval(lstate, &rettv, false);
-    }
-    tv_clear(&rettv);
+    (void)call_func(name, (int)name_len, &rettv, nargs, vim_args, &funcexe);
   });
+
+  if (!ERROR_SET(&err)) {
+    nlua_push_typval(lstate, &rettv, false);
+  }
+  tv_clear(&rettv);
 
 free_vim_args:
   while (i > 0) {
@@ -1621,14 +1622,15 @@ void ex_lua(exarg_T *const eap)
     xfree(code);
     return;
   }
-  // When =expr is used transform it to print(vim.inspect(expr))
-  if (code[0] == '=') {
-    len += sizeof("vim.print()") - sizeof("=");
+  // When =expr is used transform it to vim.print(expr)
+  if (eap->cmdidx == CMD_equal || code[0] == '=') {
+    size_t off = (eap->cmdidx == CMD_equal) ? 0 : 1;
+    len += sizeof("vim.print()") - 1 - off;
     // code_buf needs to be 1 char larger then len for null byte in the end.
     // lua nlua_typval_exec doesn't expect null terminated string so len
     // needs to end before null byte.
     char *code_buf = xmallocz(len);
-    vim_snprintf(code_buf, len + 1, "vim.print(%s)", code + 1);
+    vim_snprintf(code_buf, len + 1, "vim.print(%s)", code + off);
     xfree(code);
     code = code_buf;
   }
@@ -1650,7 +1652,7 @@ void ex_luado(exarg_T *const eap)
     emsg(_("cannot save undo information"));
     return;
   }
-  const char *const cmd = (const char *)eap->arg;
+  const char *const cmd = eap->arg;
   const size_t cmd_len = strlen(cmd);
 
   lua_State *const lstate = global_lstate;
@@ -1691,7 +1693,7 @@ void ex_luado(exarg_T *const eap)
       break;
     }
     lua_pushvalue(lstate, -1);
-    const char *const old_line = (const char *)ml_get_buf(curbuf, l, false);
+    const char *const old_line = ml_get_buf(curbuf, l, false);
     // Get length of old_line here as calling Lua code may free it.
     const size_t old_line_len = strlen(old_line);
     lua_pushstring(lstate, old_line);
@@ -1727,7 +1729,7 @@ void ex_luado(exarg_T *const eap)
 void ex_luafile(exarg_T *const eap)
   FUNC_ATTR_NONNULL_ALL
 {
-  nlua_exec_file((const char *)eap->arg);
+  nlua_exec_file(eap->arg);
 }
 
 /// Executes Lua code from a file or "-" (stdin).
@@ -1857,14 +1859,8 @@ int nlua_expand_pat(expand_T *xp, char *pat, int *num_results, char ***results)
   lua_getfield(lstate, -1, "_expand_pat");
   luaL_checktype(lstate, -1, LUA_TFUNCTION);
 
-  // ex expansion prepends a ^, but don't worry, it is not a regex
-  if (pat[0] != '^') {
-    return FAIL;
-  }
-  pat++;
-
   // [ vim, vim._expand_pat, buf ]
-  lua_pushlstring(lstate, (const char *)pat, strlen(pat));
+  lua_pushlstring(lstate, pat, strlen(pat));
 
   if (nlua_pcall(lstate, 1, 2) != 0) {
     nlua_error(lstate,
@@ -2096,7 +2092,7 @@ int nlua_do_ucmd(ucmd_T *cmd, exarg_T *eap, bool preview)
   lua_setfield(lstate, -2, "line2");
 
   lua_newtable(lstate);  // f-args table
-  lua_pushstring(lstate, (const char *)eap->arg);
+  lua_pushstring(lstate, eap->arg);
   lua_pushvalue(lstate, -1);  // Reference for potential use on f-args
   lua_setfield(lstate, -4, "args");
 

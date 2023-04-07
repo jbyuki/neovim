@@ -422,7 +422,7 @@ static int str_to_mapargs(const char *strargs, bool is_unmap, MapArguments *mapa
 
   // {lhs_end} is a pointer to the "terminating whitespace" after {lhs}.
   // Use that to initialize {rhs_start}.
-  const char *rhs_start = skipwhite((char *)lhs_end);
+  const char *rhs_start = skipwhite(lhs_end);
 
   // Given {lhs} might be larger than MAXMAPLEN before replace_termcodes
   // (e.g. "<Space>" is longer than ' '), so first copy into a buffer.
@@ -594,15 +594,15 @@ static int buf_do_map(int maptype, MapArguments *args, int mode, bool is_abbrev,
 
         const int first = vim_iswordp(lhs);
         int last = first;
-        p = (char *)lhs + utfc_ptr2len((char *)lhs);
+        p = lhs + utfc_ptr2len(lhs);
         n = 1;
-        while (p < (char *)lhs + len) {
+        while (p < lhs + len) {
           n++;                                  // nr of (multi-byte) chars
           last = vim_iswordp(p);                // type of last char
           if (same == -1 && last != first) {
             same = n - 1;                       // count of same char type
           }
-          p += utfc_ptr2len((char *)p);
+          p += utfc_ptr2len(p);
         }
         if (last && n > 2 && same >= 0 && same < n - 1) {
           retval = 1;
@@ -733,8 +733,7 @@ static int buf_do_map(int maptype, MapArguments *args, int mode, bool is_abbrev,
                 // we ignore trailing space when matching with
                 // the "lhs", since an abbreviation can't have
                 // trailing space.
-                if (n != len && (!is_abbrev || round || n > len
-                                 || *skipwhite((char *)lhs + n) != NUL)) {
+                if (n != len && (!is_abbrev || round || n > len || *skipwhite(lhs + n) != NUL)) {
                   mpp = &(mp->m_next);
                   continue;
                 }
@@ -857,7 +856,7 @@ static int buf_do_map(int maptype, MapArguments *args, int mode, bool is_abbrev,
     }
 
     // Get here when adding a new entry to the maphash[] list or abbrlist.
-    map_add(buf, map_table, abbr_table, (char *)lhs, args, noremap, mode, is_abbrev,
+    map_add(buf, map_table, abbr_table, lhs, args, noremap, mode, is_abbrev,
             -1,  // sid
             0,   // lnum
             keyround1_simplified);
@@ -1189,7 +1188,7 @@ static char *translate_mapping(char *str_in, int cpo_flags)
         str += 2;
       }
       if (IS_SPECIAL(c) || modifiers) {         // special key
-        ga_concat(&ga, (char *)get_special_key_name(c, modifiers));
+        ga_concat(&ga, get_special_key_name(c, modifiers));
         continue;         // for (str)
       }
     }
@@ -1436,7 +1435,7 @@ int ExpandMappings(char *pat, regmatch_T *regmatch, int *numMatches, char ***mat
 bool check_abbr(int c, char *ptr, int col, int mincol)
 {
   int scol;                     // starting column of the abbr.
-  char_u tb[MB_MAXBYTES + 4];
+  uint8_t tb[MB_MAXBYTES + 4];
   mapblock_T *mp;
   mapblock_T *mp2;
   int clen = 0;                 // length in characters
@@ -1501,7 +1500,7 @@ bool check_abbr(int c, char *ptr, int col, int mincol)
       char *q = mp->m_keys;
       int match;
 
-      if (strchr((const char *)mp->m_keys, K_SPECIAL) != NULL) {
+      if (strchr(mp->m_keys, K_SPECIAL) != NULL) {
         // Might have K_SPECIAL escaped mp->m_keys.
         q = xstrdup(mp->m_keys);
         vim_unescape_ks(q);
@@ -1535,8 +1534,8 @@ bool check_abbr(int c, char *ptr, int col, int mincol)
         // special key code, split up
         if (IS_SPECIAL(c) || c == K_SPECIAL) {
           tb[j++] = K_SPECIAL;
-          tb[j++] = (char_u)K_SECOND(c);
-          tb[j++] = (char_u)K_THIRD(c);
+          tb[j++] = (uint8_t)K_SECOND(c);
+          tb[j++] = (uint8_t)K_THIRD(c);
         } else {
           if (c < ABBR_OFF && (c < ' ' || c > '~')) {
             tb[j++] = Ctrl_V;                   // special char needs CTRL-V
@@ -1615,8 +1614,7 @@ char *eval_map_expr(mapblock_T *mp, int c)
 
   // Forbid changing text or using ":normal" to avoid most of the bad side
   // effects.  Also restore the cursor position.
-  textlock++;
-  ex_normal_lock++;
+  expr_map_lock++;
   set_vim_var_char(c);    // set v:char to the typed character
   const pos_T save_cursor = curwin->w_cursor;
   const int save_msg_col = msg_col;
@@ -1637,8 +1635,7 @@ char *eval_map_expr(mapblock_T *mp, int c)
     p = eval_to_string(expr, NULL, false);
     xfree(expr);
   }
-  textlock--;
-  ex_normal_lock--;
+  expr_map_lock--;
   curwin->w_cursor = save_cursor;
   msg_col = save_msg_col;
   msg_row = save_msg_row;
@@ -1813,8 +1810,7 @@ int makemap(FILE *fd, buf_T *buf)
               did_cpo = true;
             } else {
               const char specials[] = { (char)(uint8_t)K_SPECIAL, NL, NUL };
-              if (strpbrk((const char *)mp->m_str, specials) != NULL
-                  || strpbrk((const char *)mp->m_keys, specials) != NULL) {
+              if (strpbrk(mp->m_str, specials) != NULL || strpbrk(mp->m_keys, specials) != NULL) {
                 did_cpo = true;
               }
             }
@@ -1920,7 +1916,7 @@ int put_escstr(FILE *fd, char *strstart, int what)
         str += 2;
       }
       if (IS_SPECIAL(c) || modifiers) {         // special key
-        if (fputs((char *)get_special_key_name(c, modifiers), fd) < 0) {
+        if (fputs(get_special_key_name(c, modifiers), fd) < 0) {
           return FAIL;
         }
         continue;
@@ -2093,7 +2089,7 @@ static Dictionary mapblock_fill_dict(const mapblock_T *const mp, const char *lhs
     PUT(dict, "desc", STRING_OBJ(cstr_to_string(mp->m_desc)));
   }
   PUT(dict, "lhs", STRING_OBJ(cstr_as_string(lhs)));
-  PUT(dict, "lhsraw", STRING_OBJ(cstr_to_string((const char *)mp->m_keys)));
+  PUT(dict, "lhsraw", STRING_OBJ(cstr_to_string(mp->m_keys)));
   if (lhsrawalt != NULL) {
     // Also add the value for the simplified entry.
     PUT(dict, "lhsrawalt", STRING_OBJ(cstr_to_string(lhsrawalt)));
@@ -2648,10 +2644,10 @@ void modify_keymap(uint64_t channel_id, Buffer buffer, bool is_unmap, String mod
   case 0:
     break;
   case 1:
-    api_set_error(err, kErrorTypeException, (char *)e_invarg, 0);
+    api_set_error(err, kErrorTypeException, e_invarg, 0);
     goto fail_and_free;
   case 2:
-    api_set_error(err, kErrorTypeException, (char *)e_nomap, 0);
+    api_set_error(err, kErrorTypeException, e_nomap, 0);
     goto fail_and_free;
   case 5:
     api_set_error(err, kErrorTypeException,
