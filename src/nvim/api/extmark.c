@@ -799,10 +799,21 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
     for (size_t i = 0; i < kv_size(buf->update_callbacks); i++) {
       BufUpdateCallbacks cb = kv_A(buf->update_callbacks, i);
       if(cb.on_extmark != LUA_NOREF) {
-        MAXSIZE_TEMP_ARRAY(args, 1);
+        MAXSIZE_TEMP_ARRAY(args, 9);
 
         // the first argument is always the buffer handle
         ADD_C(args, BUFFER_OBJ(buf->handle));
+        ADD_C(args, INTEGER_OBJ(ns_id));
+        ADD_C(args, INTEGER_OBJ(line));
+        ADD_C(args, INTEGER_OBJ(col));
+
+        ADD_C(args, INTEGER_OBJ(col2));
+        ADD_C(args, INTEGER_OBJ(line2));
+        ADD_C(args, INTEGER_OBJ(decor.hl_id));
+        ADD_C(args, INTEGER_OBJ(decor.priority));
+
+        // ADD_C(args, STRING_OBJ(decor.conceal));
+        ADD_C(args, BOOLEAN_OBJ(decor.spell));
 
         Object res;
         TEXTLOCK_WRAP({

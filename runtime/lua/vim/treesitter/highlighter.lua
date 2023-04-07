@@ -18,6 +18,7 @@ local TSHighlighter = rawget(vim.treesitter, 'TSHighlighter') or {}
 TSHighlighter.__index = TSHighlighter
 
 TSHighlighter.active = TSHighlighter.active or {}
+TSHighlighter._on_buf_line = TSHighlighter._on_buf_line or {}
 
 ---@class TSHighlighterQuery
 ---@field _query Query|nil
@@ -276,6 +277,11 @@ end
 ---@param buf integer
 ---@param line integer
 function TSHighlighter._on_line(_, _win, buf, line, _)
+  local _on_buf_line = TSHighlighter._on_buf_line[buf]
+  if _on_buf_line then
+    buf, line = _on_buf_line(buf, line)
+  end
+
   local self = TSHighlighter.active[buf]
   if not self then
     return
@@ -316,12 +322,14 @@ end
 ---@param _topline integer
 function TSHighlighter._on_win(_, _win, buf, _topline)
   local self = TSHighlighter.active[buf]
-  if not self then
+  if not self and not TSHighlighter._on_buf_line[buf] then
     return false
   end
 
-  self:reset_highlight_state()
-  self.redraw_count = self.redraw_count + 1
+  if self then
+    self:reset_highlight_state()
+    self.redraw_count = self.redraw_count + 1
+  end
   return true
 end
 
