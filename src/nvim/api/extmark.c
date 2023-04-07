@@ -793,20 +793,28 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
     col2 = 0;
   }
 
-  for (size_t i = 0; i < kv_size(buf->update_callbacks); i++) {
-    BufUpdateCallbacks cb = kv_A(buf->update_callbacks, i);
-    if(cb.on_extmark != LUA_NOREF) {
-      MAXSIZE_TEMP_ARRAY(args, 1);
-
-      // the first argument is always the buffer handle
-      ADD_C(args, BUFFER_OBJ(buf->handle));
-
-      nlua_call_ref(cb.on_extmark, "extmark", args, false, NULL);
-    }
-  }
 
   // TODO(bfredl): synergize these two branches even more
   if (ephemeral) { // && decor_state.win && decor_state.win->w_buffer == buf) {
+    for (size_t i = 0; i < kv_size(buf->update_callbacks); i++) {
+      BufUpdateCallbacks cb = kv_A(buf->update_callbacks, i);
+      if(cb.on_extmark != LUA_NOREF) {
+        MAXSIZE_TEMP_ARRAY(args, 1);
+
+        // the first argument is always the buffer handle
+        ADD_C(args, BUFFER_OBJ(buf->handle));
+
+        Object res;
+        TEXTLOCK_WRAP({
+          res = nlua_call_ref(cb.on_extmark, "extmark", args, false, NULL);
+        });
+
+        if (res.type == kObjectTypeBoolean && res.data.boolean == true) {
+          return (Integer)(-1);
+        }
+      }
+    }
+
     decor_add_ephemeral((int)line, (int)col, line2, col2, &decor, (uint64_t)ns_id, id);
   } else {
     if (ephemeral) {
