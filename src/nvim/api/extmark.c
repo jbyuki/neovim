@@ -131,6 +131,9 @@ static Array extmark_to_array(const ExtmarkInfo *extmark, bool id, bool add_dict
 
     PUT(dict, "right_gravity", BOOLEAN_OBJ(extmark->right_gravity));
 
+    PUT(dict, "ephemeral", BOOLEAN_OBJ(extmark->ephemeral));
+
+
     if (extmark->end_row >= 0) {
       PUT(dict, "end_row", INTEGER_OBJ(extmark->end_row));
       PUT(dict, "end_col", INTEGER_OBJ(extmark->end_col));
@@ -234,6 +237,7 @@ static Array extmark_to_array(const ExtmarkInfo *extmark, bool id, bool add_dict
     if (dict.size) {
       ADD(rv, DICTIONARY_OBJ(dict));
     }
+
   }
 
   return rv;
@@ -864,38 +868,39 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
     col2 = 0;
   }
 
+  for (size_t i = 0; i < kv_size(buf->update_callbacks); i++) {
+    BufUpdateCallbacks cb = kv_A(buf->update_callbacks, i);
+    if(cb.on_extmark != LUA_NOREF) {
+      MAXSIZE_TEMP_ARRAY(args, 2);
+
+      ADD_C(args, BUFFER_OBJ(buf->handle));
+
+      ExtmarkInfo extInfo = (ExtmarkInfo) { .ns_id = ns_id,
+        .mark_id = -1,
+        .row = line, .col = col,
+        .end_row = line2,
+        .end_col = col2,
+        .right_gravity = right_gravity,
+        .end_right_gravity = end_right_gravity,
+        .ephemeral = ephemeral,
+        .decor = decor };
+
+      ADD_C(args, ARRAY_OBJ(extmark_to_array(&extInfo, false, true, true)));
+
+      Object res;
+      TEXTLOCK_WRAP({
+          res = nlua_call_ref(cb.on_extmark, "extmark", args, false, NULL);
+          });
+
+      if (res.type == kObjectTypeBoolean && res.data.boolean == true) {
+        return (Integer)(-1);
+      }
+    }
+  }
+
 
   // TODO(bfredl): synergize these two branches even more
   if (ephemeral) { // && decor_state.win && decor_state.win->w_buffer == buf) {
-    for (size_t i = 0; i < kv_size(buf->update_callbacks); i++) {
-      BufUpdateCallbacks cb = kv_A(buf->update_callbacks, i);
-      if(cb.on_extmark != LUA_NOREF) {
-        MAXSIZE_TEMP_ARRAY(args, 10);
-
-        // the first argument is always the buffer handle
-        ADD_C(args, BUFFER_OBJ(buf->handle));
-        ADD_C(args, INTEGER_OBJ(ns_id));
-        ADD_C(args, INTEGER_OBJ(line));
-        ADD_C(args, INTEGER_OBJ(col));
-
-        ADD_C(args, INTEGER_OBJ(col2));
-        ADD_C(args, INTEGER_OBJ(line2));
-        ADD_C(args, INTEGER_OBJ(decor.hl_id));
-        ADD_C(args, INTEGER_OBJ(decor.priority));
-
-        ADD_C(args, STRING_OBJ(opts->conceal.data.string));
-        ADD_C(args, BOOLEAN_OBJ(decor.spell));
-
-        Object res;
-        TEXTLOCK_WRAP({
-          res = nlua_call_ref(cb.on_extmark, "extmark", args, false, NULL);
-        });
-
-        if (res.type == kObjectTypeBoolean && res.data.boolean == true) {
-          return (Integer)(-1);
-        }
-      }
-    }
 
     decor_add_ephemeral((int)line, (int)col, line2, col2, &decor, (uint64_t)ns_id, id);
   } else {

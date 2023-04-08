@@ -1,5 +1,5 @@
-#include <iostream>
-
+@./hello.cpp=
+@includes
 auto main() -> int
 {
   return 0;

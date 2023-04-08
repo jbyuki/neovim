@@ -281,7 +281,6 @@ function TSHighlighter._on_line(_, _win, buf, line, _)
     buf, line = _on_buf_line(buf, line)
   end
 
-
   local self = TSHighlighter.active[buf]
   if not self or not buf then
     return
@@ -341,6 +340,18 @@ function TSHighlighter._on_win(_, _win, buf, _topline)
     self:reset_highlight_state()
     self.redraw_count = self.redraw_count + 1
   end
+
+  local buf_list = TSHighlighter._on_buf_list[buf]
+  if buf_list then
+    for _, buf in ipairs(buf_list) do
+      local self = TSHighlighter.active[buf]
+      if self then
+        self:reset_highlight_state()
+        self.redraw_count = self.redraw_count + 1
+      end
+    end
+  end
+
   return true
 end
 

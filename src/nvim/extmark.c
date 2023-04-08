@@ -348,6 +348,7 @@ ExtmarkInfoArray extmark_get(buf_T *buf, uint32_t ns_id, int l_row, colnr_T l_co
                                       .end_col = end.pos.col,
                                       .right_gravity = mt_right(mark),
                                       .end_right_gravity = mt_right(end),
+                                      .ephemeral = false,
                                       .decor = get_decor(mark) }));
     }
 next_mark:
@@ -363,7 +364,7 @@ next_mark:
 /// Lookup an extmark by id
 ExtmarkInfo extmark_from_id(buf_T *buf, uint32_t ns_id, uint32_t id)
 {
-  ExtmarkInfo ret = { 0, 0, -1, -1, -1, -1, false, false, DECORATION_INIT };
+  ExtmarkInfo ret = { 0, 0, -1, -1, -1, -1, false, false, false, DECORATION_INIT };
   mtkey_t mark = marktree_lookup_ns(buf->b_marktree, ns_id, id, false, NULL);
   if (!mark.id) {
     return ret;

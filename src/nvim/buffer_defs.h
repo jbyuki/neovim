@@ -437,6 +437,7 @@ typedef struct {
   LuaRef on_detach;
   LuaRef on_reload;
   LuaRef on_extmark;
+  LuaRef on_virttext;
   bool utf_sizes;
   bool preview;
 } BufUpdateCallbacks;
