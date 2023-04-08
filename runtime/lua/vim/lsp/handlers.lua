@@ -351,7 +351,12 @@ end
 function M.hover(_, result, ctx, config)
   config = config or {}
   config.focus_id = ctx.method
-  if api.nvim_get_current_buf() ~= ctx.bufnr then
+
+  -- exception for tangled buffers
+  local buf = api.nvim_get_current_buf()
+  buf = util._on_buf[buf] or buf
+
+  if buf ~= ctx.bufnr then
     -- Ignore result since buffer changed. This happens for slow language servers.
     return
   end

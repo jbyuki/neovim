@@ -24,7 +24,9 @@ local function request(method, params, handler)
     method = { method, 's' },
     handler = { handler, 'f', true },
   })
-  return vim.lsp.buf_request(0, method, params, handler)
+  local buf = api.nvim_get_current_buf()
+  buf = util._on_buf[buf] or buf
+  return vim.lsp.buf_request(buf, method, params, handler)
 end
 
 --- Checks whether the language servers attached to the current buffer are
