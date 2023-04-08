@@ -1944,6 +1944,7 @@ local function make_position_param(window, offset_encoding)
   window = window or 0
   local buf = api.nvim_win_get_buf(window)
   local row, col = unpack(api.nvim_win_get_cursor(window))
+  row = row - 1
 
   -- Convert to tangled buf
   local _on_buf_line = M._on_buf_line[buf]
@@ -1952,7 +1953,6 @@ local function make_position_param(window, offset_encoding)
   end
 
   offset_encoding = offset_encoding or M._get_offset_encoding(buf)
-  row = row - 1
   local line = api.nvim_buf_get_lines(buf, row, row + 1, true)[1]
   if not line then
     return { line = 0, character = 0 }
