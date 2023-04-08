@@ -282,7 +282,7 @@ function TSHighlighter._on_line(_, _win, buf, line, _)
 
 
   local self = TSHighlighter.active[buf]
-  if not self then
+  if not self or not buf then
     return
   end
 
