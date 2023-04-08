@@ -1055,6 +1055,27 @@ void nvim_buf_clear_namespace(Buffer buffer, Integer ns_id, Integer line_start, 
     return;
   }
 
+  for (size_t i = 0; i < kv_size(buf->update_callbacks); i++) {
+    BufUpdateCallbacks cb = kv_A(buf->update_callbacks, i);
+    if(cb.on_clear_namespace != LUA_NOREF) {
+      MAXSIZE_TEMP_ARRAY(args, 4);
+
+      ADD_C(args, BUFFER_OBJ(buf->handle));
+      ADD_C(args, INTEGER_OBJ(ns_id));
+      ADD_C(args, INTEGER_OBJ(line_start));
+      ADD_C(args, INTEGER_OBJ(line_end));
+
+      Object res;
+      TEXTLOCK_WRAP({
+          res = nlua_call_ref(cb.on_clear_namespace, "clear_namespace", args, false, NULL);
+          });
+
+      if (res.type == kObjectTypeBoolean && res.data.boolean == true) {
+        return;
+      }
+    }
+  }
+
   VALIDATE_RANGE((line_start >= 0 && line_start < MAXLNUM), "line number", {
     return;
   });

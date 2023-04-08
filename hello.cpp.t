@@ -2,7 +2,7 @@
 @includes
 auto main() -> int
 {
-  return false;
+  return 0;
 }
 
 @includes+=

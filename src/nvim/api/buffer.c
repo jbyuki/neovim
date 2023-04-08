@@ -171,6 +171,7 @@ Boolean nvim_buf_attach(uint64_t channel_id, Buffer buffer, Boolean send_buffer,
     { "on_detach", &cb.on_detach },
     { "on_reload", &cb.on_reload },
     { "on_extmark", &cb.on_extmark },
+    { "on_clear_namespace", &cb.on_clear_namespace },
     { NULL, NULL },
   };
 
