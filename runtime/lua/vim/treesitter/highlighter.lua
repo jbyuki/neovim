@@ -19,6 +19,7 @@ TSHighlighter.__index = TSHighlighter
 
 TSHighlighter.active = TSHighlighter.active or {}
 TSHighlighter._on_buf_line = TSHighlighter._on_buf_line or {}
+TSHighlighter._on_buf_list = TSHighlighter._on_buf_list or {}
 
 ---@class TSHighlighterQuery
 ---@field _query Query|nil
@@ -313,6 +314,16 @@ function TSHighlighter._on_buf(_, buf)
   local self = TSHighlighter.active[buf]
   if self then
     self.tree:parse()
+  end
+
+  local buf_list = TSHighlighter._on_buf_list[buf]
+  if buf_list then
+    for _, buf in ipairs(buf_list) do
+      local self = TSHighlighter.active[buf]
+      if self then
+        self.tree:parse()
+      end
+    end
   end
 end
 
