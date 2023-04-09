@@ -357,9 +357,9 @@ void buf_updates_send_splice(buf_T *buf, int start_row, colnr_T start_col, bcoun
       ADD_C(args, INTEGER_OBJ(new_byte));
 
       Object res;
-      TEXTLOCK_WRAP({
+      // TEXTLOCK_WRAP({
         res = nlua_call_ref(cb.on_bytes, "bytes", args, false, NULL);
-      });
+      // });
 
       if (res.type == kObjectTypeBoolean && res.data.boolean == true) {
         buffer_update_callbacks_free(cb);
