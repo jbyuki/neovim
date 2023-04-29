@@ -1307,6 +1307,7 @@ static void shada_read(ShaDaReadDef *const sd_reader, const int flags)
           .mark = cur_entry.data.filemark.mark,
           .fnum = (buf == NULL ? 0 : buf->b_fnum),
           .timestamp = cur_entry.timestamp,
+          .view = INIT_FMARKV,
           .additional_data = cur_entry.data.filemark.additional_data,
         },
       };
@@ -1388,6 +1389,7 @@ static void shada_read(ShaDaReadDef *const sd_reader, const int flags)
         .mark = cur_entry.data.filemark.mark,
         .fnum = 0,
         .timestamp = cur_entry.timestamp,
+        .view = INIT_FMARKV,
         .additional_data = cur_entry.data.filemark.additional_data,
       };
       if (cur_entry.type == kSDItemLocalMark) {
@@ -1639,21 +1641,21 @@ static ShaDaWriteResult shada_pack_entry(msgpack_packer *const packer, ShadaEntr
     break;
   }
   case kSDItemSearchPattern: {
-    const size_t map_size = (size_t)(
-                                     1  // Search pattern is always present
-                                     + ONE_IF_NOT_DEFAULT(entry, search_pattern.magic)
-                                     + ONE_IF_NOT_DEFAULT(entry, search_pattern.is_last_used)
-                                     + ONE_IF_NOT_DEFAULT(entry, search_pattern.smartcase)
-                                     + ONE_IF_NOT_DEFAULT(entry, search_pattern.has_line_offset)
-                                     + ONE_IF_NOT_DEFAULT(entry, search_pattern.place_cursor_at_end)
-                                     + ONE_IF_NOT_DEFAULT(entry,
-                                                          search_pattern.is_substitute_pattern)
-                                     + ONE_IF_NOT_DEFAULT(entry, search_pattern.highlighted)
-                                     + ONE_IF_NOT_DEFAULT(entry, search_pattern.offset)
-                                     + ONE_IF_NOT_DEFAULT(entry, search_pattern.search_backward)
-                                     // finally, additional data:
-                                     + (size_t)(
-                                                entry.data.search_pattern.additional_data
+    const size_t map_size = (
+                             1  // Search pattern is always present
+                             + ONE_IF_NOT_DEFAULT(entry, search_pattern.magic)
+                             + ONE_IF_NOT_DEFAULT(entry, search_pattern.is_last_used)
+                             + ONE_IF_NOT_DEFAULT(entry, search_pattern.smartcase)
+                             + ONE_IF_NOT_DEFAULT(entry, search_pattern.has_line_offset)
+                             + ONE_IF_NOT_DEFAULT(entry, search_pattern.place_cursor_at_end)
+                             + ONE_IF_NOT_DEFAULT(entry,
+                                                  search_pattern.is_substitute_pattern)
+                             + ONE_IF_NOT_DEFAULT(entry, search_pattern.highlighted)
+                             + ONE_IF_NOT_DEFAULT(entry, search_pattern.offset)
+                             + ONE_IF_NOT_DEFAULT(entry, search_pattern.search_backward)
+                             // finally, additional data:
+                             + (
+                                entry.data.search_pattern.additional_data
               ? entry.data.search_pattern.additional_data->dv_hashtab.ht_used
               : 0));
     msgpack_pack_map(spacker, map_size);
@@ -1680,14 +1682,14 @@ static ShaDaWriteResult shada_pack_entry(msgpack_packer *const packer, ShadaEntr
   case kSDItemGlobalMark:
   case kSDItemLocalMark:
   case kSDItemJump: {
-    const size_t map_size = (size_t)(
-                                     1  // File name
-                                     + ONE_IF_NOT_DEFAULT(entry, filemark.mark.lnum)
-                                     + ONE_IF_NOT_DEFAULT(entry, filemark.mark.col)
-                                     + ONE_IF_NOT_DEFAULT(entry, filemark.name)
-                                     // Additional entries, if any:
-                                     + (size_t)(
-                                                entry.data.filemark.additional_data == NULL
+    const size_t map_size = (
+                             1  // File name
+                             + ONE_IF_NOT_DEFAULT(entry, filemark.mark.lnum)
+                             + ONE_IF_NOT_DEFAULT(entry, filemark.mark.col)
+                             + ONE_IF_NOT_DEFAULT(entry, filemark.name)
+                             // Additional entries, if any:
+                             + (
+                                entry.data.filemark.additional_data == NULL
               ? 0
               : entry.data.filemark.additional_data->dv_hashtab.ht_used));
     msgpack_pack_map(spacker, map_size);
@@ -1713,14 +1715,14 @@ static ShaDaWriteResult shada_pack_entry(msgpack_packer *const packer, ShadaEntr
     break;
   }
   case kSDItemRegister: {
-    const size_t map_size = (size_t)(2  // Register contents and name
-                                     + ONE_IF_NOT_DEFAULT(entry, reg.type)
-                                     + ONE_IF_NOT_DEFAULT(entry, reg.width)
-                                     + ONE_IF_NOT_DEFAULT(entry, reg.is_unnamed)
-                                     // Additional entries, if any:
-                                     + (size_t)(entry.data.reg.additional_data == NULL
-                                                ? 0
-                                                : entry.data.reg.additional_data->dv_hashtab.ht_used));
+    const size_t map_size = (2  // Register contents and name
+                             + ONE_IF_NOT_DEFAULT(entry, reg.type)
+                             + ONE_IF_NOT_DEFAULT(entry, reg.width)
+                             + ONE_IF_NOT_DEFAULT(entry, reg.is_unnamed)
+                             // Additional entries, if any:
+                             + (entry.data.reg.additional_data == NULL
+                                ? 0
+                                : entry.data.reg.additional_data->dv_hashtab.ht_used));
     msgpack_pack_map(spacker, map_size);
     PACK_STATIC_STR(REG_KEY_CONTENTS);
     msgpack_pack_array(spacker, entry.data.reg.contents_size);
@@ -1751,16 +1753,16 @@ static ShaDaWriteResult shada_pack_entry(msgpack_packer *const packer, ShadaEntr
   case kSDItemBufferList:
     msgpack_pack_array(spacker, entry.data.buffer_list.size);
     for (size_t i = 0; i < entry.data.buffer_list.size; i++) {
-      const size_t map_size = (size_t)(
-                                       1  // Buffer name
-                                       + (size_t)(entry.data.buffer_list.buffers[i].pos.lnum
-                                                  != default_pos.lnum)
-                                       + (size_t)(entry.data.buffer_list.buffers[i].pos.col
-                                                  != default_pos.col)
-                                       // Additional entries, if any:
-                                       + (size_t)(
-                                                  entry.data.buffer_list.buffers[i].additional_data
-                                                  == NULL
+      const size_t map_size = (
+                               1  // Buffer name
+                               + (size_t)(entry.data.buffer_list.buffers[i].pos.lnum
+                                          != default_pos.lnum)
+                               + (size_t)(entry.data.buffer_list.buffers[i].pos.col
+                                          != default_pos.col)
+                               // Additional entries, if any:
+                               + (
+                                  entry.data.buffer_list.buffers[i].additional_data
+                                  == NULL
                 ? 0
                 : (entry.data.buffer_list.buffers[i].additional_data
                    ->dv_hashtab.ht_used)));
@@ -3040,7 +3042,7 @@ shada_write_file_nomerge: {}
       if (!os_isdir(fname)) {
         int ret;
         char *failed_dir;
-        if ((ret = os_mkdir_recurse(fname, 0700, &failed_dir)) != 0) {
+        if ((ret = os_mkdir_recurse(fname, 0700, &failed_dir, NULL)) != 0) {
           semsg(_(SERR "Failed to create directory %s "
                   "for writing ShaDa file: %s"),
                 failed_dir, os_strerror(ret));
@@ -3166,8 +3168,8 @@ int shada_read_everything(const char *const fname, const bool forceit, const boo
 {
   return shada_read_file(fname,
                          kShaDaWantInfo|kShaDaWantMarks|kShaDaGetOldfiles
-                         |(forceit?kShaDaForceit:0)
-                         |(missing_ok?0:kShaDaMissingError));
+                         |(forceit ? kShaDaForceit : 0)
+                         |(missing_ok ? 0 : kShaDaMissingError));
 }
 
 static void shada_free_shada_entry(ShadaEntry *const entry)

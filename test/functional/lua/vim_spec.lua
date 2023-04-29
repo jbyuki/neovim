@@ -294,9 +294,11 @@ describe('lua stdlib', function()
 
   it('vim.gsplit, vim.split', function()
     local tests = {
+      --                            plain  trimempty
       { 'a,b',             ',',     false, false, { 'a', 'b' } },
       { ':aa::::bb:',      ':',     false, false, { '', 'aa', '', '', '', 'bb', '' } },
       { ':aa::::bb:',      ':',     false, true,  { 'aa', '', '', '', 'bb' } },
+      { 'aa::::bb:',       ':',     false, true,  { 'aa', '', '', '', 'bb' } },
       { ':aa::bb:',        ':',     false, true,  { 'aa', '', 'bb' } },
       { '/a/b:/b/\n',      '[:\n]', false, true,  { '/a/b', '/b/' } },
       { '::ee::ff:',       ':',     false, false, { '', '', 'ee', '', 'ff', '' } },
@@ -315,7 +317,7 @@ describe('lua stdlib', function()
     }
 
     for _, t in ipairs(tests) do
-      eq(t[5], vim.split(t[1], t[2], {plain=t[3], trimempty=t[4]}))
+      eq(t[5], vim.split(t[1], t[2], {plain=t[3], trimempty=t[4]}), t[1])
     end
 
     -- Test old signature
@@ -461,6 +463,22 @@ describe('lua stdlib', function()
       pcall_err(exec_lua, [[return vim.pesc(2)]]))
   end)
 
+  it('vim.list_contains', function()
+    eq(true, exec_lua("return vim.list_contains({'a','b','c'}, 'c')"))
+    eq(false, exec_lua("return vim.list_contains({'a','b','c'}, 'd')"))
+  end)
+
+  it('vim.tbl_contains', function()
+    eq(true, exec_lua("return vim.tbl_contains({'a','b','c'}, 'c')"))
+    eq(false, exec_lua("return vim.tbl_contains({'a','b','c'}, 'd')"))
+    eq(true, exec_lua("return vim.tbl_contains({[2]='a',foo='b',[5] = 'c'}, 'c')"))
+    eq(true, exec_lua([[
+        return vim.tbl_contains({ 'a', { 'b', 'c' } }, function(v)
+          return vim.deep_equal(v, { 'b', 'c' })
+        end, { predicate = true })
+    ]]))
+  end)
+
   it('vim.tbl_keys', function()
     eq({}, exec_lua("return vim.tbl_keys({})"))
     for _, v in pairs(exec_lua("return vim.tbl_keys({'a', 'b', 'c'})")) do
@@ -505,6 +523,19 @@ describe('lua stdlib', function()
     ]]))
   end)
 
+  it('vim.tbl_isarray', function()
+    eq(true, exec_lua("return vim.tbl_isarray({})"))
+    eq(false, exec_lua("return vim.tbl_isarray(vim.empty_dict())"))
+    eq(true, exec_lua("return vim.tbl_isarray({'a', 'b', 'c'})"))
+    eq(false, exec_lua("return vim.tbl_isarray({'a', '32', a='hello', b='baz'})"))
+    eq(false, exec_lua("return vim.tbl_isarray({1, a='hello', b='baz'})"))
+    eq(false, exec_lua("return vim.tbl_isarray({a='hello', b='baz', 1})"))
+    eq(false, exec_lua("return vim.tbl_isarray({1, 2, nil, a='hello'})"))
+    eq(true, exec_lua("return vim.tbl_isarray({1, 2, nil, 4})"))
+    eq(true, exec_lua("return vim.tbl_isarray({nil, 2, 3, 4})"))
+    eq(false, exec_lua("return vim.tbl_isarray({1, [1.5]=2, [3]=3})"))
+  end)
+
   it('vim.tbl_islist', function()
     eq(true, exec_lua("return vim.tbl_islist({})"))
     eq(false, exec_lua("return vim.tbl_islist(vim.empty_dict())"))
@@ -513,6 +544,9 @@ describe('lua stdlib', function()
     eq(false, exec_lua("return vim.tbl_islist({1, a='hello', b='baz'})"))
     eq(false, exec_lua("return vim.tbl_islist({a='hello', b='baz', 1})"))
     eq(false, exec_lua("return vim.tbl_islist({1, 2, nil, a='hello'})"))
+    eq(false, exec_lua("return vim.tbl_islist({1, 2, nil, 4})"))
+    eq(false, exec_lua("return vim.tbl_islist({nil, 2, 3, 4})"))
+    eq(false, exec_lua("return vim.tbl_islist({1, [1.5]=2, [3]=3})"))
   end)
 
   it('vim.tbl_isempty', function()
@@ -2297,6 +2331,10 @@ describe('lua stdlib', function()
       insert([[αα]])
       eq({0,5}, exec_lua[[ return vim.region(0,{0,0},{0,4},'3',true)[0] ]])
     end)
+    it('getpos() input', function()
+      insert('getpos')
+      eq({0,6}, exec_lua[[ return vim.region(0,{0,0},'.','v',true)[0] ]])
+    end)
   end)
 
   describe('vim.on_key', function()
@@ -2992,6 +3030,15 @@ describe('lua stdlib', function()
     eq(false, if_nil(d))
     eq(false, if_nil(d, c))
     eq(NIL, if_nil(a))
+  end)
+
+  it('lpeg', function()
+    eq(5, exec_lua [[
+      local m = vim.lpeg
+      return m.match(m.R'09'^1, '4504ab')
+    ]])
+
+    eq(4, exec_lua [[ return vim.re.match("abcde", '[a-c]+') ]])
   end)
 end)
 

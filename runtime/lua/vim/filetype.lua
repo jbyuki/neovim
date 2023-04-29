@@ -257,6 +257,10 @@ local extension = {
   tcc = 'cpp',
   hxx = 'cpp',
   hpp = 'cpp',
+  ccm = 'cpp',
+  cppm = 'cpp',
+  cxxm = 'cpp',
+  ['c++m'] = 'cpp',
   cpp = function(path, bufnr)
     return vim.g.cynlib_syntax_for_cpp and 'cynlib' or 'cpp'
   end,
@@ -1087,7 +1091,9 @@ local extension = {
   vr = 'vera',
   vri = 'vera',
   vrh = 'vera',
-  v = 'verilog',
+  v = function(path, bufnr)
+    return require('vim.filetype.detect').v(bufnr)
+  end,
   va = 'verilogams',
   vams = 'verilogams',
   vhdl = 'vhdl',
@@ -1465,6 +1471,7 @@ local filename = {
   ['.gprc'] = 'gp',
   ['/.gnupg/gpg.conf'] = 'gpg',
   ['/.gnupg/options'] = 'gpg',
+  ['Jenkinsfile'] = 'groovy',
   ['/var/backups/gshadow.bak'] = 'group',
   ['/etc/gshadow'] = 'group',
   ['/etc/group-'] = 'group',
@@ -1517,6 +1524,7 @@ local filename = {
   ['.lsl'] = function(path, bufnr)
     return require('vim.filetype.detect').lsl(bufnr)
   end,
+  ['.busted'] = 'lua',
   ['.luacheckrc'] = 'lua',
   ['lynx.cfg'] = 'lynx',
   ['m3overrides'] = 'm3build',

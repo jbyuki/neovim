@@ -574,9 +574,9 @@ int update_screen(void)
     draw_tabline();
   }
 
-  // Correct stored syntax highlighting info for changes in each displayed
-  // buffer.  Each buffer must only be done once.
   FOR_ALL_WINDOWS_IN_TAB(wp, curtab) {
+    // Correct stored syntax highlighting info for changes in each displayed
+    // buffer.  Each buffer must only be done once.
     update_window_hl(wp, type >= UPD_NOT_VALID || hl_changed);
 
     buf_T *buf = wp->w_buffer;
@@ -592,6 +592,11 @@ int update_screen(void)
         buf->b_mod_tick_decor = display_tick;
       }
     }
+
+    // Reset 'statuscolumn' if there is no dedicated signcolumn but it is invalid.
+    if (*wp->w_p_stc != NUL && !wp->w_buffer->b_signcols.valid && win_no_signcol(wp)) {
+      wp->w_nrwidth_line_count = 0;
+    }
   }
 
   // Go from top to bottom through the windows, redrawing the ones that need it.
@@ -599,6 +604,11 @@ int update_screen(void)
   screen_search_hl.rm.regprog = NULL;
 
   FOR_ALL_WINDOWS_IN_TAB(wp, curtab) {
+    // Validate b_signcols if there is no dedicated signcolumn but 'statuscolumn' is set.
+    if (*wp->w_p_stc != NUL && win_no_signcol(wp)) {
+      buf_signcols(wp->w_buffer, 0);
+    }
+
     if (wp->w_redr_type == UPD_CLEAR && wp->w_floating && wp->w_grid_alloc.chars) {
       grid_invalidate(&wp->w_grid_alloc);
       wp->w_redr_type = UPD_NOT_VALID;
@@ -1052,11 +1062,11 @@ int showmode(void)
     clear_showcmd();
   }
 
-  // If the last window has no status line and global statusline is disabled,
+  // If the current or last window has no status line and global statusline is disabled,
   // the ruler is after the mode message and must be redrawn
-  win_T *last = curwin->w_floating ? curwin : lastwin_nofloating();
-  if (redrawing() && last->w_status_height == 0 && global_stl_height() == 0) {
-    win_redr_ruler(last);
+  win_T *ruler_win = curwin->w_status_height == 0 ? curwin : lastwin_nofloating();
+  if (redrawing() && ruler_win->w_status_height == 0 && global_stl_height() == 0) {
+    win_redr_ruler(ruler_win);
   }
 
   redraw_cmdline = false;
@@ -1397,10 +1407,6 @@ static void win_update(win_T *wp, DecorProviders *providers)
   if (type >= UPD_NOT_VALID) {
     wp->w_redr_status = true;
     wp->w_lines_valid = 0;
-    if (*wp->w_p_stc != NUL) {
-      wp->w_nrwidth_line_count = 0;    // make sure width is reset
-      wp->w_statuscol_line_count = 0;  // make sure width is re-estimated
-    }
   }
 
   // Window is zero-height: Only need to draw the separator
@@ -1709,7 +1715,7 @@ static void win_update(win_T *wp, DecorProviders *providers)
           // bot_start to the first row that needs redrawing.
           bot_start = 0;
           int idx = 0;
-          for (;;) {
+          while (true) {
             wp->w_lines[idx] = wp->w_lines[j];
             // stop at line that didn't fit, unless it is still
             // valid (no lines deleted)
@@ -1822,7 +1828,7 @@ static void win_update(win_T *wp, DecorProviders *providers)
       // First compute the actual start and end column.
       if (VIsual_mode == Ctrl_V) {
         colnr_T fromc, toc;
-        unsigned int save_ve_flags = curwin->w_ve_flags;
+        unsigned save_ve_flags = curwin->w_ve_flags;
 
         if (curwin->w_p_lbr) {
           curwin->w_ve_flags = VE_ALL;
@@ -1973,7 +1979,7 @@ static void win_update(win_T *wp, DecorProviders *providers)
 
   bool eof = false;             // if true, we hit the end of the file
   bool didline = false;         // if true, we finished the last line
-  for (;;) {
+  while (true) {
     // stop updating when reached the end of the window (check for _past_
     // the end of the window is at the end of the loop)
     if (row == wp->w_grid.rows) {
@@ -2123,7 +2129,7 @@ static void win_update(win_T *wp, DecorProviders *providers)
               int x = row + new_rows;
 
               // move entries in w_lines[] upwards
-              for (;;) {
+              while (true) {
                 // stop at last valid entry in w_lines[]
                 if (i >= wp->w_lines_valid) {
                   wp->w_lines_valid = (int)j;
@@ -2528,6 +2534,7 @@ int number_width(win_T *wp)
 
   // reset for 'statuscolumn'
   if (*wp->w_p_stc != NUL) {
+    wp->w_statuscol_line_count = 0;  // make sure width is re-estimated
     wp->w_nrwidth_width = (wp->w_p_nu || wp->w_p_rnu) * (int)wp->w_p_nuw;
     return wp->w_nrwidth_width;
   }

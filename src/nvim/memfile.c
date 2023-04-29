@@ -300,7 +300,12 @@ bhdr_T *mf_get(memfile_T *mfp, blocknr_T nr, unsigned page_count)
 
     // could check here if the block is in the free list
 
-    hp = mf_alloc_bhdr(mfp, page_count);
+    if (page_count > 0) {
+      hp = mf_alloc_bhdr(mfp, page_count);
+    }
+    if (hp == NULL) {
+      return NULL;
+    }
 
     hp->bh_bnum = nr;
     hp->bh_flags = 0;
@@ -623,7 +628,7 @@ static int mf_write(memfile_T *mfp, bhdr_T *hp)
   /// to extend the file.
   /// If block 'mf_infile_count' is not in the hash list, it has been
   /// freed. Fill the space in the file with data from the current block.
-  for (;;) {
+  while (true) {
     blocknr_T nr = hp->bh_bnum;  // block nr which is being written
     if (nr > mfp->mf_infile_count) {            // beyond end of file
       nr = mfp->mf_infile_count;

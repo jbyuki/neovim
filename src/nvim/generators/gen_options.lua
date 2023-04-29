@@ -1,12 +1,4 @@
-if arg[1] == '--help' then
-  print('Usage: genoptions.lua src/nvim options_file')
-  os.exit(0)
-end
-
-local nvimsrcdir = arg[1]
-local options_file = arg[2]
-
-package.path = nvimsrcdir .. '/?.lua;' .. package.path
+local options_file = arg[1]
 
 local opt_fd = io.open(options_file, 'w')
 
@@ -161,6 +153,9 @@ local dump_option = function(i, o)
     end
     table.insert(defines,  { 'PV_' .. varname:sub(3):upper() , pv_name})
     w('    .indir=' .. pv_name)
+  end
+  if o.cb then
+    w('    .opt_did_set_cb=' .. o.cb)
   end
   if o.enable_if then
     w('#else')

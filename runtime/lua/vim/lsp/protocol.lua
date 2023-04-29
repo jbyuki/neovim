@@ -837,7 +837,7 @@ function protocol.make_client_capabilities()
         refreshSupport = true,
       },
       didChangeWatchedFiles = {
-        dynamicRegistration = false,
+        dynamicRegistration = true,
         relativePatternSupport = true,
       },
     },
@@ -894,4 +894,3 @@ function protocol.resolve_capabilities(server_capabilities)
 end
 
 return protocol
--- vim:sw=2 ts=2 et

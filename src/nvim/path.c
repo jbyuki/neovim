@@ -620,7 +620,7 @@ static size_t do_path_expand(garray_T *gap, const char *path, size_t wildoff, in
   static int stardepth = 0;  // depth for "**" expansion
 
   // Expanding "**" may take a long time, check for CTRL-C.
-  if (stardepth > 0) {
+  if (stardepth > 0 && !(flags & EW_NOBREAK)) {
     os_breakcheck();
     if (got_int) {
       return 0;
@@ -701,7 +701,8 @@ static size_t do_path_expand(garray_T *gap, const char *path, size_t wildoff, in
   if (flags & (EW_NOERROR | EW_NOTWILD)) {
     emsg_silent++;
   }
-  regmatch.regprog = vim_regcomp(pat, RE_MAGIC);
+  bool nobreak = (flags & EW_NOBREAK);
+  regmatch.regprog = vim_regcomp(pat, RE_MAGIC | (nobreak ? RE_NOBREAK : 0));
   if (flags & (EW_NOERROR | EW_NOTWILD)) {
     emsg_silent--;
   }
@@ -1371,7 +1372,7 @@ static int expand_backtick(garray_T *gap, char *pat, int flags)
   char *cmd = xstrnsave(pat + 1, strlen(pat) - 2);
 
   if (*cmd == '=') {          // `={expr}`: Expand expression
-    buffer = eval_to_string(cmd + 1, &p, true);
+    buffer = eval_to_string(cmd + 1, true);
   } else {
     buffer = get_cmd_output(cmd, NULL, (flags & EW_SILENT) ? kShellOptSilent : 0, NULL);
   }
@@ -1661,10 +1662,15 @@ void simplify_filename(char *filename)
 
 static char *eval_includeexpr(const char *const ptr, const size_t len)
 {
+  const sctx_T save_sctx = current_sctx;
   set_vim_var_string(VV_FNAME, ptr, (ptrdiff_t)len);
-  char *res = eval_to_string_safe(curbuf->b_p_inex, NULL,
+  current_sctx = curbuf->b_p_script_ctx[BV_INEX].script_ctx;
+
+  char *res = eval_to_string_safe(curbuf->b_p_inex,
                                   was_set_insecurely(curwin, "includeexpr", OPT_LOCAL));
+
   set_vim_var_string(VV_FNAME, NULL, 0);
+  current_sctx = save_sctx;
   return res;
 }
 
@@ -1690,8 +1696,11 @@ char *find_file_name_in_path(char *ptr, size_t len, int options, long count, cha
   }
 
   if (options & FNAME_EXP) {
-    file_name = find_file_in_path(ptr, len, options & ~FNAME_MESS, true,
-                                  rel_fname);
+    char *file_to_find = NULL;
+    char *search_ctx = NULL;
+
+    file_name = find_file_in_path(ptr, len, options & ~FNAME_MESS,
+                                  true, rel_fname, &file_to_find, &search_ctx);
 
     // If the file could not be found in a normal way, try applying
     // 'includeexpr' (unless done already).
@@ -1702,7 +1711,7 @@ char *find_file_name_in_path(char *ptr, size_t len, int options, long count, cha
         ptr = tofree;
         len = strlen(ptr);
         file_name = find_file_in_path(ptr, len, options & ~FNAME_MESS,
-                                      true, rel_fname);
+                                      true, rel_fname, &file_to_find, &search_ctx);
       }
     }
     if (file_name == NULL && (options & FNAME_MESS)) {
@@ -1716,9 +1725,12 @@ char *find_file_name_in_path(char *ptr, size_t len, int options, long count, cha
     // appears several times in the path.
     while (file_name != NULL && --count > 0) {
       xfree(file_name);
-      file_name =
-        find_file_in_path(ptr, len, options, false, rel_fname);
+      file_name = find_file_in_path(ptr, len, options, false, rel_fname,
+                                    &file_to_find, &search_ctx);
     }
+
+    xfree(file_to_find);
+    vim_findfile_cleanup(search_ctx);
   } else {
     file_name = xstrnsave(ptr, len);
   }

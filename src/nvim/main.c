@@ -30,6 +30,7 @@
 #include "nvim/eval.h"
 #include "nvim/eval/typval.h"
 #include "nvim/eval/typval_defs.h"
+#include "nvim/eval/userfunc.h"
 #include "nvim/event/multiqueue.h"
 #include "nvim/event/stream.h"
 #include "nvim/ex_cmds.h"
@@ -172,10 +173,9 @@ bool event_teardown(void)
 
 /// Performs early initialization.
 ///
-/// Needed for unit tests. Must be called after `time_init()`.
+/// Needed for unit tests.
 void early_init(mparm_T *paramp)
 {
-  env_init();
   estack_init();
   cmdline_init();
   eval_init();          // init global variables
@@ -261,15 +261,10 @@ int main(int argc, char **argv)
   mparm_T params;         // various parameters passed between
                           // main() and other functions.
   char *cwd = NULL;       // current working dir on startup
-  time_init();
 
   // Many variables are in `params` so that we can pass them around easily.
   // `argc` and `argv` are also copied, so that they can be changed.
   init_params(&params, argc, argv);
-
-  // Since os_open is called during the init_startuptime, we need to call
-  // fs_init before it.
-  fs_init();
 
   init_startuptime(&params);
 
@@ -465,7 +460,7 @@ int main(int argc, char **argv)
   // Recovery mode without a file name: List swap files.
   // Uses the 'dir' option, therefore it must be after the initializations.
   if (recoverymode && fname == NULL) {
-    recover_names(NULL, true, 0, NULL);
+    recover_names(NULL, true, NULL, 0, NULL);
     os_exit(0);
   }
 
@@ -690,8 +685,8 @@ void getout(int exitval)
 
   set_vim_var_nr(VV_EXITING, exitval);
 
-  // Position the cursor on the last screen line, below all the text
-  ui_cursor_goto(Rows - 1, 0);
+  // Invoked all deferred functions in the function stack.
+  invoke_all_defer();
 
   // Optionally print hashtable efficiency.
   hash_debug_results();
@@ -777,9 +772,6 @@ void getout(int exitval)
     // TODO(justinmk): this may call getout(0), clobbering exitval...
     wait_return(false);
   }
-
-  // Position the cursor again, the autocommands may have moved it
-  ui_cursor_goto(Rows - 1, 0);
 
   // Apply 'titleold'.
   if (p_title && *p_titleold != NUL) {
@@ -1477,7 +1469,7 @@ static void init_startuptime(mparm_T *paramp)
 {
   for (int i = 1; i < paramp->argc - 1; i++) {
     if (STRICMP(paramp->argv[i], "--startuptime") == 0) {
-      time_fd = os_fopen(paramp->argv[i + 1], "a");
+      time_fd = fopen(paramp->argv[i + 1], "a");
       time_start("--- NVIM STARTING ---");
       break;
     }

@@ -2505,7 +2505,7 @@ nfa_do_multibyte:
       // building the postfix form, not the NFA itself;
       // a composing char could be: a, b, c, NFA_COMPOSING
       // where 'b' and 'c' are chars with codes > 256. */
-      for (;;) {
+      while (true) {
         EMIT(c);
         if (i > 0) {
           EMIT(NFA_CONCAT);
@@ -5799,7 +5799,7 @@ static long find_match_text(colnr_T *startcol, int regstart, uint8_t *match_text
   colnr_T col = *startcol;
   int regstart_len = PTR2LEN((char *)rex.line + col);
 
-  for (;;) {
+  while (true) {
     bool match = true;
     uint8_t *s1 = match_text;
     uint8_t *s2 = rex.line + col + regstart_len;  // skip regstart
@@ -5890,7 +5890,7 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start, regsubs_T *subm
   regsubs_T *r;
   // Some patterns may take a long time to match, especially when using
   // recursive_regmatch(). Allow interrupting them with CTRL-C.
-  fast_breakcheck();
+  reg_breakcheck();
   if (got_int) {
     return false;
   }
@@ -5966,7 +5966,7 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start, regsubs_T *subm
   }
 
   // Run for each character.
-  for (;;) {
+  while (true) {
     int curc = utf_ptr2char((char *)rex.input);
     int clen = utfc_ptr2len((char *)rex.input);
     if (curc == NUL) {
@@ -6020,7 +6020,7 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start, regsubs_T *subm
     for (listidx = 0; listidx < thislist->n; listidx++) {
       // If the list gets very long there probably is something wrong.
       // At least allow interrupting with CTRL-C.
-      fast_breakcheck();
+      reg_breakcheck();
       if (got_int) {
         break;
       }
@@ -6501,7 +6501,7 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start, regsubs_T *subm
 
         state = t->state->out;
         result_if_matched = (t->state->c == NFA_START_COLL);
-        for (;;) {
+        while (true) {
           if (state->c == NFA_END_COLL) {
             result = !result_if_matched;
             break;
@@ -7168,7 +7168,7 @@ nextchar:
     }
 
     // Allow interrupting with CTRL-C.
-    line_breakcheck();
+    reg_breakcheck();
     if (got_int) {
       break;
     }
@@ -7591,6 +7591,7 @@ static int nfa_regexec_nl(regmatch_T *rmp, uint8_t *line, colnr_T col, bool line
   rex.reg_win = NULL;
   rex.reg_ic = rmp->rm_ic;
   rex.reg_icombine = false;
+  rex.reg_nobreak = rmp->regprog->re_flags & RE_NOBREAK;
   rex.reg_maxcol = 0;
   return (int)nfa_regexec_both(line, col, NULL, NULL);
 }

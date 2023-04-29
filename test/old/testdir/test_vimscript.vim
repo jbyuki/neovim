@@ -5983,6 +5983,9 @@ endfunc
 
 " interrupt right before a catch is invoked in a script
 func Test_ignore_catch_after_intr_1()
+  " for unknown reasons this test sometimes fails on MS-Windows.
+  let g:test_is_flaky = 1
+
   XpathINIT
   let lines =<< trim [CODE]
     try
@@ -6021,6 +6024,9 @@ endfunc
 
 " interrupt right before a catch is invoked inside a function.
 func Test_ignore_catch_after_intr_2()
+  " for unknown reasons this test sometimes fails on MS-Windows.
+  let g:test_is_flaky = 1
+
   XpathINIT
   func F()
     try
@@ -6508,9 +6514,17 @@ func Test_type()
     call assert_equal(v:t_float, type(0.0))
     call assert_equal(v:t_bool, type(v:false))
     call assert_equal(v:t_bool, type(v:true))
+    " call assert_equal(v:t_none, type(v:none))
+    " call assert_equal(v:t_none, type(v:null))
     call assert_equal(v:t_string, type(v:_null_string))
     call assert_equal(v:t_list, type(v:_null_list))
     call assert_equal(v:t_dict, type(v:_null_dict))
+    if has('job')
+      call assert_equal(v:t_job, type(test_null_job()))
+    endif
+    if has('channel')
+      call assert_equal(v:t_channel, type(test_null_channel()))
+    endif
     call assert_equal(v:t_blob, type(v:_null_blob))
 
     call assert_equal(0, 0 + v:false)
@@ -6691,6 +6705,11 @@ func Test_echo_and_string()
     let l = split(result, "\n")
     call assert_equal(["{'a': [], 'b': []}",
 		     \ "{'a': [], 'b': []}"], l)
+
+    call assert_fails('echo &:', 'E112:')
+    call assert_fails('echo &g:', 'E112:')
+    call assert_fails('echo &l:', 'E112:')
+
 endfunc
 
 "-------------------------------------------------------------------------------
@@ -6746,7 +6765,7 @@ func Test_script_lines()
 		    \ ])
 	call assert_report("Shouldn't be able to define function")
     catch
-	call assert_exception('Vim(function):E126: Missing :endfunction')
+	call assert_exception('Vim(function):E1145: Missing heredoc end marker: .')
     endtry
 
     " :change
@@ -6766,7 +6785,7 @@ func Test_script_lines()
 		    \ ])
 	call assert_report("Shouldn't be able to define function")
     catch
-	call assert_exception('Vim(function):E126: Missing :endfunction')
+	call assert_exception('Vim(function):E1145: Missing heredoc end marker: .')
     endtry
 
     " :insert
@@ -6786,7 +6805,7 @@ func Test_script_lines()
 		    \ ])
 	call assert_report("Shouldn't be able to define function")
     catch
-	call assert_exception('Vim(function):E126: Missing :endfunction')
+	call assert_exception('Vim(function):E1145: Missing heredoc end marker: .')
     endtry
 endfunc
 
@@ -7257,6 +7276,30 @@ func Test_typed_script_var()
 
   call StopVimInTerminal(buf)
 endfunc
+
+" Test for issue6776              {{{1
+func Test_ternary_expression()
+  try
+    call eval('0 ? 0')
+  catch
+  endtry
+  " previous failure should not cause next expression to fail
+  call assert_equal(v:false, eval(string(v:false)))
+
+  try
+    call eval('0 ? "burp')
+  catch
+  endtry
+  " previous failure should not cause next expression to fail
+  call assert_equal(v:false, eval(string(v:false)))
+
+  try
+    call eval('1 ? 0 : "burp')
+  catch
+  endtry
+  " previous failure should not cause next expression to fail
+  call assert_equal(v:false, eval(string(v:false)))
+endfunction
 
 func Test_for_over_string()
   let res = ''

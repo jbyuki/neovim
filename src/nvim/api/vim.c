@@ -2173,6 +2173,7 @@ Dictionary nvim_eval_statusline(String str, Dict(eval_statusline) *opts, Error *
       linenr_T lnum = statuscol_lnum;
       int num_signs = buf_get_signattrs(wp->w_buffer, lnum, sattrs, &num, &line, &cul);
       decor_redraw_signs(wp->w_buffer, lnum - 1, &num_signs, sattrs, &num, &line, &cul);
+      wp->w_scwidth = win_signcol_count(wp);
 
       statuscol.sattrs = sattrs;
       statuscol.foldinfo = fold_info(wp, lnum);
@@ -2240,7 +2241,7 @@ Dictionary nvim_eval_statusline(String str, Dict(eval_statusline) *opts, Error *
   if (highlights) {
     Array hl_values = ARRAY_DICT_INIT;
     const char *grpname;
-    char user_group[6];
+    char user_group[15];  // strlen("User") + strlen("2147483647") + NUL
 
     // If first character doesn't have a defined highlight,
     // add the default highlight at the beginning of the highlight list

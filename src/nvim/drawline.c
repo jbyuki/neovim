@@ -282,7 +282,7 @@ static void draw_virt_text(win_T *wp, buf_T *buf, int col_off, int *end_col, int
     if (item->win_col < 0) {
       continue;
     }
-    int col;
+    int col = 0;
     if (item->decor.ui_watched) {
       // send mark position to UI
       col = item->win_col;
@@ -656,7 +656,15 @@ static void get_statuscol_str(win_T *wp, linenr_T lnum, int virtnum, statuscol_T
     wp->w_statuscol_line_count = wp->w_nrwidth_line_count;
     set_vim_var_nr(VV_VIRTNUM, 0);
     build_statuscol_str(wp, wp->w_nrwidth_line_count, 0, stcp);
-    stcp->width += stcp->truncate;
+    if (stcp->truncate > 0) {
+      // Add truncated width to avoid unnecessary redraws
+      int addwidth = MIN(stcp->truncate, MAX_NUMBERWIDTH - wp->w_nrwidth);
+      stcp->truncate = 0;
+      stcp->width += addwidth;
+      wp->w_nrwidth += addwidth;
+      wp->w_nrwidth_width = wp->w_nrwidth;
+      wp->w_valid &= ~VALID_WCOL;
+    }
   }
   set_vim_var_nr(VV_VIRTNUM, virtnum);
 
@@ -1378,7 +1386,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, bool nochange, 
   if (v > 0 && !number_only) {
     char *prev_ptr = ptr;
     chartabsize_T cts;
-    int charsize;
+    int charsize = 0;
 
     init_chartabsize_arg(&cts, wp, lnum, wlv.vcol, line, ptr);
     while (cts.cts_vcol < v && *cts.cts_ptr != NUL) {
@@ -1508,7 +1516,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, bool nochange, 
   int virt_line_index;
   int virt_line_offset = -1;
   // Repeat for the whole displayed line.
-  for (;;) {
+  while (true) {
     int has_match_conc = 0;  ///< match wants to conceal
     int decor_conceal = 0;
 
@@ -2668,7 +2676,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, bool nochange, 
           if (wp->w_p_cuc && VCOL_HLC == (long)wp->w_virtcol) {
             col_attr = cuc_attr;
           } else if (draw_color_col && VCOL_HLC == *color_cols) {
-            col_attr = mc_attr;
+            col_attr = hl_combine_attr(wlv.line_attr_lowprio, mc_attr);
           }
 
           col_attr = hl_combine_attr(col_attr, wlv.line_attr);
@@ -2939,6 +2947,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, bool nochange, 
       }
 
       wlv.boguscols = 0;
+      wlv.vcol_off = 0;
       wlv.row++;
 
       // When not wrapping and finished diff lines, or when displayed
@@ -2967,16 +2976,17 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, bool nochange, 
         wlv.need_showbreak = true;
       }
       if (statuscol.draw) {
-        if (wlv.row == startrow + wlv.filler_lines + 1
-            || wlv.row == startrow + wlv.filler_lines) {
-          // Re-evaluate 'statuscolumn' for the first wrapped row and non filler line
-          statuscol.textp = NULL;
-        } else if (statuscol.textp) {
+        if (wlv.row == startrow + wlv.filler_lines) {
+          statuscol.textp = NULL;  // re-evaluate for first non-filler line
+        } else if (vim_strchr(p_cpo, CPO_NUMCOL) && wlv.row > startrow + wlv.filler_lines) {
+          statuscol.draw = false;  // don't draw status column if "n" is in 'cpo'
+        } else if (wlv.row == startrow + wlv.filler_lines + 1) {
+          statuscol.textp = NULL;  // re-evaluate for first wrapped line
+        } else {
           // Draw the already built 'statuscolumn' on the next wrapped or filler line
           statuscol.textp = statuscol.text;
           statuscol.hlrecp = statuscol.hlrec;
-        }  // Fall back to default columns if the 'n' flag isn't in 'cpo'
-        statuscol.draw = vim_strchr(p_cpo, CPO_NUMCOL) == NULL;
+        }
       }
       wlv.filler_todo--;
       virt_line_offset = -1;

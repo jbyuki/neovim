@@ -2763,10 +2763,13 @@ nvim_set_decoration_provider({ns_id}, {*opts})
     for the extmarks set/modified inside the callback anyway.
 
     Note: doing anything other than setting extmarks is considered
-    experimental. Doing things like changing options are not expliticly
+    experimental. Doing things like changing options are not explicitly
     forbidden, but is likely to have unexpected consequences (such as 100% CPU
     consumption). doing `vim.rpcnotify` should be OK, but `vim.rpcrequest` is
     quite dubious for the moment.
+
+    Note: It is not allowed to remove or update extmarks in 'on_line'
+    callbacks.
 
     Attributes: ~
         Lua |vim.api| only
@@ -3068,8 +3071,8 @@ nvim_open_win({buffer}, {enter}, {*config})                  *nvim_open_win()*
                       In general, values below 100 are recommended, unless
                       there is a good reason to overshadow builtin elements.
 
-                  • style: Configure the appearance of the window. Currently
-                    only takes one non-empty value:
+                  • style: (optional) Configure the appearance of the window.
+                    Currently only supports one value:
                     • "minimal" Nvim will display the window with many UI
                       options disabled. This is useful when displaying a
                       temporary float where the text should not be edited.

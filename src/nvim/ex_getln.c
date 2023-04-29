@@ -29,6 +29,7 @@
 #include "nvim/edit.h"
 #include "nvim/eval.h"
 #include "nvim/eval/typval.h"
+#include "nvim/eval/vars.h"
 #include "nvim/ex_cmds.h"
 #include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_docmd.h"
@@ -1651,7 +1652,7 @@ static void command_line_left_right_mouse(CommandLineState *s)
 static void command_line_next_histidx(CommandLineState *s, bool next_match)
 {
   int j = (int)strlen(s->lookfor);
-  for (;;) {
+  while (true) {
     // one step backwards
     if (!next_match) {
       if (s->hiscnt == get_hislen()) {
@@ -2446,7 +2447,7 @@ static bool cmdpreview_may_show(CommandLineState *s)
 
   CpInfo cpinfo;
   bool icm_split = *p_icm == 's';  // inccommand=split
-  buf_T *cmdpreview_buf;
+  buf_T *cmdpreview_buf = NULL;
   win_T *cmdpreview_win = NULL;
 
   emsg_silent++;                 // Block error reporting as the command may be incomplete,
@@ -4096,6 +4097,10 @@ static char *get_cmdline_completion(void)
   }
 
   set_expand_context(p->xpc);
+  if (p->xpc->xp_context == EXPAND_UNSUCCESSFUL) {
+    return NULL;
+  }
+
   char *cmd_compl = get_user_cmd_complete(p->xpc, p->xpc->xp_context);
   if (cmd_compl != NULL) {
     return xstrdup(cmd_compl);
@@ -4209,7 +4214,8 @@ void f_setcmdline(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     }
   }
 
-  rettv->vval.v_number = set_cmdline_str(argvars[0].vval.v_string, pos);
+  // Use tv_get_string() to handle a NULL string like an empty string.
+  rettv->vval.v_number = set_cmdline_str(tv_get_string(&argvars[0]), pos);
 }
 
 /// "setcmdpos()" function
@@ -4272,7 +4278,7 @@ void cmdline_init(void)
 
 /// Check value of 'cedit' and set cedit_key.
 /// Returns NULL if value is OK, error message otherwise.
-const char *check_cedit(void)
+const char *did_set_cedit(optset_T *args)
 {
   if (*p_cedit == NUL) {
     cedit_key = -1;
@@ -4556,39 +4562,37 @@ bool is_in_cmdwin(void)
 char *script_get(exarg_T *const eap, size_t *const lenp)
   FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_MALLOC
 {
-  const char *const cmd = eap->arg;
+  char *cmd = eap->arg;
 
   if (cmd[0] != '<' || cmd[1] != '<' || eap->getline == NULL) {
     *lenp = strlen(eap->arg);
     return eap->skip ? NULL : xmemdupz(eap->arg, *lenp);
   }
+  cmd += 2;
 
   garray_T ga = { .ga_data = NULL, .ga_len = 0 };
+
+  list_T *const l = heredoc_get(eap, cmd, true);
+  if (l == NULL) {
+    return NULL;
+  }
+
   if (!eap->skip) {
     ga_init(&ga, 1, 0x400);
   }
 
-  const char *const end_pattern = (cmd[2] != NUL ? skipwhite(cmd + 2) : ".");
-  for (;;) {
-    char *const theline = eap->getline(eap->cstack->cs_looplevel > 0 ? -1 : NUL, eap->cookie, 0,
-                                       true);
-
-    if (theline == NULL || strcmp(end_pattern, theline) == 0) {
-      xfree(theline);
-      break;
-    }
-
+  TV_LIST_ITER_CONST(l, li, {
     if (!eap->skip) {
-      ga_concat(&ga, theline);
+      ga_concat(&ga, tv_get_string(TV_LIST_ITEM_TV(li)));
       ga_append(&ga, '\n');
     }
-    xfree(theline);
-  }
+  });
   *lenp = (size_t)ga.ga_len;  // Set length without trailing NUL.
   if (!eap->skip) {
     ga_append(&ga, NUL);
   }
 
+  tv_list_free(l);
   return (char *)ga.ga_data;
 }
 

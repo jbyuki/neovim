@@ -989,6 +989,8 @@ typedef struct {
   // flag in the regexp.  Defaults to false, always.
   bool reg_icombine;
 
+  bool reg_nobreak;
+
   // Copy of "rmm_maxcol": maximum column to search for a match.  Zero when
   // there is no maximum.
   colnr_T reg_maxcol;
@@ -1010,6 +1012,13 @@ typedef struct {
 
 static regexec_T rex;
 static bool rex_in_use = false;
+
+static void reg_breakcheck(void)
+{
+  if (!rex.reg_nobreak) {
+    fast_breakcheck();
+  }
+}
 
 // Return true if character 'c' is included in 'iskeyword' option for
 // "reg_buf" buffer.
@@ -1150,7 +1159,7 @@ static bool reg_match_visual(void)
     rex.line = (uint8_t *)reg_getline(rex.lnum);
     rex.input = rex.line + col;
 
-    unsigned int cols_u = win_linetabsize(wp, rex.reg_firstlnum + rex.lnum, (char *)rex.line, col);
+    unsigned cols_u = win_linetabsize(wp, rex.reg_firstlnum + rex.lnum, (char *)rex.line, col);
     assert(cols_u <= MAXCOL);
     colnr_T cols = (colnr_T)cols_u;
     if (cols < start || cols > end - (*p_sel == 'e')) {
@@ -1221,7 +1230,7 @@ static void reg_nextline(void)
 {
   rex.line = (uint8_t *)reg_getline(++rex.lnum);
   rex.input = rex.line;
-  fast_breakcheck();
+  reg_breakcheck();
 }
 
 // Check whether a backreference matches.
@@ -1239,7 +1248,7 @@ static int match_with_backref(linenr_T start_lnum, colnr_T start_col, linenr_T e
   if (bytelen != NULL) {
     *bytelen = 0;
   }
-  for (;;) {
+  while (true) {
     // Since getting one line may invalidate the other, need to make copy.
     // Slow!
     if (rex.line != reg_tofree) {
@@ -1812,7 +1821,7 @@ static int vim_regsub_both(char *source, typval_T *expr, char *dest, int destlen
         }
         tv_clear(&rettv);
       } else {
-        eval_result[nested] = eval_to_string(source + 2, NULL, true);
+        eval_result[nested] = eval_to_string(source + 2, true);
       }
       nesting--;
 
@@ -1994,7 +2003,7 @@ static int vim_regsub_both(char *source, typval_T *expr, char *dest, int destlen
           }
         }
         if (s != NULL) {
-          for (;;) {
+          while (true) {
             if (len == 0) {
               if (REG_MULTI) {
                 if (rex.reg_mmatch->endpos[no].lnum == clnum) {
@@ -2265,6 +2274,7 @@ static void init_regexec_multi(regmmatch_T *rmp, win_T *win, buf_T *buf, linenr_
   rex.reg_line_lbr = false;
   rex.reg_ic = rmp->rmm_ic;
   rex.reg_icombine = false;
+  rex.reg_nobreak = rmp->regprog->re_flags & RE_NOBREAK;
   rex.reg_maxcol = rmp->rmm_maxcol;
 }
 

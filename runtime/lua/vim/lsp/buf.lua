@@ -808,4 +808,3 @@ function M.execute_command(command_params)
 end
 
 return M
--- vim:sw=2 ts=2 et

@@ -705,7 +705,7 @@ char *u_get_undo_file_name(const char *const buf_ffname, const bool reading)
         // Last directory in the list does not exist, create it.
         int ret;
         char *failed_dir;
-        if ((ret = os_mkdir_recurse(dir_name, 0755, &failed_dir)) != 0) {
+        if ((ret = os_mkdir_recurse(dir_name, 0755, &failed_dir, NULL)) != 0) {
           semsg(_("E5003: Unable to create directory \"%s\" for undo file: %s"),
                 failed_dir, os_strerror(ret));
           xfree(failed_dir);
@@ -904,7 +904,7 @@ static u_header_T *unserialize_uhp(bufinfo_T *bi, const char *file_name)
   uhp->uh_time = undo_read_time(bi);
 
   // Unserialize optional fields.
-  for (;;) {
+  while (true) {
     int len = undo_read_byte(bi);
 
     if (len == EOF) {
@@ -1333,6 +1333,10 @@ void u_write_undo(const char *const name, const bool forceit, buf_T *const buf, 
   }
 #endif
 
+  if (p_fs && fflush(fp) == 0 && os_fsync(fd) != 0) {
+    write_ok = false;
+  }
+
 write_error:
   fclose(fp);
   if (!write_ok) {
@@ -1471,7 +1475,7 @@ void u_read_undo(char *name, const uint8_t *hash, const char *orig_name FUNC_ATT
 
   // Optional header fields.
   long last_save_nr = 0;
-  for (;;) {
+  while (true) {
     int len = undo_read_byte(&bi);
 
     if (len == 0 || len == EOF) {
@@ -2024,7 +2028,7 @@ void undo_time(long step, bool sec, bool file, bool absolute)
 
     while (uhp != NULL) {
       uhp->uh_walk = mark;
-      long val = dosec  ? (long)(uhp->uh_time) :
+      long val = dosec ? (long)(uhp->uh_time) :
                  dofile ? uhp->uh_save_nr
                         : uhp->uh_seq;
 
