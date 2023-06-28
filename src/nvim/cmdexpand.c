@@ -841,7 +841,7 @@ static char *find_longest_match(expand_T *xp, int options)
 char *ExpandOne(expand_T *xp, char *str, char *orig, int options, int mode)
 {
   char *ss = NULL;
-  static int findex;
+  static int findex;                  // TODO(vim): Move into expand_T
   static char *orig_save = NULL;      // kept value of orig
   int orig_saved = false;
 
@@ -871,7 +871,10 @@ char *ExpandOne(expand_T *xp, char *str, char *orig, int options, int mode)
       cmdline_pum_remove();
     }
   }
-  findex = 0;
+  // TODO(vim): Remove condition if "findex" is part of expand_T ?
+  if (mode != WILD_EXPAND_FREE && mode != WILD_ALL && mode != WILD_ALL_KEEP) {
+    findex = 0;
+  }
 
   if (mode == WILD_FREE) {      // only release file name
     return NULL;
@@ -897,12 +900,27 @@ char *ExpandOne(expand_T *xp, char *str, char *orig, int options, int mode)
   if (mode == WILD_ALL && xp->xp_numfiles > 0 && !got_int) {
     size_t len = 0;
     for (int i = 0; i < xp->xp_numfiles; i++) {
+      if (i > 0) {
+        if (xp->xp_prefix == XP_PREFIX_NO) {
+          len += 2;   // prefix "no"
+        } else if (xp->xp_prefix == XP_PREFIX_INV) {
+          len += 3;   // prefix "inv"
+        }
+      }
       len += strlen(xp->xp_files[i]) + 1;
     }
     ss = xmalloc(len);
     *ss = NUL;
     for (int i = 0; i < xp->xp_numfiles; i++) {
+      if (i > 0) {
+        if (xp->xp_prefix == XP_PREFIX_NO) {
+          STRCAT(ss, "no");
+        } else if (xp->xp_prefix == XP_PREFIX_INV) {
+          STRCAT(ss, "inv");
+        }
+      }
       STRCAT(ss, xp->xp_files[i]);
+
       if (i != xp->xp_numfiles - 1) {
         STRCAT(ss, (options & WILD_USE_NL) ? "\n" : " ");
       }
@@ -927,6 +945,7 @@ void ExpandInit(expand_T *xp)
 {
   CLEAR_POINTER(xp);
   xp->xp_backslash = XP_BS_NONE;
+  xp->xp_prefix = XP_PREFIX_NONE;
   xp->xp_numfiles = -1;
 }
 

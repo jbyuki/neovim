@@ -788,6 +788,9 @@ function tests.code_action_server_side_command()
           codeActionProvider = {
             resolveProvider = false,
           },
+          executeCommandProvider = {
+            commands = {"dummy1"}
+          },
         },
       }
     end,
@@ -831,21 +834,21 @@ function tests.code_action_filter()
         isPreferred = true,
         command = 'preferred_command',
       }
-      local quickfix_action = {
+      local type_annotate_action = {
         title = 'Action 3',
-        kind = 'quickfix',
-        command = 'quickfix_command',
+        kind = 'type-annotate',
+        command = 'type_annotate_command',
       }
-      local quickfix_foo_action = {
+      local type_annotate_foo_action = {
         title = 'Action 4',
-        kind = 'quickfix.foo',
-        command = 'quickfix_foo_command',
+        kind = 'type-annotate.foo',
+        command = 'type_annotate_foo_command',
       }
       expect_request('textDocument/codeAction', function()
-        return nil, { action, preferred_action, quickfix_action, quickfix_foo_action, }
+        return nil, { action, preferred_action, type_annotate_action, type_annotate_foo_action, }
       end)
       expect_request('textDocument/codeAction', function()
-        return nil, { action, preferred_action, quickfix_action, quickfix_foo_action, }
+        return nil, { action, preferred_action, type_annotate_action, type_annotate_foo_action, }
       end)
       notify('shutdown')
     end;
@@ -950,7 +953,7 @@ local test_name = arg[1]
 local timeout = arg[2]
 assert(type(test_name) == 'string', 'test_name must be specified as first arg.')
 
-local kill_timer = vim.loop.new_timer()
+local kill_timer = vim.uv.new_timer()
 kill_timer:start(timeout or 1e3, 0, function()
   kill_timer:stop()
   kill_timer:close()

@@ -241,6 +241,7 @@ local extension = {
   copyright = function(path, bufnr)
     return require('vim.filetype.detect').copyright(bufnr)
   end,
+  corn = 'corn',
   csh = function(path, bufnr)
     return require('vim.filetype.detect').csh(path, bufnr)
   end,
@@ -579,6 +580,7 @@ local extension = {
   ['json-patch'] = 'json',
   json5 = 'json5',
   jsonc = 'jsonc',
+  jsonl = 'jsonl',
   jsonnet = 'jsonnet',
   libsonnet = 'jsonnet',
   jsp = 'jsp',
@@ -637,6 +639,7 @@ local extension = {
   nse = 'lua',
   rockspec = 'lua',
   lua = 'lua',
+  luau = 'luau',
   lrc = 'lyrics',
   m = function(path, bufnr)
     return require('vim.filetype.detect').m(bufnr)
@@ -780,6 +783,10 @@ local extension = {
   g = 'pccts',
   pcmk = 'pcmk',
   pdf = 'pdf',
+  pem = 'pem',
+  cer = 'pem',
+  crt = 'pem',
+  csr = 'pem',
   plx = 'perl',
   prisma = 'prisma',
   psgi = 'perl',
@@ -996,7 +1003,9 @@ local extension = {
   spi = 'spyce',
   spy = 'spyce',
   tyc = 'sql',
-  typ = 'sql',
+  typ = function(path, bufnr)
+    return require('vim.filetype.detect').typ(bufnr)
+  end,
   pkb = 'sql',
   tyb = 'sql',
   pks = 'sql',
@@ -1028,6 +1037,8 @@ local extension = {
   swift = 'swift',
   svh = 'systemverilog',
   sv = 'systemverilog',
+  cmm = 'trace32',
+  t32 = 'trace32',
   td = 'tablegen',
   tak = 'tak',
   tal = 'tal',
@@ -1077,6 +1088,9 @@ local extension = {
   uit = 'uil',
   uil = 'uil',
   ungram = 'ungrammar',
+  url = 'urlshortcut',
+  usd = 'usd',
+  usda = 'usd',
   sba = 'vb',
   vb = 'vb',
   dsm = 'vb',
@@ -1164,6 +1178,7 @@ local extension = {
   zir = 'zir',
   zu = 'zimbu',
   zut = 'zimbutempl',
+  zs = 'zserio',
   zsh = 'zsh',
   vala = 'vala',
   web = function(path, bufnr)
@@ -1361,6 +1376,7 @@ local filename = {
   ['named.root'] = 'bindzone',
   WORKSPACE = 'bzl',
   ['WORKSPACE.bzlmod'] = 'bzl',
+  BUCK = 'bzl',
   BUILD = 'bzl',
   ['cabal.project'] = 'cabalproject',
   ['cabal.config'] = 'cabalconfig',
@@ -1541,6 +1557,7 @@ local filename = {
   ['man.config'] = 'manconf',
   ['maxima-init.mac'] = 'maxima',
   ['meson.build'] = 'meson',
+  ['meson.options'] = 'meson',
   ['meson_options.txt'] = 'meson',
   ['/etc/conf.modules'] = 'modconf',
   ['/etc/modules'] = 'modconf',
@@ -1796,6 +1813,8 @@ local pattern = {
   ['bzr_log%..*'] = 'bzr',
   ['.*enlightenment/.*%.cfg'] = 'c',
   ['${HOME}/cabal%.config'] = 'cabalconfig',
+  ['${HOME}/%.config/cabal/config'] = 'cabalconfig',
+  ['${XDG_CONFIG_HOME}/cabal/config'] = 'cabalconfig',
   ['cabal%.project%..*'] = starsetf('cabalproject'),
   ['.*/%.calendar/.*'] = starsetf('calendar'),
   ['.*/share/calendar/.*/calendar%..*'] = starsetf('calendar'),
@@ -2177,7 +2196,7 @@ local pattern = {
   ['.*/etc/profile'] = function(path, bufnr)
     return require('vim.filetype.detect').sh(path, M.getlines(bufnr))
   end,
-  ['bash%-fc[%-%.]'] = function(path, bufnr)
+  ['bash%-fc[%-%.].*'] = function(path, bufnr)
     return require('vim.filetype.detect').sh(path, M.getlines(bufnr), 'bash')
   end,
   ['%.tcshrc.*'] = function(path, bufnr)
@@ -2477,7 +2496,7 @@ local function match_pattern(name, path, tail, pat)
         return_early = true
         return nil
       end
-      return vim.env[env]
+      return vim.pesc(vim.env[env])
     end)
     if return_early then
       return false

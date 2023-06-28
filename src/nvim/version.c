@@ -335,7 +335,7 @@ static const int included_patches[] = {
   2151,
   2150,
   2149,
-  // 2148,
+  2148,
   2147,
   // 2146,
   2145,
@@ -2560,6 +2560,11 @@ Dictionary version_dict(void)
   PUT(d, "major", INTEGER_OBJ(NVIM_VERSION_MAJOR));
   PUT(d, "minor", INTEGER_OBJ(NVIM_VERSION_MINOR));
   PUT(d, "patch", INTEGER_OBJ(NVIM_VERSION_PATCH));
+#ifndef NVIM_VERSION_BUILD
+  PUT(d, "build", NIL);
+#else
+  PUT(d, "build", CSTR_AS_OBJ(NVIM_VERSION_BUILD));
+#endif
   PUT(d, "prerelease", BOOLEAN_OBJ(NVIM_VERSION_PRERELEASE[0] != '\0'));
   PUT(d, "api_level", INTEGER_OBJ(NVIM_API_LEVEL));
   PUT(d, "api_compatible", INTEGER_OBJ(NVIM_API_LEVEL_COMPAT));

@@ -66,7 +66,7 @@ To disable Python 3 support: >vim
 PYTHON VIRTUALENVS ~
 						*python-virtualenv*
 If you plan to use per-project virtualenvs often, you should assign one
-virtualenv for Neovim and hard-code the interpreter path via
+virtualenv for Nvim and hard-code the interpreter path via
 |g:python3_host_prog| so that the "pynvim" package is not required
 for each virtualenv.
 
@@ -182,15 +182,15 @@ the "+" and/or "*" registers explicitly): >vim
 See 'clipboard' for details and options.
 
 							      *clipboard-tool*
-The presence of a working clipboard tool implicitly enables the '+' and '*'
+The presence of a working clipboard tool implicitly enables the '+' and "*"
 registers. Nvim looks for these clipboard tools, in order of priority:
 
   - |g:clipboard|
   - pbcopy, pbpaste (macOS)
   - wl-copy, wl-paste (if $WAYLAND_DISPLAY is set)
   - waycopy, waypaste (if $WAYLAND_DISPLAY is set)
-  - xclip (if $DISPLAY is set)
   - xsel (if $DISPLAY is set)
+  - xclip (if $DISPLAY is set)
   - lemonade (for SSH) https://github.com/pocke/lemonade
   - doitclient (for SSH) https://www.chiark.greenend.org.uk/~sgtatham/doit/
   - win32yank (Windows)

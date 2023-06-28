@@ -645,8 +645,8 @@ size_t transchar_hex(char *const buf, const int c)
   size_t i = 0;
 
   buf[i++] = '<';
-  if (c > 255) {
-    if (c > 255 * 256) {
+  if (c > 0xFF) {
+    if (c > 0xFFFF) {
       buf[i++] = (char)nr2hex((unsigned)c >> 20);
       buf[i++] = (char)nr2hex((unsigned)c >> 16);
     }
@@ -858,14 +858,24 @@ bool vim_iswordp_buf(const char *const p, buf_T *const buf)
   return vim_iswordc_buf(c, buf);
 }
 
-/// Check that "c" is a valid file-name character.
+/// Check that "c" is a valid file-name character as specified with the
+/// 'isfname' option.
 /// Assume characters above 0x100 are valid (multi-byte).
+/// To be used for commands like "gf".
 ///
 /// @param  c  character to check
 bool vim_isfilec(int c)
   FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT
 {
   return c >= 0x100 || (c > 0 && (g_chartab[c] & CT_FNAME_CHAR));
+}
+
+/// Check if "c" is a valid file-name character, including characters left
+/// out of 'isfname' to make "gf" work, such as comma, space, '@', etc.
+bool vim_is_fname_char(int c)
+  FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT
+{
+  return vim_isfilec(c) || c == ',' || c == ' ' || c == '@';
 }
 
 /// Check that "c" is a valid file-name character or a wildcard character
@@ -979,6 +989,7 @@ void getvcol(win_T *wp, pos_T *pos, colnr_T *start, colnr_T *cursor, colnr_T *en
   }
 
   chartabsize_T cts;
+  bool on_NUL = false;
   init_chartabsize_arg(&cts, wp, pos->lnum, 0, line, line);
 
   // This function is used very often, do some speed optimizations.
@@ -1042,8 +1053,9 @@ void getvcol(win_T *wp, pos_T *pos, colnr_T *start, colnr_T *cursor, colnr_T *en
 
       // make sure we don't go past the end of the line
       if (*cts.cts_ptr == NUL) {
-        // NUL at end of line only takes one column
-        incr = 1;
+        // NUL at end of line only takes one column, unless there is virtual text
+        incr = MAX(1, cts.cts_cur_text_width_left + cts.cts_cur_text_width_right);
+        on_NUL = true;
         break;
       }
 
@@ -1069,8 +1081,6 @@ void getvcol(win_T *wp, pos_T *pos, colnr_T *start, colnr_T *cursor, colnr_T *en
   }
 
   if (cursor != NULL) {
-    // cursor is after inserted text
-    vcol += cts.cts_cur_text_width;
     if ((*ptr == TAB)
         && (State & MODE_NORMAL)
         && !wp->w_p_list
@@ -1079,6 +1089,13 @@ void getvcol(win_T *wp, pos_T *pos, colnr_T *start, colnr_T *cursor, colnr_T *en
       // cursor at end
       *cursor = vcol + incr - 1;
     } else {
+      if (!on_NUL) {
+        // cursor is after inserted text, unless on the NUL
+        vcol += cts.cts_cur_text_width_left;
+        if ((State & MODE_INSERT) == 0) {
+          vcol += cts.cts_cur_text_width_right;
+        }
+      }
       // cursor at start
       *cursor = vcol + head;
     }

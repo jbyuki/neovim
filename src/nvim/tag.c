@@ -188,10 +188,18 @@ typedef struct {
 # include "tag.c.generated.h"
 #endif
 
-static const char *bottommsg = N_("E555: at bottom of tag stack");
-static const char *topmsg = N_("E556: at top of tag stack");
-static const char *recurmsg = N_("E986: cannot modify the tag stack within tagfunc");
-static const char *tfu_inv_ret_msg = N_("E987: invalid return value from tagfunc");
+static const char e_tag_stack_empty[]
+  = N_("E73: Tag stack empty");
+static const char e_tag_not_found_str[]
+  = N_("E426: Tag not found: %s");
+static const char e_at_bottom_of_tag_stack[]
+  = N_("E555: At bottom of tag stack");
+static const char e_at_top_of_tag_stack[]
+  = N_("E556: At top of tag stack");
+static const char e_cannot_modify_tag_stack_within_tagfunc[]
+  = N_("E986: Cannot modify the tag stack within tagfunc");
+static const char e_invalid_return_value_from_tagfunc[]
+  = N_("E987: Invalid return value from tagfunc");
 static const char e_window_unexpectedly_close_while_searching_for_tags[]
   = N_("E1299: Window unexpectedly closed while searching for tags");
 
@@ -304,7 +312,7 @@ void do_tag(char *tag, int type, int count, int forceit, int verbose)
   static int flags;
 
   if (tfu_in_use) {
-    emsg(_(recurmsg));
+    emsg(_(e_cannot_modify_tag_stack_within_tagfunc));
     return;
   }
 
@@ -391,14 +399,14 @@ void do_tag(char *tag, int type, int count, int forceit, int verbose)
       if (g_do_tagpreview != 0 ? ptag_entry.tagname == NULL :
           tagstacklen == 0) {
         // empty stack
-        emsg(_(e_tagstack));
+        emsg(_(e_tag_stack_empty));
         goto end_do_tag;
       }
 
       if (type == DT_POP) {             // go to older position
         const bool old_KeyTyped = KeyTyped;
         if ((tagstackidx -= count) < 0) {
-          emsg(_(bottommsg));
+          emsg(_(e_at_bottom_of_tag_stack));
           if (tagstackidx + count == 0) {
             // We did [num]^T from the bottom of the stack
             tagstackidx = 0;
@@ -408,7 +416,7 @@ void do_tag(char *tag, int type, int count, int forceit, int verbose)
           // way to the bottom now.
           tagstackidx = 0;
         } else if (tagstackidx >= tagstacklen) {        // count == 0?
-          emsg(_(topmsg));
+          emsg(_(e_at_top_of_tag_stack));
           goto end_do_tag;
         }
 
@@ -457,10 +465,10 @@ void do_tag(char *tag, int type, int count, int forceit, int verbose)
             // go to the last one.  Don't store the cursor
             // position.
             tagstackidx = tagstacklen - 1;
-            emsg(_(topmsg));
+            emsg(_(e_at_top_of_tag_stack));
             save_pos = false;
           } else if (tagstackidx < 0) {         // must have been count == 0
-            emsg(_(bottommsg));
+            emsg(_(e_at_bottom_of_tag_stack));
             tagstackidx = 0;
             goto end_do_tag;
           }
@@ -638,7 +646,7 @@ void do_tag(char *tag, int type, int count, int forceit, int verbose)
 
     if (num_matches <= 0) {
       if (verbose) {
-        semsg(_("E426: tag not found: %s"), name);
+        semsg(_(e_tag_not_found_str), name);
       }
       g_do_tagpreview = 0;
     } else {
@@ -724,7 +732,7 @@ void do_tag(char *tag, int type, int count, int forceit, int verbose)
                  num_matches,
                  max_num_matches != MAXCOL ? _(" or more") : "");
         if (ic) {
-          STRCAT(IObuff, _("  Using tag with different case!"));
+          xstrlcat(IObuff, _("  Using tag with different case!"), IOSIZE);
         }
         if ((num_matches > prev_num_matches || new_tag)
             && num_matches > 1) {
@@ -1281,7 +1289,7 @@ static int find_tagfunc_tags(char *pat, garray_T *ga, int *match_count, int flag
   }
   if (rettv.v_type != VAR_LIST || !rettv.vval.v_list) {
     tv_clear(&rettv);
-    emsg(_(tfu_inv_ret_msg));
+    emsg(_(e_invalid_return_value_from_tagfunc));
     return FAIL;
   }
   taglist = rettv.vval.v_list;
@@ -1295,7 +1303,7 @@ static int find_tagfunc_tags(char *pat, garray_T *ga, int *match_count, int flag
     int name_only = flags & TAG_NAMES;
 
     if (TV_LIST_ITEM_TV(li)->v_type != VAR_DICT) {
-      emsg(_(tfu_inv_ret_msg));
+      emsg(_(e_invalid_return_value_from_tagfunc));
       break;
     }
 
@@ -1341,7 +1349,7 @@ static int find_tagfunc_tags(char *pat, garray_T *ga, int *match_count, int flag
     }
 
     if (!res_name || !res_fname || !res_cmd) {
-      emsg(_(tfu_inv_ret_msg));
+      emsg(_(e_invalid_return_value_from_tagfunc));
       break;
     }
 
@@ -1754,7 +1762,7 @@ static tagmatch_status_T findtags_parse_line(findtags_state_T *st, tagptrs_T *ta
     if (st->state == TS_BINARY) {
       int tagcmp;
       // Simplistic check for unsorted tags file.
-      int i = (int)tagpp->tagname[0];
+      int i = (uint8_t)tagpp->tagname[0];
       if (margs->sortic) {
         i = TOUPPER_ASC(tagpp->tagname[0]);
       }
@@ -2893,21 +2901,10 @@ static int jumpto_tag(const char *lbuf_arg, int forceit, int keep_help)
     buf_T *const existing_buf = buflist_findname_exp(fname);
 
     if (existing_buf != NULL) {
-      const win_T *wp = NULL;
-
-      if (swb_flags & SWB_USEOPEN) {
-        wp = buf_jump_open_win(existing_buf);
-      }
-
-      // If 'switchbuf' contains "usetab": jump to first window in any tab
-      // page containing "existing_buf" if one exists
-      if (wp == NULL && (swb_flags & SWB_USETAB)) {
-        wp = buf_jump_open_tab(existing_buf);
-      }
-
-      // We've switched to the buffer, the usual loading of the file must
-      // be skipped.
-      if (wp != NULL) {
+      // If 'switchbuf' is set jump to the window containing "buf".
+      if (swbuf_goto_win_with_buf(existing_buf) != NULL) {
+        // We've switched to the buffer, the usual loading of the file
+        // must be skipped.
         getfile_result = GETFILE_SAME_FILE;
       }
     }
@@ -3560,7 +3557,7 @@ int set_tagstack(win_T *wp, const dict_T *d, int action)
 
   // not allowed to alter the tag stack entries from inside tagfunc
   if (tfu_in_use) {
-    emsg(_(recurmsg));
+    emsg(_(e_cannot_modify_tag_stack_within_tagfunc));
     return FAIL;
   }
 

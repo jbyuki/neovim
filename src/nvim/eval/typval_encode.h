@@ -11,7 +11,7 @@
 #include <string.h>
 
 #include "klib/kvec.h"
-#include "nvim/eval/typval.h"
+#include "nvim/eval/typval_defs.h"
 #include "nvim/func_attr.h"
 
 /// Type of the stack entry
@@ -30,7 +30,7 @@ typedef enum {
   kMPConvPartialEnd,  ///< Already converted everything.
 } MPConvPartialStage;
 
-/// Structure representing current VimL to messagepack conversion state
+/// Structure representing current Vimscript to messagepack conversion state
 typedef struct {
   MPConvStackValType type;  ///< Type of the stack entry.
   typval_T *tv;  ///< Currently converted typval_T.
@@ -60,7 +60,7 @@ typedef struct {
   } data;  ///< Data to convert.
 } MPConvStackVal;
 
-/// Stack used to convert VimL values to messagepack.
+/// Stack used to convert Vimscript values to messagepack.
 typedef kvec_withinit_t(MPConvStackVal, 8) MPConvStack;
 
 // Defines for MPConvStack

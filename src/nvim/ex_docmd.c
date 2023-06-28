@@ -87,12 +87,22 @@
 
 static const char e_ambiguous_use_of_user_defined_command[]
   = N_("E464: Ambiguous use of user-defined command");
+static const char e_no_call_stack_to_substitute_for_stack[]
+  = N_("E489: No call stack to substitute for \"<stack>\"");
 static const char e_not_an_editor_command[]
   = N_("E492: Not an editor command");
+static const char e_no_autocommand_file_name_to_substitute_for_afile[]
+  = N_("E495: No autocommand file name to substitute for \"<afile>\"");
+static const char e_no_autocommand_buffer_number_to_substitute_for_abuf[]
+  = N_("E496: No autocommand buffer number to substitute for \"<abuf>\"");
+static const char e_no_autocommand_match_name_to_substitute_for_amatch[]
+  = N_("E497: No autocommand match name to substitute for \"<amatch>\"");
 static const char e_no_source_file_name_to_substitute_for_sfile[]
-  = N_("E498: no :source file name to substitute for \"<sfile>\"");
-static const char e_no_call_stack_to_substitute_for_stack[]
-  = N_("E489: no call stack to substitute for \"<stack>\"");
+  = N_("E498: No :source file name to substitute for \"<sfile>\"");
+static const char e_no_line_number_to_use_for_slnum[]
+  = N_("E842: No line number to use for \"<slnum>\"");
+static const char e_no_line_number_to_use_for_sflnum[]
+  = N_("E961: No line number to use for \"<sflnum>\"");
 static const char e_no_script_file_name_to_substitute_for_script[]
   = N_("E1274: No script file name to substitute for \"<script>\"");
 
@@ -220,7 +230,7 @@ void do_exmode(void)
     if ((prev_line != curwin->w_cursor.lnum
          || changedtick != buf_get_changedtick(curbuf)) && !ex_no_reprint) {
       if (curbuf->b_ml.ml_flags & ML_EMPTY) {
-        emsg(_(e_emptybuf));
+        emsg(_(e_empty_buffer));
       } else {
         if (ex_pressedreturn) {
           // Make sure the message overwrites the right line and isn't throttled.
@@ -238,7 +248,7 @@ void do_exmode(void)
       }
     } else if (ex_pressedreturn && !ex_no_reprint) {  // must be at EOF
       if (curbuf->b_ml.ml_flags & ML_EMPTY) {
-        emsg(_(e_emptybuf));
+        emsg(_(e_empty_buffer));
       } else {
         emsg(_("E501: At end-of-file"));
       }
@@ -278,7 +288,7 @@ static void msg_verbose_cmd(linenr_T lnum, char *cmd)
 /// Execute a simple command line.  Used for translated commands like "*".
 int do_cmdline_cmd(const char *cmd)
 {
-  return do_cmdline((char *)cmd, NULL, NULL, DOCMD_NOWAIT|DOCMD_KEYTYPED);
+  return do_cmdline((char *)cmd, NULL, NULL, DOCMD_VERBOSE|DOCMD_NOWAIT|DOCMD_KEYTYPED);
 }
 
 /// do_cmdline(): execute one Ex command line
@@ -1444,7 +1454,7 @@ bool parse_cmdline(char *cmdline, exarg_T *eap, CmdParseInfo *cmdinfo, char **er
   }
   // Fail if command is invalid
   if (eap->cmdidx == CMD_SIZE) {
-    STRCPY(IObuff, _(e_not_an_editor_command));
+    xstrlcpy(IObuff, _(e_not_an_editor_command), IOSIZE);
     // If the modifier was parsed OK the error must be in the following command
     char *cmdname = after_modifier ? after_modifier : cmdline;
     append_command(cmdname);
@@ -1680,7 +1690,7 @@ int execute_cmd(exarg_T *eap, CmdParseInfo *cmdinfo, bool preview)
       && !(eap->cmdidx == CMD_file && *eap->arg == NUL)
       && !IS_USER_CMDIDX(eap->cmdidx)
       && curbuf_locked()) {
-    ERROR(_(e_cannot_edit_other_buf));
+    goto end;
   }
 
   correct_range(eap);
@@ -1852,7 +1862,8 @@ static bool skip_cmd(const exarg_T *eap)
 
 /// Execute one Ex command.
 ///
-/// If 'sourcing' is true, the command will be included in the error message.
+/// If "flags" has DOCMD_VERBOSE, the command will be included in the error
+/// message.
 ///
 /// 1. skip comment lines and leading space
 /// 2. handle command modifiers
@@ -2033,7 +2044,7 @@ static char *do_one_cmd(char **cmdlinep, int flags, cstack_T *cstack, LineGetter
   // Check for wrong commands.
   if (ea.cmdidx == CMD_SIZE) {
     if (!ea.skip) {
-      STRCPY(IObuff, _(e_not_an_editor_command));
+      xstrlcpy(IObuff, _(e_not_an_editor_command), IOSIZE);
       // If the modifier was parsed OK the error must be in the following
       // command
       char *cmdname = after_modifier ? after_modifier : *cmdlinep;
@@ -2310,7 +2321,7 @@ doend:
   if (errormsg != NULL && *errormsg != NUL && !did_emsg) {
     if (flags & DOCMD_VERBOSE) {
       if (errormsg != IObuff) {
-        STRCPY(IObuff, errormsg);
+        xstrlcpy(IObuff, errormsg, IOSIZE);
         errormsg = IObuff;
       }
       append_command(*ea.cmdlinep);
@@ -2877,7 +2888,7 @@ static void append_command(char *cmd)
     d -= utf_head_off(IObuff, d);
     STRCPY(d, "...");
   }
-  STRCAT(IObuff, ": ");
+  xstrlcat(IObuff, ": ", IOSIZE);
   d = IObuff + strlen(IObuff);
   while (*s != NUL && d - IObuff + 5 < IOSIZE) {
     if ((uint8_t)s[0] == 0xc2 && (uint8_t)s[1] == 0xa0) {
@@ -4578,8 +4589,9 @@ static void ex_cquit(exarg_T *eap)
   getout(eap->addr_count > 0 ? (int)eap->line2 : EXIT_FAILURE);
 }
 
-/// ":qall": try to quit all windows
-static void ex_quit_all(exarg_T *eap)
+/// Do preparations for "qall" and "wqall".
+/// Returns FAIL when quitting should be aborted.
+int before_quit_all(exarg_T *eap)
 {
   if (cmdwin_type != 0) {
     if (eap->forceit) {
@@ -4587,19 +4599,28 @@ static void ex_quit_all(exarg_T *eap)
     } else {
       cmdwin_result = K_XF2;
     }
-    return;
+    return FAIL;
   }
 
   // Don't quit while editing the command line.
   if (text_locked()) {
     text_locked_msg();
-    return;
+    return FAIL;
   }
 
   if (before_quit_autocmds(curwin, true, eap->forceit)) {
-    return;
+    return FAIL;
   }
 
+  return OK;
+}
+
+/// ":qall": try to quit all windows
+static void ex_quit_all(exarg_T *eap)
+{
+  if (before_quit_all(eap) == FAIL) {
+    return;
+  }
   exiting = true;
   if (eap->forceit || !check_changed_any(false, false)) {
     getout(0);
@@ -4854,9 +4875,6 @@ static void ex_stop(exarg_T *eap)
   ui_call_suspend();
   ui_flush();
 
-  maketitle();
-  resettitle();  // force updating the title
-  ui_refresh();  // may have resized window
   apply_autocmds(EVENT_VIMRESUME, NULL, NULL, false, NULL);
 }
 
@@ -4900,7 +4918,7 @@ static void ex_exit(exarg_T *eap)
 static void ex_print(exarg_T *eap)
 {
   if (curbuf->b_ml.ml_flags & ML_EMPTY) {
-    emsg(_(e_emptybuf));
+    emsg(_(e_empty_buffer));
   } else {
     for (; !got_int; os_breakcheck()) {
       print_line(eap->line1,
@@ -6881,12 +6899,10 @@ char *eval_vars(char *src, const char *srcstart, size_t *usedlen, linenr_T *lnum
       break;
 
     case SPEC_AFILE:  // file name for autocommand
-      if (autocmd_fname != NULL
-          && !path_is_absolute(autocmd_fname)
-          // For CmdlineEnter and related events, <afile> is not a path! #9348
-          && !strequal("/", autocmd_fname)) {
+      if (autocmd_fname != NULL && !autocmd_fname_full) {
         // Still need to turn the fname into a full path.  It was
         // postponed to avoid a delay when <afile> is not used.
+        autocmd_fname_full = true;
         result = FullName_save(autocmd_fname, false);
         // Copy into `autocmd_fname`, don't reassign it. #8165
         xstrlcpy(autocmd_fname, result, MAXPATHL);
@@ -6894,7 +6910,7 @@ char *eval_vars(char *src, const char *srcstart, size_t *usedlen, linenr_T *lnum
       }
       result = autocmd_fname;
       if (result == NULL) {
-        *errormsg = _("E495: no autocommand file name to substitute for \"<afile>\"");
+        *errormsg = _(e_no_autocommand_file_name_to_substitute_for_afile);
         return NULL;
       }
       result = path_try_shorten_fname(result);
@@ -6902,7 +6918,7 @@ char *eval_vars(char *src, const char *srcstart, size_t *usedlen, linenr_T *lnum
 
     case SPEC_ABUF:             // buffer number for autocommand
       if (autocmd_bufnr <= 0) {
-        *errormsg = _("E496: no autocommand buffer number to substitute for \"<abuf>\"");
+        *errormsg = _(e_no_autocommand_buffer_number_to_substitute_for_abuf);
         return NULL;
       }
       snprintf(strbuf, sizeof(strbuf), "%d", autocmd_bufnr);
@@ -6912,7 +6928,7 @@ char *eval_vars(char *src, const char *srcstart, size_t *usedlen, linenr_T *lnum
     case SPEC_AMATCH:           // match name for autocommand
       result = autocmd_match;
       if (result == NULL) {
-        *errormsg = _("E497: no autocommand match name to substitute for \"<amatch>\"");
+        *errormsg = _(e_no_autocommand_match_name_to_substitute_for_amatch);
         return NULL;
       }
       break;
@@ -6944,7 +6960,7 @@ char *eval_vars(char *src, const char *srcstart, size_t *usedlen, linenr_T *lnum
 
     case SPEC_SLNUM:            // line in file for ":so" command
       if (SOURCING_NAME == NULL || SOURCING_LNUM == 0) {
-        *errormsg = _("E842: no line number to use for \"<slnum>\"");
+        *errormsg = _(e_no_line_number_to_use_for_slnum);
         return NULL;
       }
       snprintf(strbuf, sizeof(strbuf), "%" PRIdLINENR, SOURCING_LNUM);
@@ -6953,7 +6969,7 @@ char *eval_vars(char *src, const char *srcstart, size_t *usedlen, linenr_T *lnum
 
     case SPEC_SFLNUM:  // line in script file
       if (current_sctx.sc_lnum + SOURCING_LNUM == 0) {
-        *errormsg = _("E961: no line number to use for \"<sflnum>\"");
+        *errormsg = _(e_no_line_number_to_use_for_sflnum);
         return NULL;
       }
       snprintf(strbuf, sizeof(strbuf), "%" PRIdLINENR,
@@ -7198,7 +7214,7 @@ static void ex_setfiletype(exarg_T *eap)
     arg += 9;
   }
 
-  set_option_value_give_err("filetype", 0L, arg, OPT_LOCAL);
+  set_option_value_give_err("filetype", CSTR_AS_OPTVAL(arg), OPT_LOCAL);
   if (arg != eap->arg) {
     did_filetype = false;
   }

@@ -65,6 +65,17 @@ static mapblock_T *(maphash[MAX_MAPHASH]) = { 0 };
 # include "mapping.c.generated.h"
 #endif
 
+static const char e_global_abbreviation_already_exists_for_str[]
+  = N_("E224: Global abbreviation already exists for %s");
+static const char e_global_mapping_already_exists_for_str[]
+  = N_("E225: Global mapping already exists for %s");
+static const char e_abbreviation_already_exists_for_str[]
+  = N_("E226: Abbreviation already exists for %s");
+static const char e_mapping_already_exists_for_str[]
+  = N_("E227: Mapping already exists for %s");
+static const char e_entries_missing_in_mapset_dict_argument[]
+  = N_("E460: Entries missing in mapset() dict argument");
+
 /// Get the start of the hashed map list for "state" and first character "c".
 mapblock_T *get_maphash_list(int state, int c)
 {
@@ -645,10 +656,9 @@ static int buf_do_map(int maptype, MapArguments *args, int mode, bool is_abbrev,
               && mp->m_keylen == len
               && strncmp(mp->m_keys, lhs, (size_t)len) == 0) {
             if (is_abbrev) {
-              semsg(_("E224: global abbreviation already exists for %s"),
-                    mp->m_keys);
+              semsg(_(e_global_abbreviation_already_exists_for_str), mp->m_keys);
             } else {
-              semsg(_("E225: global mapping already exists for %s"), mp->m_keys);
+              semsg(_(e_global_mapping_already_exists_for_str), mp->m_keys);
             }
             retval = 5;
             goto theend;
@@ -761,9 +771,9 @@ static int buf_do_map(int maptype, MapArguments *args, int mode, bool is_abbrev,
                 break;
               } else if (args->unique) {
                 if (is_abbrev) {
-                  semsg(_("E226: abbreviation already exists for %s"), p);
+                  semsg(_(e_abbreviation_already_exists_for_str), p);
                 } else {
-                  semsg(_("E227: mapping already exists for %s"), p);
+                  semsg(_(e_mapping_already_exists_for_str), p);
                 }
                 retval = 5;
                 goto theend;
@@ -2086,13 +2096,13 @@ static Dictionary mapblock_fill_dict(const mapblock_T *const mp, const char *lhs
                                 : cstr_as_string(str2special_save(mp->m_str, false, true))));
   }
   if (mp->m_desc != NULL) {
-    PUT(dict, "desc", STRING_OBJ(cstr_to_string(mp->m_desc)));
+    PUT(dict, "desc", CSTR_TO_OBJ(mp->m_desc));
   }
-  PUT(dict, "lhs", STRING_OBJ(cstr_as_string(lhs)));
-  PUT(dict, "lhsraw", STRING_OBJ(cstr_to_string(mp->m_keys)));
+  PUT(dict, "lhs", CSTR_AS_OBJ(lhs));
+  PUT(dict, "lhsraw", CSTR_TO_OBJ(mp->m_keys));
   if (lhsrawalt != NULL) {
     // Also add the value for the simplified entry.
-    PUT(dict, "lhsrawalt", STRING_OBJ(cstr_to_string(lhsrawalt)));
+    PUT(dict, "lhsrawalt", CSTR_TO_OBJ(lhsrawalt));
   }
   PUT(dict, "noremap", INTEGER_OBJ(noremap_value));
   PUT(dict, "script", INTEGER_OBJ(mp->m_noremap == REMAP_SCRIPT ? 1 : 0));
@@ -2105,7 +2115,7 @@ static Dictionary mapblock_fill_dict(const mapblock_T *const mp, const char *lhs
   if (mp->m_replace_keycodes) {
     PUT(dict, "replace_keycodes", INTEGER_OBJ(1));
   }
-  PUT(dict, "mode", STRING_OBJ(cstr_as_string(mapmode)));
+  PUT(dict, "mode", CSTR_AS_OBJ(mapmode));
 
   return dict;
 }
@@ -2226,7 +2236,7 @@ void f_mapset(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     api_free_object(callback_obj);
   }
   if (lhs == NULL || lhsraw == NULL || orig_rhs == NULL) {
-    emsg(_("E460: entries missing in mapset() dict argument"));
+    emsg(_(e_entries_missing_in_mapset_dict_argument));
     api_free_luaref(rhs_lua);
     return;
   }
@@ -2593,13 +2603,21 @@ void modify_keymap(uint64_t channel_id, Buffer buffer, bool is_unmap, String mod
     goto fail_and_free;
   }
 
-  if (mode.size > 1) {
+  bool is_abbrev = false;
+  if (mode.size > 2) {
     api_set_error(err, kErrorTypeValidation, "Shortname is too long: %s", mode.data);
     goto fail_and_free;
+  } else if (mode.size == 2) {
+    if ((mode.data[0] != '!' && mode.data[0] != 'i' && mode.data[0] != 'c')
+        || mode.data[1] != 'a') {
+      api_set_error(err, kErrorTypeValidation, "Shortname is too long: %s", mode.data);
+      goto fail_and_free;
+    }
+    is_abbrev = true;
   }
   int mode_val;  // integer value of the mapping mode, to be passed to do_map()
   char *p = (mode.size) ? mode.data : "m";
-  if (strncmp(p, "!", 2) == 0) {
+  if (*p == '!') {
     mode_val = get_map_mode(&p, true);  // mapmode-ic
   } else {
     mode_val = get_map_mode(&p, false);
@@ -2644,7 +2662,7 @@ void modify_keymap(uint64_t channel_id, Buffer buffer, bool is_unmap, String mod
     maptype_val = MAPTYPE_NOREMAP;
   }
 
-  switch (buf_do_map(maptype_val, &parsed_args, mode_val, 0, target_buf)) {
+  switch (buf_do_map(maptype_val, &parsed_args, mode_val, is_abbrev, target_buf)) {
   case 0:
     break;
   case 1:

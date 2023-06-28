@@ -62,7 +62,7 @@
 #include "nvim/getchar.h"
 #include "nvim/gettext.h"
 #include "nvim/globals.h"
-#include "nvim/grid_defs.h"
+#include "nvim/grid.h"
 #include "nvim/hashtab.h"
 #include "nvim/highlight_defs.h"
 #include "nvim/highlight_group.h"
@@ -148,6 +148,8 @@ PRAGMA_DIAG_POP
 
 static const char *e_listblobarg = N_("E899: Argument of %s must be a List or Blob");
 static const char *e_invalwindow = N_("E957: Invalid window number");
+static const char e_invalid_submatch_number_nr[]
+  = N_("E935: Invalid submatch number: %d");
 static const char *e_reduceempty = N_("E998: Reduce of an empty %s with no initial value");
 static const char e_missing_function_argument[]
   = N_("E1132: Missing function argument");
@@ -928,7 +930,7 @@ static void f_count(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
           if (!error) {
             li = tv_list_find(l, (int)idx);
             if (li == NULL) {
-              semsg(_(e_listidx), idx);
+              semsg(_(e_list_index_out_of_range_nr), idx);
             }
           }
         }
@@ -1902,7 +1904,7 @@ static void extend(typval_T *argvars, typval_T *rettv, char *arg_errmsg, bool is
         } else {
           item = tv_list_find(l1, (int)before);
           if (item == NULL) {
-            semsg(_(e_listidx), (int64_t)before);
+            semsg(_(e_list_index_out_of_range_nr), (int64_t)before);
             return;
           }
         }
@@ -3236,7 +3238,7 @@ static bool has_wsl(void)
   static TriState has_wsl = kNone;
   if (has_wsl == kNone) {
     Error err = ERROR_INIT;
-    Object o = nlua_exec(STATIC_CSTR_AS_STRING("return vim.loop.os_uname()['release']:lower()"
+    Object o = nlua_exec(STATIC_CSTR_AS_STRING("return vim.uv.os_uname()['release']:lower()"
                                                ":match('microsoft') and true or false"),
                          (Array)ARRAY_DICT_INIT, &err);
     assert(!ERROR_SET(&err));
@@ -3729,7 +3731,7 @@ static void f_insert(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     if (before != tv_list_len(l)) {
       item = tv_list_find(l, (int)before);
       if (item == NULL) {
-        semsg(_(e_listidx), before);
+        semsg(_(e_list_index_out_of_range_nr), before);
         l = NULL;
       }
     }
@@ -6550,6 +6552,7 @@ static void f_rpcrequest(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 
   sctx_T save_current_sctx;
   char *save_autocmd_fname, *save_autocmd_match;
+  bool save_autocmd_fname_full;
   int save_autocmd_bufnr;
   funccal_entry_T funccal_entry;
 
@@ -6559,6 +6562,7 @@ static void f_rpcrequest(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     save_current_sctx = current_sctx;
     save_autocmd_fname = autocmd_fname;
     save_autocmd_match = autocmd_match;
+    save_autocmd_fname_full = autocmd_fname_full;
     save_autocmd_bufnr = autocmd_bufnr;
     save_funccal(&funccal_entry);
 
@@ -6567,6 +6571,7 @@ static void f_rpcrequest(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     ((estack_T *)exestack.ga_data)[exestack.ga_len++] = provider_caller_scope.es_entry;
     autocmd_fname = provider_caller_scope.autocmd_fname;
     autocmd_match = provider_caller_scope.autocmd_match;
+    autocmd_fname_full = provider_caller_scope.autocmd_fname_full;
     autocmd_bufnr = provider_caller_scope.autocmd_bufnr;
     set_current_funccal((funccall_T *)(provider_caller_scope.funccalp));
   }
@@ -6584,6 +6589,7 @@ static void f_rpcrequest(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     exestack.ga_len--;
     autocmd_fname = save_autocmd_fname;
     autocmd_match = save_autocmd_match;
+    autocmd_fname_full = save_autocmd_fname_full;
     autocmd_bufnr = save_autocmd_bufnr;
     restore_funccal();
   }
@@ -6743,7 +6749,9 @@ static void f_screenchar(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
   if (row < 0 || row >= grid->rows || col < 0 || col >= grid->cols) {
     c = -1;
   } else {
-    c = utf_ptr2char((char *)grid->chars[grid->line_offset[row] + (size_t)col]);
+    char buf[MB_MAXBYTES + 1];
+    grid_getbytes(grid, row, col, buf, NULL);
+    c = utf_ptr2char(buf);
   }
   rettv->vval.v_number = c;
 }
@@ -6761,10 +6769,13 @@ static void f_screenchars(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     tv_list_alloc_ret(rettv, 0);
     return;
   }
+
+  char buf[MB_MAXBYTES + 1];
+  grid_getbytes(grid, row, col, buf, NULL);
   int pcc[MAX_MCO];
-  int c = utfc_ptr2char((char *)grid->chars[grid->line_offset[row] + (size_t)col], pcc);
+  int c = utfc_ptr2char(buf, pcc);
   int composing_len = 0;
-  while (pcc[composing_len] != 0) {
+  while (composing_len < MAX_MCO && pcc[composing_len] != 0) {
     composing_len++;
   }
   tv_list_alloc_ret(rettv, composing_len + 1);
@@ -6804,7 +6815,9 @@ static void f_screenstring(typval_T *argvars, typval_T *rettv, EvalFuncData fptr
     return;
   }
 
-  rettv->vval.v_string = xstrdup((char *)grid->chars[grid->line_offset[row] + (size_t)col]);
+  char buf[MB_MAXBYTES + 1];
+  grid_getbytes(grid, row, col, buf, NULL);
+  rettv->vval.v_string = xstrdup(buf);
 }
 
 /// "search()" function
@@ -7092,7 +7105,7 @@ long do_searchpair(const char *spat, const char *mpat, const char *epat, int dir
     // If it's still empty it was changed and restored, need to restore in
     // the complicated way.
     if (*p_cpo == NUL) {
-      set_option_value_give_err("cpo", 0L, save_cpo, 0);
+      set_option_value_give_err("cpo", CSTR_AS_OPTVAL(save_cpo), 0);
     }
     free_string_option(save_cpo);
   }
@@ -7199,7 +7212,7 @@ static void f_serverstop(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 }
 
 /// Set the cursor or mark position.
-/// If 'charpos' is true, then use the column number as a character offset.
+/// If "charpos" is true, then use the column number as a character offset.
 /// Otherwise use the column number as a byte offset.
 static void set_position(typval_T *argvars, typval_T *rettv, bool charpos)
 {
@@ -8027,7 +8040,7 @@ static void f_submatch(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
   }
 
   if (no < 0 || no >= NSUBEXP) {
-    semsg(_("E935: invalid submatch number: %d"), no);
+    semsg(_(e_invalid_submatch_number_nr), no);
     return;
   }
   int retList = 0;
@@ -8291,7 +8304,7 @@ static void f_synstack(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
   }
 }
 
-/// f_system - the VimL system() function
+/// f_system - the Vimscript system() function
 static void f_system(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 {
   get_system_output_as_rettv(argvars, rettv, false);

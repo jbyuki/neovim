@@ -487,7 +487,7 @@ Integer nvim_strwidth(String text, Error *err)
   return (Integer)mb_string2cells(text.data);
 }
 
-/// Gets the paths contained in 'runtimepath'.
+/// Gets the paths contained in |runtime-search-path|.
 ///
 /// @return List of paths
 ArrayOf(String) nvim_list_runtime_paths(Error *err)
@@ -531,7 +531,7 @@ static void find_runtime_cb(char *fname, void *cookie)
 {
   Array *rv = (Array *)cookie;
   if (fname != NULL) {
-    ADD(*rv, STRING_OBJ(cstr_to_string(fname)));
+    ADD(*rv, CSTR_TO_OBJ(fname));
   }
 }
 
@@ -544,7 +544,7 @@ String nvim__get_lib_dir(void)
 ///
 /// @param pat pattern of files to search for
 /// @param all whether to return all matches or only the first
-/// @param opts is_lua: only search lua subdirs
+/// @param opts is_lua: only search Lua subdirs
 /// @return list of absolute paths to the found files
 ArrayOf(String) nvim__get_runtime(Array pat, Boolean all, Dict(runtime) *opts, Error *err)
   FUNC_API_SINCE(8)
@@ -910,10 +910,10 @@ Buffer nvim_create_buf(Boolean listed, Boolean scratch, Error *err)
   if (scratch) {
     aco_save_T aco;
     aucmd_prepbuf(&aco, buf);
-    set_option_value("bufhidden", 0L, "hide", OPT_LOCAL);
-    set_option_value("buftype", 0L, "nofile", OPT_LOCAL);
-    set_option_value("swapfile", 0L, NULL, OPT_LOCAL);
-    set_option_value("modeline", 0L, NULL, OPT_LOCAL);  // 'nomodeline'
+    set_option_value("bufhidden", STATIC_CSTR_AS_OPTVAL("hide"), OPT_LOCAL);
+    set_option_value("buftype", STATIC_CSTR_AS_OPTVAL("nofile"), OPT_LOCAL);
+    set_option_value("swapfile", BOOLEAN_OPTVAL(false), OPT_LOCAL);
+    set_option_value("modeline", BOOLEAN_OPTVAL(false), OPT_LOCAL);  // 'nomodeline'
     aucmd_restbuf(&aco);
   }
   return buf->b_fnum;
@@ -941,7 +941,7 @@ fail:
 ///
 /// @param buffer the buffer to use (expected to be empty)
 /// @param opts   Optional parameters.
-///          - on_input: lua callback for input sent, i e keypresses in terminal
+///          - on_input: Lua callback for input sent, i e keypresses in terminal
 ///            mode. Note: keypresses are sent raw as they would be to the pty
 ///            master end. For instance, a carriage return is sent
 ///            as a "\r", not as a "\n". |textlock| applies. It is possible
@@ -1009,7 +1009,7 @@ static void term_write(char *buf, size_t size, void *data)  // NOLINT(readabilit
 
 static void term_resize(uint16_t width, uint16_t height, void *data)
 {
-  // TODO(bfredl): lua callback
+  // TODO(bfredl): Lua callback
 }
 
 static void term_close(void *data)
@@ -1383,7 +1383,7 @@ Dictionary nvim_get_mode(void)
   get_mode(modestr);
   bool blocked = input_blocking();
 
-  PUT(rv, "mode", STRING_OBJ(cstr_to_string(modestr)));
+  PUT(rv, "mode", CSTR_TO_OBJ(modestr));
   PUT(rv, "blocking", BOOLEAN_OBJ(blocked));
 
   return rv;
@@ -1420,13 +1420,14 @@ ArrayOf(Dictionary) nvim_get_keymap(String mode)
 /// @param channel_id
 /// @param  mode  Mode short-name (map command prefix: "n", "i", "v", "x", …)
 ///               or "!" for |:map!|, or empty string for |:map|.
+///               "ia", "ca" or "!a" for abbreviation in Insert mode, Cmdline mode, or both, respectively
 /// @param  lhs   Left-hand-side |{lhs}| of the mapping.
 /// @param  rhs   Right-hand-side |{rhs}| of the mapping.
 /// @param  opts  Optional parameters map: Accepts all |:map-arguments| as keys except |<buffer>|,
 ///               values are booleans (default false). Also:
 ///               - "noremap" non-recursive mapping |:noremap|
 ///               - "desc" human-readable description.
-///               - "callback" Lua function called when the mapping is executed.
+///               - "callback" Lua function called in place of {rhs}.
 ///               - "replace_keycodes" (boolean) When "expr" is true, replace keycodes in the
 ///                 resulting string (see |nvim_replace_termcodes()|). Returning nil from the Lua
 ///                 "callback" is equivalent to returning an empty string.
@@ -1926,7 +1927,7 @@ Array nvim__inspect_cell(Integer grid, Integer row, Integer col, Arena *arena, E
   }
   ret = arena_array(arena, 3);
   size_t off = g->line_offset[(size_t)row] + (size_t)col;
-  ADD_C(ret, STRING_OBJ(cstr_as_string((char *)g->chars[off])));
+  ADD_C(ret, CSTR_AS_OBJ((char *)g->chars[off]));
   int attr = g->attrs[off];
   ADD_C(ret, DICTIONARY_OBJ(hl_get_attr_by_id(attr, true, arena, err)));
   // will not work first time
@@ -2035,7 +2036,7 @@ Array nvim_get_mark(String name, Dictionary opts, Error *err)
   ADD(rv, INTEGER_OBJ(row));
   ADD(rv, INTEGER_OBJ(col));
   ADD(rv, INTEGER_OBJ(bufnr));
-  ADD(rv, STRING_OBJ(cstr_to_string(filename)));
+  ADD(rv, CSTR_TO_OBJ(filename));
 
   if (allocated) {
     xfree(filename);
@@ -2180,7 +2181,7 @@ Dictionary nvim_eval_statusline(String str, Dict(eval_statusline) *opts, Error *
       wp->w_cursorline = win_cursorline_standout(wp) ? wp->w_cursor.lnum : 0;
 
       if (wp->w_p_cul) {
-        if (statuscol.foldinfo.fi_level > 0 && statuscol.foldinfo.fi_lines > 0) {
+        if (statuscol.foldinfo.fi_level != 0 && statuscol.foldinfo.fi_lines > 0) {
           wp->w_cursorline = statuscol.foldinfo.fi_lnum;
         }
         statuscol.use_cul = lnum == wp->w_cursorline && (wp->w_p_culopt_flags & CULOPT_NBR);

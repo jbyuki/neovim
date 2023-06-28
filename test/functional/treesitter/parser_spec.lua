@@ -182,11 +182,11 @@ void ui_refresh(void)
     local function q(n)
       return exec_lua ([[
         local query, n = ...
-        local before = vim.loop.hrtime()
+        local before = vim.uv.hrtime()
         for i=1,n,1 do
           cquery = vim.treesitter.query.parse("c", ...)
         end
-        local after = vim.loop.hrtime()
+        local after = vim.uv.hrtime()
         return after - before
       ]], long_query, n)
     end
@@ -483,9 +483,8 @@ end]]
     return list
     ]]
 
-    eq({ 'any-of?', 'contains?', 'eq?', 'is-main?', 'lua-match?', 'match?', 'vim-match?' }, res_list)
+    eq({ 'any-of?', 'contains?', 'eq?', 'has-ancestor?', 'has-parent?', 'is-main?', 'lua-match?', 'match?', 'vim-match?' }, res_list)
   end)
-
 
   it('allows to set simple ranges', function()
     insert(test_text)
@@ -528,6 +527,7 @@ end]]
 
     eq(range_tbl, { { { 0, 0, 0, 17, 1, 508 } } })
   end)
+
   it("allows to set complex ranges", function()
     insert(test_text)
 
@@ -922,12 +922,6 @@ int x = INT_MAX;
       [19] = '1' }, get_fold_levels())
 
     helpers.command('1,2d')
-    helpers.poke_eventloop()
-
-    exec_lua([[vim.treesitter.get_parser():parse()]])
-
-    helpers.poke_eventloop()
-    helpers.sleep(100)
 
     eq({
       [1] = '0',
@@ -947,6 +941,29 @@ int x = INT_MAX;
       [15] = '2',
       [16] = '1',
       [17] = '0' }, get_fold_levels())
+
+    helpers.command('1put!')
+
+    eq({
+      [1] = '>1',
+      [2] = '1',
+      [3] = '1',
+      [4] = '1',
+      [5] = '>2',
+      [6] = '2',
+      [7] = '2',
+      [8] = '1',
+      [9] = '1',
+      [10] = '>2',
+      [11] = '2',
+      [12] = '2',
+      [13] = '2',
+      [14] = '2',
+      [15] = '>3',
+      [16] = '3',
+      [17] = '3',
+      [18] = '2',
+      [19] = '1' }, get_fold_levels())
   end)
 
   it('tracks the root range properly (#22911)', function()
@@ -990,6 +1007,60 @@ int x = INT_MAX;
       { 'function', 1, 0, 3, 1 },
       { 'declaration', 2, 2, 2, 12 }
     }, run_query())
+
+  end)
+
+  it('handles ranges when source is a multiline string (#20419)', function()
+    local source = [==[
+      vim.cmd[[
+        set number
+        set cmdheight=2
+        set lastsatus=2
+      ]]
+
+      set query = [[;; query
+        ((function_call
+          name: [
+            (identifier) @_cdef_identifier
+            (_ _ (identifier) @_cdef_identifier)
+          ]
+          arguments: (arguments (string content: _ @injection.content)))
+          (#set! injection.language "c")
+          (#eq? @_cdef_identifier "cdef"))
+      ]]
+    ]==]
+
+    local r = exec_lua([[
+      local parser = vim.treesitter.get_string_parser(..., 'lua')
+      parser:parse()
+      local ranges = {}
+      parser:for_each_tree(function(tstree, tree)
+        ranges[tree:lang()] = { tstree:root():range(true) }
+      end)
+      return ranges
+    ]], source)
+
+    eq({
+      lua = { 0, 6, 6, 16, 4, 438 },
+      query = { 6, 20, 113, 15, 6, 431 },
+      vim = { 1, 0, 16, 4, 6, 89 }
+    }, r)
+
+    -- The above ranges are provided directly from treesitter, however query directives may mutate
+    -- the ranges but only provide a Range4. Strip the byte entries from the ranges and make sure
+    -- add_bytes() produces the same result.
+
+    local rb = exec_lua([[
+      local r, source = ...
+      local add_bytes = require('vim.treesitter._range').add_bytes
+      for lang, range in pairs(r) do
+        r[lang] = {range[1], range[2], range[4], range[5]}
+        r[lang] = add_bytes(source, r[lang])
+      end
+      return r
+    ]], r, source)
+
+    eq(rb, r)
 
   end)
 end)

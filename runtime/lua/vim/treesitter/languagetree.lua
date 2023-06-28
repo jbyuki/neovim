@@ -31,8 +31,17 @@
 --- shouldn't be done directly in the change callback anyway as they will be very frequent. Rather
 --- a plugin that does any kind of analysis on a tree should use a timer to throttle too frequent
 --- updates.
+---
 
-local api = vim.api
+-- Debugging:
+--
+-- vim.g.__ts_debug levels:
+--    - 1. Messages from languagetree.lua
+--    - 2. Parse messages from treesitter
+--    - 2. Lex messages from treesitter
+--
+-- Log file can be found in stdpath('log')/treesitter.log
+
 local query = require('vim.treesitter.query')
 local language = require('vim.treesitter.language')
 local Range = require('vim.treesitter._range')
@@ -51,8 +60,18 @@ local Range = require('vim.treesitter._range')
 ---| 'on_child_added'
 ---| 'on_child_removed'
 
+--- @type table<TSCallbackNameOn,TSCallbackName>
+local TSCallbackNames = {
+  on_changedtree = 'changedtree',
+  on_bytes = 'bytes',
+  on_detach = 'detach',
+  on_child_added = 'child_added',
+  on_child_removed = 'child_removed',
+}
+
 ---@class LanguageTree
 ---@field private _callbacks table<TSCallbackName,function[]> Callback handlers
+---@field package _callbacks_rec table<TSCallbackName,function[]> Callback handlers (recursive)
 ---@field private _children table<string,LanguageTree> Injected languages
 ---@field private _injection_query Query Queries defining injected languages
 ---@field private _opts table Options
@@ -65,6 +84,8 @@ local Range = require('vim.treesitter._range')
 ---@field private _source (integer|string) Buffer or string to parse
 ---@field private _trees TSTree[] Reference to parsed tree (one for each language)
 ---@field private _valid boolean|table<integer,boolean> If the parsed tree is valid
+---@field private _logger? fun(logtype: string, msg: string)
+---@field private _logfile? file*
 local LanguageTree = {}
 
 ---@class LanguageTreeOpts
@@ -79,7 +100,7 @@ LanguageTree.__index = LanguageTree
 --- "injected" language parsers, which themselves may inject other languages, recursively.
 ---
 ---@param source (integer|string) Buffer or text string to parse
----@param lang string|nil Root language of this tree
+---@param lang string Root language of this tree
 ---@param opts (table|nil) Optional arguments:
 ---             - injections table Map of language to injection query strings. Overrides the
 ---                                built-in runtime file searching for language injections.
@@ -100,16 +121,47 @@ function LanguageTree.new(source, lang, opts)
       or query.get(lang, 'injections'),
     _valid = false,
     _parser = vim._create_ts_parser(lang),
-    _callbacks = {
-      changedtree = {},
-      bytes = {},
-      detach = {},
-      child_added = {},
-      child_removed = {},
-    },
+    _callbacks = {},
+    _callbacks_rec = {},
   }, LanguageTree)
 
+  if vim.g.__ts_debug and type(vim.g.__ts_debug) == 'number' then
+    self:_set_logger()
+  end
+
+  for _, name in pairs(TSCallbackNames) do
+    self._callbacks[name] = {}
+    self._callbacks_rec[name] = {}
+  end
+
   return self
+end
+
+function LanguageTree:_set_logger()
+  local source = self:source()
+  source = type(source) == 'string' and 'text' or tostring(source)
+
+  local lang = self:lang()
+
+  local logfilename = vim.fs.joinpath(vim.fn.stdpath('log'), 'treesitter.log')
+
+  local logfile, openerr = io.open(logfilename, 'a+')
+
+  if not logfile or openerr then
+    error(string.format('Could not open file (%s) for logging: %s', logfilename, openerr))
+    return
+  end
+
+  self._logfile = logfile
+
+  self._logger = function(logtype, msg)
+    self._logfile:write(string.format('%s:%s:(%s) %s\n', source, lang, logtype, msg))
+    self._logfile:flush()
+  end
+
+  local log_lex = vim.g.__ts_debug >= 3
+  local log_parse = vim.g.__ts_debug >= 2
+  self._parser:_set_logger(log_lex, log_parse, self._logger)
 end
 
 ---@private
@@ -118,17 +170,22 @@ end
 ---@param f fun(): R1, R2, R2
 ---@return integer, R1, R2, R3
 local function tcall(f, ...)
-  local start = vim.loop.hrtime()
+  local start = vim.uv.hrtime()
   ---@diagnostic disable-next-line
   local r = { f(...) }
-  local duration = (vim.loop.hrtime() - start) / 1000000
+  --- @type number
+  local duration = (vim.uv.hrtime() - start) / 1000000
   return duration, unpack(r)
 end
 
 ---@private
 ---@vararg any
 function LanguageTree:_log(...)
-  if vim.g.__ts_debug == nil then
+  if not self._logger then
+    return
+  end
+
+  if not vim.g.__ts_debug or vim.g.__ts_debug < 1 then
     return
   end
 
@@ -139,19 +196,17 @@ function LanguageTree:_log(...)
 
   local info = debug.getinfo(2, 'nl')
   local nregions = #self:included_regions()
-  local prefix =
-    string.format('%s:%d: [%s:%d] ', info.name, info.currentline, self:lang(), nregions)
+  local prefix = string.format('%s:%d: (#regions=%d) ', info.name, info.currentline, nregions)
 
-  api.nvim_out_write(prefix)
+  local msg = { prefix }
   for _, x in ipairs(args) do
     if type(x) == 'string' then
-      api.nvim_out_write(x)
+      msg[#msg + 1] = x
     else
-      api.nvim_out_write(vim.inspect(x, { newline = ' ', indent = '' }))
+      msg[#msg + 1] = vim.inspect(x, { newline = ' ', indent = '' })
     end
-    api.nvim_out_write(' ')
   end
-  api.nvim_out_write('\n')
+  self._logger('nvim', table.concat(msg, ' '))
 end
 
 --- Invalidates this parser and all its children
@@ -161,6 +216,9 @@ function LanguageTree:invalidate(reload)
 
   -- buffer was reloaded, reparse all trees
   if reload then
+    for _, t in ipairs(self._trees) do
+      self:_do_callback('changedtree', t:included_ranges(true), t)
+    end
     self._trees = {}
   end
 
@@ -245,9 +303,12 @@ function LanguageTree:parse()
       if not self._valid or not self._valid[i] then
         self._parser:set_included_ranges(ranges)
         local parse_time, tree, tree_changes =
-          tcall(self._parser.parse, self._parser, self._trees[i], self._source)
+          tcall(self._parser.parse, self._parser, self._trees[i], self._source, true)
 
-        self:_do_callback('changedtree', tree_changes, tree)
+        -- Pass ranges if this is an initial parse
+        local cb_changes = self._trees[i] and tree_changes or tree:included_ranges(true)
+
+        self:_do_callback('changedtree', cb_changes, tree)
         self._trees[i] = tree
         vim.list_extend(changes, tree_changes)
 
@@ -341,7 +402,14 @@ function LanguageTree:add_child(lang)
     self:remove_child(lang)
   end
 
-  self._children[lang] = LanguageTree.new(self._source, lang, self._opts)
+  local child = LanguageTree.new(self._source, lang, self._opts)
+
+  -- Inherit recursive callbacks
+  for nm, cb in pairs(self._callbacks_rec) do
+    vim.list_extend(child._callbacks_rec[nm], cb)
+  end
+
+  self._children[lang] = child
   self:invalidate()
   self:_do_callback('child_added', self._children[lang])
 
@@ -379,6 +447,9 @@ end
 ---@private
 ---@param region Range6[]
 local function region_tostr(region)
+  if #region == 0 then
+    return '[]'
+  end
   local srow, scol = region[1][1], region[1][2]
   local erow, ecol = region[#region][4], region[#region][5]
   return string.format('[%d:%d-%d:%d]', srow, scol, erow, ecol)
@@ -453,6 +524,10 @@ function LanguageTree:set_included_regions(new_regions)
   end
 
   if #self:included_regions() ~= #new_regions then
+    -- TODO(lewis6991): inefficient; invalidate trees incrementally
+    for _, t in ipairs(self._trees) do
+      self:_do_callback('changedtree', t:included_ranges(true), t)
+    end
     self._trees = {}
     self:invalidate()
   else
@@ -707,6 +782,9 @@ function LanguageTree:_do_callback(cb_name, ...)
   for _, cb in ipairs(self._callbacks[cb_name]) do
     cb(...)
   end
+  for _, cb in ipairs(self._callbacks_rec[cb_name]) do
+    cb(...)
+  end
 end
 
 ---@package
@@ -845,40 +923,43 @@ end
 function LanguageTree:_on_detach(...)
   self:invalidate(true)
   self:_do_callback('detach', ...)
+  if self._logfile then
+    self._logger('nvim', 'detaching')
+    self._logger = nil
+    self._logfile:close()
+  end
 end
 
 --- Registers callbacks for the |LanguageTree|.
 ---@param cbs table An |nvim_buf_attach()|-like table argument with the following handlers:
 ---           - `on_bytes` : see |nvim_buf_attach()|, but this will be called _after_ the parsers callback.
 ---           - `on_changedtree` : a callback that will be called every time the tree has syntactical changes.
----              It will only be passed one argument, which is a table of the ranges (as node ranges) that
----              changed.
+---              It will be passed two arguments: a table of the ranges (as node ranges) that
+---              changed and the changed tree.
 ---           - `on_child_added` : emitted when a child is added to the tree.
 ---           - `on_child_removed` : emitted when a child is removed from the tree.
-function LanguageTree:register_cbs(cbs)
+---           - `on_detach` : emitted when the buffer is detached, see |nvim_buf_detach_event|.
+---              Takes one argument, the number of the buffer.
+--- @param recursive? boolean Apply callbacks recursively for all children. Any new children will
+---                           also inherit the callbacks.
+function LanguageTree:register_cbs(cbs, recursive)
   ---@cast cbs table<TSCallbackNameOn,function>
   if not cbs then
     return
   end
 
-  if cbs.on_changedtree then
-    table.insert(self._callbacks.changedtree, cbs.on_changedtree)
+  local callbacks = recursive and self._callbacks_rec or self._callbacks
+
+  for name, cbname in pairs(TSCallbackNames) do
+    if cbs[name] then
+      table.insert(callbacks[cbname], cbs[name])
+    end
   end
 
-  if cbs.on_bytes then
-    table.insert(self._callbacks.bytes, cbs.on_bytes)
-  end
-
-  if cbs.on_detach then
-    table.insert(self._callbacks.detach, cbs.on_detach)
-  end
-
-  if cbs.on_child_added then
-    table.insert(self._callbacks.child_added, cbs.on_child_added)
-  end
-
-  if cbs.on_child_removed then
-    table.insert(self._callbacks.child_removed, cbs.on_child_removed)
+  if recursive then
+    self:for_each_child(function(child)
+      child:register_cbs(cbs, true)
+    end)
   end
 end
 

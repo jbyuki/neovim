@@ -323,6 +323,10 @@ enum {
 };
 
 static const char *e_spell_trunc = N_("E758: Truncated spell file");
+static const char e_error_while_reading_sug_file_str[]
+  = N_("E782: Error while reading .sug file: %s");
+static const char e_duplicate_char_in_map_entry[]
+  = N_("E783: Duplicate char in MAP entry");
 static const char *e_illegal_character_in_word = N_("E1280: Illegal character in word");
 static const char *e_afftrailing = N_("Trailing text in %s line %d: %s");
 static const char *e_affname = N_("Affix name too long in %s line %d: %s");
@@ -956,7 +960,7 @@ void suggest_load_files(void)
       if (spell_read_tree(fd, &slang->sl_sbyts, NULL, &slang->sl_sidxs,
                           false, 0) != 0) {
 someerror:
-        semsg(_("E782: error while reading .sug file: %s"),
+        semsg(_(e_error_while_reading_sug_file_str),
               slang->sl_fname);
         slang_clear_sug(slang);
         goto nextone;
@@ -3127,7 +3131,7 @@ static int spell_read_dic(spellinfo_T *spin, char *fname, afffile_T *affile)
     // Remove CR, LF and white space from the end.  White space halfway through
     // the word is kept to allow multi-word terms like "et al.".
     l = (int)strlen(line);
-    while (l > 0 && line[l - 1] <= ' ') {
+    while (l > 0 && (uint8_t)line[l - 1] <= ' ') {
       l--;
     }
     if (l == 0) {
@@ -4971,9 +4975,12 @@ static int sug_filltree(spellinfo_T *spin, slang_T *slang)
   spin->si_sugtree = true;
 
   // Go through the whole case-folded tree, soundfold each word and put it
-  // in the trie.
+  // in the trie.  Bail out if the tree is empty.
   byts = slang->sl_fbyts;
   idxs = slang->sl_fidxs;
+  if (byts == NULL || idxs == NULL) {
+    return FAIL;
+  }
 
   arridx[0] = 0;
   curi[0] = 1;
@@ -5713,7 +5720,7 @@ static void init_spellfile(void)
                      && strstr(path_tail(fname), ".ascii.") != NULL)
                     ? "ascii"
                     : spell_enc()));
-      set_option_value_give_err("spellfile", 0L, buf, OPT_LOCAL);
+      set_option_value_give_err("spellfile", CSTR_AS_OPTVAL(buf), OPT_LOCAL);
       break;
     }
     aspath = false;
@@ -5857,7 +5864,7 @@ static void set_map_str(slang_T *lp, char *map)
         } else {
           // This should have been checked when generating the .spl
           // file.
-          emsg(_("E783: duplicate char in MAP entry"));
+          emsg(_(e_duplicate_char_in_map_entry));
           xfree(b);
         }
       } else {

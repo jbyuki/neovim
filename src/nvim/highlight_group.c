@@ -119,6 +119,17 @@ enum {
 # include "highlight_group.c.generated.h"
 #endif
 
+static const char e_highlight_group_name_not_found_str[]
+  = N_("E411: Highlight group not found: %s");
+static const char e_group_has_settings_highlight_link_ignored[]
+  = N_("E414: Group has settings, highlight link ignored");
+static const char e_unexpected_equal_sign_str[]
+  = N_("E415: Unexpected equal sign: %s");
+static const char e_missing_equal_sign_str_2[]
+  = N_("E416: Missing equal sign: %s");
+static const char e_missing_argument_str[]
+  = N_("E417: Missing argument: %s");
+
 #define hl_table ((HlGroup *)((highlight_ga.ga_data)))
 
 // The default highlight groups.  These are compiled-in for fast startup and
@@ -220,6 +231,7 @@ static const char *highlight_init_both[] = {
   "default link DiagnosticSignOk DiagnosticOk",
   "default DiagnosticDeprecated cterm=strikethrough gui=strikethrough guisp=Red",
   "default link DiagnosticUnnecessary Comment",
+  "default link LspInlayHint NonText",
 
   // Text
   "default link @text.literal Comment",
@@ -686,10 +698,18 @@ int load_colors(char *name)
   char *buf = xmalloc(buflen);
   apply_autocmds(EVENT_COLORSCHEMEPRE, name, curbuf->b_fname, false, curbuf);
   snprintf(buf, buflen, "colors/%s.vim", name);
-  int retval = source_runtime(buf, DIP_START + DIP_OPT);
+  int retval = source_runtime(buf, 0);
   if (retval == FAIL) {
     snprintf(buf, buflen, "colors/%s.lua", name);
-    retval = source_runtime(buf, DIP_START + DIP_OPT);
+    retval = source_runtime(buf, 0);
+  }
+  if (retval == FAIL) {
+    snprintf(buf, buflen, "colors/%s.vim", name);
+    retval = source_runtime(buf, DIP_NORTP + DIP_START + DIP_OPT);
+  }
+  if (retval == FAIL) {
+    snprintf(buf, buflen, "colors/%s.lua", name);
+    retval = source_runtime(buf, DIP_NORTP + DIP_START + DIP_OPT);
   }
   xfree(buf);
   if (retval == OK) {
@@ -920,7 +940,7 @@ void do_highlight(const char *line, const bool forceit, const bool init)
   if (!doclear && !dolink && ends_excmd((uint8_t)(*linep))) {
     int id = syn_name2id_len(line, (size_t)(name_end - line));
     if (id == 0) {
-      semsg(_("E411: highlight group not found: %s"), line);
+      semsg(_(e_highlight_group_name_not_found_str), line);
     } else {
       highlight_list_one(id);
     }
@@ -976,7 +996,7 @@ void do_highlight(const char *line, const bool forceit, const bool init)
       if (to_id > 0 && !forceit && !init
           && hl_has_settings(from_id - 1, dodefault)) {
         if (SOURCING_NAME == NULL && !dodefault) {
-          emsg(_("E414: group has settings, highlight link ignored"));
+          emsg(_(e_group_has_settings_highlight_link_ignored));
         }
       } else if (hlgroup->sg_link != to_id
                  || hlgroup->sg_script_ctx.sc_sid != current_sctx.sc_sid
@@ -1054,7 +1074,7 @@ void do_highlight(const char *line, const bool forceit, const bool init)
     while (!ends_excmd((uint8_t)(*linep))) {
       const char *key_start = linep;
       if (*linep == '=') {
-        semsg(_("E415: unexpected equal sign: %s"), key_start);
+        semsg(_(e_unexpected_equal_sign_str), key_start);
         error = true;
         break;
       }
@@ -1087,7 +1107,7 @@ void do_highlight(const char *line, const bool forceit, const bool init)
 
       // Check for the equal sign.
       if (*linep != '=') {
-        semsg(_("E416: missing equal sign: %s"), key_start);
+        semsg(_(e_missing_equal_sign_str_2), key_start);
         error = true;
         break;
       }
@@ -1108,7 +1128,7 @@ void do_highlight(const char *line, const bool forceit, const bool init)
         linep = skiptowhite(linep);
       }
       if (linep == arg_start) {
-        semsg(_("E417: missing argument: %s"), key_start);
+        semsg(_(e_missing_argument_str), key_start);
         error = true;
         break;
       }
@@ -1261,7 +1281,7 @@ void do_highlight(const char *line, const bool forceit, const bool init)
                   if (dark != -1
                       && dark != (*p_bg == 'd')
                       && !option_was_set("bg")) {
-                    set_option_value_give_err("bg", 0L, (dark ? "dark" : "light"), 0);
+                    set_option_value_give_err("bg", CSTR_AS_OPTVAL(dark ? "dark" : "light"), 0);
                     reset_option_was_set("bg");
                   }
                 }
@@ -1409,7 +1429,7 @@ void do_highlight(const char *line, const bool forceit, const bool init)
 void free_highlight(void)
 {
   ga_clear(&highlight_ga);
-  map_destroy(cstr_t, int)(&highlight_unames);
+  map_destroy(cstr_t, &highlight_unames);
   arena_mem_free(arena_finish(&highlight_arena));
 }
 
@@ -1537,8 +1557,11 @@ static bool hlgroup2dict(Dictionary *hl, NS ns_id, int hl_id, Arena *arena)
   HlAttrs attr =
     syn_attr2entry(ns_id == 0 ? sgp->sg_attr : ns_get_hl(&ns_id, hl_id, false, sgp->sg_set));
   *hl = arena_dict(arena, HLATTRS_DICT_SIZE + 1);
+  if (attr.rgb_ae_attr & HL_DEFAULT) {
+    PUT_C(*hl, "default", BOOLEAN_OBJ(true));
+  }
   if (link > 0) {
-    PUT_C(*hl, "link", STRING_OBJ(cstr_as_string(hl_table[link - 1].sg_name)));
+    PUT_C(*hl, "link", CSTR_AS_OBJ(hl_table[link - 1].sg_name));
   }
   Dictionary hl_cterm = arena_dict(arena, HLATTRS_DICT_SIZE);
   hlattrs2dict(hl, NULL, attr, true, true);

@@ -29,8 +29,15 @@
 # define _PATHSEPSTR "/"
 #endif
 
+// FILETYPE_FILE        used for file type detection
+// FTPLUGIN_FILE        used for loading filetype plugin files
+// INDENT_FILE          used for loading indent files
+// FTOFF_FILE           used for file type detection
+// FTPLUGOF_FILE        used for loading settings files
+// INDOFF_FILE          used for loading indent files
+
 #ifndef FILETYPE_FILE
-# define FILETYPE_FILE "filetype.lua filetype.vim"
+# define FILETYPE_FILE  "filetype.lua filetype.vim"
 #endif
 
 #ifndef FTPLUGIN_FILE
@@ -336,6 +343,7 @@ EXTERN struct caller_scope {
   sctx_T script_ctx;
   estack_T es_entry;
   char *autocmd_fname, *autocmd_match;
+  bool autocmd_fname_full;
   int autocmd_bufnr;
   void *funccalp;
 } provider_caller_scope;
@@ -759,6 +767,7 @@ EXTERN char *last_cmdline INIT(= NULL);        // last command line (for ":)
 EXTERN char *repeat_cmdline INIT(= NULL);      // command line for "."
 EXTERN char *new_last_cmdline INIT(= NULL);    // new value for last_cmdline
 EXTERN char *autocmd_fname INIT(= NULL);       // fname for <afile> on cmdline
+EXTERN bool autocmd_fname_full INIT(= false);  // autocmd_fname is full path
 EXTERN int autocmd_bufnr INIT(= 0);            // fnum for <abuf> on cmdline
 EXTERN char *autocmd_match INIT(= NULL);       // name for <amatch> on cmdline
 EXTERN bool did_cursorhold INIT(= false);      // set when CursorHold t'gerd
@@ -968,7 +977,6 @@ EXTERN const char e_scroll[] INIT(= N_("E49: Invalid scroll size"));
 EXTERN const char e_shellempty[] INIT(= N_("E91: 'shell' option is empty"));
 EXTERN const char e_signdata[] INIT(= N_("E255: Couldn't read in sign data!"));
 EXTERN const char e_swapclose[] INIT(= N_("E72: Close error on swap file"));
-EXTERN const char e_tagstack[] INIT(= N_("E73: tag stack empty"));
 EXTERN const char e_toocompl[] INIT(= N_("E74: Command too complex"));
 EXTERN const char e_longname[] INIT(= N_("E75: Name too long"));
 EXTERN const char e_toomsbra[] INIT(= N_("E76: Too many ["));
@@ -983,8 +991,7 @@ EXTERN const char e_write[] INIT(= N_("E80: Error while writing"));
 EXTERN const char e_zerocount[] INIT(= N_("E939: Positive count required"));
 EXTERN const char e_usingsid[] INIT(= N_("E81: Using <SID> not in a script context"));
 EXTERN const char e_missingparen[] INIT(= N_("E107: Missing parentheses: %s"));
-EXTERN const char e_maxmempat[] INIT(= N_("E363: pattern uses more memory than 'maxmempattern'"));
-EXTERN const char e_emptybuf[] INIT(= N_("E749: empty buffer"));
+EXTERN const char e_empty_buffer[] INIT(= N_("E749: Empty buffer"));
 EXTERN const char e_nobufnr[] INIT(= N_("E86: Buffer %" PRId64 " does not exist"));
 
 EXTERN const char e_str_not_inside_function[] INIT(= N_("E193: %s not inside a function"));
@@ -995,20 +1002,16 @@ EXTERN const char e_notset[] INIT(= N_("E764: Option '%s' is not set"));
 EXTERN const char e_invalidreg[] INIT(= N_("E850: Invalid register name"));
 EXTERN const char e_dirnotf[] INIT(= N_("E919: Directory not found in '%s': \"%s\""));
 EXTERN const char e_au_recursive[] INIT(= N_("E952: Autocommand caused recursive behavior"));
-EXTERN const char e_menuothermode[] INIT(= N_("E328: Menu only exists in another mode"));
+EXTERN const char e_menu_only_exists_in_another_mode[]
+INIT(= N_("E328: Menu only exists in another mode"));
 EXTERN const char e_autocmd_close[] INIT(= N_("E813: Cannot close autocmd window"));
 EXTERN const char e_listarg[] INIT(= N_("E686: Argument of %s must be a List"));
 EXTERN const char e_unsupportedoption[] INIT(= N_("E519: Option not supported"));
 EXTERN const char e_fnametoolong[] INIT(= N_("E856: Filename too long"));
-EXTERN const char e_float_as_string[] INIT(= N_("E806: using Float as a String"));
-EXTERN const char e_inval_string[] INIT(= N_("E908: using an invalid value as a String"));
+EXTERN const char e_using_float_as_string[] INIT(= N_("E806: Using a Float as a String"));
 EXTERN const char e_cannot_edit_other_buf[] INIT(= N_("E788: Not allowed to edit another buffer now"));
 EXTERN const char e_using_number_as_bool_nr[] INIT(= N_("E1023: Using a Number as a Bool: %d"));
 EXTERN const char e_not_callable_type_str[] INIT(= N_("E1085: Not a callable type: %s"));
-
-EXTERN const char e_cmdmap_err[] INIT(= N_("E5520: <Cmd> mapping must end with <CR>"));
-EXTERN const char e_cmdmap_repeated[]
-INIT(= N_("E5521: <Cmd> mapping must end with <CR> before second <Cmd>"));
 
 EXTERN const char e_api_error[] INIT(= N_("E5555: API call: %s"));
 
@@ -1038,6 +1041,8 @@ EXTERN const char e_undobang_cannot_redo_or_move_branch[]
 INIT(= N_("E5767: Cannot use :undo! to redo or move to a different undo branch"));
 
 EXTERN const char e_trustfile[] INIT(= N_("E5570: Cannot update trust file: %s"));
+
+EXTERN const char e_unknown_option2[] INIT(= N_("E355: Unknown option: %s"));
 
 EXTERN const char top_bot_msg[] INIT(= N_("search hit TOP, continuing at BOTTOM"));
 EXTERN const char bot_top_msg[] INIT(= N_("search hit BOTTOM, continuing at TOP"));

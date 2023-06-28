@@ -245,7 +245,7 @@ Dictionary nvim_parse_cmd(String str, Dictionary opts, Error *err)
   Dictionary filter = ARRAY_DICT_INIT;
   PUT(filter, "pattern", cmdinfo.cmdmod.cmod_filter_pat
       ? CSTR_TO_OBJ(cmdinfo.cmdmod.cmod_filter_pat)
-      : STRING_OBJ(STATIC_CSTR_TO_STRING("")));
+      : STATIC_CSTR_TO_OBJ(""));
   PUT(filter, "force", BOOLEAN_OBJ(cmdinfo.cmdmod.cmod_filter_force));
   PUT(mods, "filter", DICTIONARY_OBJ(filter));
 
@@ -306,7 +306,7 @@ end:
 /// make their usage simpler with |vim.cmd()|. For example, instead of
 /// `vim.cmd.bdelete{ count = 2 }`, you may do `vim.cmd.bdelete(2)`.
 ///
-/// On execution error: fails with VimL error, updates v:errmsg.
+/// On execution error: fails with Vimscript error, updates v:errmsg.
 ///
 /// @see |nvim_exec2()|
 /// @see |nvim_command()|
@@ -393,6 +393,12 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
   VALIDATE(!is_cmd_ni(ea.cmdidx), "Command not implemented: %s", cmdname, {
     goto end;
   });
+  const char *fullname = IS_USER_CMDIDX(ea.cmdidx)
+    ? get_user_command_name(ea.useridx, ea.cmdidx)
+    : get_command_name(NULL, ea.cmdidx);
+  VALIDATE(strncmp(fullname, cmdname, strlen(cmdname)) == 0, "Invalid command: \"%s\"", cmdname, {
+    goto end;
+  });
 
   // Get the command flags so that we can know what type of arguments the command uses.
   // Not required for a user command since `find_ex_command` already deals with it in that case.
@@ -438,7 +444,7 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
         break;
       }
 
-      ADD(args, STRING_OBJ(cstr_as_string(data_str)));
+      ADD(args, CSTR_AS_OBJ(data_str));
     }
 
     bool argc_valid;
@@ -916,6 +922,7 @@ static void build_cmdline_str(char **cmdlinep, exarg_T *eap, CmdParseInfo *cmdin
 ///                 - args: (string) The args passed to the command, if any |<args>|
 ///                 - fargs: (table) The args split by unescaped whitespace (when more than one
 ///                 argument is allowed), if any |<f-args>|
+///                 - nargs: (string) Number of arguments |:command-nargs|
 ///                 - bang: (boolean) "true" if the command was executed with a ! modifier |<bang>|
 ///                 - line1: (number) The starting line of the command range |<line1>|
 ///                 - line2: (number) The final line of the command range |<line2>|

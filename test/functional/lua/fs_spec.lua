@@ -223,7 +223,7 @@ describe('vim.fs', function()
 
   describe('find()', function()
     it('works', function()
-      eq({test_build_dir}, exec_lua([[
+      eq({test_build_dir .. "/build"}, exec_lua([[
         local dir = ...
         return vim.fs.find('build', { path = dir, upward = true, type = 'directory' })
       ]], nvim_dir))
@@ -239,7 +239,7 @@ describe('vim.fs', function()
     end)
 
     it('accepts predicate as names', function()
-      eq({test_build_dir}, exec_lua([[
+      eq({test_build_dir .. "/build"}, exec_lua([[
         local dir = ...
         local opts = { path = dir, upward = true, type = 'directory' }
         return vim.fs.find(function(x) return x == 'build' end, opts)
@@ -266,9 +266,26 @@ describe('vim.fs', function()
     end)
   end)
 
+  describe('joinpath()', function()
+    it('works', function()
+      eq('foo/bar/baz', exec_lua([[
+        return vim.fs.joinpath('foo', 'bar', 'baz')
+      ]], nvim_dir))
+      eq('foo/bar/baz', exec_lua([[
+        return vim.fs.joinpath('foo', '/bar/', '/baz')
+      ]], nvim_dir))
+    end)
+  end)
+
   describe('normalize()', function()
     it('works with backward slashes', function()
       eq('C:/Users/jdoe', exec_lua [[ return vim.fs.normalize('C:\\Users\\jdoe') ]])
+    end)
+    it('removes trailing /', function()
+      eq('/home/user', exec_lua [[ return vim.fs.normalize('/home/user/') ]])
+    end)
+    it('works with /', function()
+      eq('/', exec_lua [[ return vim.fs.normalize('/') ]])
     end)
     it('works with ~', function()
       eq( exec_lua([[

@@ -33,30 +33,12 @@ local function execute_lens(lens, bufnr, client_id)
 
   local client = vim.lsp.get_client_by_id(client_id)
   assert(client, 'Client is required to execute lens, client_id=' .. client_id)
-  local command = lens.command
-  local fn = client.commands[command.command] or vim.lsp.commands[command.command]
-  if fn then
-    fn(command, { bufnr = bufnr, client_id = client_id })
-    return
-  end
-  -- Need to use the client that returned the lens → must not use buf_request
-  local command_provider = client.server_capabilities.executeCommandProvider
-  local commands = type(command_provider) == 'table' and command_provider.commands or {}
-  if not vim.list_contains(commands, command.command) then
-    vim.notify(
-      string.format(
-        'Language server does not support command `%s`. This command may require a client extension.',
-        command.command
-      ),
-      vim.log.levels.WARN
-    )
-    return
-  end
-  client.request('workspace/executeCommand', command, function(...)
+
+  client._exec_cmd(lens.command, { bufnr = bufnr }, function(...)
     local result = vim.lsp.handlers['workspace/executeCommand'](...)
     M.refresh()
     return result
-  end, bufnr)
+  end)
 end
 
 --- Return all lenses for the given buffer
@@ -97,6 +79,7 @@ function M.run()
   else
     vim.ui.select(options, {
       prompt = 'Code lenses:',
+      kind = 'codelens',
       format_item = function(option)
         return option.lens.command.title
       end,
@@ -135,6 +118,10 @@ end
 ---@param bufnr integer
 ---@param client_id integer
 function M.display(lenses, bufnr, client_id)
+  if not api.nvim_buf_is_loaded(bufnr) then
+    return
+  end
+
   local ns = namespaces[client_id]
   if not lenses or not next(lenses) then
     api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
@@ -180,6 +167,10 @@ end
 ---@param bufnr integer
 ---@param client_id integer
 function M.save(lenses, bufnr, client_id)
+  if not api.nvim_buf_is_loaded(bufnr) then
+    return
+  end
+
   local lenses_by_client = lens_cache_by_buf[bufnr]
   if not lenses_by_client then
     lenses_by_client = {}
@@ -220,19 +211,24 @@ local function resolve_lenses(lenses, bufnr, client_id, callback)
       countdown()
     else
       client.request('codeLens/resolve', lens, function(_, result)
-        if result and result.command then
+        if api.nvim_buf_is_loaded(bufnr) and result and result.command then
           lens.command = result.command
           -- Eager display to have some sort of incremental feedback
           -- Once all lenses got resolved there will be a full redraw for all lenses
           -- So that multiple lens per line are properly displayed
-          api.nvim_buf_set_extmark(
-            bufnr,
-            ns,
-            lens.range.start.line,
-            0,
-            { virt_text = { { lens.command.title, 'LspCodeLens' } }, hl_mode = 'combine' }
-          )
+
+          local num_lines = api.nvim_buf_line_count(bufnr)
+          if lens.range.start.line <= num_lines then
+            api.nvim_buf_set_extmark(
+              bufnr,
+              ns,
+              lens.range.start.line,
+              0,
+              { virt_text = { { lens.command.title, 'LspCodeLens' } }, hl_mode = 'combine' }
+            )
+          end
         end
+
         countdown()
       end, bufnr)
     end

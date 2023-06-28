@@ -34,12 +34,10 @@
 void api_extmark_free_all_mem(void)
 {
   String name;
-  handle_T id;
-  map_foreach(&namespace_ids, name, id, {
-    (void)id;
+  map_foreach_key(&namespace_ids, name, {
     xfree(name.data);
   })
-  map_destroy(String, handle_T)(&namespace_ids);
+  map_destroy(String, &namespace_ids);
 }
 
 /// Creates a new namespace or gets an existing one. \*namespace\*
@@ -78,7 +76,7 @@ Dictionary nvim_get_namespaces(void)
   String name;
   handle_T id;
 
-  map_foreach(&namespace_ids, name, id, {
+  map_foreach(handle_T, &namespace_ids, name, id, {
     PUT(retval, name.data, INTEGER_OBJ(id));
   })
 
@@ -89,7 +87,7 @@ const char *describe_ns(NS ns_id)
 {
   String name;
   handle_T id;
-  map_foreach(&namespace_ids, name, id, {
+  map_foreach(handle_T, &namespace_ids, name, id, {
     if ((NS)id == ns_id && name.size) {
       return name.data;
     }
@@ -109,7 +107,7 @@ bool ns_initialized(uint32_t ns)
 static Object hl_group_name(int hl_id, bool hl_name)
 {
   if (hl_name) {
-    return STRING_OBJ(cstr_to_string(syn_id2name(hl_id)));
+    return CSTR_TO_OBJ(syn_id2name(hl_id));
   } else {
     return INTEGER_OBJ(hl_id);
   }
@@ -146,7 +144,7 @@ static Array extmark_to_array(const ExtmarkInfo *extmark, bool id, bool add_dict
       PUT(dict, "hl_eol", BOOLEAN_OBJ(decor->hl_eol));
     }
     if (decor->hl_mode) {
-      PUT(dict, "hl_mode", STRING_OBJ(cstr_to_string(hl_mode_str[decor->hl_mode])));
+      PUT(dict, "hl_mode", CSTR_TO_OBJ(hl_mode_str[decor->hl_mode]));
     }
 
     if (kv_size(decor->virt_text)) {
@@ -154,7 +152,7 @@ static Array extmark_to_array(const ExtmarkInfo *extmark, bool id, bool add_dict
       for (size_t i = 0; i < decor->virt_text.size; i++) {
         Array chunk = ARRAY_DICT_INIT;
         VirtTextChunk *vtc = &decor->virt_text.items[i];
-        ADD(chunk, STRING_OBJ(cstr_to_string(vtc->text)));
+        ADD(chunk, CSTR_TO_OBJ(vtc->text));
         if (vtc->hl_id > 0) {
           ADD(chunk, hl_group_name(vtc->hl_id, hl_name));
         }
@@ -166,7 +164,7 @@ static Array extmark_to_array(const ExtmarkInfo *extmark, bool id, bool add_dict
         PUT(dict, "virt_text_win_col", INTEGER_OBJ(decor->col));
       }
       PUT(dict, "virt_text_pos",
-          STRING_OBJ(cstr_to_string(virt_text_pos_str[decor->virt_text_pos])));
+          CSTR_TO_OBJ(virt_text_pos_str[decor->virt_text_pos]));
     }
 
     if (decor->ui_watched) {
@@ -183,7 +181,7 @@ static Array extmark_to_array(const ExtmarkInfo *extmark, bool id, bool add_dict
         for (size_t j = 0; j < vt->size; j++) {
           Array chunk = ARRAY_DICT_INIT;
           VirtTextChunk *vtc = &vt->items[j];
-          ADD(chunk, STRING_OBJ(cstr_to_string(vtc->text)));
+          ADD(chunk, CSTR_TO_OBJ(vtc->text));
           if (vtc->hl_id > 0) {
             ADD(chunk, hl_group_name(vtc->hl_id, hl_name));
           }
@@ -197,7 +195,7 @@ static Array extmark_to_array(const ExtmarkInfo *extmark, bool id, bool add_dict
     }
 
     if (decor->sign_text) {
-      PUT(dict, "sign_text", STRING_OBJ(cstr_to_string(decor->sign_text)));
+      PUT(dict, "sign_text", CSTR_TO_OBJ(decor->sign_text));
     }
 
     // uncrustify:off
@@ -327,7 +325,7 @@ ArrayOf(Integer) nvim_buf_get_extmark_by_id(Buffer buffer, Integer ns_id,
 ///   local ms  = api.nvim_buf_get_extmarks(0, ns, {2,0}, {2,0}, {})
 ///   -- Get all marks in this buffer + namespace.
 ///   local all = api.nvim_buf_get_extmarks(0, ns, 0, -1, {})
-///   print(vim.inspect(ms))
+///   vim.print(ms)
 /// </pre>
 ///
 /// @param buffer  Buffer handle, or 0 for current buffer
@@ -484,20 +482,23 @@ Array nvim_buf_get_extmarks(Buffer buffer, Integer ns_id, Object start, Object e
 ///                 - "overlay": display over the specified column, without
 ///                              shifting the underlying text.
 ///                 - "right_align": display right aligned in the window.
+///                 - "inline": display at the specified column, and
+///                             shift the buffer text to the right as needed
 ///               - virt_text_win_col : position the virtual text at a fixed
 ///                                     window column (starting from the first
 ///                                     text column)
 ///               - virt_text_hide : hide the virtual text when the background
-///                                  text is selected or hidden due to
-///                                  horizontal scroll 'nowrap'
+///                                  text is selected or hidden because of
+///                                  scrolling with 'nowrap' or 'smoothscroll'.
+///                                  Currently only affects "overlay" virt_text.
 ///               - hl_mode : control how highlights are combined with the
 ///                           highlights of the text. Currently only affects
 ///                           virt_text highlights, but might affect `hl_group`
 ///                           in later versions.
-///                 - "replace": only show the virt_text color. This is the
-///                              default
-///                 - "combine": combine with background text color
+///                 - "replace": only show the virt_text color. This is the default.
+///                 - "combine": combine with background text color.
 ///                 - "blend": blend with background text color.
+///                            Not supported for "inline" virt_text.
 ///
 ///               - virt_lines : virtual lines to add next to this mark
 ///                   This should be an array over lines, where each line in
@@ -702,8 +703,10 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
       decor.virt_text_pos = kVTOverlay;
     } else if (strequal("right_align", str.data)) {
       decor.virt_text_pos = kVTRightAlign;
+    } else if (strequal("inline", str.data)) {
+      decor.virt_text_pos = kVTInline;
     } else {
-      VALIDATE_S(false, "virt_text_pos", "", {
+      VALIDATE_S(false, "virt_text_pos", str.data, {
         goto error;
       });
     }
@@ -721,23 +724,28 @@ Integer nvim_buf_set_extmark(Buffer buffer, Integer ns_id, Integer line, Integer
   OPTION_TO_BOOL(decor.virt_text_hide, virt_text_hide, false);
   OPTION_TO_BOOL(decor.hl_eol, hl_eol, false);
 
-  if (opts->hl_mode.type == kObjectTypeString) {
+  if (HAS_KEY(opts->hl_mode)) {
+    VALIDATE_T("hl_mode", kObjectTypeString, opts->hl_mode.type, {
+      goto error;
+    });
+
     String str = opts->hl_mode.data.string;
     if (strequal("replace", str.data)) {
       decor.hl_mode = kHlModeReplace;
     } else if (strequal("combine", str.data)) {
       decor.hl_mode = kHlModeCombine;
     } else if (strequal("blend", str.data)) {
+      if (decor.virt_text_pos == kVTInline) {
+        VALIDATE(false, "%s", "cannot use 'blend' hl_mode with inline virtual text", {
+          goto error;
+        });
+      }
       decor.hl_mode = kHlModeBlend;
     } else {
-      VALIDATE_S(false, "virt_text_pos", "", {
+      VALIDATE_S(false, "hl_mode", str.data, {
         goto error;
       });
     }
-  } else if (HAS_KEY(opts->hl_mode)) {
-    VALIDATE_T("hl_mode", kObjectTypeString, opts->hl_mode.type, {
-      goto error;
-    });
   }
 
   bool virt_lines_leftcol = false;
@@ -1103,7 +1111,7 @@ void nvim_buf_clear_namespace(Buffer buffer, Integer ns_id, Integer line_start, 
 
 /// Set or change decoration provider for a |namespace|
 ///
-/// This is a very general purpose interface for having lua callbacks
+/// This is a very general purpose interface for having Lua callbacks
 /// being triggered during the redraw code.
 ///
 /// The expected usage is to set |extmarks| for the currently

@@ -22,7 +22,7 @@
 #include "nvim/highlight.h"
 #include "nvim/log.h"
 #include "nvim/message.h"
-#include "nvim/option_defs.h"
+#include "nvim/option.h"
 #include "nvim/types.h"
 #include "nvim/ui.h"
 #include "nvim/vim.h"
@@ -138,8 +138,9 @@ void grid_putchar(ScreenGrid *grid, int c, int row, int col, int attr)
   grid_puts(grid, buf, row, col, attr);
 }
 
-/// get a single character directly from grid.chars into "bytes[]".
-/// Also return its attribute in *attrp;
+/// Get a single character directly from grid.chars into "bytes", which must
+/// have a size of "MB_MAXBYTES + 1".
+/// If "attrp" is not NULL, return the character's attribute in "*attrp".
 void grid_getbytes(ScreenGrid *grid, int row, int col, char *bytes, int *attrp)
 {
   grid_adjust(&grid, &row, &col);
@@ -150,7 +151,9 @@ void grid_getbytes(ScreenGrid *grid, int row, int col, char *bytes, int *attrp)
   }
 
   size_t off = grid->line_offset[row] + (size_t)col;
-  *attrp = grid->attrs[off];
+  if (attrp != NULL) {
+    *attrp = grid->attrs[off];
+  }
   schar_copy(bytes, grid->chars[off]);
 }
 
@@ -316,8 +319,7 @@ int grid_puts_len(ScreenGrid *grid, const char *text, int textlen, int row, int 
       // When at the start of the text and overwriting the right half of a
       // two-cell character in the same grid, truncate that into a '>'.
       if (ptr == text && col > 0 && grid->chars[off][0] == 0) {
-        grid->chars[off - 1][0] = '>';
-        grid->chars[off - 1][1] = 0;
+        schar_from_ascii(grid->chars[off - 1], '>');
       }
 
       schar_copy(grid->chars[off], buf);
@@ -498,11 +500,10 @@ static int grid_char_needs_redraw(ScreenGrid *grid, size_t off_from, size_t off_
 void grid_put_linebuf(ScreenGrid *grid, int row, int coloff, int endcol, int clear_width,
                       int rlflag, win_T *wp, int bg_attr, bool wrap)
 {
-  size_t max_off_from;
-  size_t max_off_to;
   int col = 0;
   bool redraw_next;                         // redraw_this for next character
   bool clear_next = false;
+  bool topline = row == 0;
   int char_cells;                           // 1: normal char
                                             // 2: occupies two display cells
   int start_dirty = -1, end_dirty = 0;
@@ -516,6 +517,7 @@ void grid_put_linebuf(ScreenGrid *grid, int row, int coloff, int endcol, int cle
     endcol = grid->cols;
   }
 
+  const size_t max_off_from = (size_t)grid->cols;
   grid_adjust(&grid, &row, &coloff);
 
   // Safety check. Avoids clang warnings down the call stack.
@@ -526,8 +528,36 @@ void grid_put_linebuf(ScreenGrid *grid, int row, int coloff, int endcol, int cle
 
   size_t off_from = 0;
   size_t off_to = grid->line_offset[row] + (size_t)coloff;
-  max_off_from = linebuf_size;
-  max_off_to = grid->line_offset[row] + (size_t)grid->cols;
+  const size_t max_off_to = grid->line_offset[row] + (size_t)grid->cols;
+
+  // Take care of putting "<<<" on the first line for 'smoothscroll'.
+  if (topline && wp->w_skipcol > 0
+      // do not overwrite the 'showbreak' text with "<<<"
+      && *get_showbreak_value(wp) == NUL
+      // do not overwrite the 'listchars' "precedes" text with "<<<"
+      && !(wp->w_p_list && wp->w_p_lcs_chars.prec != 0)) {
+    size_t off = 0;
+    size_t skip = 0;
+    if (wp->w_p_nu && wp->w_p_rnu) {
+      // do not overwrite the line number, change "123 text" to
+      // "123<<<xt".
+      while (skip < max_off_from && ascii_isdigit(*linebuf_char[off])) {
+        off++;
+        skip++;
+      }
+    }
+
+    for (size_t i = 0; i < 3 && i + skip < max_off_from; i++) {
+      if (line_off2cells(linebuf_char, off, max_off_from) > 1) {
+        // When the first half of a double-width character is
+        // overwritten, change the second half to a space.
+        schar_from_ascii(linebuf_char[off + 1], ' ');
+      }
+      schar_from_ascii(linebuf_char[off], '<');
+      linebuf_attr[off] = HL_ATTR(HLF_AT);
+      off++;
+    }
+  }
 
   if (rlflag) {
     // Clear rest first, because it's left of the text.

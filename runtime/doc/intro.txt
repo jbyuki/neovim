@@ -83,7 +83,7 @@ For the most recent information about sponsoring look on the Vim web site:
 	https://www.vim.org/sponsor/
 
 
-Neovim development is funded separately from Vim:
+Nvim development is funded separately from Vim:
 
 	https://neovim.io/#sponsor
 
@@ -385,7 +385,7 @@ Note:
   combinations actually work depends on the UI or host terminal.
 - When a key is pressed using a meta or alt modifier and no mapping exists for
   that keypress, Nvim may behave as though <Esc> was pressed before the key.
-- It is possible to notate combined modifiers (e.g. <C-A-T> for CTRL-ALT-T),
+- It is possible to notate combined modifiers (e.g. <M-C-T> for CTRL-ALT-T),
   but your terminal must encode the input for that to work. |tui-input|
 
 								*<>*
@@ -517,16 +517,15 @@ CTRL-O in Insert mode you get a beep but you are still in Insert mode, type
 <Esc> again.
 
 							*i_esc*
-		TO mode						    ~
-		Normal	Visual	Select	Insert	  Replace   Cmd-line  Ex ~
-FROM mode								 ~
-Normal			v V ^V	  `*4`	 *1	   R gR     : / ? !   Q
-Visual		 `*2`		  ^G	 c C	    --	      :       --
-Select		 `*5`	^O ^G		 `*6`	    --	      --      --
-Insert		 <Esc>	  --	  --		  <Insert>    --      --
-Replace		 <Esc>	  --	  --	<Insert>	      --      --
-Command-line	 `*3`	  --	  --	 :start	    --		      --
-Ex		 :vi	  --	  --	 --	    --	      --
+ FROM mode	TO mode						    ~
+		Normal	Visual	Select	Insert	  Replace   Cmd-line  Ex >
+ Normal			v V ^V	  *4	 *1	   R gR     : / ? !   Q
+ Visual		 *2		  ^G	 c C	    --	      :       --
+ Select		 *5	^O ^G		 *6	    --	      --      --
+ Insert		 <Esc>	  --	  --		  <Insert>    --      --
+ Replace		 <Esc>	  --	  --	<Insert>	      --      --
+ Command-line	 `*3`	  --	  --	 :start	    --		      --
+ Ex		 :vi	  --	  --	 --	    --	      --
 
 -- not possible
 

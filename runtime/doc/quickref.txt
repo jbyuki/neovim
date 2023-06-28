@@ -489,8 +489,8 @@ In Insert or Command-line mode:
 |v_ip|	   N  ip	Select "inner paragraph"
 |v_ab|	   N  ab	Select "a block" (from "[(" to "])")
 |v_ib|	   N  ib	Select "inner block" (from "[(" to "])")
-|v_aB|	   N  aB	Select "a Block" (from "[{" to "]}")
-|v_iB|	   N  iB	Select "inner Block" (from "[{" to "]}")
+|v_aB|	   N  aB	Select "a Block" (from `[{` to `]}`)
+|v_iB|	   N  iB	Select "inner Block" (from `[{` to `]}`)
 |v_a>|	   N  a>	Select "a <> block"
 |v_i>|	   N  i>	Select "inner <> block"
 |v_at|	   N  at	Select "a tag block" (from <aaa> to </aaa>)
@@ -870,6 +870,7 @@ Short explanation of each option:		*option-list*
 'smartcase'	  'scs'     no ignore case when pattern has uppercase
 'smartindent'	  'si'	    smart autoindenting for C programs
 'smarttab'	  'sta'     use 'shiftwidth' when inserting <Tab>
+'smoothscroll'	  'sms'     scroll by screen lines when 'wrap' is set
 'softtabstop'	  'sts'     number of spaces that <Tab> uses while editing
 'spell'			    enable spell checking
 'spellcapcheck'   'spc'     pattern to locate end of a sentence

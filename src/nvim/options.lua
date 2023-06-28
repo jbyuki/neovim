@@ -570,7 +570,7 @@ return {
       alloced=true,
       redraw={'curswant'},
       varname='p_def',
-      defaults={if_true="^\\s*#\\s*define"}
+      defaults={if_true=""}
     },
     {
       full_name='delcombine', abbreviation='deco',
@@ -1227,7 +1227,7 @@ return {
       type='string', scope={'global', 'buffer'},
       alloced=true,
       varname='p_inc',
-      defaults={if_true="^\\s*#\\s*include"}
+      defaults={if_true=""}
     },
     {
       full_name='includeexpr', abbreviation='inex',
@@ -1815,7 +1815,7 @@ return {
       deny_duplicates=true,
       expand=true,
       varname='p_path',
-      defaults={if_true=".,/usr/include,,"}
+      defaults={if_true=".,,"}
     },
     {
       full_name='preserveindent', abbreviation='pi',
@@ -2010,6 +2010,15 @@ return {
       no_mkrc=true,
       pv_name='p_scroll',
       defaults={if_true=0}
+    },
+    {
+      full_name='smoothscroll', abbreviation='sms',
+      short_desc=N_("scroll by screen lines when 'wrap' is set"),
+      type='bool', scope={'window'},
+      pv_name='p_sms',
+      redraw={'current_window'},
+      defaults={if_true=0},
+      cb='did_set_smoothscroll'
     },
     {
       full_name='scrollback', abbreviation='scbk',
@@ -2224,7 +2233,7 @@ return {
       short_desc=N_("list of flags, reduce length of messages"),
       type='string', list='flags', scope={'global'},
       varname='p_shm',
-      defaults={if_true="filnxtToOF"},
+      defaults={if_true="filnxtToOCF"},
       cb='did_set_shortmess'
     },
     {

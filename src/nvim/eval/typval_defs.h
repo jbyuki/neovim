@@ -10,7 +10,7 @@
 #include "nvim/pos.h"
 #include "nvim/types.h"
 
-/// Type used for VimL VAR_NUMBER values
+/// Type used for Vimscript VAR_NUMBER values
 typedef int64_t varnumber_T;
 typedef uint64_t uvarnumber_T;
 
@@ -100,7 +100,7 @@ typedef enum {
   VAR_FIXED = 2,     ///< Locked forever.
 } VarLockStatus;
 
-/// VimL variable types, for use in typval_T.v_type
+/// Vimscript variable types, for use in typval_T.v_type
 typedef enum {
   VAR_UNKNOWN = 0,  ///< Unknown (unspecified) value.
   VAR_NUMBER,       ///< Number, .v_number is used.
@@ -374,26 +374,5 @@ typedef struct {
 } ListSortItem;
 
 typedef int (*ListSorter)(const void *, const void *);
-
-#ifdef LOG_LIST_ACTIONS
-/// List actions log entry
-typedef struct {
-  uintptr_t l;  ///< List log entry belongs to.
-  uintptr_t li1;  ///< First list item log entry belongs to, if applicable.
-  uintptr_t li2;  ///< Second list item log entry belongs to, if applicable.
-  int len;  ///< List length when log entry was created.
-  const char *action;  ///< Logged action.
-} ListLogEntry;
-
-typedef struct list_log ListLog;
-
-/// List actions log
-struct list_log {
-  ListLog *next;  ///< Next chunk or NULL.
-  size_t capacity;  ///< Number of entries in current chunk.
-  size_t size;  ///< Current chunk size.
-  ListLogEntry entries[];  ///< Actual log entries.
-};
-#endif
 
 #endif  // NVIM_EVAL_TYPVAL_DEFS_H

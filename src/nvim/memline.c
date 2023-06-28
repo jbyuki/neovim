@@ -248,7 +248,23 @@ typedef enum {
 # include "memline.c.generated.h"
 #endif
 
-static char e_warning_pointer_block_corrupted[]
+static const char e_ml_get_invalid_lnum_nr[]
+  = N_("E315: ml_get: Invalid lnum: %" PRId64);
+static const char e_ml_get_cannot_find_line_nr_in_buffer_nr_str[]
+  = N_("E316: ml_get: Cannot find line %" PRId64 "in buffer %d %s");
+static const char e_pointer_block_id_wrong[]
+  = N_("E317: Pointer block id wrong");
+static const char e_pointer_block_id_wrong_two[]
+  = N_("E317: Pointer block id wrong 2");
+static const char e_pointer_block_id_wrong_three[]
+  = N_("E317: Pointer block id wrong 3");
+static const char e_pointer_block_id_wrong_four[]
+  = N_("E317: Pointer block id wrong 4");
+static const char e_line_number_out_of_range_nr_past_the_end[]
+  = N_("E322: Line number out of range: %" PRId64 " past the end");
+static const char e_line_count_wrong_in_block_nr[]
+  = N_("E323: Line count wrong in block %" PRId64);
+static const char e_warning_pointer_block_corrupted[]
   = N_("E1364: Warning: Pointer block corrupted");
 
 #if __has_feature(address_sanitizer)
@@ -494,6 +510,8 @@ void ml_open_file(buf_T *buf)
       continue;
     }
     if (mf_open_file(mfp, fname) == OK) {       // consumes fname!
+      // don't sync yet in ml_sync_all()
+      mfp->mf_dirty = MF_DIRTY_YES_NOSYNC;
       ml_upd_block0(buf, UB_SAME_DIR);
 
       // Flush block zero, so others can read it
@@ -959,7 +977,7 @@ void ml_recover(bool checkext)
     set_fileformat(b0_ff - 1, OPT_LOCAL);
   }
   if (b0_fenc != NULL) {
-    set_option_value_give_err("fenc", 0L, b0_fenc, OPT_LOCAL);
+    set_option_value_give_err("fenc", CSTR_AS_OPTVAL(b0_fenc), OPT_LOCAL);
     xfree(b0_fenc);
   }
   unchanged(curbuf, true, true);
@@ -1698,7 +1716,7 @@ void ml_sync_all(int check_file, int check_char, bool do_fsync)
         need_check_timestamps = true;           // give message later
       }
     }
-    if (buf->b_ml.ml_mfp->mf_dirty) {
+    if (buf->b_ml.ml_mfp->mf_dirty == MF_DIRTY_YES) {
       (void)mf_sync(buf->b_ml.ml_mfp, (check_char ? MFS_STOP : 0)
                     | (do_fsync && bufIsChanged(buf) ? MFS_FLUSH : 0));
       if (check_char && os_char_avail()) {      // character available now
@@ -1826,7 +1844,7 @@ char *ml_get_buf(buf_T *buf, linenr_T lnum, bool will_change)
       // Avoid giving this message for a recursive call, may happen when
       // the GUI redraws part of the text.
       recursive++;
-      siemsg(_("E315: ml_get: invalid lnum: %" PRId64), (int64_t)lnum);
+      siemsg(_(e_ml_get_invalid_lnum_nr), (int64_t)lnum);
       recursive--;
     }
     ml_flush_line(buf);
@@ -1861,7 +1879,7 @@ errorret:
         recursive++;
         get_trans_bufname(buf);
         shorten_dir(NameBuff);
-        siemsg(_("E316: ml_get: cannot find line %" PRId64 " in buffer %d %s"),
+        siemsg(_(e_ml_get_cannot_find_line_nr_in_buffer_nr_str),
                (int64_t)lnum, buf->b_fnum, NameBuff);
         recursive--;
       }
@@ -2228,7 +2246,7 @@ static int ml_append_int(buf_T *buf, linenr_T lnum, char *line, colnr_T len, boo
       }
       PTR_BL *pp = hp->bh_data;         // must be pointer block
       if (pp->pb_id != PTR_ID) {
-        iemsg(_("E317: pointer block id wrong 3"));
+        iemsg(_(e_pointer_block_id_wrong_three));
         mf_put(mfp, hp, false, false);
         return FAIL;
       }
@@ -2531,7 +2549,7 @@ static int ml_delete_int(buf_T *buf, linenr_T lnum, bool message)
       }
       PTR_BL *pp = hp->bh_data;         // must be pointer block
       if (pp->pb_id != PTR_ID) {
-        iemsg(_("E317: pointer block id wrong 4"));
+        iemsg(_(e_pointer_block_id_wrong_four));
         mf_put(mfp, hp, false, false);
         return FAIL;
       }
@@ -2897,7 +2915,7 @@ static bhdr_T *ml_find_line(buf_T *buf, linenr_T lnum, int action)
 
     pp = (PTR_BL *)(dp);                // must be pointer block
     if (pp->pb_id != PTR_ID) {
-      iemsg(_("E317: pointer block id wrong"));
+      iemsg(_(e_pointer_block_id_wrong));
       goto error_block;
     }
 
@@ -2935,10 +2953,10 @@ static bhdr_T *ml_find_line(buf_T *buf, linenr_T lnum, int action)
     }
     if (idx >= (int)pp->pb_count) {         // past the end: something wrong!
       if (lnum > buf->b_ml.ml_line_count) {
-        siemsg(_("E322: line number out of range: %" PRId64 " past the end"),
+        siemsg(_(e_line_number_out_of_range_nr_past_the_end),
                (int64_t)lnum - buf->b_ml.ml_line_count);
       } else {
-        siemsg(_("E323: line count wrong in block %" PRId64), bnum);
+        siemsg(_(e_line_count_wrong_in_block_nr), bnum);
       }
       goto error_block;
     }
@@ -3008,7 +3026,7 @@ static void ml_lineadd(buf_T *buf, int count)
     PTR_BL *pp = hp->bh_data;       // must be pointer block
     if (pp->pb_id != PTR_ID) {
       mf_put(mfp, hp, false, false);
-      iemsg(_("E317: pointer block id wrong 2"));
+      iemsg(_(e_pointer_block_id_wrong_two));
       break;
     }
     pp->pb_pointer[ip->ip_index].pe_line_count += count;

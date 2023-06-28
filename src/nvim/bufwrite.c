@@ -49,7 +49,16 @@
 #include "nvim/undo.h"
 #include "nvim/vim.h"
 
-static char *err_readonly = "is read-only (cannot override: \"W\" in 'cpoptions')";
+static const char *err_readonly = "is read-only (cannot override: \"W\" in 'cpoptions')";
+static const char e_patchmode_cant_touch_empty_original_file[]
+  = N_("E206: Patchmode: can't touch empty original file");
+static const char e_write_error_conversion_failed_make_fenc_empty_to_override[]
+  = N_("E513: Write error, conversion failed (make 'fenc' empty to override)");
+static const char e_write_error_conversion_failed_in_line_nr_make_fenc_empty_to_override[]
+  = N_("E513: Write error, conversion failed in line %" PRIdLINENR
+       " (make 'fenc' empty to override)");
+static const char e_write_error_file_system_full[]
+  = N_("E514: Write error (file system full?)");
 static const char e_no_matching_autocommands_for_buftype_str_buffer[]
   = N_("E676: No matching autocommands for buftype=%s buffer");
 
@@ -736,7 +745,7 @@ static int buf_write_make_backup(char *fname, bool append, FileInfo *file_info_o
       // the ones from the original file.
       // First find a file name that doesn't exist yet (use some
       // arbitrary numbers).
-      STRCPY(IObuff, fname);
+      xstrlcpy(IObuff, fname, IOSIZE);
       for (int i = 4913;; i += 123) {
         char *tail = path_tail(IObuff);
         size_t size = (size_t)(tail - IObuff);
@@ -1064,7 +1073,7 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
   if (buf->b_ml.ml_mfp == NULL) {
     // This can happen during startup when there is a stray "w" in the
     // vimrc file.
-    emsg(_(e_emptybuf));
+    emsg(_(e_empty_buffer));
     return FAIL;
   }
 
@@ -1685,20 +1694,18 @@ restore_backup:
     if (err.msg == NULL) {
       if (write_info.bw_conv_error) {
         if (write_info.bw_conv_error_lnum == 0) {
-          err = set_err(_("E513: write error, conversion failed "
-                          "(make 'fenc' empty to override)"));
+          err = set_err(_(e_write_error_conversion_failed_make_fenc_empty_to_override));
         } else {
           err = set_err(xmalloc(300));
           err.alloc = true;
           vim_snprintf(err.msg, 300,  // NOLINT(runtime/printf)
-                       _("E513: write error, conversion failed in line %" PRIdLINENR
-                         " (make 'fenc' empty to override)"),
+                       _(e_write_error_conversion_failed_in_line_nr_make_fenc_empty_to_override),
                        write_info.bw_conv_error_lnum);
         }
       } else if (got_int) {
         err = set_err(_(e_interr));
       } else {
-        err = set_err(_("E514: write error (file system full?)"));
+        err = set_err(_(e_write_error_file_system_full));
       }
     }
 
@@ -1742,24 +1749,24 @@ restore_backup:
     add_quoted_fname(IObuff, IOSIZE, buf, fname);
     bool insert_space = false;
     if (write_info.bw_conv_error) {
-      STRCAT(IObuff, _(" CONVERSION ERROR"));
+      xstrlcat(IObuff, _(" CONVERSION ERROR"), IOSIZE);
       insert_space = true;
       if (write_info.bw_conv_error_lnum != 0) {
         vim_snprintf_add(IObuff, IOSIZE, _(" in line %" PRId64 ";"),
                          (int64_t)write_info.bw_conv_error_lnum);
       }
     } else if (notconverted) {
-      STRCAT(IObuff, _("[NOT converted]"));
+      xstrlcat(IObuff, _("[NOT converted]"), IOSIZE);
       insert_space = true;
     } else if (converted) {
-      STRCAT(IObuff, _("[converted]"));
+      xstrlcat(IObuff, _("[converted]"), IOSIZE);
       insert_space = true;
     }
     if (device) {
-      STRCAT(IObuff, _("[Device]"));
+      xstrlcat(IObuff, _("[Device]"), IOSIZE);
       insert_space = true;
     } else if (newfile) {
-      STRCAT(IObuff, new_file_message());
+      xstrlcat(IObuff, new_file_message(), IOSIZE);
       insert_space = true;
     }
     if (no_eol) {
@@ -1773,9 +1780,9 @@ restore_backup:
     msg_add_lines(insert_space, (long)lnum, nchars);       // add line/char count
     if (!shortmess(SHM_WRITE)) {
       if (append) {
-        STRCAT(IObuff, shortmess(SHM_WRI) ? _(" [a]") : _(" appended"));
+        xstrlcat(IObuff, shortmess(SHM_WRI) ? _(" [a]") : _(" appended"), IOSIZE);
       } else {
-        STRCAT(IObuff, shortmess(SHM_WRI) ? _(" [w]") : _(" written"));
+        xstrlcat(IObuff, shortmess(SHM_WRI) ? _(" [w]") : _(" written"), IOSIZE);
       }
     }
 
@@ -1837,7 +1844,7 @@ restore_backup:
           || (empty_fd = os_open(org,
                                  O_CREAT | O_EXCL | O_NOFOLLOW,
                                  perm < 0 ? 0666 : (perm & 0777))) < 0) {
-        emsg(_("E206: patchmode: can't touch empty original file"));
+        emsg(_(e_patchmode_cant_touch_empty_original_file));
       } else {
         close(empty_fd);
       }

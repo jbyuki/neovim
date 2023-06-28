@@ -4,7 +4,6 @@
 # depends on the value of TOUCH_STRATEGY.
 #
 # Options:
-# REQUIRED            - Abort if COMMAND doesn't exist.
 #
 # Single value arguments:
 # TARGET         - Name of the target
@@ -53,7 +52,7 @@
 #             files.
 function(add_glob_target)
   cmake_parse_arguments(ARG
-    "REQUIRED"
+    ""
     "TARGET;COMMAND;GLOB_PAT;TOUCH_STRATEGY"
     "FLAGS;FILES;GLOB_DIRS;EXCLUDE"
     ${ARGN}
@@ -61,14 +60,8 @@ function(add_glob_target)
 
   if(NOT ARG_COMMAND)
     add_custom_target(${ARG_TARGET})
-    if(ARG_REQUIRED)
-      add_custom_command(TARGET ${ARG_TARGET}
-        COMMAND ${CMAKE_COMMAND} -E echo "${ARG_TARGET}: ${ARG_COMMAND} not found"
-        COMMAND false)
-    else()
-      add_custom_command(TARGET ${ARG_TARGET}
-        COMMAND ${CMAKE_COMMAND} -E echo "${ARG_TARGET} SKIP: ${ARG_COMMAND} not found")
-    endif()
+    add_custom_command(TARGET ${ARG_TARGET}
+      COMMAND ${CMAKE_COMMAND} -E echo "${ARG_TARGET} SKIP: ${ARG_COMMAND} not found")
     return()
   endif()
 
@@ -191,5 +184,16 @@ function(set_default_buildtype)
     else()
       message(STATUS "CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}")
     endif()
+  endif()
+endfunction()
+
+# Check if a module is available in Lua
+function(check_lua_module LUA_PRG_PATH MODULE RESULT_VAR)
+  execute_process(COMMAND ${LUA_PRG_PATH} -l "${MODULE}" -e ""
+    RESULT_VARIABLE module_missing)
+  if(module_missing)
+    set(${RESULT_VAR} FALSE PARENT_SCOPE)
+  else()
+    set(${RESULT_VAR} TRUE PARENT_SCOPE)
   endif()
 endfunction()

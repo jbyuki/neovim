@@ -130,13 +130,13 @@ describe('health.vim', function()
       local screen = Screen.new(50, 12)
       screen:attach()
       screen:set_default_attr_ids({
-        Ok = { foreground = Screen.colors.Grey3, background = 6291200 },
-        Error = { foreground = Screen.colors.Grey100, background = Screen.colors.Red },
+        Ok = { foreground = Screen.colors.LightGreen },
+        Error = { foreground = Screen.colors.Red },
         Heading = { foreground = tonumber('0x6a0dad') },
         Bar = { foreground = Screen.colors.LightGrey, background = Screen.colors.DarkGrey },
       })
       command("checkhealth foo success1")
-      command("set nowrap laststatus=0")
+      command("set nofoldenable nowrap laststatus=0")
       screen:expect{grid=[[
         ^                                                  |
         {Bar:──────────────────────────────────────────────────}|
@@ -149,6 +149,22 @@ describe('health.vim', function()
                                                           |
         {Heading:report 1}                                          |
         - {Ok:OK} everything is fine                           |
+                                                          |
+      ]]}
+    end)
+
+    it("fold healthchecks", function()
+      local screen = Screen.new(50, 7)
+      screen:attach()
+      command("checkhealth foo success1")
+      command("set nowrap laststatus=0")
+      screen:expect{grid=[[
+        ^                                                  |
+        ──────────────────────────────────────────────────|
+        +WE  4 lines: foo: ·······························|
+        ──────────────────────────────────────────────────|
+        +--  8 lines: test_plug.success1: require("test_pl|
+        ~                                                 |
                                                           |
       ]]}
     end)

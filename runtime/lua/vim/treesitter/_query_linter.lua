@@ -1,4 +1,6 @@
-local namespace = vim.api.nvim_create_namespace('vim.treesitter.query_linter')
+local api = vim.api
+
+local namespace = api.nvim_create_namespace('vim.treesitter.query_linter')
 -- those node names exist for every language
 local BUILT_IN_NODE_NAMES = { '_', 'ERROR' }
 
@@ -49,12 +51,9 @@ end
 --- @param buf integer
 --- @return string?
 local function guess_query_lang(buf)
-  local filename = vim.api.nvim_buf_get_name(buf)
+  local filename = api.nvim_buf_get_name(buf)
   if filename ~= '' then
-    local ok, query_lang = pcall(vim.fn.fnamemodify, filename, ':p:h:t')
-    if ok then
-      return query_lang
-    end
+    return vim.F.npcall(vim.fn.fnamemodify, filename, ':p:h:t')
   end
 end
 
@@ -256,7 +255,7 @@ end
 --- @param opts QueryLinterOpts|QueryLinterNormalizedOpts|nil Options for linting
 function M.lint(buf, opts)
   if buf == 0 then
-    buf = vim.api.nvim_get_current_buf()
+    buf = api.nvim_get_current_buf()
   end
 
   local diagnostics = {}
@@ -268,11 +267,8 @@ function M.lint(buf, opts)
   for i = 1, math.max(1, #opts.langs) do
     local lang = opts.langs[i]
 
-    --- @type boolean, (table|nil)
-    local ok, parser_info = pcall(vim.treesitter.language.inspect, lang)
-    if not ok then
-      parser_info = nil
-    end
+    --- @type (table|nil)
+    local parser_info = vim.F.npcall(vim.treesitter.language.inspect, lang)
 
     local parser = vim.treesitter.get_parser(buf)
     parser:parse()
@@ -297,6 +293,58 @@ end
 --- @param buf integer
 function M.clear(buf)
   vim.diagnostic.reset(namespace, buf)
+end
+
+--- @private
+--- @param findstart integer
+--- @param base string
+function M.omnifunc(findstart, base)
+  if findstart == 1 then
+    local result =
+      api.nvim_get_current_line():sub(1, api.nvim_win_get_cursor(0)[2]):find('["#%-%w]*$')
+    return result - 1
+  end
+
+  local buf = api.nvim_get_current_buf()
+  local query_lang = guess_query_lang(buf)
+
+  local ok, parser_info = pcall(vim.treesitter.language.inspect, query_lang)
+  if not ok then
+    return -2
+  end
+
+  local items = {}
+  for _, f in pairs(parser_info.fields) do
+    if f:find(base, 1, true) then
+      table.insert(items, f .. ':')
+    end
+  end
+  for _, p in pairs(vim.treesitter.query.list_predicates()) do
+    local text = '#' .. p
+    local found = text:find(base, 1, true)
+    if found and found <= 2 then -- with or without '#'
+      table.insert(items, text)
+    end
+    text = '#not-' .. p
+    found = text:find(base, 1, true)
+    if found and found <= 2 then -- with or without '#'
+      table.insert(items, text)
+    end
+  end
+  for _, p in pairs(vim.treesitter.query.list_directives()) do
+    local text = '#' .. p
+    local found = text:find(base, 1, true)
+    if found and found <= 2 then -- with or without '#'
+      table.insert(items, text)
+    end
+  end
+  for _, s in pairs(parser_info.symbols) do
+    local text = s[2] and s[1] or '"' .. s[1]:gsub([[\]], [[\\]]) .. '"'
+    if text:find(base, 1, true) then
+      table.insert(items, text)
+    end
+  end
+  return { words = items, refresh = 'always' }
 end
 
 return M

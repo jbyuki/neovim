@@ -44,10 +44,12 @@
 
 garray_T ucmds = { 0, 0, sizeof(ucmd_T), 4, NULL };
 
-static const char e_complete_used_without_allowing_arguments[]
-  = N_("E1208: -complete used without allowing arguments");
+static const char e_argument_required_for_str[]
+  = N_("E179: Argument required for %s");
 static const char e_no_such_user_defined_command_str[]
   = N_("E184: No such user-defined command: %s");
+static const char e_complete_used_without_allowing_arguments[]
+  = N_("E1208: -complete used without allowing arguments");
 static const char e_no_such_user_defined_command_in_current_buffer_str[]
   = N_("E1237: No such user-defined command in current buffer: %s");
 
@@ -808,7 +810,7 @@ invalid_count:
       }
     } else if (STRNICMP(attr, "complete", attrlen) == 0) {
       if (val == NULL) {
-        emsg(_("E179: argument required for -complete"));
+        semsg(_(e_argument_required_for_str), "-complete");
         return FAIL;
       }
 
@@ -819,7 +821,7 @@ invalid_count:
     } else if (STRNICMP(attr, "addr", attrlen) == 0) {
       *argt |= EX_RANGE;
       if (val == NULL) {
-        emsg(_("E179: argument required for -addr"));
+        semsg(_(e_argument_required_for_str), "-addr");
         return FAIL;
       }
       if (parse_addr_type_arg(val, (int)vallen, addr_type_arg) == FAIL) {
@@ -1752,8 +1754,8 @@ Dictionary commands_array(buf_T *buf)
     Dictionary d = ARRAY_DICT_INIT;
     ucmd_T *cmd = USER_CMD_GA(gap, i);
 
-    PUT(d, "name", STRING_OBJ(cstr_to_string(cmd->uc_name)));
-    PUT(d, "definition", STRING_OBJ(cstr_to_string(cmd->uc_rep)));
+    PUT(d, "name", CSTR_TO_OBJ(cmd->uc_name));
+    PUT(d, "definition", CSTR_TO_OBJ(cmd->uc_rep));
     PUT(d, "script_id", INTEGER_OBJ(cmd->uc_script_ctx.sc_sid));
     PUT(d, "bang", BOOLEAN_OBJ(!!(cmd->uc_argt & EX_BANG)));
     PUT(d, "bar", BOOLEAN_OBJ(!!(cmd->uc_argt & EX_TRLBAR)));
@@ -1773,21 +1775,21 @@ Dictionary commands_array(buf_T *buf)
     case (EX_EXTRA | EX_NOSPC | EX_NEEDARG):
       arg[0] = '1'; break;
     }
-    PUT(d, "nargs", STRING_OBJ(cstr_to_string(arg)));
+    PUT(d, "nargs", CSTR_TO_OBJ(arg));
 
     char *cmd_compl = get_command_complete(cmd->uc_compl);
     PUT(d, "complete", (cmd_compl == NULL
-                        ? NIL : STRING_OBJ(cstr_to_string(cmd_compl))));
+                        ? NIL : CSTR_TO_OBJ(cmd_compl)));
     PUT(d, "complete_arg", cmd->uc_compl_arg == NULL
-        ? NIL : STRING_OBJ(cstr_to_string(cmd->uc_compl_arg)));
+        ? NIL : CSTR_TO_OBJ(cmd->uc_compl_arg));
 
     Object obj = NIL;
     if (cmd->uc_argt & EX_COUNT) {
       if (cmd->uc_def >= 0) {
         snprintf(str, sizeof(str), "%" PRId64, cmd->uc_def);
-        obj = STRING_OBJ(cstr_to_string(str));    // -count=N
+        obj = CSTR_TO_OBJ(str);    // -count=N
       } else {
-        obj = STRING_OBJ(cstr_to_string("0"));    // -count
+        obj = CSTR_TO_OBJ("0");    // -count
       }
     }
     PUT(d, "count", obj);
@@ -1795,12 +1797,12 @@ Dictionary commands_array(buf_T *buf)
     obj = NIL;
     if (cmd->uc_argt & EX_RANGE) {
       if (cmd->uc_argt & EX_DFLALL) {
-        obj = STRING_OBJ(cstr_to_string("%"));    // -range=%
+        obj = CSTR_TO_OBJ("%");    // -range=%
       } else if (cmd->uc_def >= 0) {
         snprintf(str, sizeof(str), "%" PRId64, cmd->uc_def);
-        obj = STRING_OBJ(cstr_to_string(str));    // -range=N
+        obj = CSTR_TO_OBJ(str);    // -range=N
       } else {
-        obj = STRING_OBJ(cstr_to_string("."));    // -range
+        obj = CSTR_TO_OBJ(".");    // -range
       }
     }
     PUT(d, "range", obj);
@@ -1809,7 +1811,7 @@ Dictionary commands_array(buf_T *buf)
     for (int j = 0; addr_type_complete[j].expand != ADDR_NONE; j++) {
       if (addr_type_complete[j].expand != ADDR_LINES
           && addr_type_complete[j].expand == cmd->uc_addr_type) {
-        obj = STRING_OBJ(cstr_to_string(addr_type_complete[j].name));
+        obj = CSTR_TO_OBJ(addr_type_complete[j].name);
         break;
       }
     }

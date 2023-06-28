@@ -8,7 +8,7 @@
 -- base  For methods: the argument to use as the base argument (1-indexed):
 --       base->method()
 --       Defaults to BASE_NONE (function cannot be used as a method).
--- func  Name of the C function which implements the VimL function. Defaults to
+-- func  Name of the C function which implements the Vimscript function. Defaults to
 --       `f_{funcname}`.
 -- fast  Function can run in |api-fast| events. Defaults to false.
 
@@ -371,6 +371,7 @@ return {
     simplify={args=1, base=1},
     sin={args=1, base=1, float_func="sin"},
     sinh={args=1, base=1, float_func="sinh"},
+    slice={args={2, 3}, base=1},
     sockconnect={args={2,3}},
     sort={args={1, 3}, base=1},
     soundfold={args=1, base=1},
@@ -385,7 +386,7 @@ return {
     str2list={args={1, 2}, base=1},
     str2nr={args={1, 3}, base=1},
     strcharlen={args=1, base=1},
-    strcharpart={args={2, 3}, base=1, fast=true},
+    strcharpart={args={2, 4}, base=1, fast=true},
     strchars={args={1, 2}, base=1},
     strdisplaywidth={args={1, 2}, base=1},
     strftime={args={1, 2}, base=1},

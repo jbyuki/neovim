@@ -181,7 +181,7 @@ void msg_grid_validate(void)
     msg_grid.dirty_col = xcalloc((size_t)Rows, sizeof(*msg_grid.dirty_col));
 
     // Tricky: allow resize while pager or ex mode is active
-    int pos = MAX(max_rows - msg_scrolled, 0);
+    int pos = (State & MODE_ASKMORE) ? 0 : MAX(max_rows - msg_scrolled, 0);
     msg_grid.throttled = false;  // don't throttle in 'cmdheight' area
     msg_grid_set_pos(pos, msg_scrolled);
     ui_comp_put_grid(&msg_grid, pos, 0, msg_grid.rows, msg_grid.cols,
@@ -1069,7 +1069,7 @@ void ex_messages(void *const eap_p)
     for (; p != NULL; p = p->next) {
       if (kv_size(p->multiattr) || (p->msg && p->msg[0])) {
         Array entry = ARRAY_DICT_INIT;
-        ADD(entry, STRING_OBJ(cstr_to_string(p->kind)));
+        ADD(entry, CSTR_TO_OBJ(p->kind));
         Array content = ARRAY_DICT_INIT;
         if (kv_size(p->multiattr)) {
           for (uint32_t i = 0; i < kv_size(p->multiattr); i++) {
@@ -1082,7 +1082,7 @@ void ex_messages(void *const eap_p)
         } else if (p->msg && p->msg[0]) {
           Array content_entry = ARRAY_DICT_INIT;
           ADD(content_entry, INTEGER_OBJ(p->attr));
-          ADD(content_entry, STRING_OBJ(cstr_to_string(p->msg)));
+          ADD(content_entry, CSTR_TO_OBJ(p->msg));
           ADD(content, ARRAY_OBJ(content_entry));
         }
         ADD(entry, ARRAY_OBJ(content));
@@ -1250,6 +1250,7 @@ void wait_return(int redraw)
              || c == K_MOUSEDOWN || c == K_MOUSEUP
              || c == K_MOUSEMOVE);
     os_breakcheck();
+
     // Avoid that the mouse-up event causes visual mode to start.
     if (c == K_LEFTMOUSE || c == K_MIDDLEMOUSE || c == K_RIGHTMOUSE
         || c == K_X1MOUSE || c == K_X2MOUSE) {
@@ -1557,6 +1558,13 @@ int msg_outtrans_len_attr(const char *msgstr, int len, int attr)
   if (attr & MSG_HIST) {
     add_msg_hist(str, len, attr, false);
     attr &= ~MSG_HIST;
+  }
+
+  // When drawing over the command line no need to clear it later or remove
+  // the mode message.
+  if (msg_row >= cmdline_row && msg_col == 0) {
+    clear_cmdline = false;
+    mode_displayed = false;
   }
 
   // If the string starts with a composing character first draw a space on

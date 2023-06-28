@@ -120,6 +120,7 @@
 #include "nvim/path.h"
 #include "nvim/pos.h"
 #include "nvim/sha256.h"
+#include "nvim/spell.h"
 #include "nvim/state.h"
 #include "nvim/strings.h"
 #include "nvim/types.h"
@@ -136,6 +137,13 @@ typedef struct {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "undo.c.generated.h"
 #endif
+
+static const char e_undo_list_corrupt[]
+  = N_("E439: Undo list corrupt");
+static const char e_undo_line_missing[]
+  = N_("E440: Undo line missing");
+static const char e_write_error_in_undo_file_str[]
+  = N_("E829: Write error in undo file: %s");
 
 // used in undo_end() to report number of added and deleted lines
 static long u_newcount, u_oldcount;
@@ -1340,7 +1348,7 @@ void u_write_undo(const char *const name, const bool forceit, buf_T *const buf, 
 write_error:
   fclose(fp);
   if (!write_ok) {
-    semsg(_("E829: write error in undo file: %s"), file_name);
+    semsg(_(e_write_error_in_undo_file_str), file_name);
   }
 
   if (buf->b_ffname != NULL) {
@@ -2365,6 +2373,12 @@ static void u_undoredo(int undo, bool do_buf_event)
     }
 
     changed_lines(top + 1, 0, bot, newsize - oldsize, do_buf_event);
+    // When text has been changed, possibly the start of the next line
+    // may have SpellCap that should be removed or it needs to be
+    // displayed.  Schedule the next line for redrawing just in case.
+    if (spell_check_window(curwin) && bot <= curbuf->b_ml.ml_line_count) {
+      redrawWinline(curwin, bot);
+    }
 
     // Set the '[ mark.
     if (top + 1 < curbuf->b_op_start.lnum) {
@@ -2660,7 +2674,7 @@ void ex_undolist(exarg_T *eap)
       undo_fmt_time(IObuff + strlen(IObuff), IOSIZE - strlen(IObuff), uhp->uh_time);
       if (uhp->uh_save_nr > 0) {
         while (strlen(IObuff) < 33) {
-          STRCAT(IObuff, " ");
+          xstrlcat(IObuff, " ", IOSIZE);
         }
         vim_snprintf_add(IObuff, IOSIZE, "  %3ld", uhp->uh_save_nr);
       }
@@ -2809,7 +2823,7 @@ static void u_unch_branch(u_header_T *uhp)
 static u_entry_T *u_get_headentry(buf_T *buf)
 {
   if (buf->b_u_newhead == NULL || buf->b_u_newhead->uh_entry == NULL) {
-    iemsg(_("E439: undo list corrupt"));
+    iemsg(_(e_undo_list_corrupt));
     return NULL;
   }
   return buf->b_u_newhead->uh_entry;
@@ -2832,7 +2846,7 @@ static void u_getbot(buf_T *buf)
     linenr_T extra = buf->b_ml.ml_line_count - uep->ue_lcount;
     uep->ue_bot = uep->ue_top + (linenr_T)uep->ue_size + 1 + extra;
     if (uep->ue_bot < 1 || uep->ue_bot > buf->b_ml.ml_line_count) {
-      iemsg(_("E440: undo line missing"));
+      iemsg(_(e_undo_line_missing));
       uep->ue_bot = uep->ue_top + 1;        // assume all lines deleted, will
                                             // get all the old lines back
                                             // without deleting the current
