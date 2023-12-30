@@ -1,6 +1,7 @@
 local api = vim.api
 local query = vim.treesitter.query
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 ---@alias TSHlIter fun(): integer, TSNode, TSMetadata
 
@@ -27,6 +28,8 @@ TSHighlighter._on_buf_list = TSHighlighter._on_buf_list or {}
 ---@field hl_cache table<integer,integer>
 local TSHighlighterQuery = {}
 TSHighlighterQuery.__index = TSHighlighterQuery
+=======
+>>>>>>> d634cd5b0bc3ac6bdf285432f74a1c10f12b6031
 local Range = require('vim.treesitter._range')
 
 local ns = api.nvim_create_namespace('treesitter/highlighter')
@@ -372,6 +375,7 @@ end
 
 ---@private
 <<<<<<< HEAD
+<<<<<<< HEAD
 ---@param buf integer
 function TSHighlighter._on_buf(_, buf)
   local self = TSHighlighter.active[buf]
@@ -391,6 +395,8 @@ function TSHighlighter._on_buf(_, buf)
 end
 
 ---@private
+=======
+>>>>>>> d634cd5b0bc3ac6bdf285432f74a1c10f12b6031
 ---@param _win integer
 ---@param buf integer
 ---@param topline integer
@@ -400,6 +406,7 @@ function TSHighlighter._on_win(_, _win, buf, topline, botline)
   if not self and not TSHighlighter._on_buf_line[buf] then
     return false
   end
+<<<<<<< HEAD
 
   if self then
     self:reset_highlight_state()
@@ -417,6 +424,8 @@ function TSHighlighter._on_win(_, _win, buf, topline, botline)
     end
   end
 
+=======
+>>>>>>> d634cd5b0bc3ac6bdf285432f74a1c10f12b6031
   self.tree:parse({ topline, botline + 1 })
   self:prepare_highlight_states(topline, botline + 1)
   self.redraw_count = self.redraw_count + 1

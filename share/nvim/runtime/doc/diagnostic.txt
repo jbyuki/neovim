@@ -66,7 +66,7 @@ The "severity" key in a diagnostic is one of the values defined in
     vim.diagnostic.severity.HINT
 
 Functions that take a severity as an optional parameter (e.g.
-|vim.diagnostic.get()|) accept one of two forms:
+|vim.diagnostic.get()|) accept one of three forms:
 
 1. A single |vim.diagnostic.severity| value: >lua
 
@@ -75,8 +75,17 @@ Functions that take a severity as an optional parameter (e.g.
 2. A table with a "min" or "max" key (or both): >lua
 
     vim.diagnostic.get(0, { severity = { min = vim.diagnostic.severity.WARN } })
+<
+    This form allows users to specify a range of severities.
 
-The latter form allows users to specify a range of severities.
+3. A list-like table: >lua
+
+    vim.diagnostic.get(0, { severity = {
+        vim.diagnostic.severity.WARN,
+        vim.diagnostic.severity.INFO,
+    } })
+<
+    This form allows users to filter for specific severities
 
 ==============================================================================
 HANDLERS                                                *diagnostic-handlers*
@@ -308,12 +317,24 @@ SIGNS                                                   *diagnostic-signs*
 
 Signs are defined for each diagnostic severity. The default text for each sign
 is the first letter of the severity name (for example, "E" for ERROR). Signs
-can be customized using the following: >vim
+can be customized with |vim.diagnostic.config()|. Example: >lua
 
-    sign define DiagnosticSignError text=E texthl=DiagnosticSignError linehl= numhl=
-    sign define DiagnosticSignWarn text=W texthl=DiagnosticSignWarn linehl= numhl=
-    sign define DiagnosticSignInfo text=I texthl=DiagnosticSignInfo linehl= numhl=
-    sign define DiagnosticSignHint text=H texthl=DiagnosticSignHint linehl= numhl=
+    -- Highlight entire line for errors
+    -- Highlight the line number for warnings
+    vim.diagnostic.config({
+        signs = {
+            text = {
+                [vim.diagnostic.severity.ERROR] = '',
+                [vim.diagnostic.severity.WARN] = '',
+            },
+            linehl = {
+                [vim.diagnostic.severity.ERROR] = 'ErrorMsg',
+            },
+            numhl = {
+                [vim.diagnostic.severity.WARN] = 'WarningMsg',
+            },
+        },
+    })
 
 When the "severity_sort" option is set (see |vim.diagnostic.config()|) the
 priority of each sign depends on the severity of the associated diagnostic.
@@ -350,19 +371,17 @@ config({opts}, {namespace})                          *vim.diagnostic.config()*
     followed by namespace configuration, and finally global configuration.
 
     For example, if a user enables virtual text globally with >lua
-
-       vim.diagnostic.config({ virtual_text = true })
+        vim.diagnostic.config({ virtual_text = true })
 <
 
     and a diagnostic producer sets diagnostics with >lua
-
-       vim.diagnostic.set(ns, 0, diagnostics, { virtual_text = false })
+        vim.diagnostic.set(ns, 0, diagnostics, { virtual_text = false })
 <
 
     then virtual text will not be enabled for those diagnostics.
 
-    Note:
-        Each of the configuration options below accepts one of the following:
+    Note: ~
+      • Each of the configuration options below accepts one of the following:
         • `false`: Disable this feature
         • `true`: Enable this feature, use default settings.
         • `table`: Enable this feature with overrides. Use an empty table to
@@ -382,7 +401,10 @@ config({opts}, {namespace})                          *vim.diagnostic.config()*
                      • virtual_text: (default true) Use virtual text for
                        diagnostics. If multiple diagnostics are set for a
                        namespace, one prefix per diagnostic + the last
-                       diagnostic message are shown. Options:
+                       diagnostic message are shown. In addition to the
+                       options listed below, the "virt_text" options of
+                       |nvim_buf_set_extmark()| may also be used here (e.g.
+                       "virt_text_pos" and "hl_mode"). Options:
                        • severity: Only show virtual text for diagnostics
                          matching the given severity |diagnostic-severity|
                        • source: (boolean or string) Include the diagnostic
@@ -394,9 +416,12 @@ config({opts}, {namespace})                          *vim.diagnostic.config()*
                          the beginning of the virtual text.
                        • prefix: (string or function) prepend diagnostic
                          message with prefix. If a function, it must have the
-                         signature (diagnostic) -> string, where {diagnostic}
-                         is of type |diagnostic-structure|. This can be used
-                         to render diagnostic symbols or error codes.
+                         signature (diagnostic, i, total) -> string, where
+                         {diagnostic} is of type |diagnostic-structure|, {i}
+                         is the index of the diagnostic being evaluated, and
+                         {total} is the total number of diagnostics for the
+                         line. This can be used to render diagnostic symbols
+                         or error codes.
                        • suffix: (string or function) Append diagnostic
                          message with suffix. If a function, it must have the
                          signature (diagnostic) -> string, where {diagnostic}
@@ -414,14 +439,30 @@ config({opts}, {namespace})                          *vim.diagnostic.config()*
                              end
 <
 
-                     • signs: (default true) Use signs for diagnostics.
-                       Options:
+                     • signs: (default true) Use signs for diagnostics
+                       |diagnostic-signs|. Options:
                        • severity: Only show signs for diagnostics matching
                          the given severity |diagnostic-severity|
                        • priority: (number, default 10) Base priority to use
                          for signs. When {severity_sort} is used, the priority
                          of a sign is adjusted based on its severity.
                          Otherwise, all signs use the same priority.
+                       • text: (table) A table mapping |diagnostic-severity|
+                         to the sign text to display in the sign column. The
+                         default is to use "E", "W", "I", and "H" for errors,
+                         warnings, information, and hints, respectively.
+                         Example: >lua
+
+                           vim.diagnostic.config({
+                             signs = { text = { [vim.diagnostic.severity.ERROR] = 'E', ... } }
+                           })
+<
+                       • numhl: (table) A table mapping |diagnostic-severity|
+                         to the highlight group used for the line number where
+                         the sign is placed.
+                       • linehl: (table) A table mapping |diagnostic-severity|
+                         to the highlight group used for the whole line the
+                         sign is placed in.
 
                      • float: Options for floating windows. See
                        |vim.diagnostic.open_float()|.
@@ -436,6 +477,9 @@ config({opts}, {namespace})                          *vim.diagnostic.config()*
                        • reverse: (boolean) Reverse sort order
       • {namespace}  (integer|nil) Update the options for the given namespace.
                      When omitted, update the global diagnostic options.
+
+    Return: ~
+        (table|nil) table of current diagnostic config if `opts` is omitted.
 
 disable({bufnr}, {namespace})                       *vim.diagnostic.disable()*
     Disable diagnostics in the given buffer.
@@ -459,7 +503,7 @@ fromqflist({list})                               *vim.diagnostic.fromqflist()*
     Convert a list of quickfix items to a list of diagnostics.
 
     Parameters: ~
-      • {list}  (table) A list of quickfix items from |getqflist()| or
+      • {list}  table[] List of quickfix items from |getqflist()| or
                 |getloclist()|.
 
     Return: ~
@@ -467,6 +511,9 @@ fromqflist({list})                               *vim.diagnostic.fromqflist()*
 
 get({bufnr}, {opts})                                    *vim.diagnostic.get()*
     Get current diagnostics.
+
+    Modifying diagnostics in the returned table has no effect. To set
+    diagnostics in a buffer, use |vim.diagnostic.set()|.
 
     Parameters: ~
       • {bufnr}  (integer|nil) Buffer number to get diagnostics from. Use 0
@@ -593,16 +640,14 @@ match({str}, {pat}, {groups}, {severity_map}, {defaults})
     Parse a diagnostic from a string.
 
     For example, consider a line of output from a linter: >
-
-     WARNING filename:27:3: Variable 'foo' does not exist
+        WARNING filename:27:3: Variable 'foo' does not exist
 <
 
     This can be parsed into a diagnostic |diagnostic-structure| with: >lua
-
-       local s = "WARNING filename:27:3: Variable 'foo' does not exist"
-       local pattern = "^(%w+) %w+:(%d+):(%d+): (.+)$"
-       local groups = { "severity", "lnum", "col", "message" }
-       vim.diagnostic.match(s, pattern, groups, { WARNING = vim.diagnostic.WARN })
+        local s = "WARNING filename:27:3: Variable 'foo' does not exist"
+        local pattern = "^(%w+) %w+:(%d+):(%d+): (.+)$"
+        local groups = { "severity", "lnum", "col", "message" }
+        vim.diagnostic.match(s, pattern, groups, { WARNING = vim.diagnostic.WARN })
 <
 
     Parameters: ~

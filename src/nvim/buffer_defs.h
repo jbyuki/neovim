@@ -352,7 +352,7 @@ typedef struct {
   bool preview;
 } BufUpdateCallbacks;
 #define BUF_UPDATE_CALLBACKS_INIT { LUA_NOREF, LUA_NOREF, LUA_NOREF, \
-                                    LUA_NOREF, LUA_NOREF, LUA_NOREF, LUA_NOREF, false, false }
+                                    LUA_NOREF, LUA_NOREF, false, false }
 
 #define BUF_HAS_QF_ENTRY 1
 #define BUF_HAS_LL_ENTRY 2
