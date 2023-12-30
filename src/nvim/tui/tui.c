@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // Terminal UI functions. Invoked (by ui_client.c) on the UI process.
 
 #include <assert.h>
@@ -16,18 +13,16 @@
 #include "klib/kvec.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/cursor_shape.h"
-#include "nvim/event/defs.h"
 #include "nvim/event/loop.h"
-#include "nvim/event/multiqueue.h"
 #include "nvim/event/signal.h"
 #include "nvim/event/stream.h"
 #include "nvim/globals.h"
-#include "nvim/grid_defs.h"
+#include "nvim/grid.h"
 #include "nvim/highlight_defs.h"
 #include "nvim/log.h"
-#include "nvim/macros.h"
+#include "nvim/macros_defs.h"
 #include "nvim/main.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
@@ -37,18 +32,15 @@
 #include "nvim/tui/input.h"
 #include "nvim/tui/terminfo.h"
 #include "nvim/tui/tui.h"
+#include "nvim/types_defs.h"
 #include "nvim/ugrid.h"
-#include "nvim/ui.h"
 #include "nvim/ui_client.h"
+#include "nvim/ui_defs.h"
 
 #ifdef MSWIN
 # include "nvim/os/os_win_console.h"
-# include "nvim/os/tty.h"
 #endif
 
-// Space reserved in two output buffers to make the cursor normal or invisible
-// when flushing. No existing terminal will require 32 bytes to do that.
-#define CNORM_COMMAND_MAX_SIZE 32
 #define OUTBUF_SIZE 0xffff
 
 #define TOO_MANY_EVENTS 1000000
@@ -78,13 +70,10 @@ struct TUIData {
   unibi_var_t params[9];
   char buf[OUTBUF_SIZE];
   size_t bufpos;
-  char norm[CNORM_COMMAND_MAX_SIZE];
-  char invis[CNORM_COMMAND_MAX_SIZE];
-  size_t normlen, invislen;
   TermInput input;
   uv_loop_t write_loop;
   unibi_term *ut;
-  char *term;  // value of $TERM
+  char *term;  ///< value of $TERM
   union {
     uv_tty_t tty;
     uv_pipe_t pipe;
@@ -107,6 +96,7 @@ struct TUIData {
   bool mouse_enabled;
   bool mouse_move_enabled;
   bool title_enabled;
+  bool sync_output;
   bool busy, is_invisible, want_invisible;
   bool cork, overflow;
   bool set_cursor_color_as_str;
@@ -136,14 +126,13 @@ struct TUIData {
     int reset_scroll_region;
     int set_cursor_style, reset_cursor_style;
     int save_title, restore_title;
-    int get_bg;
     int set_underline_style;
     int set_underline_color;
-    int enable_extended_keys, disable_extended_keys;
-    int get_extkeys;
+    int sync;
   } unibi_ext;
   char *space_buf;
   bool stopped;
+  int seen_error_exit;
   int width;
   int height;
   bool rgb;
@@ -155,12 +144,14 @@ static bool cursor_style_enabled = false;
 # include "tui/tui.c.generated.h"
 #endif
 
-void tui_start(TUIData **tui_p, int *width, int *height, char **term)
+void tui_start(TUIData **tui_p, int *width, int *height, char **term, bool *rgb)
+  FUNC_ATTR_NONNULL_ALL
 {
   TUIData *tui = xcalloc(1, sizeof(TUIData));
   tui->is_starting = true;
   tui->screenshot = NULL;
   tui->stopped = false;
+  tui->seen_error_exit = 0;
   tui->loop = &main_loop;
   kv_init(tui->invalid_regions);
   signal_watcher_init(tui->loop, &tui->winch_handle, tui);
@@ -175,48 +166,95 @@ void tui_start(TUIData **tui_p, int *width, int *height, char **term)
 
   uv_timer_init(&tui->loop->uv, &tui->startup_delay_timer);
   tui->startup_delay_timer.data = tui;
-  uv_timer_start(&tui->startup_delay_timer, after_startup_cb,
-                 100, 0);
+  uv_timer_start(&tui->startup_delay_timer, after_startup_cb, 100, 0);
 
   *tui_p = tui;
   loop_poll_events(&main_loop, 1);
   *width = tui->width;
   *height = tui->height;
   *term = tui->term;
+  *rgb = tui->rgb;
 }
 
-void tui_enable_extkeys(TUIData *tui)
+void tui_set_key_encoding(TUIData *tui)
+  FUNC_ATTR_NONNULL_ALL
 {
-  TermInput input = tui->input;
-  unibi_term *ut = tui->ut;
-
-  switch (input.extkeys_type) {
-  case kExtkeysCSIu:
-    tui->unibi_ext.enable_extended_keys = (int)unibi_add_ext_str(ut, "ext.enable_extended_keys",
-                                                                 "\x1b[>1u");
-    tui->unibi_ext.disable_extended_keys = (int)unibi_add_ext_str(ut, "ext.disable_extended_keys",
-                                                                  "\x1b[<1u");
+  switch (tui->input.key_encoding) {
+  case kKeyEncodingKitty:
+    out(tui, S_LEN("\x1b[>1u"));
     break;
-  case kExtkeysXterm:
-    tui->unibi_ext.enable_extended_keys = (int)unibi_add_ext_str(ut, "ext.enable_extended_keys",
-                                                                 "\x1b[>4;2m");
-    tui->unibi_ext.disable_extended_keys = (int)unibi_add_ext_str(ut, "ext.disable_extended_keys",
-                                                                  "\x1b[>4;0m");
+  case kKeyEncodingXterm:
+    out(tui, S_LEN("\x1b[>4;2m"));
     break;
-  default:
+  case kKeyEncodingLegacy:
     break;
   }
-
-  unibi_out_ext(tui, tui->unibi_ext.enable_extended_keys);
 }
 
-static size_t unibi_pre_fmt_str(TUIData *tui, unsigned unibi_index, char *buf, size_t len)
+static void tui_reset_key_encoding(TUIData *tui)
+  FUNC_ATTR_NONNULL_ALL
 {
-  const char *str = unibi_get_str(tui->ut, unibi_index);
-  if (!str) {
-    return 0U;
+  switch (tui->input.key_encoding) {
+  case kKeyEncodingKitty:
+    out(tui, S_LEN("\x1b[<1u"));
+    break;
+  case kKeyEncodingXterm:
+    out(tui, S_LEN("\x1b[>4;0m"));
+    break;
+  case kKeyEncodingLegacy:
+    break;
   }
-  return unibi_run(str, tui->params, buf, len);
+}
+
+/// Request the terminal's mode (DECRQM).
+///
+/// @see handle_modereport
+static void tui_request_term_mode(TUIData *tui, TermMode mode)
+  FUNC_ATTR_NONNULL_ALL
+{
+  // 5 bytes for \x1b[?$p, 1 byte for null terminator, 6 bytes for mode digits (more than enough)
+  char buf[12];
+  int len = snprintf(buf, sizeof(buf), "\x1b[?%d$p", (int)mode);
+  assert((len > 0) && (len < (int)sizeof(buf)));
+  out(tui, buf, (size_t)len);
+}
+
+/// Handle a mode report (DECRPM) from the terminal.
+void tui_handle_term_mode(TUIData *tui, TermMode mode, TermModeState state)
+  FUNC_ATTR_NONNULL_ALL
+{
+  switch (state) {
+  case kTermModeNotRecognized:
+  case kTermModePermanentlySet:
+  case kTermModePermanentlyReset:
+    // If the mode is not recognized, or if the terminal emulator does not allow it to be changed,
+    // then there is nothing to do
+    break;
+  case kTermModeSet:
+  case kTermModeReset:
+    // The terminal supports changing the given mode
+    switch (mode) {
+    case kTermModeSynchronizedOutput:
+      // Ref: https://gist.github.com/christianparpart/d8a62cc1ab659194337d73e399004036
+      tui->unibi_ext.sync = (int)unibi_add_ext_str(tui->ut, "Sync",
+                                                   "\x1b[?2026%?%p1%{1}%-%tl%eh%;");
+    }
+  }
+}
+
+/// Query the terminal emulator to see if it supports Kitty's keyboard protocol.
+///
+/// Write CSI ? u followed by a primary device attributes request (CSI c). If
+/// a primary device attributes response is received without first receiving an
+/// answer to the progressive enhancement query (CSI u), then the terminal does
+/// not support the Kitty keyboard protocol.
+///
+/// See https://sw.kovidgoyal.net/kitty/keyboard-protocol/#detection-of-support-for-this-protocol
+static void tui_query_kitty_keyboard(TUIData *tui)
+  FUNC_ATTR_NONNULL_ALL
+{
+  tui->input.waiting_for_kkp_response = true;
+  out(tui, S_LEN("\x1b[?u\x1b[c"));
 }
 
 static void terminfo_start(TUIData *tui)
@@ -251,11 +289,8 @@ static void terminfo_start(TUIData *tui)
   tui->unibi_ext.reset_scroll_region = -1;
   tui->unibi_ext.set_cursor_style = -1;
   tui->unibi_ext.reset_cursor_style = -1;
-  tui->unibi_ext.get_bg = -1;
   tui->unibi_ext.set_underline_color = -1;
-  tui->unibi_ext.enable_extended_keys = -1;
-  tui->unibi_ext.disable_extended_keys = -1;
-  tui->unibi_ext.get_extkeys = -1;
+  tui->unibi_ext.sync = -1;
   tui->out_fd = STDOUT_FILENO;
   tui->out_isatty = os_isatty(tui->out_fd);
   tui->input.tui_data = tui;
@@ -285,7 +320,7 @@ static void terminfo_start(TUIData *tui)
   const char *colorterm = os_getenv("COLORTERM");
   const char *termprg = os_getenv("TERM_PROGRAM");
   const char *vte_version_env = os_getenv("VTE_VERSION");
-  long vtev = vte_version_env ? strtol(vte_version_env, NULL, 10) : 0;
+  int vtev = vte_version_env ? (int)strtol(vte_version_env, NULL, 10) : 0;
   bool iterm_env = termprg && strstr(termprg, "iTerm.app");
   bool nsterm = (termprg && strstr(termprg, "Apple_Terminal"))
                 || terminfo_is_term_family(term, "nsterm");
@@ -293,8 +328,11 @@ static void terminfo_start(TUIData *tui)
                  || os_getenv("KONSOLE_PROFILE_NAME")
                  || os_getenv("KONSOLE_DBUS_SESSION");
   const char *konsolev_env = os_getenv("KONSOLE_VERSION");
-  long konsolev = konsolev_env ? strtol(konsolev_env, NULL, 10)
-                               : (konsole ? 1 : 0);
+  int konsolev = konsolev_env ? (int)strtol(konsolev_env, NULL, 10)
+                              : (konsole ? 1 : 0);
+
+  // truecolor support must be checked before patching/augmenting terminfo
+  tui->rgb = term_has_truecolor(tui, colorterm);
 
   patch_terminfo_bugs(tui, term, colorterm, vtev, konsolev, iterm_env, nsterm);
   augment_terminfo(tui, term, vtev, konsolev, iterm_env, nsterm);
@@ -317,10 +355,6 @@ static void terminfo_start(TUIData *tui)
     || terminfo_is_term_family(term, "win32con")
     || terminfo_is_term_family(term, "interix");
   tui->bce = unibi_get_bool(tui->ut, unibi_back_color_erase);
-  tui->normlen = unibi_pre_fmt_str(tui, unibi_cursor_normal,
-                                   tui->norm, sizeof tui->norm);
-  tui->invislen = unibi_pre_fmt_str(tui, unibi_cursor_invisible,
-                                    tui->invis, sizeof tui->invis);
   // Set 't_Co' from the result of unibilium & fix_terminfo.
   t_colors = unibi_get_num(tui->ut, unibi_max_colors);
   // Enter alternate screen, save title, and clear.
@@ -328,15 +362,17 @@ static void terminfo_start(TUIData *tui)
   unibi_out(tui, unibi_enter_ca_mode);
   unibi_out(tui, unibi_keypad_xmit);
   unibi_out(tui, unibi_clear_screen);
-  // Ask the terminal to send us the background color.
-  tui->input.waiting_for_bg_response = 5;
-  unibi_out_ext(tui, tui->unibi_ext.get_bg);
+
   // Enable bracketed paste
   unibi_out_ext(tui, tui->unibi_ext.enable_bracketed_paste);
 
-  // Query the terminal to see if it supports CSI u
-  tui->input.waiting_for_csiu_response = 5;
-  unibi_out_ext(tui, tui->unibi_ext.get_extkeys);
+  // Query support for mode 2026 (Synchronized Output). Some terminals also
+  // support an older DCS sequence for synchronized output, but we will only use
+  // mode 2026
+  tui_request_term_mode(tui, kTermModeSynchronizedOutput);
+
+  // Query the terminal to see if it supports Kitty's keyboard protocol
+  tui_query_kitty_keyboard(tui);
 
   int ret;
   uv_loop_init(&tui->write_loop);
@@ -379,12 +415,22 @@ static void terminfo_stop(TUIData *tui)
   // Reset cursor to normal before exiting alternate screen.
   unibi_out(tui, unibi_cursor_normal);
   unibi_out(tui, unibi_keypad_local);
-  // Disable extended keys before exiting alternate screen.
-  unibi_out_ext(tui, tui->unibi_ext.disable_extended_keys);
+
+  // Reset the key encoding
+  tui_reset_key_encoding(tui);
+
   // May restore old title before exiting alternate screen.
   tui_set_title(tui, (String)STRING_INIT);
-  // Exit alternate screen.
-  unibi_out(tui, unibi_exit_ca_mode);
+  if (ui_client_exit_status == 0) {
+    ui_client_exit_status = tui->seen_error_exit;
+  }
+  // if nvim exited with nonzero status, without indicated this was an
+  // intentional exit (like `:1cquit`), it likely was an internal failure.
+  // Don't clobber the stderr error message in this case.
+  if (ui_client_exit_status == tui->seen_error_exit) {
+    // Exit alternate screen.
+    unibi_out(tui, unibi_exit_ca_mode);
+  }
   if (tui->cursor_color_changed) {
     unibi_out_ext(tui, tui->unibi_ext.reset_cursor_color);
   }
@@ -392,6 +438,11 @@ static void terminfo_stop(TUIData *tui)
   unibi_out_ext(tui, tui->unibi_ext.disable_bracketed_paste);
   // Disable focus reporting
   unibi_out_ext(tui, tui->unibi_ext.disable_focus_reporting);
+
+  // Disable synchronized output
+  UNIBI_SET_NUM_VAR(tui->params[0], 0);
+  unibi_out_ext(tui, tui->unibi_ext.sync);
+
   flush_buf(tui);
   uv_tty_reset_mode();
   uv_close((uv_handle_t *)&tui->output_handle, NULL);
@@ -429,7 +480,7 @@ static void tui_terminal_after_startup(TUIData *tui)
 /// stop the terminal but allow it to restart later (like after suspend)
 static void tui_terminal_stop(TUIData *tui)
 {
-  if (uv_is_closing(STRUCT_CAST(uv_handle_t, &tui->output_handle))) {
+  if (uv_is_closing((uv_handle_t *)&tui->output_handle)) {
     // Race between SIGCONT (tui.c) and SIGHUP (os/signal.c)? #8075
     ELOG("TUI already stopped (race?)");
     tui->stopped = true;
@@ -440,6 +491,11 @@ static void tui_terminal_stop(TUIData *tui)
   // Position the cursor on the last screen line, below all the text
   cursor_goto(tui, tui->height - 1, 0);
   terminfo_stop(tui);
+}
+
+void tui_error_exit(TUIData *tui, Integer status)
+{
+  tui->seen_error_exit = (int)status;
 }
 
 void tui_stop(TUIData *tui)
@@ -675,15 +731,15 @@ static void final_column_wrap(TUIData *tui)
 /// It is undocumented, but in the majority of terminals and terminal emulators
 /// printing at the right margin does not cause an automatic wrap until the
 /// next character is printed, holding the cursor in place until then.
-static void print_cell(TUIData *tui, UCell *ptr)
+static void print_cell(TUIData *tui, char *buf, sattr_T attr)
 {
   UGrid *grid = &tui->grid;
   if (!tui->immediate_wrap_after_last_column) {
     // Printing the next character finally advances the cursor.
     final_column_wrap(tui);
   }
-  update_attrs(tui, ptr->attr);
-  out(tui, ptr->data, strlen(ptr->data));
+  update_attrs(tui, attr);
+  out(tui, buf, strlen(buf));
   grid->col++;
   if (tui->immediate_wrap_after_last_column) {
     // Printing at the right margin immediately advances the cursor.
@@ -703,8 +759,8 @@ static bool cheap_to_print(TUIData *tui, int row, int col, int next)
         return false;
       }
     }
-    if (strlen(cell->data) > 1) {
-      return false;
+    if (schar_get_ascii(cell->data) == 0) {
+      return false;  // not ascii
     }
     cell++;
   }
@@ -734,11 +790,15 @@ static void cursor_goto(TUIData *tui, int row, int col)
   if (grid->row == -1) {
     goto safe_move;
   }
-  if (0 == col ? col != grid->col :
-      row != grid->row ? false :
-      1 == col ? 2 < grid->col && cheap_to_print(tui, grid->row, 0, col) :
-      2 == col ? 5 < grid->col && cheap_to_print(tui, grid->row, 0, col) :
-      false) {
+  if (0 == col
+      ? col != grid->col
+      : (row != grid->row
+         ? false
+         : (1 == col
+            ? (2 < grid->col && cheap_to_print(tui, grid->row, 0, col))
+            : (2 == col
+               ? (5 < grid->col && cheap_to_print(tui, grid->row, 0, col))
+               : false)))) {
     // Motion to left margin from anywhere else, or CR + printing chars is
     // even less expensive than using BSes or CUB.
     unibi_out(tui, unibi_carriage_return);
@@ -831,14 +891,16 @@ static void print_cell_at_pos(TUIData *tui, int row, int col, UCell *cell, bool 
 {
   UGrid *grid = &tui->grid;
 
-  if (grid->row == -1 && cell->data[0] == NUL) {
+  if (grid->row == -1 && cell->data == NUL) {
     // If cursor needs to repositioned and there is nothing to print, don't move cursor.
     return;
   }
 
   cursor_goto(tui, row, col);
 
-  bool is_ambiwidth = utf_ambiguous_width(utf_ptr2char(cell->data));
+  char buf[MAX_SCHAR_SIZE];
+  schar_get(buf, cell->data);
+  bool is_ambiwidth = utf_ambiguous_width(utf_ptr2char(buf));
   if (is_ambiwidth && is_doublewidth) {
     // Clear the two screen cells.
     // If the character is single-width in the host terminal it won't change the second cell.
@@ -847,7 +909,7 @@ static void print_cell_at_pos(TUIData *tui, int row, int col, UCell *cell, bool 
     cursor_goto(tui, row, col);
   }
 
-  print_cell(tui, cell);
+  print_cell(tui, buf, cell->attr);
 
   if (is_ambiwidth) {
     // Force repositioning cursor after printing an ambiguous-width character.
@@ -976,6 +1038,8 @@ void tui_grid_clear(TUIData *tui, Integer g)
 {
   UGrid *grid = &tui->grid;
   ugrid_clear(grid);
+  // safe to clear cache at this point
+  schar_cache_clear_if_full();
   kv_size(tui->invalid_regions) = 0;
   clear_region(tui, 0, tui->height, 0, tui->width, 0);
 }
@@ -987,7 +1051,7 @@ void tui_grid_cursor_goto(TUIData *tui, Integer grid, Integer row, Integer col)
   tui->col = (int)col;
 }
 
-CursorShape tui_cursor_decode_shape(const char *shape_str)
+static CursorShape tui_cursor_decode_shape(const char *shape_str)
 {
   CursorShape shape;
   if (strequal(shape_str, "block")) {
@@ -1080,7 +1144,7 @@ void tui_mouse_off(TUIData *tui)
   }
 }
 
-void tui_set_mode(TUIData *tui, ModeShape mode)
+static void tui_set_mode(TUIData *tui, ModeShape mode)
 {
   if (!cursor_style_enabled) {
     return;
@@ -1091,9 +1155,7 @@ void tui_set_mode(TUIData *tui, ModeShape mode)
     HlAttrs aep = kv_A(tui->attrs, c.id);
 
     tui->want_invisible = aep.hl_blend == 100;
-    if (tui->want_invisible) {
-      unibi_out(tui, unibi_cursor_invisible);
-    } else if (aep.rgb_ae_attr & HL_INVERSE) {
+    if (!tui->want_invisible && aep.rgb_ae_attr & HL_INVERSE) {
       // We interpret "inverse" as "default" (no termcode for "inverse"...).
       // Hopefully the user's default cursor color is inverse.
       unibi_out_ext(tui, tui->unibi_ext.reset_cursor_color);
@@ -1116,8 +1178,6 @@ void tui_set_mode(TUIData *tui, ModeShape mode)
 
   int shape;
   switch (c.shape) {
-  default:
-    abort(); break;
   case SHAPE_BLOCK:
     shape = 1; break;
   case SHAPE_HOR:
@@ -1157,13 +1217,14 @@ void tui_mode_change(TUIData *tui, String mode, Integer mode_idx)
   tui->showing_mode = (ModeShape)mode_idx;
 }
 
-void tui_grid_scroll(TUIData *tui, Integer g, Integer startrow,  // -V751
-                     Integer endrow, Integer startcol, Integer endcol, Integer rows,
-                     Integer cols FUNC_ATTR_UNUSED)
+void tui_grid_scroll(TUIData *tui, Integer g, Integer startrow, Integer endrow, Integer startcol,
+                     Integer endcol, Integer rows, Integer cols FUNC_ATTR_UNUSED)
 {
   UGrid *grid = &tui->grid;
-  int top = (int)startrow, bot = (int)endrow - 1;
-  int left = (int)startcol, right = (int)endcol - 1;
+  int top = (int)startrow;
+  int bot = (int)endrow - 1;
+  int left = (int)startcol;
+  int right = (int)endcol - 1;
 
   bool fullwidth = left == 0 && right == tui->width - 1;
   tui->scroll_region_is_full_screen = fullwidth
@@ -1273,7 +1334,7 @@ void tui_flush(TUIData *tui)
       int clear_col;
       for (clear_col = r.right; clear_col > 0; clear_col--) {
         UCell *cell = &grid->cells[row][clear_col - 1];
-        if (!(cell->data[0] == ' ' && cell->data[1] == NUL
+        if (!(cell->data == schar_from_ascii(' ')
               && cell->attr == clear_attr)) {
           break;
         }
@@ -1281,7 +1342,7 @@ void tui_flush(TUIData *tui)
 
       UGRID_FOREACH_CELL(grid, row, r.left, clear_col, {
         print_cell_at_pos(tui, row, curcol, cell,
-                          curcol < clear_col - 1 && (cell + 1)->data[0] == NUL);
+                          curcol < clear_col - 1 && (cell + 1)->data == NUL);
       });
       if (clear_col < r.right) {
         clear_region(tui, row, row + 1, clear_col, r.right, clear_attr);
@@ -1326,10 +1387,10 @@ static void show_verbose_terminfo(TUIData *tui)
   api_free_array(args);
 }
 
-#ifdef UNIX
-static void suspend_event(void **argv)
+void tui_suspend(TUIData *tui)
 {
-  TUIData *tui = argv[0];
+// on a non-UNIX system, this is a no-op
+#ifdef UNIX
   ui_client_detach();
   bool enable_mouse = tui->mouse_enabled;
   tui_terminal_stop(tui);
@@ -1343,19 +1404,7 @@ static void suspend_event(void **argv)
     tui_mouse_on(tui);
   }
   stream_set_blocking(tui->input.in_fd, false);  // libuv expects this
-  ui_client_attach(tui->width, tui->height, tui->term);
-}
-#endif
-
-void tui_suspend(TUIData *tui)
-{
-// on a non-UNIX system, this is a no-op
-#ifdef UNIX
-  // kill(0, SIGTSTP) won't stop the UI thread, so we must poll for SIGCONT
-  // before continuing. This is done in another callback to avoid
-  // loop_poll_events recursion
-  multiqueue_put_event(resize_events,
-                       event_create(suspend_event, 1, tui));
+  ui_client_attach(tui->width, tui->height, tui->term, tui->rgb);
 #endif
 }
 
@@ -1399,7 +1448,10 @@ void tui_screenshot(TUIData *tui, String path)
   for (int i = 0; i < grid->height; i++) {
     cursor_goto(tui, i, 0);
     for (int j = 0; j < grid->width; j++) {
-      print_cell(tui, &grid->cells[i][j]);
+      UCell cell = grid->cells[i][j];
+      char buf[MAX_SCHAR_SIZE];
+      schar_get(buf, cell.data);
+      print_cell(tui, buf, cell.attr);
     }
   }
   flush_buf(tui);
@@ -1434,9 +1486,11 @@ void tui_option_set(TUIData *tui, String name, Object value)
   } else if (strequal(name.data, "ttimeout")) {
     tui->input.ttimeout = value.data.boolean;
   } else if (strequal(name.data, "ttimeoutlen")) {
-    tui->input.ttimeoutlen = (long)value.data.integer;
+    tui->input.ttimeoutlen = (OptInt)value.data.integer;
   } else if (strequal(name.data, "verbose")) {
     tui->verbose = value.data.integer;
+  } else if (strequal(name.data, "termsync")) {
+    tui->sync_output = value.data.boolean;
   }
 }
 
@@ -1446,13 +1500,13 @@ void tui_raw_line(TUIData *tui, Integer g, Integer linerow, Integer startcol, In
 {
   UGrid *grid = &tui->grid;
   for (Integer c = startcol; c < endcol; c++) {
-    memcpy(grid->cells[linerow][c].data, chunk[c - startcol], sizeof(schar_T));
+    grid->cells[linerow][c].data = chunk[c - startcol];
     assert((size_t)attrs[c - startcol] < kv_size(tui->attrs));
     grid->cells[linerow][c].attr = attrs[c - startcol];
   }
   UGRID_FOREACH_CELL(grid, (int)linerow, (int)startcol, (int)endcol, {
     print_cell_at_pos(tui, (int)linerow, curcol, cell,
-                      curcol < endcol - 1 && (cell + 1)->data[0] == NUL);
+                      curcol < endcol - 1 && (cell + 1)->data == NUL);
   });
 
   if (clearcol > endcol) {
@@ -1469,7 +1523,7 @@ void tui_raw_line(TUIData *tui, Integer g, Integer linerow, Integer startcol, In
 
     if (endcol != grid->width) {
       // Print the last char of the row, if we haven't already done so.
-      int size = grid->cells[linerow][grid->width - 1].data[0] == NUL ? 2 : 1;
+      int size = grid->cells[linerow][grid->width - 1].data == NUL ? 2 : 1;
       print_cell_at_pos(tui, (int)linerow, grid->width - size,
                         &grid->cells[linerow][grid->width - size], size == 2);
     }
@@ -1511,7 +1565,8 @@ static void invalidate(TUIData *tui, int top, int bot, int left, int right)
 /// application (i.e., the host terminal).
 void tui_guess_size(TUIData *tui)
 {
-  int width = 0, height = 0;
+  int width = 0;
+  int height = 0;
 
   // 1 - try from a system call(ioctl/TIOCGWINSZ on unix)
   if (tui->out_isatty
@@ -1663,17 +1718,52 @@ static int unibi_find_ext_bool(unibi_term *ut, const char *name)
   return -1;
 }
 
+/// Determine if the terminal supports truecolor or not:
+///
+/// 1. If $COLORTERM is "24bit" or "truecolor", return true
+/// 2. Else, check terminfo for Tc, RGB, setrgbf, or setrgbb capabilities. If
+///    found, return true
+/// 3. Else, return false
+static bool term_has_truecolor(TUIData *tui, const char *colorterm)
+{
+  // Check $COLORTERM
+  if (strequal(colorterm, "truecolor") || strequal(colorterm, "24bit")) {
+    return true;
+  }
+
+  // Check for Tc and RGB
+  for (size_t i = 0; i < unibi_count_ext_bool(tui->ut); i++) {
+    const char *n = unibi_get_ext_bool_name(tui->ut, i);
+    if (n && (!strcmp(n, "Tc") || !strcmp(n, "RGB"))) {
+      return true;
+    }
+  }
+
+  // Check for setrgbf and setrgbb
+  bool setrgbf = false;
+  bool setrgbb = false;
+  for (size_t i = 0; i < unibi_count_ext_str(tui->ut) && (!setrgbf || !setrgbb); i++) {
+    const char *n = unibi_get_ext_str_name(tui->ut, i);
+    if (n) {
+      if (!setrgbf && !strcmp(n, "setrgbf")) {
+        setrgbf = true;
+      } else if (!setrgbb && !strcmp(n, "setrgbb")) {
+        setrgbb = true;
+      }
+    }
+  }
+
+  return setrgbf && setrgbb;
+}
+
 /// Patches the terminfo records after loading from system or built-in db.
 /// Several entries in terminfo are known to be deficient or outright wrong;
 /// and several terminal emulators falsely announce incorrect terminal types.
 static void patch_terminfo_bugs(TUIData *tui, const char *term, const char *colorterm,
-                                long vte_version, long konsolev, bool iterm_env, bool nsterm)
+                                int vte_version, int konsolev, bool iterm_env, bool nsterm)
 {
   unibi_term *ut = tui->ut;
   const char *xterm_version = os_getenv("XTERM_VERSION");
-#if 0   // We don't need to identify this specifically, for now.
-  bool roxterm = !!os_getenv("ROXTERM_ID");
-#endif
   bool xterm = terminfo_is_term_family(term, "xterm")
                // Treat Terminal.app as generic xterm-like, for now.
                || nsterm;
@@ -1866,15 +1956,6 @@ static void patch_terminfo_bugs(TUIData *tui, const char *term, const char *colo
 #define XTERM_SETAB_16 \
   "\x1b[%?%p1%{8}%<%t4%p1%d%e%p1%{16}%<%t10%p1%{8}%-%d%e39%;m"
 
-  tui->unibi_ext.get_bg = (int)unibi_add_ext_str(ut, "ext.get_bg",
-                                                 "\x1b]11;?\x07");
-
-  // Query the terminal to see if it supports CSI u key encoding by writing CSI
-  // ? u followed by a request for the primary device attributes (CSI c)
-  // See https://sw.kovidgoyal.net/kitty/keyboard-protocol/#detection-of-support-for-this-protocol
-  tui->unibi_ext.get_extkeys = (int)unibi_add_ext_str(ut, "ext.get_extkeys",
-                                                      "\x1b[?u\x1b[c");
-
   // Terminals with 256-colour SGR support despite what terminfo says.
   if (unibi_get_num(ut, unibi_max_colors) < 256) {
     // See http://fedoraproject.org/wiki/Features/256_Color_Terminals
@@ -1997,7 +2078,7 @@ static void patch_terminfo_bugs(TUIData *tui, const char *term, const char *colo
 
 /// This adds stuff that is not in standard terminfo as extended unibilium
 /// capabilities.
-static void augment_terminfo(TUIData *tui, const char *term, long vte_version, long konsolev,
+static void augment_terminfo(TUIData *tui, const char *term, int vte_version, int konsolev,
                              bool iterm_env, bool nsterm)
 {
   unibi_term *ut = tui->ut;
@@ -2136,9 +2217,12 @@ static void augment_terminfo(TUIData *tui, const char *term, long vte_version, l
                                                                   "\x1b[?2004l");
   // For urxvt send BOTH xterm and old urxvt sequences. #8695
   tui->unibi_ext.enable_focus_reporting = (int)unibi_add_ext_str(ut, "ext.enable_focus",
-                                                                 rxvt ? "\x1b[?1004h\x1b]777;focus;on\x7" : "\x1b[?1004h");
-  tui->unibi_ext.disable_focus_reporting = (int)unibi_add_ext_str(ut, "ext.disable_focus",
-                                                                  rxvt ? "\x1b[?1004l\x1b]777;focus;off\x7" : "\x1b[?1004l");
+                                                                 rxvt
+                                                                 ? "\x1b[?1004h\x1b]777;focus;on\x7"
+                                                                 : "\x1b[?1004h");
+  tui->unibi_ext.disable_focus_reporting =
+    (int)unibi_add_ext_str(ut, "ext.disable_focus",
+                           rxvt ? "\x1b[?1004l\x1b]777;focus;off\x7" : "\x1b[?1004l");
   tui->unibi_ext.enable_mouse = (int)unibi_add_ext_str(ut, "ext.enable_mouse",
                                                        "\x1b[?1002h\x1b[?1006h");
   tui->unibi_ext.disable_mouse = (int)unibi_add_ext_str(ut, "ext.disable_mouse",
@@ -2167,71 +2251,106 @@ static void augment_terminfo(TUIData *tui, const char *term, long vte_version, l
   }
 
   if (!kitty && (vte_version == 0 || vte_version >= 5400)) {
-    // Fallback to Xterm's modifyOtherKeys if terminal does not support CSI u
-    tui->input.extkeys_type = kExtkeysXterm;
+    // Fallback to Xterm's modifyOtherKeys if terminal does not support the
+    // Kitty keyboard protocol
+    tui->input.key_encoding = kKeyEncodingXterm;
   }
+}
+
+static bool should_invisible(TUIData *tui)
+{
+  return tui->busy || tui->want_invisible;
+}
+
+/// Write the sequence to begin flushing output to `buf`.
+/// If 'termsync' is set and the terminal supports synchronized output, begin synchronized update.
+/// Otherwise, hide the cursor to avoid cursor jumping.
+///
+/// @param buf  the buffer to write the sequence to
+/// @param len  the length of `buf`
+static size_t flush_buf_start(TUIData *tui, char *buf, size_t len)
+  FUNC_ATTR_NONNULL_ALL
+{
+  unibi_var_t params[9];  // Don't use tui->params[] as they may already be in use.
+
+  const char *str = NULL;
+  if (tui->sync_output && tui->unibi_ext.sync != -1) {
+    UNIBI_SET_NUM_VAR(params[0], 1);
+    str = unibi_get_ext_str(tui->ut, (size_t)tui->unibi_ext.sync);
+  } else if (!tui->is_invisible) {
+    str = unibi_get_str(tui->ut, unibi_cursor_invisible);
+    tui->is_invisible = true;
+  }
+
+  if (str == NULL) {
+    return 0;
+  }
+
+  return unibi_run(str, params, buf, len);
+}
+
+/// Write the sequence to end flushing output to `buf`.
+/// If 'termsync' is set and the terminal supports synchronized output, end synchronized update.
+/// Otherwise, make the cursor visible again.
+///
+/// @param buf  the buffer to write the sequence to
+/// @param len  the length of `buf`
+static size_t flush_buf_end(TUIData *tui, char *buf, size_t len)
+  FUNC_ATTR_NONNULL_ALL
+{
+  unibi_var_t params[9];  // Don't use tui->params[] as they may already be in use.
+
+  size_t offset = 0;
+  if (tui->sync_output && tui->unibi_ext.sync != -1) {
+    UNIBI_SET_NUM_VAR(params[0], 0);
+    const char *str = unibi_get_ext_str(tui->ut, (size_t)tui->unibi_ext.sync);
+    offset = unibi_run(str, params, buf, len);
+  }
+
+  const char *str = NULL;
+  if (tui->is_invisible && !should_invisible(tui)) {
+    str = unibi_get_str(tui->ut, unibi_cursor_normal);
+    tui->is_invisible = false;
+  } else if (!tui->is_invisible && should_invisible(tui)) {
+    str = unibi_get_str(tui->ut, unibi_cursor_invisible);
+    tui->is_invisible = true;
+  }
+
+  if (str != NULL) {
+    assert(len >= offset);
+    offset += unibi_run(str, params, buf + offset, len - offset);
+  }
+
+  return offset;
 }
 
 static void flush_buf(TUIData *tui)
 {
   uv_write_t req;
   uv_buf_t bufs[3];
-  uv_buf_t *bufp = &bufs[0];
+  char pre[32];
+  char post[32];
 
-  // The content of the output for each condition is shown in the following
-  // table. Therefore, if tui->bufpos == 0 and N/A or invis + norm, there is
-  // no need to output it.
-  //
-  //                         | is_invisible | !is_invisible
-  // ------+-----------------+--------------+---------------
-  // busy  | want_invisible  |     N/A      |    invis
-  //       | !want_invisible |     N/A      |    invis
-  // ------+-----------------+--------------+---------------
-  // !busy | want_invisible  |     N/A      |    invis
-  //       | !want_invisible |     norm     | invis + norm
-  // ------+-----------------+--------------+---------------
-  //
-  if (tui->bufpos <= 0
-      && ((tui->is_invisible && tui->busy)
-          || (tui->is_invisible && !tui->busy && tui->want_invisible)
-          || (!tui->is_invisible && !tui->busy && !tui->want_invisible))) {
+  if (tui->bufpos <= 0 && tui->is_invisible == should_invisible(tui)) {
     return;
   }
 
-  if (!tui->is_invisible) {
-    // cursor is visible. Write a "cursor invisible" command before writing the
-    // buffer.
-    bufp->base = tui->invis;
-    bufp->len = UV_BUF_LEN(tui->invislen);
-    bufp++;
-    tui->is_invisible = true;
-  }
+  bufs[0].base = pre;
+  bufs[0].len = UV_BUF_LEN(flush_buf_start(tui, pre, sizeof(pre)));
 
-  if (tui->bufpos > 0) {
-    bufp->base = tui->buf;
-    bufp->len = UV_BUF_LEN(tui->bufpos);
-    bufp++;
-  }
+  bufs[1].base = tui->buf;
+  bufs[1].len = UV_BUF_LEN(tui->bufpos);
 
-  if (!tui->busy) {
-    assert(tui->is_invisible);
-    // not busy and the cursor is invisible. Write a "cursor normal" command
-    // after writing the buffer.
-    if (!tui->want_invisible) {
-      bufp->base = tui->norm;
-      bufp->len = UV_BUF_LEN(tui->normlen);
-      bufp++;
-      tui->is_invisible = false;
-    }
-  }
+  bufs[2].base = post;
+  bufs[2].len = UV_BUF_LEN(flush_buf_end(tui, post, sizeof(post)));
 
   if (tui->screenshot) {
-    for (size_t i = 0; i < (size_t)(bufp - bufs); i++) {
+    for (size_t i = 0; i < ARRAY_SIZE(bufs); i++) {
       fwrite(bufs[i].base, bufs[i].len, 1, tui->screenshot);
     }
   } else {
-    int ret = uv_write(&req, STRUCT_CAST(uv_stream_t, &tui->output_handle),
-                       bufs, (unsigned)(bufp - bufs), NULL);
+    int ret
+      = uv_write(&req, (uv_stream_t *)&tui->output_handle, bufs, ARRAY_SIZE(bufs), NULL);
     if (ret) {
       ELOG("uv_write failed: %s", uv_strerror(ret));
     }

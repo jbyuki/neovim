@@ -1,38 +1,36 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <inttypes.h>
+#include <lauxlib.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "klib/kvec.h"
-#include "lauxlib.h"
 #include "nvim/api/command.h"
+#include "nvim/api/keysets_defs.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/dispatch.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/api/private/validate.h"
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/autocmd.h"
 #include "nvim/buffer_defs.h"
-#include "nvim/decoration.h"
+#include "nvim/cmdexpand_defs.h"
 #include "nvim/ex_cmds.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/ex_eval.h"
 #include "nvim/garray.h"
 #include "nvim/globals.h"
 #include "nvim/lua/executor.h"
-#include "nvim/macros.h"
+#include "nvim/macros_defs.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
 #include "nvim/ops.h"
-#include "nvim/pos.h"
+#include "nvim/pos_defs.h"
 #include "nvim/regexp.h"
 #include "nvim/strings.h"
-#include "nvim/types.h"
+#include "nvim/types_defs.h"
 #include "nvim/usercmd.h"
-#include "nvim/vim.h"
+#include "nvim/vim_defs.h"
 #include "nvim/window.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -96,20 +94,16 @@
 ///               - "belowright": |:belowright|.
 ///               - "topleft": |:topleft|.
 ///               - "botright": |:botright|.
-Dictionary nvim_parse_cmd(String str, Dictionary opts, Error *err)
+Dictionary nvim_parse_cmd(String str, Dict(empty) *opts, Error *err)
   FUNC_API_SINCE(10) FUNC_API_FAST
 {
   Dictionary result = ARRAY_DICT_INIT;
-
-  VALIDATE((opts.size == 0), "%s", "opts dict isn't empty", {
-    return result;
-  });
 
   // Parse command line
   exarg_T ea;
   CmdParseInfo cmdinfo;
   char *cmdline = string_to_cstr(str);
-  char *errormsg = NULL;
+  const char *errormsg = NULL;
 
   if (!parse_cmdline(cmdline, &ea, &cmdinfo, &errormsg)) {
     if (errormsg != NULL) {
@@ -341,16 +335,6 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
     } \
   } while (0)
 
-#define OBJ_TO_CMOD_FLAG(flag, value, default, varname) \
-  do { \
-    if (api_object_to_bool(value, varname, default, err)) { \
-      cmdinfo.cmdmod.cmod_flags |= (flag); \
-    } \
-    if (ERROR_SET(err)) { \
-      goto end; \
-    } \
-  } while (0)
-
 #define VALIDATE_MOD(cond, mod_, name_) \
   do { \
     if (!(cond)) { \
@@ -359,18 +343,14 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
     } \
   } while (0)
 
-  bool output;
-  OBJ_TO_BOOL(output, opts->output, false, "'output'");
-
-  VALIDATE_R(HAS_KEY(cmd->cmd), "cmd", {
+  VALIDATE_R(HAS_KEY(cmd, cmd, cmd), "cmd", {
     goto end;
   });
-  VALIDATE_EXP((cmd->cmd.type == kObjectTypeString && cmd->cmd.data.string.data[0] != NUL),
-               "cmd", "non-empty String", NULL, {
+  VALIDATE_EXP((cmd->cmd.data[0] != NUL), "cmd", "non-empty String", NULL, {
     goto end;
   });
 
-  cmdname = string_to_cstr(cmd->cmd.data.string);
+  cmdname = string_to_cstr(cmd->cmd);
   ea.cmd = cmdname;
 
   char *p = find_ex_command(&ea, NULL);
@@ -394,8 +374,8 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
     goto end;
   });
   const char *fullname = IS_USER_CMDIDX(ea.cmdidx)
-    ? get_user_command_name(ea.useridx, ea.cmdidx)
-    : get_command_name(NULL, ea.cmdidx);
+                         ? get_user_command_name(ea.useridx, ea.cmdidx)
+                         : get_command_name(NULL, ea.cmdidx);
   VALIDATE(strncmp(fullname, cmdname, strlen(cmdname)) == 0, "Invalid command: \"%s\"", cmdname, {
     goto end;
   });
@@ -407,15 +387,11 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
   }
 
   // Parse command arguments since it's needed to get the command address type.
-  if (HAS_KEY(cmd->args)) {
-    VALIDATE_T("args", kObjectTypeArray, cmd->args.type, {
-      goto end;
-    });
-
+  if (HAS_KEY(cmd, cmd, args)) {
     // Process all arguments. Convert non-String arguments to String and check if String arguments
     // have non-whitespace characters.
-    for (size_t i = 0; i < cmd->args.data.array.size; i++) {
-      Object elem = cmd->args.data.array.items[i];
+    for (size_t i = 0; i < cmd->args.size; i++) {
+      Object elem = cmd->args.items[i];
       char *data_str;
 
       switch (elem.type) {
@@ -435,7 +411,7 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
         VALIDATE_EXP(!string_iswhite(elem.data.string), "command arg", "non-whitespace", NULL, {
           goto end;
         });
-        data_str = xstrndup(elem.data.string.data, elem.data.string.size);
+        data_str = string_to_cstr(elem.data.string);
         break;
       default:
         VALIDATE_EXP(false, "command arg", "valid type", api_typename(elem.type), {
@@ -477,16 +453,13 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
   // since it only ever checks the first argument.
   set_cmd_addr_type(&ea, args.size > 0 ? args.items[0].data.string.data : NULL);
 
-  if (HAS_KEY(cmd->range)) {
-    VALIDATE_MOD((ea.argt & EX_RANGE), "range", cmd->cmd.data.string.data);
-    VALIDATE_T("range", kObjectTypeArray, cmd->range.type, {
-      goto end;
-    });
-    VALIDATE_EXP((cmd->range.data.array.size <= 2), "range", "<=2 elements", NULL, {
+  if (HAS_KEY(cmd, cmd, range)) {
+    VALIDATE_MOD((ea.argt & EX_RANGE), "range", cmd->cmd.data);
+    VALIDATE_EXP((cmd->range.size <= 2), "range", "<=2 elements", NULL, {
       goto end;
     });
 
-    Array range = cmd->range.data.array;
+    Array range = cmd->range;
     ea.addr_count = (int)range.size;
 
     for (size_t i = 0; i < range.size; i++) {
@@ -519,22 +492,21 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
     }
   }
 
-  if (HAS_KEY(cmd->count)) {
-    VALIDATE_MOD((ea.argt & EX_COUNT), "count", cmd->cmd.data.string.data);
-    VALIDATE_EXP((cmd->count.type == kObjectTypeInteger && cmd->count.data.integer >= 0),
-                 "count", "non-negative Integer", NULL, {
+  if (HAS_KEY(cmd, cmd, count)) {
+    VALIDATE_MOD((ea.argt & EX_COUNT), "count", cmd->cmd.data);
+    VALIDATE_EXP((cmd->count >= 0), "count", "non-negative Integer", NULL, {
       goto end;
     });
-    set_cmd_count(&ea, (linenr_T)cmd->count.data.integer, true);
+    set_cmd_count(&ea, (linenr_T)cmd->count, true);
   }
 
-  if (HAS_KEY(cmd->reg)) {
-    VALIDATE_MOD((ea.argt & EX_REGSTR), "register", cmd->cmd.data.string.data);
-    VALIDATE_EXP((cmd->reg.type == kObjectTypeString && cmd->reg.data.string.size == 1),
-                 "reg", "single character", cmd->reg.data.string.data, {
+  if (HAS_KEY(cmd, cmd, reg)) {
+    VALIDATE_MOD((ea.argt & EX_REGSTR), "register", cmd->cmd.data);
+    VALIDATE_EXP((cmd->reg.size == 1),
+                 "reg", "single character", cmd->reg.data, {
       goto end;
     });
-    char regname = cmd->reg.data.string.data[0];
+    char regname = cmd->reg.data[0];
     VALIDATE((regname != '='), "%s", "Cannot use register \"=", {
       goto end;
     });
@@ -545,22 +517,17 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
     ea.regname = (uint8_t)regname;
   }
 
-  OBJ_TO_BOOL(ea.forceit, cmd->bang, false, "'bang'");
-  VALIDATE_MOD((!ea.forceit || (ea.argt & EX_BANG)), "bang", cmd->cmd.data.string.data);
+  ea.forceit = cmd->bang;
+  VALIDATE_MOD((!ea.forceit || (ea.argt & EX_BANG)), "bang", cmd->cmd.data);
 
-  if (HAS_KEY(cmd->magic)) {
-    VALIDATE_T_DICT("magic", cmd->magic, {
-      goto end;
-    });
-
-    Dict(cmd_magic) magic = { 0 };
-    if (!api_dict_to_keydict(&magic, KeyDict_cmd_magic_get_field,
-                             cmd->magic.data.dictionary, err)) {
+  if (HAS_KEY(cmd, cmd, magic)) {
+    Dict(cmd_magic) magic[1] = { 0 };
+    if (!api_dict_to_keydict(magic, KeyDict_cmd_magic_get_field, cmd->magic, err)) {
       goto end;
     }
 
-    OBJ_TO_BOOL(cmdinfo.magic.file, magic.file, ea.argt & EX_XFILE, "'magic.file'");
-    OBJ_TO_BOOL(cmdinfo.magic.bar, magic.bar, ea.argt & EX_TRLBAR, "'magic.bar'");
+    cmdinfo.magic.file = HAS_KEY(magic, cmd_magic, file) ? magic->file : (ea.argt & EX_XFILE);
+    cmdinfo.magic.bar = HAS_KEY(magic, cmd_magic, bar) ? magic->bar : (ea.argt & EX_TRLBAR);
     if (cmdinfo.magic.file) {
       ea.argt |= EX_XFILE;
     } else {
@@ -571,89 +538,63 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
     cmdinfo.magic.bar = ea.argt & EX_TRLBAR;
   }
 
-  if (HAS_KEY(cmd->mods)) {
-    VALIDATE_T_DICT("mods", cmd->mods, {
-      goto end;
-    });
-
-    Dict(cmd_mods) mods = { 0 };
-    if (!api_dict_to_keydict(&mods, KeyDict_cmd_mods_get_field, cmd->mods.data.dictionary, err)) {
+  if (HAS_KEY(cmd, cmd, mods)) {
+    Dict(cmd_mods) mods[1] = { 0 };
+    if (!api_dict_to_keydict(mods, KeyDict_cmd_mods_get_field, cmd->mods, err)) {
       goto end;
     }
 
-    if (HAS_KEY(mods.filter)) {
-      VALIDATE_T_DICT("mods.filter", mods.filter, {
-        goto end;
-      });
-
-      Dict(cmd_mods_filter) filter = { 0 };
+    if (HAS_KEY(mods, cmd_mods, filter)) {
+      Dict(cmd_mods_filter) filter[1] = { 0 };
 
       if (!api_dict_to_keydict(&filter, KeyDict_cmd_mods_filter_get_field,
-                               mods.filter.data.dictionary, err)) {
+                               mods->filter, err)) {
         goto end;
       }
 
-      if (HAS_KEY(filter.pattern)) {
-        VALIDATE_T2(filter.pattern, kObjectTypeString, {
-          goto end;
-        });
-
-        OBJ_TO_BOOL(cmdinfo.cmdmod.cmod_filter_force, filter.force, false, "'mods.filter.force'");
+      if (HAS_KEY(filter, cmd_mods_filter, pattern)) {
+        cmdinfo.cmdmod.cmod_filter_force = filter->force;
 
         // "filter! // is not no-op, so add a filter if either the pattern is non-empty or if filter
         // is inverted.
-        if (*filter.pattern.data.string.data != NUL || cmdinfo.cmdmod.cmod_filter_force) {
-          cmdinfo.cmdmod.cmod_filter_pat = string_to_cstr(filter.pattern.data.string);
+        if (*filter->pattern.data != NUL || cmdinfo.cmdmod.cmod_filter_force) {
+          cmdinfo.cmdmod.cmod_filter_pat = string_to_cstr(filter->pattern);
           cmdinfo.cmdmod.cmod_filter_regmatch.regprog = vim_regcomp(cmdinfo.cmdmod.cmod_filter_pat,
                                                                     RE_MAGIC);
         }
       }
     }
 
-    if (HAS_KEY(mods.tab)) {
-      VALIDATE_T2(mods.tab, kObjectTypeInteger, {
-        goto end;
-      });
-      if ((int)mods.tab.data.integer >= 0) {
+    if (HAS_KEY(mods, cmd_mods, tab)) {
+      if ((int)mods->tab >= 0) {
         // Silently ignore negative integers to allow mods.tab to be set to -1.
-        cmdinfo.cmdmod.cmod_tab = (int)mods.tab.data.integer + 1;
+        cmdinfo.cmdmod.cmod_tab = (int)mods->tab + 1;
       }
     }
 
-    if (HAS_KEY(mods.verbose)) {
-      VALIDATE_T2(mods.verbose, kObjectTypeInteger, {
-        goto end;
-      });
-      if ((int)mods.verbose.data.integer >= 0) {
+    if (HAS_KEY(mods, cmd_mods, verbose)) {
+      if ((int)mods->verbose >= 0) {
         // Silently ignore negative integers to allow mods.verbose to be set to -1.
-        cmdinfo.cmdmod.cmod_verbose = (int)mods.verbose.data.integer + 1;
+        cmdinfo.cmdmod.cmod_verbose = (int)mods->verbose + 1;
       }
     }
 
-    bool vertical;
-    OBJ_TO_BOOL(vertical, mods.vertical, false, "'mods.vertical'");
-    cmdinfo.cmdmod.cmod_split |= (vertical ? WSP_VERT : 0);
+    cmdinfo.cmdmod.cmod_split |= (mods->vertical ? WSP_VERT : 0);
 
-    bool horizontal;
-    OBJ_TO_BOOL(horizontal, mods.horizontal, false, "'mods.horizontal'");
-    cmdinfo.cmdmod.cmod_split |= (horizontal ? WSP_HOR : 0);
+    cmdinfo.cmdmod.cmod_split |= (mods->horizontal ? WSP_HOR : 0);
 
-    if (HAS_KEY(mods.split)) {
-      VALIDATE_T2(mods.split, kObjectTypeString, {
-        goto end;
-      });
-
-      if (*mods.split.data.string.data == NUL) {
+    if (HAS_KEY(mods, cmd_mods, split)) {
+      if (*mods->split.data == NUL) {
         // Empty string, do nothing.
-      } else if (strcmp(mods.split.data.string.data, "aboveleft") == 0
-                 || strcmp(mods.split.data.string.data, "leftabove") == 0) {
+      } else if (strcmp(mods->split.data, "aboveleft") == 0
+                 || strcmp(mods->split.data, "leftabove") == 0) {
         cmdinfo.cmdmod.cmod_split |= WSP_ABOVE;
-      } else if (strcmp(mods.split.data.string.data, "belowright") == 0
-                 || strcmp(mods.split.data.string.data, "rightbelow") == 0) {
+      } else if (strcmp(mods->split.data, "belowright") == 0
+                 || strcmp(mods->split.data, "rightbelow") == 0) {
         cmdinfo.cmdmod.cmod_split |= WSP_BELOW;
-      } else if (strcmp(mods.split.data.string.data, "topleft") == 0) {
+      } else if (strcmp(mods->split.data, "topleft") == 0) {
         cmdinfo.cmdmod.cmod_split |= WSP_TOP;
-      } else if (strcmp(mods.split.data.string.data, "botright") == 0) {
+      } else if (strcmp(mods->split.data, "botright") == 0) {
         cmdinfo.cmdmod.cmod_split |= WSP_BOT;
       } else {
         VALIDATE_S(false, "mods.split", "", {
@@ -662,20 +603,25 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
       }
     }
 
-    OBJ_TO_CMOD_FLAG(CMOD_SILENT, mods.silent, false, "'mods.silent'");
-    OBJ_TO_CMOD_FLAG(CMOD_ERRSILENT, mods.emsg_silent, false, "'mods.emsg_silent'");
-    OBJ_TO_CMOD_FLAG(CMOD_UNSILENT, mods.unsilent, false, "'mods.unsilent'");
-    OBJ_TO_CMOD_FLAG(CMOD_SANDBOX, mods.sandbox, false, "'mods.sandbox'");
-    OBJ_TO_CMOD_FLAG(CMOD_NOAUTOCMD, mods.noautocmd, false, "'mods.noautocmd'");
-    OBJ_TO_CMOD_FLAG(CMOD_BROWSE, mods.browse, false, "'mods.browse'");
-    OBJ_TO_CMOD_FLAG(CMOD_CONFIRM, mods.confirm, false, "'mods.confirm'");
-    OBJ_TO_CMOD_FLAG(CMOD_HIDE, mods.hide, false, "'mods.hide'");
-    OBJ_TO_CMOD_FLAG(CMOD_KEEPALT, mods.keepalt, false, "'mods.keepalt'");
-    OBJ_TO_CMOD_FLAG(CMOD_KEEPJUMPS, mods.keepjumps, false, "'mods.keepjumps'");
-    OBJ_TO_CMOD_FLAG(CMOD_KEEPMARKS, mods.keepmarks, false, "'mods.keepmarks'");
-    OBJ_TO_CMOD_FLAG(CMOD_KEEPPATTERNS, mods.keeppatterns, false, "'mods.keeppatterns'");
-    OBJ_TO_CMOD_FLAG(CMOD_LOCKMARKS, mods.lockmarks, false, "'mods.lockmarks'");
-    OBJ_TO_CMOD_FLAG(CMOD_NOSWAPFILE, mods.noswapfile, false, "'mods.noswapfile'");
+#define OBJ_TO_CMOD_FLAG(flag, value) \
+  if (value) { \
+    cmdinfo.cmdmod.cmod_flags |= (flag); \
+  }
+
+    OBJ_TO_CMOD_FLAG(CMOD_SILENT, mods->silent);
+    OBJ_TO_CMOD_FLAG(CMOD_ERRSILENT, mods->emsg_silent);
+    OBJ_TO_CMOD_FLAG(CMOD_UNSILENT, mods->unsilent);
+    OBJ_TO_CMOD_FLAG(CMOD_SANDBOX, mods->sandbox);
+    OBJ_TO_CMOD_FLAG(CMOD_NOAUTOCMD, mods->noautocmd);
+    OBJ_TO_CMOD_FLAG(CMOD_BROWSE, mods->browse);
+    OBJ_TO_CMOD_FLAG(CMOD_CONFIRM, mods->confirm);
+    OBJ_TO_CMOD_FLAG(CMOD_HIDE, mods->hide);
+    OBJ_TO_CMOD_FLAG(CMOD_KEEPALT, mods->keepalt);
+    OBJ_TO_CMOD_FLAG(CMOD_KEEPJUMPS, mods->keepjumps);
+    OBJ_TO_CMOD_FLAG(CMOD_KEEPMARKS, mods->keepmarks);
+    OBJ_TO_CMOD_FLAG(CMOD_KEEPPATTERNS, mods->keeppatterns);
+    OBJ_TO_CMOD_FLAG(CMOD_LOCKMARKS, mods->lockmarks);
+    OBJ_TO_CMOD_FLAG(CMOD_NOSWAPFILE, mods->noswapfile);
 
     if (cmdinfo.cmdmod.cmod_flags & CMOD_ERRSILENT) {
       // CMOD_ERRSILENT must imply CMOD_SILENT, otherwise apply_cmdmod() and undo_cmdmod() won't
@@ -699,13 +645,13 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
   garray_T * const save_capture_ga = capture_ga;
   const int save_msg_col = msg_col;
 
-  if (output) {
+  if (opts->output) {
     ga_init(&capture_local, 1, 80);
     capture_ga = &capture_local;
   }
 
   TRY_WRAP(err, {
-    if (output) {
+    if (opts->output) {
       msg_silent++;
       msg_col = 0;  // prevent leading spaces
     }
@@ -714,7 +660,7 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
       execute_cmd(&ea, &cmdinfo, false);
     });
 
-    if (output) {
+    if (opts->output) {
       capture_ga = save_capture_ga;
       msg_silent = save_msg_silent;
       // Put msg_col back where it was, since nothing should have been written.
@@ -726,7 +672,7 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
     goto clear_ga;
   }
 
-  if (output && capture_local.ga_len > 1) {
+  if (opts->output && capture_local.ga_len > 1) {
     retv = (String){
       .data = capture_local.ga_data,
       .size = (size_t)capture_local.ga_len,
@@ -740,7 +686,7 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Error
     goto end;
   }
 clear_ga:
-  if (output) {
+  if (opts->output) {
     ga_clear(&capture_local);
   }
 end:
@@ -885,8 +831,8 @@ static void build_cmdline_str(char **cmdlinep, exarg_T *eap, CmdParseInfo *cmdin
     offset += eap->arglens[i];
   }
   // If there isn't an argument, make eap->arg point to end of cmdline.
-  eap->arg = argc > 0 ? eap->args[0] :
-             cmdline.items + cmdline.size - 1;  // Subtract 1 to account for NUL
+  eap->arg = argc > 0 ? eap->args[0]
+                      : cmdline.items + cmdline.size - 1;  // Subtract 1 to account for NUL
 
   // Finally, make cmdlinep point to the cmdline string.
   *cmdlinep = cmdline.items;
@@ -908,11 +854,12 @@ static void build_cmdline_str(char **cmdlinep, exarg_T *eap, CmdParseInfo *cmdin
 /// For Lua usage see |lua-guide-commands-create|.
 ///
 /// Example:
-/// <pre>vim
-///    :call nvim_create_user_command('SayHello', 'echo "Hello world!"', {'bang': v:true})
-///    :SayHello
-///    Hello world!
-/// </pre>
+///
+/// ```vim
+/// :call nvim_create_user_command('SayHello', 'echo "Hello world!"', {'bang': v:true})
+/// :SayHello
+/// Hello world!
+/// ```
 ///
 /// @param  name    Name of the new user command. Must begin with an uppercase letter.
 /// @param  command Replacement command to execute when this user command is executed. When called
@@ -1037,7 +984,7 @@ void create_user_command(uint64_t channel_id, String name, Object command, Dict(
              name.data, {
     goto err;
   });
-  VALIDATE((!HAS_KEY(opts->range) || !HAS_KEY(opts->count)), "%s",
+  VALIDATE((!HAS_KEY(opts, user_command, range) || !HAS_KEY(opts, user_command, count)), "%s",
            "Cannot use both 'range' and 'count'", {
     goto err;
   });
@@ -1075,13 +1022,14 @@ void create_user_command(uint64_t channel_id, String name, Object command, Dict(
         goto err;
       });
     }
-  } else if (HAS_KEY(opts->nargs)) {
+  } else if (HAS_KEY(opts, user_command, nargs)) {
     VALIDATE_S(false, "nargs", "", {
       goto err;
     });
   }
 
-  VALIDATE((!HAS_KEY(opts->complete) || argt), "%s", "'complete' used without 'nargs'", {
+  VALIDATE((!HAS_KEY(opts, user_command, complete) || argt),
+           "%s", "'complete' used without 'nargs'", {
     goto err;
   });
 
@@ -1101,7 +1049,7 @@ void create_user_command(uint64_t channel_id, String name, Object command, Dict(
     argt |= EX_RANGE | EX_ZEROR;
     def = opts->range.data.integer;
     addr_type_arg = ADDR_LINES;
-  } else if (HAS_KEY(opts->range)) {
+  } else if (HAS_KEY(opts, user_command, range)) {
     VALIDATE_S(false, "range", "", {
       goto err;
     });
@@ -1117,13 +1065,13 @@ void create_user_command(uint64_t channel_id, String name, Object command, Dict(
     argt |= EX_COUNT | EX_ZEROR | EX_RANGE;
     addr_type_arg = ADDR_OTHER;
     def = opts->count.data.integer;
-  } else if (HAS_KEY(opts->count)) {
+  } else if (HAS_KEY(opts, user_command, count)) {
     VALIDATE_S(false, "count", "", {
       goto err;
     });
   }
 
-  if (HAS_KEY(opts->addr)) {
+  if (HAS_KEY(opts, user_command, addr)) {
     VALIDATE_T("addr", kObjectTypeString, opts->addr.type, {
       goto err;
     });
@@ -1139,31 +1087,23 @@ void create_user_command(uint64_t channel_id, String name, Object command, Dict(
     }
   }
 
-  if (api_object_to_bool(opts->bang, "bang", false, err)) {
+  if (opts->bang) {
     argt |= EX_BANG;
-  } else if (ERROR_SET(err)) {
-    goto err;
   }
 
-  if (api_object_to_bool(opts->bar, "bar", false, err)) {
+  if (opts->bar) {
     argt |= EX_TRLBAR;
-  } else if (ERROR_SET(err)) {
-    goto err;
   }
 
-  if (api_object_to_bool(opts->register_, "register", false, err)) {
+  if (opts->register_) {
     argt |= EX_REGSTR;
-  } else if (ERROR_SET(err)) {
-    goto err;
   }
 
-  if (api_object_to_bool(opts->keepscript, "keepscript", false, err)) {
+  if (opts->keepscript) {
     argt |= EX_KEEPSCRIPT;
-  } else if (ERROR_SET(err)) {
-    goto err;
   }
 
-  bool force = api_object_to_bool(opts->force, "force", true, err);
+  bool force = GET_BOOL_OR_TRUE(opts, user_command, force);
   if (ERROR_SET(err)) {
     goto err;
   }
@@ -1178,13 +1118,13 @@ void create_user_command(uint64_t channel_id, String name, Object command, Dict(
                "complete", opts->complete.data.string.data, {
       goto err;
     });
-  } else if (HAS_KEY(opts->complete)) {
+  } else if (HAS_KEY(opts, user_command, complete)) {
     VALIDATE_EXP(false, "complete", "Function or String", NULL, {
       goto err;
     });
   }
 
-  if (HAS_KEY(opts->preview)) {
+  if (HAS_KEY(opts, user_command, preview)) {
     VALIDATE_T("preview", kObjectTypeLuaRef, opts->preview.type, {
       goto err;
     });
@@ -1230,6 +1170,8 @@ err:
 ///
 /// Currently only |user-commands| are supported, not builtin Ex commands.
 ///
+/// @see |nvim_get_all_options_info()|
+///
 /// @param  opts  Optional parameters. Currently only supports
 ///               {"builtin":false}
 /// @param[out]  err   Error details, if any.
@@ -1252,13 +1194,12 @@ Dictionary nvim_buf_get_commands(Buffer buffer, Dict(get_commands) *opts, Error 
   FUNC_API_SINCE(4)
 {
   bool global = (buffer == -1);
-  bool builtin = api_object_to_bool(opts->builtin, "builtin", false, err);
   if (ERROR_SET(err)) {
     return (Dictionary)ARRAY_DICT_INIT;
   }
 
   if (global) {
-    if (builtin) {
+    if (opts->builtin) {
       api_set_error(err, kErrorTypeValidation, "builtin=true not implemented");
       return (Dictionary)ARRAY_DICT_INIT;
     }
@@ -1266,7 +1207,7 @@ Dictionary nvim_buf_get_commands(Buffer buffer, Dict(get_commands) *opts, Error 
   }
 
   buf_T *buf = find_buffer_by_handle(buffer, err);
-  if (builtin || !buf) {
+  if (opts->builtin || !buf) {
     return (Dictionary)ARRAY_DICT_INIT;
   }
   return commands_array(buf);

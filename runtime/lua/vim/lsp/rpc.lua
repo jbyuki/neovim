@@ -5,20 +5,18 @@ local validate, schedule, schedule_wrap = vim.validate, vim.schedule, vim.schedu
 
 local is_win = uv.os_uname().version:find('Windows')
 
----@private
 --- Checks whether a given path exists and is a directory.
 ---@param filename (string) path to check
----@returns (bool)
+---@return boolean
 local function is_dir(filename)
   local stat = uv.fs_stat(filename)
   return stat and stat.type == 'directory' or false
 end
 
----@private
 --- Embeds the given string into a table and correctly computes `Content-Length`.
 ---
 ---@param encoded_message (string)
----@returns (table) table containing encoded message and `Content-Length` attribute
+---@return string containing encoded message and `Content-Length` attribute
 local function format_message_with_content_length(encoded_message)
   return table.concat({
     'Content-Length: ',
@@ -28,24 +26,42 @@ local function format_message_with_content_length(encoded_message)
   })
 end
 
----@private
+local function log_error(...)
+  if log.error() then
+    log.error(...)
+  end
+end
+
+local function log_info(...)
+  if log.info() then
+    log.info(...)
+  end
+end
+
+local function log_debug(...)
+  if log.debug() then
+    log.debug(...)
+  end
+end
+
 --- Parses an LSP Message's header
 ---
 ---@param header string: The header to parse.
----@return table parsed headers
+---@return table # parsed headers
 local function parse_headers(header)
   assert(type(header) == 'string', 'header must be a string')
-  local headers = {}
+  local headers = {} --- @type table<string,string>
   for line in vim.gsplit(header, '\r\n', { plain = true }) do
     if line == '' then
       break
     end
+    --- @type string?, string?
     local key, value = line:match('^%s*(%S+)%s*:%s*(.+)%s*$')
     if key then
-      key = key:lower():gsub('%-', '_')
+      key = key:lower():gsub('%-', '_') --- @type string
       headers[key] = value
     else
-      local _ = log.error() and log.error('invalid header line %q', line)
+      log_error('invalid header line %q', line)
       error(string.format('invalid header line %q', line))
     end
   end
@@ -60,7 +76,6 @@ local header_start_pattern = ('content'):gsub('%w', function(c)
   return '[' .. c .. c:upper() .. ']'
 end)
 
----@private
 --- The actual workhorse.
 local function request_parser_loop()
   local buffer = '' -- only for header part
@@ -100,23 +115,26 @@ local function request_parser_loop()
       end
       local body = table.concat(body_chunks)
       -- Yield our data.
-      buffer = rest
-        .. (
-          coroutine.yield(headers, body)
-          or error('Expected more data for the body. The server may have died.')
-        ) -- TODO hmm.
+
+      --- @type string
+      local data = coroutine.yield(headers, body)
+        or error('Expected more data for the body. The server may have died.')
+      buffer = rest .. data
     else
       -- Get more data since we don't have enough.
-      buffer = buffer
-        .. (
-          coroutine.yield() or error('Expected more data for the header. The server may have died.')
-        ) -- TODO hmm.
+      --- @type string
+      local data = coroutine.yield()
+        or error('Expected more data for the header. The server may have died.')
+      buffer = buffer .. data
     end
   end
 end
 
+local M = {}
+
 --- Mapping of error codes used by the client
-local client_errors = {
+--- @nodoc
+M.client_errors = {
   INVALID_SERVER_MESSAGE = 1,
   INVALID_SERVER_JSON = 2,
   NO_RESULT_CALLBACK_FOUND = 3,
@@ -126,20 +144,20 @@ local client_errors = {
   SERVER_RESULT_CALLBACK_ERROR = 7,
 }
 
-client_errors = vim.tbl_add_reverse_lookup(client_errors)
+M.client_errors = vim.tbl_add_reverse_lookup(M.client_errors)
 
 --- Constructs an error message from an LSP error object.
 ---
 ---@param err (table) The error object
 ---@returns (string) The formatted error message
-local function format_rpc_error(err)
+function M.format_rpc_error(err)
   validate({
     err = { err, 't' },
   })
 
   -- There is ErrorCodes in the LSP specification,
   -- but in ResponseError.code it is not used and the actual type is number.
-  local code
+  local code --- @type string
   if protocol.ErrorCodes[err.code] then
     code = string.format('code_name = %s,', protocol.ErrorCodes[err.code])
   else
@@ -163,7 +181,7 @@ end
 ---@param code integer RPC error code defined in `vim.lsp.protocol.ErrorCodes`
 ---@param message string|nil arbitrary message to send to server
 ---@param data any|nil arbitrary data to send to server
-local function rpc_response_error(code, message, data)
+function M.rpc_response_error(code, message, data)
   -- TODO should this error or just pick a sane error (like InternalError)?
   local code_name = assert(protocol.ErrorCodes[code], 'Invalid RPC error code')
   return setmetatable({
@@ -171,51 +189,58 @@ local function rpc_response_error(code, message, data)
     message = message or code_name,
     data = data,
   }, {
-    __tostring = format_rpc_error,
+    __tostring = M.format_rpc_error,
   })
 end
 
-local default_dispatchers = {}
+--- @class vim.rpc.Dispatchers
+--- @field notification fun(method: string, params: table)
+--- @field server_request fun(method: string, params: table): any?, string?
+--- @field on_exit fun(code: integer, signal: integer)
+--- @field on_error fun(code: integer, err: any)
+
+--- @type vim.rpc.Dispatchers
+local default_dispatchers = {
+  --- Default dispatcher for notifications sent to an LSP server.
+  ---
+  ---@param method (string) The invoked LSP method
+  ---@param params (table): Parameters for the invoked LSP method
+  notification = function(method, params)
+    log_debug('notification', method, params)
+  end,
+
+  --- Default dispatcher for requests sent to an LSP server.
+  ---
+  ---@param method (string) The invoked LSP method
+  ---@param params (table): Parameters for the invoked LSP method
+  ---@return nil
+  ---@return table, `vim.lsp.protocol.ErrorCodes.MethodNotFound`
+  server_request = function(method, params)
+    log_debug('server_request', method, params)
+    return nil, M.rpc_response_error(protocol.ErrorCodes.MethodNotFound)
+  end,
+
+  --- Default dispatcher for when a client exits.
+  ---
+  ---@param code (integer): Exit code
+  ---@param signal (integer): Number describing the signal used to terminate (if
+  ---any)
+  on_exit = function(code, signal)
+    log_info('client_exit', { code = code, signal = signal })
+  end,
+
+  --- Default dispatcher for client errors.
+  ---
+  ---@param code (integer): Error code
+  ---@param err (any): Details about the error
+  ---any)
+  on_error = function(code, err)
+    log_error('client_error:', M.client_errors[code], err)
+  end,
+}
 
 ---@private
---- Default dispatcher for notifications sent to an LSP server.
----
----@param method (string) The invoked LSP method
----@param params (table): Parameters for the invoked LSP method
-function default_dispatchers.notification(method, params)
-  local _ = log.debug() and log.debug('notification', method, params)
-end
----@private
---- Default dispatcher for requests sent to an LSP server.
----
----@param method (string) The invoked LSP method
----@param params (table): Parameters for the invoked LSP method
----@returns `nil` and `vim.lsp.protocol.ErrorCodes.MethodNotFound`.
-function default_dispatchers.server_request(method, params)
-  local _ = log.debug() and log.debug('server_request', method, params)
-  return nil, rpc_response_error(protocol.ErrorCodes.MethodNotFound)
-end
----@private
---- Default dispatcher for when a client exits.
----
----@param code (integer): Exit code
----@param signal (integer): Number describing the signal used to terminate (if
----any)
-function default_dispatchers.on_exit(code, signal)
-  local _ = log.info() and log.info('client_exit', { code = code, signal = signal })
-end
----@private
---- Default dispatcher for client errors.
----
----@param code (integer): Error code
----@param err (any): Details about the error
----any)
-function default_dispatchers.on_error(code, err)
-  local _ = log.error() and log.error('client_error:', client_errors[code], err)
-end
-
----@private
-local function create_read_loop(handle_body, on_no_chunk, on_error)
+function M.create_read_loop(handle_body, on_no_chunk, on_error)
   local parse_chunk = coroutine.wrap(request_parser_loop)
   parse_chunk()
   return function(err, chunk)
@@ -245,8 +270,8 @@ end
 
 ---@class RpcClient
 ---@field message_index integer
----@field message_callbacks table
----@field notify_reply_callbacks table
+---@field message_callbacks table<integer,function>
+---@field notify_reply_callbacks table<integer,function>
 ---@field transport table
 ---@field dispatchers table
 
@@ -255,7 +280,7 @@ local Client = {}
 
 ---@private
 function Client:encode_and_send(payload)
-  local _ = log.debug() and log.debug('rpc.send', payload)
+  log_debug('rpc.send', payload)
   if self.transport.is_closing() then
     return false
   end
@@ -264,11 +289,11 @@ function Client:encode_and_send(payload)
   return true
 end
 
----@private
+---@package
 --- Sends a notification to the LSP server.
 ---@param method (string) The invoked LSP method
 ---@param params (any): Parameters for the invoked LSP method
----@returns (bool) `true` if notification could be sent, `false` if not
+---@return boolean `true` if notification could be sent, `false` if not
 function Client:notify(method, params)
   return self:encode_and_send({
     jsonrpc = '2.0',
@@ -288,7 +313,7 @@ function Client:send_response(request_id, err, result)
   })
 end
 
----@private
+---@package
 --- Sends a request to the LSP server and runs {callback} upon response.
 ---
 ---@param method (string) The invoked LSP method
@@ -326,9 +351,9 @@ function Client:request(method, params, callback, notify_reply_callback)
   end
 end
 
----@private
+---@package
 function Client:on_error(errkind, ...)
-  assert(client_errors[errkind])
+  assert(M.client_errors[errkind])
   -- TODO what to do if this fails?
   pcall(self.dispatchers.on_error, errkind, ...)
 end
@@ -351,33 +376,32 @@ end
 -- time and log them. This would require storing the timestamp. I could call
 -- them with an error then, perhaps.
 
----@private
+---@package
 function Client:handle_body(body)
   local ok, decoded = pcall(vim.json.decode, body, { luanil = { object = true } })
   if not ok then
-    self:on_error(client_errors.INVALID_SERVER_JSON, decoded)
+    self:on_error(M.client_errors.INVALID_SERVER_JSON, decoded)
     return
   end
-  local _ = log.debug() and log.debug('rpc.receive', decoded)
+  log_debug('rpc.receive', decoded)
 
   if type(decoded.method) == 'string' and decoded.id then
-    local err
+    local err --- @type table?
     -- Schedule here so that the users functions don't trigger an error and
     -- we can still use the result.
     schedule(function()
       coroutine.wrap(function()
         local status, result
         status, result, err = self:try_call(
-          client_errors.SERVER_REQUEST_HANDLER_ERROR,
+          M.client_errors.SERVER_REQUEST_HANDLER_ERROR,
           self.dispatchers.server_request,
           decoded.method,
           decoded.params
         )
-        local _ = log.debug()
-          and log.debug(
-            'server_request: callback result',
-            { status = status, result = result, err = err }
-          )
+        log_debug(
+          'server_request: callback result',
+          { status = status, result = result, err = err }
+        )
         if status then
           if result == nil and err == nil then
             error(
@@ -400,7 +424,7 @@ function Client:handle_body(body)
           end
         else
           -- On an exception, result will contain the error message.
-          err = rpc_response_error(protocol.ErrorCodes.InternalError, result)
+          err = M.rpc_response_error(protocol.ErrorCodes.InternalError, result)
           result = nil
         end
         self:send_response(decoded.id, err, result)
@@ -428,7 +452,7 @@ function Client:handle_body(body)
     if decoded.error then
       local mute_error = false
       if decoded.error.code == protocol.ErrorCodes.RequestCancelled then
-        local _ = log.debug() and log.debug('Received cancellation ack', decoded)
+        log_debug('Received cancellation ack', decoded)
         mute_error = true
       end
 
@@ -453,34 +477,33 @@ function Client:handle_body(body)
       })
       if decoded.error then
         decoded.error = setmetatable(decoded.error, {
-          __tostring = format_rpc_error,
+          __tostring = M.format_rpc_error,
         })
       end
       self:try_call(
-        client_errors.SERVER_RESULT_CALLBACK_ERROR,
+        M.client_errors.SERVER_RESULT_CALLBACK_ERROR,
         callback,
         decoded.error,
         decoded.result
       )
     else
-      self:on_error(client_errors.NO_RESULT_CALLBACK_FOUND, decoded)
-      local _ = log.error() and log.error('No callback found for server response id ' .. result_id)
+      self:on_error(M.client_errors.NO_RESULT_CALLBACK_FOUND, decoded)
+      log_error('No callback found for server response id ' .. result_id)
     end
   elseif type(decoded.method) == 'string' then
     -- Notification
     self:try_call(
-      client_errors.NOTIFICATION_HANDLER_ERROR,
+      M.client_errors.NOTIFICATION_HANDLER_ERROR,
       self.dispatchers.notification,
       decoded.method,
       decoded.params
     )
   else
     -- Invalid server message
-    self:on_error(client_errors.INVALID_SERVER_MESSAGE, decoded)
+    self:on_error(M.client_errors.INVALID_SERVER_MESSAGE, decoded)
   end
 end
 
----@private
 ---@return RpcClient
 local function new_client(dispatchers, transport)
   local state = {
@@ -493,8 +516,14 @@ local function new_client(dispatchers, transport)
   return setmetatable(state, { __index = Client })
 end
 
----@private
+--- @class RpcClientPublic
+--- @field is_closing fun(): boolean
+--- @field terminate fun()
+--- @field request fun(method: string, params: table?, callback: function, notify_reply_callbacks?: function)
+--- @field notify fun(methid: string, params: table?): boolean
+
 ---@param client RpcClient
+---@return RpcClientPublic
 local function public_client(client)
   local result = {}
 
@@ -522,7 +551,7 @@ local function public_client(client)
   --- Sends a notification to the LSP server.
   ---@param method (string) The invoked LSP method
   ---@param params (table|nil): Parameters for the invoked LSP method
-  ---@returns (bool) `true` if notification could be sent, `false` if not
+  ---@return boolean `true` if notification could be sent, `false` if not
   function result.notify(method, params)
     return client:notify(method, params)
   end
@@ -530,13 +559,14 @@ local function public_client(client)
   return result
 end
 
----@private
+--- @param dispatchers vim.rpc.Dispatchers?
+--- @return vim.rpc.Dispatchers
 local function merge_dispatchers(dispatchers)
   if dispatchers then
     local user_dispatchers = dispatchers
     dispatchers = {}
     for dispatch_name, default_dispatch in pairs(default_dispatchers) do
-      local user_dispatcher = user_dispatchers[dispatch_name]
+      local user_dispatcher = user_dispatchers[dispatch_name] --- @type function
       if user_dispatcher then
         if type(user_dispatcher) ~= 'function' then
           error(string.format('dispatcher.%s must be a function', dispatch_name))
@@ -547,8 +577,10 @@ local function merge_dispatchers(dispatchers)
         then
           user_dispatcher = schedule_wrap(user_dispatcher)
         end
+        --- @diagnostic disable-next-line:no-unknown
         dispatchers[dispatch_name] = user_dispatcher
       else
+        --- @diagnostic disable-next-line:no-unknown
         dispatchers[dispatch_name] = default_dispatch
       end
     end
@@ -564,10 +596,10 @@ end
 ---@param host string
 ---@param port integer
 ---@return function
-local function connect(host, port)
+function M.connect(host, port)
   return function(dispatchers)
     dispatchers = merge_dispatchers(dispatchers)
-    local tcp = uv.new_tcp()
+    local tcp = assert(uv.new_tcp())
     local closing = false
     local transport = {
       write = function(msg)
@@ -599,8 +631,8 @@ local function connect(host, port)
       local handle_body = function(body)
         client:handle_body(body)
       end
-      tcp:read_start(create_read_loop(handle_body, transport.terminate, function(read_err)
-        client:on_error(client_errors.READ_ERROR, read_err)
+      tcp:read_start(M.create_read_loop(handle_body, transport.terminate, function(read_err)
+        client:on_error(M.client_errors.READ_ERROR, read_err)
       end))
     end)
 
@@ -624,17 +656,13 @@ end
 --- server process. May contain:
 --- - {cwd} (string) Working directory for the LSP server process
 --- - {env} (table) Additional environment variables for LSP server process
----@returns Client RPC object.
----
----@returns Methods:
+---@return RpcClientPublic|nil Client RPC object, with these methods:
 --- - `notify()` |vim.lsp.rpc.notify()|
 --- - `request()` |vim.lsp.rpc.request()|
 --- - `is_closing()` returns a boolean indicating if the RPC is closing.
 --- - `terminate()` terminates the RPC client.
-local function start(cmd, cmd_args, dispatchers, extra_spawn_params)
-  if log.info() then
-    log.info('Starting RPC client', { cmd = cmd, args = cmd_args, extra = extra_spawn_params })
-  end
+function M.start(cmd, cmd_args, dispatchers, extra_spawn_params)
+  log_info('Starting RPC client', { cmd = cmd, args = cmd_args, extra = extra_spawn_params })
 
   validate({
     cmd = { cmd, 's' },
@@ -650,7 +678,7 @@ local function start(cmd, cmd_args, dispatchers, extra_spawn_params)
 
   dispatchers = merge_dispatchers(dispatchers)
 
-  local sysobj ---@type SystemObj
+  local sysobj ---@type vim.SystemObj
 
   local client = new_client(dispatchers, {
     write = function(msg)
@@ -668,13 +696,13 @@ local function start(cmd, cmd_args, dispatchers, extra_spawn_params)
     client:handle_body(body)
   end
 
-  local stdout_handler = create_read_loop(handle_body, nil, function(err)
-    client:on_error(client_errors.READ_ERROR, err)
+  local stdout_handler = M.create_read_loop(handle_body, nil, function(err)
+    client:on_error(M.client_errors.READ_ERROR, err)
   end)
 
   local stderr_handler = function(_, chunk)
-    if chunk and log.error() then
-      log.error('rpc', cmd, 'stderr', chunk)
+    if chunk then
+      log_error('rpc', cmd, 'stderr', chunk)
     end
   end
 
@@ -699,27 +727,20 @@ local function start(cmd, cmd_args, dispatchers, extra_spawn_params)
 
   if not ok then
     local err = sysobj_or_err --[[@as string]]
-    local msg = string.format('Spawning language server with cmd: `%s` failed', cmd)
+    local sfx --- @type string
     if string.match(err, 'ENOENT') then
-      msg = msg
-        .. '. The language server is either not installed, missing from PATH, or not executable.'
+      sfx = '. The language server is either not installed, missing from PATH, or not executable.'
     else
-      msg = msg .. string.format(' with error message: %s', err)
+      sfx = string.format(' with error message: %s', err)
     end
+    local msg = string.format('Spawning language server with cmd: `%s` failed%s', cmd, sfx)
     vim.notify(msg, vim.log.levels.WARN)
     return
   end
 
-  sysobj = sysobj_or_err --[[@as SystemObj]]
+  sysobj = sysobj_or_err --[[@as vim.SystemObj]]
 
   return public_client(client)
 end
 
-return {
-  start = start,
-  connect = connect,
-  rpc_response_error = rpc_response_error,
-  format_rpc_error = format_rpc_error,
-  client_errors = client_errors,
-  create_read_loop = create_read_loop,
-}
+return M

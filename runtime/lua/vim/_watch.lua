@@ -1,13 +1,16 @@
 local M = {}
+local uv = vim.uv
 
---- Enumeration describing the types of events watchers will emit.
-M.FileChangeType = vim.tbl_add_reverse_lookup({
+---@enum vim._watch.FileChangeType
+local FileChangeType = {
   Created = 1,
   Changed = 2,
   Deleted = 3,
-})
+}
 
----@private
+--- Enumeration describing the types of events watchers will emit.
+M.FileChangeType = vim.tbl_add_reverse_lookup(FileChangeType)
+
 --- Joins filepath elements by static '/' separator
 ---
 ---@param ... (string) The path elements.
@@ -16,10 +19,9 @@ local function filepath_join(...)
   return table.concat({ ... }, '/')
 end
 
----@private
 --- Stops and closes a libuv |uv_fs_event_t| or |uv_fs_poll_t| handle
 ---
----@param handle (uv_fs_event_t|uv_fs_poll_t) The handle to stop
+---@param handle (uv.uv_fs_event_t|uv.uv_fs_poll_t) The handle to stop
 local function stop(handle)
   local _, stop_err = handle:stop()
   assert(not stop_err, stop_err)
@@ -37,7 +39,7 @@ end
 ---     - uvflags (table|nil)
 ---                Same flags as accepted by |uv.fs_event_start()|
 ---@param callback (function) The function called when new events
----@return (function) A function to stop the watch
+---@return (function) Stops the watcher
 function M.watch(path, opts, callback)
   vim.validate({
     path = { path, 'string', false },
@@ -74,121 +76,121 @@ function M.watch(path, opts, callback)
   end
 end
 
-local default_poll_interval_ms = 2000
-
---- @class watch.Watches
---- @field is_dir boolean
---- @field children? table<string,watch.Watches>
---- @field cancel? fun()
---- @field started? boolean
---- @field handle? uv_fs_poll_t
-
 --- @class watch.PollOpts
---- @field interval? integer
---- @field include_pattern? userdata
---- @field exclude_pattern? userdata
+--- @field debounce? integer
+--- @field include_pattern? vim.lpeg.Pattern
+--- @field exclude_pattern? vim.lpeg.Pattern
 
----@private
---- Implementation for poll, hiding internally-used parameters.
----
 ---@param path string
 ---@param opts watch.PollOpts
----@param callback fun(patch: string, filechangetype: integer)
----@param watches (watch.Watches|nil) A tree structure to maintain state for recursive watches.
----     - handle (uv_fs_poll_t)
----               The libuv handle
----     - cancel (function)
----               A function that cancels the handle and all children's handles
----     - is_dir (boolean)
----               Indicates whether the path is a directory (and the poll should
----               be invoked recursively)
----     - children (table|nil)
----               A mapping of directory entry name to its recursive watches
----     - started (boolean|nil)
----               Whether or not the watcher has first been initialized. Used
----               to prevent a flood of Created events on startup.
----@return fun() Cancel function
-local function poll_internal(path, opts, callback, watches)
-  path = vim.fs.normalize(path)
-  local interval = opts and opts.interval or default_poll_interval_ms
-  watches = watches or {
-    is_dir = true,
-  }
-  watches.cancel = function()
-    if watches.children then
-      for _, w in pairs(watches.children) do
-        w.cancel()
+---@param callback function Called on new events
+---@return function cancel stops the watcher
+local function recurse_watch(path, opts, callback)
+  opts = opts or {}
+  local debounce = opts.debounce or 500
+  local uvflags = {}
+  ---@type table<string, uv.uv_fs_event_t> handle by fullpath
+  local handles = {}
+
+  local timer = assert(uv.new_timer())
+
+  ---@type table[]
+  local changesets = {}
+
+  local function is_included(filepath)
+    return opts.include_pattern and opts.include_pattern:match(filepath)
+  end
+  local function is_excluded(filepath)
+    return opts.exclude_pattern and opts.exclude_pattern:match(filepath)
+  end
+
+  local process_changes = function()
+    assert(false, "Replaced later. I'm only here as forward reference")
+  end
+
+  local function create_on_change(filepath)
+    return function(err, filename, events)
+      assert(not err, err)
+      local fullpath = vim.fs.joinpath(filepath, filename)
+      if is_included(fullpath) and not is_excluded(filepath) then
+        table.insert(changesets, {
+          fullpath = fullpath,
+          events = events,
+        })
+        timer:start(debounce, 0, process_changes)
       end
     end
-    if watches.handle then
-      stop(watches.handle)
+  end
+
+  process_changes = function()
+    ---@type table<string, table[]>
+    local filechanges = vim.defaulttable()
+    for i, change in ipairs(changesets) do
+      changesets[i] = nil
+      if is_included(change.fullpath) and not is_excluded(change.fullpath) then
+        table.insert(filechanges[change.fullpath], change.events)
+      end
     end
-  end
-
-  local function incl_match()
-    return not opts.include_pattern or opts.include_pattern:match(path) ~= nil
-  end
-  local function excl_match()
-    return opts.exclude_pattern and opts.exclude_pattern:match(path) ~= nil
-  end
-  if not watches.is_dir and not incl_match() or excl_match() then
-    return watches.cancel
-  end
-
-  if not watches.handle then
-    local poll, new_err = vim.uv.new_fs_poll()
-    assert(not new_err, new_err)
-    watches.handle = poll
-    local _, start_err = poll:start(
-      path,
-      interval,
-      vim.schedule_wrap(function(err)
-        if err == 'ENOENT' then
-          return
+    for fullpath, events_list in pairs(filechanges) do
+      uv.fs_stat(fullpath, function(_, stat)
+        ---@type vim._watch.FileChangeType
+        local change_type
+        if stat then
+          change_type = FileChangeType.Created
+          for _, event in ipairs(events_list) do
+            if event.change then
+              change_type = FileChangeType.Changed
+            end
+          end
+          if stat.type == 'directory' then
+            local handle = handles[fullpath]
+            if not handle then
+              handle = assert(uv.new_fs_event())
+              handles[fullpath] = handle
+              handle:start(fullpath, uvflags, create_on_change(fullpath))
+            end
+          end
+        else
+          local handle = handles[fullpath]
+          if handle then
+            if not handle:is_closing() then
+              handle:close()
+            end
+            handles[fullpath] = nil
+          end
+          change_type = FileChangeType.Deleted
         end
-        assert(not err, err)
-        poll_internal(path, opts, callback, watches)
-        callback(path, M.FileChangeType.Changed)
+        callback(fullpath, change_type)
       end)
-    )
-    assert(not start_err, start_err)
-    if watches.started then
-      callback(path, M.FileChangeType.Created)
     end
   end
+  local root_handle = assert(uv.new_fs_event())
+  handles[path] = root_handle
+  root_handle:start(path, uvflags, create_on_change(path))
 
-  if watches.is_dir then
-    watches.children = watches.children or {}
-    local exists = {} --- @type table<string,true>
-    for name, ftype in vim.fs.dir(path) do
-      exists[name] = true
-      if not watches.children[name] then
-        watches.children[name] = {
-          is_dir = ftype == 'directory',
-          started = watches.started,
-        }
-        poll_internal(filepath_join(path, name), opts, callback, watches.children[name])
-      end
-    end
+  --- "640K ought to be enough for anyone"
+  --- Who has folders this deep?
+  local max_depth = 100
 
-    local newchildren = {} ---@type table<string,watch.Watches>
-    for name, watch in pairs(watches.children) do
-      if exists[name] then
-        newchildren[name] = watch
-      else
-        watch.cancel()
-        watches.children[name] = nil
-        if watch.handle then
-          callback(path .. '/' .. name, M.FileChangeType.Deleted)
-        end
-      end
+  for name, type in vim.fs.dir(path, { depth = max_depth }) do
+    local filepath = vim.fs.joinpath(path, name)
+    if type == 'directory' and not is_excluded(filepath) then
+      local handle = assert(uv.new_fs_event())
+      handles[filepath] = handle
+      handle:start(filepath, uvflags, create_on_change(filepath))
     end
-    watches.children = newchildren
   end
-
-  watches.started = true
-
-  return watches.cancel
+  local function cancel()
+    for fullpath, handle in pairs(handles) do
+      if not handle:is_closing() then
+        handle:close()
+      end
+      handles[fullpath] = nil
+    end
+    timer:stop()
+    timer:close()
+  end
+  return cancel
 end
 
 --- Initializes and starts a |uv_fs_poll_t| recursively watching every file underneath the
@@ -196,8 +198,8 @@ end
 ---
 ---@param path (string) The path to watch. Must refer to a directory.
 ---@param opts (table|nil) Additional options
----     - interval (number|nil)
----                Polling interval in ms as passed to |uv.fs_poll_start()|. Defaults to 2000.
+---     - debounce (number|nil)
+---                Time events are debounced in ms. Defaults to 500
 ---     - include_pattern (LPeg pattern|nil)
 ---                An |lpeg| pattern. Only changes to files whose full paths match the pattern
 ---                will be reported. Only matches against non-directoriess, all directories will
@@ -208,14 +210,14 @@ end
 ---                not match the pattern will be reported. Matches against both files and
 ---                directories. When nil, matches nothing.
 ---@param callback (function) The function called when new events
----@returns (function) A function to stop the watch.
+---@return function Stops the watcher
 function M.poll(path, opts, callback)
   vim.validate({
     path = { path, 'string', false },
     opts = { opts, 'table', true },
     callback = { callback, 'function', false },
   })
-  return poll_internal(path, opts, callback, nil)
+  return recurse_watch(path, opts, callback)
 end
 
 return M

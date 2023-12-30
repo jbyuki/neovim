@@ -16,6 +16,7 @@ local command = helpers.command
 local bufmeths = helpers.bufmeths
 local feed = helpers.feed
 local pcall_err = helpers.pcall_err
+local assert_alive = helpers.assert_alive
 
 describe('api/buf', function()
   before_each(clear)
@@ -39,6 +40,14 @@ describe('api/buf', function()
       curbuf_depr('del_line', -1)
       -- There's always at least one line
       eq(1, curbuf_depr('line_count'))
+    end)
+
+    it("doesn't crash just after set undolevels=1 #24894", function()
+      local buf = meths.create_buf(false, true)
+      meths.buf_set_option(buf, 'undolevels', -1)
+      meths.buf_set_lines(buf, 0, 1, false, { })
+
+      assert_alive()
     end)
 
     it('cursor position is maintained after lines are inserted #9961', function()
@@ -76,6 +85,38 @@ describe('api/buf', function()
       eq({4, 2}, curwin('get_cursor'))
     end)
 
+    it('cursor position is maintained in non-current window', function()
+      meths.buf_set_lines(0, 0, -1, 1, {"line1", "line2", "line3", "line4"})
+      meths.win_set_cursor(0, {3, 2})
+      local win = meths.get_current_win()
+      local buf = meths.get_current_buf()
+
+      command('new')
+
+      meths.buf_set_lines(buf, 1, 2, 1, {"line5", "line6"})
+      eq({"line1", "line5", "line6", "line3", "line4"}, meths.buf_get_lines(buf, 0, -1, true))
+      eq({4, 2}, meths.win_get_cursor(win))
+    end)
+
+    it('cursor position is maintained in TWO non-current windows', function()
+      meths.buf_set_lines(0, 0, -1, 1, {"line1", "line2", "line3", "line4"})
+      meths.win_set_cursor(0, {3, 2})
+      local win = meths.get_current_win()
+      local buf = meths.get_current_buf()
+
+      command('split')
+      meths.win_set_cursor(0, {4, 2})
+      local win2 = meths.get_current_win()
+
+      -- set current window to third one with another buffer
+      command("new")
+
+      meths.buf_set_lines(buf, 1, 2, 1, {"line5", "line6"})
+      eq({"line1", "line5", "line6", "line3", "line4"}, meths.buf_get_lines(buf, 0, -1, true))
+      eq({4, 2}, meths.win_get_cursor(win))
+      eq({5, 2}, meths.win_get_cursor(win2))
+    end)
+
     it('line_count has defined behaviour for unloaded buffers', function()
       -- we'll need to know our bufnr for when it gets unloaded
       local bufnr = curbuf('get_number')
@@ -104,6 +145,255 @@ describe('api/buf', function()
       eq({}, buffer('get_lines', bufnr, 1, 3, 1))
       -- it's impossible to get out-of-bounds errors for an unloaded buffer
       eq({}, buffer('get_lines', bufnr, 8888, 9999, 1))
+    end)
+
+    describe('handles topline', function()
+      local screen
+      before_each(function()
+        screen = Screen.new(20, 12)
+        screen:set_default_attr_ids {
+          [1] = {bold = true, foreground = Screen.colors.Blue1};
+          [2] = {reverse = true, bold = true};
+          [3] = {reverse = true};
+        }
+        screen:attach()
+        meths.buf_set_lines(0, 0, -1, 1, {"aaa", "bbb", "ccc", "ddd", "www", "xxx", "yyy", "zzz"})
+        meths.set_option_value('modified', false, {})
+      end)
+
+      it('of current window', function()
+        local win = meths.get_current_win()
+        local buf = meths.get_current_buf()
+
+        command('new | wincmd w')
+        meths.win_set_cursor(win, {8,0})
+
+        screen:expect{grid=[[
+                              |
+          {1:~                   }|*4
+          {3:[No Name]           }|
+          www                 |
+          xxx                 |
+          yyy                 |
+          ^zzz                 |
+          {2:[No Name]           }|
+                              |
+        ]]}
+
+        meths.buf_set_lines(buf, 0, 2, true, {"aaabbb"})
+        screen:expect{grid=[[
+                              |
+          {1:~                   }|*4
+          {3:[No Name]           }|
+          www                 |
+          xxx                 |
+          yyy                 |
+          ^zzz                 |
+          {2:[No Name] [+]       }|
+                              |
+        ]]}
+
+        -- replacing topline keeps it the topline
+        meths.buf_set_lines(buf, 3, 4, true, {"wwweeee"})
+        screen:expect{grid=[[
+                              |
+          {1:~                   }|*4
+          {3:[No Name]           }|
+          wwweeee             |
+          xxx                 |
+          yyy                 |
+          ^zzz                 |
+          {2:[No Name] [+]       }|
+                              |
+        ]]}
+
+        -- inserting just before topline does not scroll up if cursor would be moved
+        meths.buf_set_lines(buf, 3, 3, true, {"mmm"})
+        screen:expect{grid=[[
+                              |
+          {1:~                   }|*4
+          {3:[No Name]           }|
+          wwweeee             |
+          xxx                 |
+          yyy                 |
+          ^zzz                 |
+          {2:[No Name] [+]       }|
+                              |
+        ]], unchanged=true}
+
+        meths.win_set_cursor(0, {7, 0})
+        screen:expect{grid=[[
+                              |
+          {1:~                   }|*4
+          {3:[No Name]           }|
+          wwweeee             |
+          xxx                 |
+          ^yyy                 |
+          zzz                 |
+          {2:[No Name] [+]       }|
+                              |
+        ]]}
+
+        meths.buf_set_lines(buf, 4, 4, true, {"mmmeeeee"})
+        screen:expect{grid=[[
+                              |
+          {1:~                   }|*4
+          {3:[No Name]           }|
+          mmmeeeee            |
+          wwweeee             |
+          xxx                 |
+          ^yyy                 |
+          {2:[No Name] [+]       }|
+                              |
+        ]]}
+      end)
+
+      it('of non-current window', function()
+        local win = meths.get_current_win()
+        local buf = meths.get_current_buf()
+
+        command('new')
+        meths.win_set_cursor(win, {8,0})
+
+        screen:expect{grid=[[
+          ^                    |
+          {1:~                   }|*4
+          {2:[No Name]           }|
+          www                 |
+          xxx                 |
+          yyy                 |
+          zzz                 |
+          {3:[No Name]           }|
+                              |
+        ]]}
+
+        meths.buf_set_lines(buf, 0, 2, true, {"aaabbb"})
+        screen:expect{grid=[[
+          ^                    |
+          {1:~                   }|*4
+          {2:[No Name]           }|
+          www                 |
+          xxx                 |
+          yyy                 |
+          zzz                 |
+          {3:[No Name] [+]       }|
+                              |
+        ]]}
+
+        -- replacing topline keeps it the topline
+        meths.buf_set_lines(buf, 3, 4, true, {"wwweeee"})
+        screen:expect{grid=[[
+          ^                    |
+          {1:~                   }|*4
+          {2:[No Name]           }|
+          wwweeee             |
+          xxx                 |
+          yyy                 |
+          zzz                 |
+          {3:[No Name] [+]       }|
+                              |
+        ]]}
+
+        -- inserting just before topline scrolls up
+        meths.buf_set_lines(buf, 3, 3, true, {"mmm"})
+        screen:expect{grid=[[
+          ^                    |
+          {1:~                   }|*4
+          {2:[No Name]           }|
+          mmm                 |
+          wwweeee             |
+          xxx                 |
+          yyy                 |
+          {3:[No Name] [+]       }|
+                              |
+        ]]}
+      end)
+
+      it('of split windows with same buffer', function()
+        local win = meths.get_current_win()
+        local buf = meths.get_current_buf()
+
+        command('split')
+        meths.win_set_cursor(win, {8,0})
+        meths.win_set_cursor(0, {1,0})
+
+        screen:expect{grid=[[
+          ^aaa                 |
+          bbb                 |
+          ccc                 |
+          ddd                 |
+          www                 |
+          {2:[No Name]           }|
+          www                 |
+          xxx                 |
+          yyy                 |
+          zzz                 |
+          {3:[No Name]           }|
+                              |
+        ]]}
+        meths.buf_set_lines(buf, 0, 2, true, {"aaabbb"})
+
+        screen:expect{grid=[[
+          ^aaabbb              |
+          ccc                 |
+          ddd                 |
+          www                 |
+          xxx                 |
+          {2:[No Name] [+]       }|
+          www                 |
+          xxx                 |
+          yyy                 |
+          zzz                 |
+          {3:[No Name] [+]       }|
+                              |
+        ]]}
+
+        -- replacing topline keeps it the topline
+        meths.buf_set_lines(buf, 3, 4, true, {"wwweeee"})
+        screen:expect{grid=[[
+          ^aaabbb              |
+          ccc                 |
+          ddd                 |
+          wwweeee             |
+          xxx                 |
+          {2:[No Name] [+]       }|
+          wwweeee             |
+          xxx                 |
+          yyy                 |
+          zzz                 |
+          {3:[No Name] [+]       }|
+                              |
+        ]]}
+
+        -- inserting just before topline scrolls up
+        meths.buf_set_lines(buf, 3, 3, true, {"mmm"})
+        screen:expect{grid=[[
+          ^aaabbb              |
+          ccc                 |
+          ddd                 |
+          mmm                 |
+          wwweeee             |
+          {2:[No Name] [+]       }|
+          mmm                 |
+          wwweeee             |
+          xxx                 |
+          yyy                 |
+          {3:[No Name] [+]       }|
+                              |
+        ]]}
+      end)
+    end)
+
+    it('handles clearing out non-current buffer #24911', function()
+        local buf = meths.get_current_buf()
+        meths.buf_set_lines(buf, 0, -1, true, {"aaa", "bbb", "ccc"})
+        command("new")
+
+        meths.buf_set_lines(0, 0, -1, true, {"xxx", "yyy", "zzz"})
+
+        meths.buf_set_lines(buf, 0, -1, true, {})
+        eq({"xxx", "yyy", "zzz"}, meths.buf_get_lines(0, 0, -1, true))
+        eq({''}, meths.buf_get_lines(buf, 0, -1, true))
     end)
   end)
 
@@ -393,6 +683,21 @@ describe('api/buf', function()
       feed('<c-w>p')
       eq(3, funcs.winnr())
     end)
+
+    it('set_lines on unloaded buffer #8659 #22670', function()
+      local bufnr = curbuf('get_number')
+      meths.buf_set_lines(bufnr, 0, -1, false, {'a', 'b', 'c'})
+      meths.buf_set_name(bufnr, 'set_lines')
+      finally(function()
+        os.remove('set_lines')
+      end)
+      command('write!')
+      command('new')
+      command('bunload! '..bufnr)
+      local new_bufnr = funcs.bufnr('set_lines', true)
+      meths.buf_set_lines(new_bufnr, 0, -1, false, {})
+      eq({''}, meths.buf_get_lines(new_bufnr, 0, -1, false))
+    end)
   end)
 
   describe('nvim_buf_set_text', function()
@@ -437,6 +742,10 @@ describe('api/buf', function()
       -- can append to a line
       set_text(1, 4, -1, 4, {' and', 'more'})
       eq({'goodbye bar', 'text and', 'more'}, get_lines(0, 3, true))
+
+      -- can use negative column numbers
+      set_text(0, -5, 0, -1, {'!'})
+      eq({'goodbye!'}, get_lines(0, 1, true))
     end)
 
     it('works with undo', function()
@@ -478,6 +787,754 @@ describe('api/buf', function()
       eq('hello foo!', curbuf_depr('get_line', 0))
       -- cursor should be moved left by two columns (replacement is shorter by 2 chars)
       eq({1, 9}, curwin('get_cursor'))
+    end)
+
+    it('updates the cursor position in non-current window', function()
+      insert([[
+      hello world!]])
+
+      -- position the cursor on `!`
+      meths.win_set_cursor(0, {1, 11})
+
+      local win = meths.get_current_win()
+      local buf = meths.get_current_buf()
+
+      command("new")
+
+      -- replace 'world' with 'foo'
+      meths.buf_set_text(buf, 0, 6, 0, 11, {'foo'})
+      eq({'hello foo!'}, meths.buf_get_lines(buf, 0, -1, true))
+      -- cursor should be moved left by two columns (replacement is shorter by 2 chars)
+      eq({1, 9}, meths.win_get_cursor(win))
+    end)
+
+    it('updates the cursor position in TWO non-current windows', function()
+      insert([[
+      hello world!]])
+
+      -- position the cursor on `!`
+      meths.win_set_cursor(0, {1, 11})
+      local win = meths.get_current_win()
+      local buf = meths.get_current_buf()
+
+      command("split")
+      local win2 = meths.get_current_win()
+      -- position the cursor on `w`
+      meths.win_set_cursor(0, {1, 6})
+
+      command("new")
+
+      -- replace 'hello' with 'foo'
+      meths.buf_set_text(buf, 0, 0, 0, 5, {'foo'})
+      eq({'foo world!'}, meths.buf_get_lines(buf, 0, -1, true))
+
+      -- both cursors should be moved left by two columns (replacement is shorter by 2 chars)
+      eq({1, 9}, meths.win_get_cursor(win))
+      eq({1, 4}, meths.win_get_cursor(win2))
+    end)
+
+    describe('when text is being added right at cursor position #22526', function()
+      it('updates the cursor position in NORMAL mode', function()
+        insert([[
+        abcd]])
+
+        -- position the cursor on 'c'
+        curwin('set_cursor', {1, 2})
+        -- add 'xxx' before 'c'
+        set_text(0, 2, 0, 2, {'xxx'})
+        eq({'abxxxcd'}, get_lines(0, -1, true))
+        -- cursor should be on 'c'
+        eq({1, 5}, curwin('get_cursor'))
+      end)
+
+      it('updates the cursor position only in non-current window when in INSERT mode', function()
+        insert([[
+        abcd]])
+
+        -- position the cursor on 'c'
+        curwin('set_cursor', {1, 2})
+        -- open vertical split
+        feed('<c-w>v')
+        -- get into INSERT mode to treat cursor
+        -- as being after 'b', not on 'c'
+        feed('i')
+        -- add 'xxx' between 'b' and 'c'
+        set_text(0, 2, 0, 2, {'xxx'})
+        eq({'abxxxcd'}, get_lines(0, -1, true))
+        -- in the current window cursor should stay after 'b'
+        eq({1, 2}, curwin('get_cursor'))
+        -- quit INSERT mode
+        feed('<esc>')
+        -- close current window
+        feed('<c-w>c')
+        -- in another window cursor should be on 'c'
+        eq({1, 5}, curwin('get_cursor'))
+      end)
+    end)
+
+    describe('when text is being deleted right at cursor position', function()
+      it('leaves cursor at the same position in NORMAL mode', function()
+        insert([[
+        abcd]])
+
+        -- position the cursor on 'b'
+        curwin('set_cursor', {1, 1})
+        -- delete 'b'
+        set_text(0, 1, 0, 2, {})
+        eq({'acd'}, get_lines(0, -1, true))
+        -- cursor is now on 'c'
+        eq({1, 1}, curwin('get_cursor'))
+      end)
+
+      it('leaves cursor at the same position in INSERT mode in current and non-current window', function()
+        insert([[
+        abcd]])
+
+        -- position the cursor on 'b'
+        curwin('set_cursor', {1, 1})
+        -- open vertical split
+        feed('<c-w>v')
+        -- get into INSERT mode to treat cursor
+        -- as being after 'a', not on 'b'
+        feed('i')
+        -- delete 'b'
+        set_text(0, 1, 0, 2, {})
+        eq({'acd'}, get_lines(0, -1, true))
+        -- cursor in the current window should stay after 'a'
+        eq({1, 1}, curwin('get_cursor'))
+        -- quit INSERT mode
+        feed('<esc>')
+        -- close current window
+        feed('<c-w>c')
+        -- cursor in non-current window should stay on 'c'
+        eq({1, 1}, curwin('get_cursor'))
+      end)
+    end)
+
+    describe('when cursor is inside replaced row range', function()
+      it('keeps cursor at the same position if cursor is at start_row, but before start_col', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on ' ' before 'first'
+        curwin('set_cursor', {1, 14})
+
+        set_text(0, 15, 2, 11, {
+          'the line we do not want',
+          'but hopefully',
+        })
+
+        eq({
+          'This should be the line we do not want',
+          'but hopefully the last one',
+        }, get_lines(0, -1, true))
+        -- cursor should stay at the same position
+        eq({1, 14}, curwin('get_cursor'))
+      end)
+
+      it('keeps cursor at the same position if cursor is at start_row and column is still valid', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on 'f' in 'first'
+        curwin('set_cursor', {1, 15})
+
+        set_text(0, 15, 2, 11, {
+          'the line we do not want',
+          'but hopefully',
+        })
+
+        eq({
+          'This should be the line we do not want',
+          'but hopefully the last one',
+        }, get_lines(0, -1, true))
+        -- cursor should stay at the same position
+        eq({1, 15}, curwin('get_cursor'))
+      end)
+
+      it('adjusts cursor column to keep it valid if start_row got smaller', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on 't' in 'first'
+        curwin('set_cursor', {1, 19})
+
+        local cursor = exec_lua([[
+          vim.api.nvim_buf_set_text(0, 0, 15, 2, 24, {'last'})
+          return vim.api.nvim_win_get_cursor(0)
+        ]])
+
+        eq({ 'This should be last' }, get_lines(0, -1, true))
+        -- cursor should end up on 't' in 'last'
+        eq({1, 18}, curwin('get_cursor'))
+        -- immediate call to nvim_win_get_cursor should have returned the same position
+        eq({1, 18}, cursor)
+      end)
+
+      it('adjusts cursor column to keep it valid if start_row got smaller in INSERT mode', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on 't' in 'first'
+        curwin('set_cursor', {1, 19})
+        -- enter INSERT mode to treat cursor as being after 't'
+        feed('a')
+
+        local cursor = exec_lua([[
+          vim.api.nvim_buf_set_text(0, 0, 15, 2, 24, {'last'})
+          return vim.api.nvim_win_get_cursor(0)
+        ]])
+
+        eq({ 'This should be last' }, get_lines(0, -1, true))
+        -- cursor should end up after 't' in 'last'
+        eq({1, 19}, curwin('get_cursor'))
+        -- immediate call to nvim_win_get_cursor should have returned the same position
+        eq({1, 19}, cursor)
+      end)
+
+      it('adjusts cursor column to keep it valid in a row after start_row if it got smaller', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on 'w' in 'want'
+        curwin('set_cursor', {2, 31})
+
+        local cursor = exec_lua([[
+          vim.api.nvim_buf_set_text(0, 0, 15, 2, 11, {
+            '1',
+            'then 2',
+            'and then',
+          })
+          return vim.api.nvim_win_get_cursor(0)
+        ]])
+
+        eq({
+          'This should be 1',
+          'then 2',
+          'and then the last one',
+        }, get_lines(0, -1, true))
+        -- cursor column should end up at the end of a row
+        eq({2, 5}, curwin('get_cursor'))
+        -- immediate call to nvim_win_get_cursor should have returned the same position
+        eq({2, 5}, cursor)
+      end)
+
+      it('adjusts cursor column to keep it valid in a row after start_row if it got smaller in INSERT mode', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on 'w' in 'want'
+        curwin('set_cursor', {2, 31})
+        -- enter INSERT mode
+        feed('a')
+
+        local cursor = exec_lua([[
+          vim.api.nvim_buf_set_text(0, 0, 15, 2, 11, {
+            '1',
+            'then 2',
+            'and then',
+          })
+          return vim.api.nvim_win_get_cursor(0)
+        ]])
+
+        eq({
+          'This should be 1',
+          'then 2',
+          'and then the last one',
+        }, get_lines(0, -1, true))
+        -- cursor column should end up at the end of a row
+        eq({2, 6}, curwin('get_cursor'))
+        -- immediate call to nvim_win_get_cursor should have returned the same position
+        eq({2, 6}, cursor)
+      end)
+
+      it('adjusts cursor line and column to keep it inside replacement range', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on 'n' in 'finally'
+        curwin('set_cursor', {3, 6})
+
+        local cursor = exec_lua([[
+          vim.api.nvim_buf_set_text(0, 0, 15, 2, 11, {
+            'the line we do not want',
+            'but hopefully',
+          })
+          return vim.api.nvim_win_get_cursor(0)
+        ]])
+
+        eq({
+          'This should be the line we do not want',
+          'but hopefully the last one',
+        }, get_lines(0, -1, true))
+        -- cursor should end up on 'y' in 'hopefully'
+        -- to stay in the range, because it got smaller
+        eq({2, 12}, curwin('get_cursor'))
+        -- immediate call to nvim_win_get_cursor should have returned the same position
+        eq({2, 12}, cursor)
+      end)
+
+      it('adjusts cursor line and column if replacement is empty', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on 'r' in 'there'
+        curwin('set_cursor', {2, 8})
+
+        local cursor = exec_lua([[
+          vim.api.nvim_buf_set_text(0, 0, 15, 2, 12, {})
+          return vim.api.nvim_win_get_cursor(0)
+        ]])
+
+        eq({ 'This should be the last one' }, get_lines(0, -1, true))
+        -- cursor should end up on the next column after deleted range
+        eq({1, 15}, curwin('get_cursor'))
+        -- immediate call to nvim_win_get_cursor should have returned the same position
+        eq({1, 15}, cursor)
+      end)
+
+      it('adjusts cursor line and column if replacement is empty and start_col == 0', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on 'r' in 'there'
+        curwin('set_cursor', {2, 8})
+
+        local cursor = exec_lua([[
+          vim.api.nvim_buf_set_text(0, 0, 0, 2, 4, {})
+          return vim.api.nvim_win_get_cursor(0)
+        ]])
+
+        eq({ 'finally the last one' }, get_lines(0, -1, true))
+        -- cursor should end up in column 0
+        eq({1, 0}, curwin('get_cursor'))
+        -- immediate call to nvim_win_get_cursor should have returned the same position
+        eq({1, 0}, cursor)
+      end)
+
+      it('adjusts cursor column if replacement ends at cursor row, after cursor column', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on 'y' in 'finally'
+        curwin('set_cursor', {3, 10})
+        set_text(0, 15, 2, 11, { '1', 'this 2', 'and then' })
+
+        eq({
+          'This should be 1',
+          'this 2',
+          'and then the last one',
+        }, get_lines(0, -1, true))
+        -- cursor should end up on 'n' in 'then'
+        eq({3, 7}, curwin('get_cursor'))
+      end)
+
+      it('adjusts cursor column if replacement ends at cursor row, at cursor column in INSERT mode', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on 'y' at 'finally'
+        curwin('set_cursor', {3, 10})
+        -- enter INSERT mode to treat cursor as being between 'l' and 'y'
+        feed('i')
+        set_text(0, 15, 2, 11, { '1', 'this 2', 'and then' })
+
+        eq({
+          'This should be 1',
+          'this 2',
+          'and then the last one',
+        }, get_lines(0, -1, true))
+        -- cursor should end up after 'n' in 'then'
+        eq({3, 8}, curwin('get_cursor'))
+      end)
+
+      it('adjusts cursor column if replacement is inside of a single line', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on 'y' in 'finally'
+        curwin('set_cursor', {3, 10})
+        set_text(2, 4, 2, 11, { 'then' })
+
+        eq({
+          'This should be first',
+          'then there is a line we do not want',
+          'and then the last one',
+        }, get_lines(0, -1, true))
+        -- cursor should end up on 'n' in 'then'
+        eq({3, 7}, curwin('get_cursor'))
+      end)
+
+      it('does not move cursor column after end of a line', function()
+        insert([[
+        This should be the only line here
+        !!!]])
+
+        -- position cursor on the last '1'
+        curwin('set_cursor', {2, 2})
+
+        local cursor = exec_lua([[
+          vim.api.nvim_buf_set_text(0, 0, 33, 1, 3, {})
+          return vim.api.nvim_win_get_cursor(0)
+        ]])
+
+        eq({ 'This should be the only line here' }, get_lines(0, -1, true))
+        -- cursor should end up on '!'
+        eq({1, 32}, curwin('get_cursor'))
+        -- immediate call to nvim_win_get_cursor should have returned the same position
+        eq({1, 32}, cursor)
+      end)
+
+      it('does not move cursor column before start of a line', function()
+        insert('\n!!!')
+
+        -- position cursor on the last '1'
+        curwin('set_cursor', {2, 2})
+
+        local cursor = exec_lua([[
+          vim.api.nvim_buf_set_text(0, 0, 0, 1, 3, {})
+          return vim.api.nvim_win_get_cursor(0)
+        ]])
+
+        eq({ '' }, get_lines(0, -1, true))
+        -- cursor should end up on '!'
+        eq({1, 0}, curwin('get_cursor'))
+        -- immediate call to nvim_win_get_cursor should have returned the same position
+        eq({1, 0}, cursor)
+      end)
+
+      describe('with virtualedit', function()
+        it('adjusts cursor line and column to keep it inside replacement range if cursor is not after eol', function()
+          insert([[
+          This should be first
+          then there is a line we do not want
+          and finally the last one]])
+
+          -- position cursor on 't' in 'want'
+          curwin('set_cursor', {2, 34})
+          -- turn on virtualedit
+          command('set virtualedit=all')
+
+          local cursor = exec_lua([[
+            vim.api.nvim_buf_set_text(0, 0, 15, 2, 11, {
+              'the line we do not want',
+              'but hopefully',
+            })
+            return vim.api.nvim_win_get_cursor(0)
+          ]])
+
+          eq({
+            'This should be the line we do not want',
+            'but hopefully the last one',
+          }, get_lines(0, -1, true))
+          -- cursor should end up on 'y' in 'hopefully'
+          -- to stay in the range
+          eq({2, 12}, curwin('get_cursor'))
+          -- immediate call to nvim_win_get_cursor should have returned the same position
+          eq({2, 12}, cursor)
+          -- coladd should be 0
+          eq(0, exec_lua([[
+            return vim.fn.winsaveview().coladd
+          ]]))
+        end)
+
+        it('does not change cursor screen column when cursor is after eol and row got shorter', function()
+          insert([[
+          This should be first
+          then there is a line we do not want
+          and finally the last one]])
+
+          -- position cursor on 't' in 'want'
+          curwin('set_cursor', {2, 34})
+          -- turn on virtualedit
+          command('set virtualedit=all')
+          -- move cursor after eol
+          exec_lua([[
+            vim.fn.winrestview({ coladd = 5 })
+          ]])
+
+          local cursor = exec_lua([[
+            vim.api.nvim_buf_set_text(0, 0, 15, 2, 11, {
+              'the line we do not want',
+              'but hopefully',
+            })
+            return vim.api.nvim_win_get_cursor(0)
+          ]])
+
+          eq({
+            'This should be the line we do not want',
+            'but hopefully the last one',
+          }, get_lines(0, -1, true))
+          -- cursor should end up at eol of a new row
+          eq({2, 26}, curwin('get_cursor'))
+          -- immediate call to nvim_win_get_cursor should have returned the same position
+          eq({2, 26}, cursor)
+          -- coladd should be increased so that cursor stays in the same screen column
+          eq(13, exec_lua([[
+            return vim.fn.winsaveview().coladd
+          ]]))
+        end)
+
+        it('does not change cursor screen column when cursor is after eol and row got longer', function()
+          insert([[
+          This should be first
+          then there is a line we do not want
+          and finally the last one]])
+
+          -- position cursor on 't' in 'first'
+          curwin('set_cursor', {1, 19})
+          -- turn on virtualedit
+          command('set virtualedit=all')
+          -- move cursor after eol
+          exec_lua([[
+            vim.fn.winrestview({ coladd = 21 })
+          ]])
+
+          local cursor = exec_lua([[
+            vim.api.nvim_buf_set_text(0, 0, 15, 2, 11, {
+              'the line we do not want',
+              'but hopefully',
+            })
+            return vim.api.nvim_win_get_cursor(0)
+          ]])
+
+          eq({
+            'This should be the line we do not want',
+            'but hopefully the last one',
+          }, get_lines(0, -1, true))
+          -- cursor should end up at eol of a new row
+          eq({1, 38}, curwin('get_cursor'))
+          -- immediate call to nvim_win_get_cursor should have returned the same position
+          eq({1, 38}, cursor)
+          -- coladd should be increased so that cursor stays in the same screen column
+          eq(2, exec_lua([[
+            return vim.fn.winsaveview().coladd
+          ]]))
+        end)
+
+        it('does not change cursor screen column when cursor is after eol and row extended past cursor column', function()
+          insert([[
+          This should be first
+          then there is a line we do not want
+          and finally the last one]])
+
+          -- position cursor on 't' in 'first'
+          curwin('set_cursor', {1, 19})
+          -- turn on virtualedit
+          command('set virtualedit=all')
+          -- move cursor after eol just a bit
+          exec_lua([[
+            vim.fn.winrestview({ coladd = 3 })
+          ]])
+
+          local cursor = exec_lua([[
+            vim.api.nvim_buf_set_text(0, 0, 15, 2, 11, {
+              'the line we do not want',
+              'but hopefully',
+            })
+            return vim.api.nvim_win_get_cursor(0)
+          ]])
+
+          eq({
+            'This should be the line we do not want',
+            'but hopefully the last one',
+          }, get_lines(0, -1, true))
+          -- cursor should stay at the same screen column
+          eq({1, 22}, curwin('get_cursor'))
+          -- immediate call to nvim_win_get_cursor should have returned the same position
+          eq({1, 22}, cursor)
+          -- coladd should become 0
+          eq(0, exec_lua([[
+            return vim.fn.winsaveview().coladd
+          ]]))
+        end)
+
+        it('does not change cursor screen column when cursor is after eol and row range decreased', function()
+          insert([[
+          This should be first
+          then there is a line we do not want
+          and one more
+          and finally the last one]])
+
+          -- position cursor on 'e' in 'more'
+          curwin('set_cursor', {3, 11})
+          -- turn on virtualedit
+          command('set virtualedit=all')
+          -- move cursor after eol
+          exec_lua([[
+            vim.fn.winrestview({ coladd = 28 })
+          ]])
+
+          local cursor = exec_lua([[
+            vim.api.nvim_buf_set_text(0, 0, 15, 3, 11, {
+              'the line we do not want',
+              'but hopefully',
+            })
+            return vim.api.nvim_win_get_cursor(0)
+          ]])
+
+          eq({
+            'This should be the line we do not want',
+            'but hopefully the last one',
+          }, get_lines(0, -1, true))
+          -- cursor should end up at eol of a new row
+          eq({2, 26}, curwin('get_cursor'))
+          -- immediate call to nvim_win_get_cursor should have returned the same position
+          eq({2, 26}, cursor)
+          -- coladd should be increased so that cursor stays in the same screen column
+          eq(13, exec_lua([[
+            return vim.fn.winsaveview().coladd
+          ]]))
+        end)
+      end)
+    end)
+
+    describe('when cursor is at end_row and after end_col', function()
+      it('adjusts cursor column when only a newline is added or deleted', function()
+        insert([[
+        first line
+        second
+         line]])
+
+        -- position the cursor on 'i'
+        curwin('set_cursor', {3, 2})
+        set_text(1, 6, 2, 0, {})
+        eq({'first line', 'second line'}, get_lines(0, -1, true))
+        -- cursor should stay on 'i'
+        eq({2, 8}, curwin('get_cursor'))
+
+        -- add a newline back
+        set_text(1, 6, 1, 6, {'', ''})
+        eq({'first line', 'second', ' line'}, get_lines(0, -1, true))
+        -- cursor should return back to the original position
+        eq({3, 2}, curwin('get_cursor'))
+      end)
+
+      it('adjusts cursor column if the range is not bound to either start or end of a line', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on 'h' in 'the'
+        curwin('set_cursor', {3, 13})
+        set_text(0, 14, 2, 11, {})
+        eq({'This should be the last one'}, get_lines(0, -1, true))
+        -- cursor should stay on 'h'
+        eq({1, 16}, curwin('get_cursor'))
+        -- add deleted lines back
+        set_text(0, 14, 0, 14, {
+          ' first',
+          'then there is a line we do not want',
+          'and finally',
+        })
+        eq({
+          'This should be first',
+          'then there is a line we do not want',
+          'and finally the last one',
+        }, get_lines(0, -1, true))
+        -- cursor should return back to the original position
+        eq({3, 13}, curwin('get_cursor'))
+      end)
+
+      it('adjusts cursor column if replacing lines in range, not just deleting and adding', function()
+        insert([[
+        This should be first
+        then there is a line we do not want
+        and finally the last one]])
+
+        -- position the cursor on 's' in 'last'
+        curwin('set_cursor', {3, 18})
+        set_text(0, 15, 2, 11, {
+          'the line we do not want',
+          'but hopefully',
+        })
+
+        eq({
+          'This should be the line we do not want',
+          'but hopefully the last one',
+        }, get_lines(0, -1, true))
+        -- cursor should stay on 's'
+        eq({2, 20}, curwin('get_cursor'))
+
+        set_text(0, 15, 1, 13, {
+          'first',
+          'then there is a line we do not want',
+          'and finally',
+        })
+
+        eq({
+          'This should be first',
+          'then there is a line we do not want',
+          'and finally the last one',
+        }, get_lines(0, -1, true))
+        -- cursor should return back to the original position
+        eq({3, 18}, curwin('get_cursor'))
+      end)
+
+      it('does not move cursor column after end of a line', function()
+        insert([[
+        This should be the only line here
+        ]])
+
+        -- position cursor at the empty line
+        curwin('set_cursor', {2, 0})
+
+        local cursor = exec_lua([[
+          vim.api.nvim_buf_set_text(0, 0, 33, 1, 0, {'!'})
+          return vim.api.nvim_win_get_cursor(0)
+        ]])
+
+        eq({ 'This should be the only line here!' }, get_lines(0, -1, true))
+        -- cursor should end up on '!'
+        eq({1, 33}, curwin('get_cursor'))
+        -- immediate call to nvim_win_get_cursor should have returned the same position
+        eq({1, 33}, cursor)
+      end)
+
+      it('does not move cursor column before start of a line', function()
+        insert('\n')
+
+        eq({ '', '' }, get_lines(0, -1, true))
+
+        -- position cursor on the last '1'
+        curwin('set_cursor', {2, 2})
+
+        local cursor = exec_lua([[
+          vim.api.nvim_buf_set_text(0, 0, 0, 1, 0, {''})
+          return vim.api.nvim_win_get_cursor(0)
+        ]])
+
+        eq({ '' }, get_lines(0, -1, true))
+        -- cursor should end up on '!'
+        eq({1, 0}, curwin('get_cursor'))
+        -- immediate call to nvim_win_get_cursor should have returned the same position
+        eq({1, 0}, cursor)
+      end)
     end)
 
     it('can handle NULs', function()
@@ -579,6 +1636,127 @@ describe('api/buf', function()
       ]])
       eq({'one', 'two'}, get_lines(0, 2, true))
     end)
+
+    describe('handles topline', function()
+      local screen
+      before_each(function()
+        screen = Screen.new(20, 12)
+        screen:set_default_attr_ids {
+          [1] = {bold = true, foreground = Screen.colors.Blue1};
+          [2] = {reverse = true, bold = true};
+          [3] = {reverse = true};
+        }
+        screen:attach()
+        meths.buf_set_lines(0, 0, -1, 1, {"aaa", "bbb", "ccc", "ddd", "www", "xxx", "yyy", "zzz"})
+        meths.set_option_value('modified', false, {})
+      end)
+
+      it('of current window', function()
+        local win = meths.get_current_win()
+        local buf = meths.get_current_buf()
+
+        command('new | wincmd w')
+        meths.win_set_cursor(win, {8,0})
+
+        screen:expect{grid=[[
+                              |
+          {1:~                   }|*4
+          {3:[No Name]           }|
+          www                 |
+          xxx                 |
+          yyy                 |
+          ^zzz                 |
+          {2:[No Name]           }|
+                              |
+        ]]}
+        meths.buf_set_text(buf, 0,3, 1,0, {"X"})
+
+        screen:expect{grid=[[
+                              |
+          {1:~                   }|*4
+          {3:[No Name]           }|
+          www                 |
+          xxx                 |
+          yyy                 |
+          ^zzz                 |
+          {2:[No Name] [+]       }|
+                              |
+        ]]}
+      end)
+
+      it('of non-current window', function()
+        local win = meths.get_current_win()
+        local buf = meths.get_current_buf()
+
+        command('new')
+        meths.win_set_cursor(win, {8,0})
+
+        screen:expect{grid=[[
+          ^                    |
+          {1:~                   }|*4
+          {2:[No Name]           }|
+          www                 |
+          xxx                 |
+          yyy                 |
+          zzz                 |
+          {3:[No Name]           }|
+                              |
+        ]]}
+
+        meths.buf_set_text(buf, 0,3, 1,0, {"X"})
+        screen:expect{grid=[[
+          ^                    |
+          {1:~                   }|*4
+          {2:[No Name]           }|
+          www                 |
+          xxx                 |
+          yyy                 |
+          zzz                 |
+          {3:[No Name] [+]       }|
+                              |
+        ]]}
+      end)
+
+      it('of split windows with same buffer', function()
+        local win = meths.get_current_win()
+        local buf = meths.get_current_buf()
+
+        command('split')
+        meths.win_set_cursor(win, {8,0})
+        meths.win_set_cursor(0, {1,1})
+
+        screen:expect{grid=[[
+          a^aa                 |
+          bbb                 |
+          ccc                 |
+          ddd                 |
+          www                 |
+          {2:[No Name]           }|
+          www                 |
+          xxx                 |
+          yyy                 |
+          zzz                 |
+          {3:[No Name]           }|
+                              |
+        ]]}
+        meths.buf_set_text(buf, 0,3, 1,0, {"X"})
+
+        screen:expect{grid=[[
+          a^aaXbbb             |
+          ccc                 |
+          ddd                 |
+          www                 |
+          xxx                 |
+          {2:[No Name] [+]       }|
+          www                 |
+          xxx                 |
+          yyy                 |
+          zzz                 |
+          {3:[No Name] [+]       }|
+                              |
+        ]]}
+      end)
+    end)
   end)
 
   describe_lua_and_rpc('nvim_buf_get_text', function(api)
@@ -650,6 +1828,19 @@ describe('api/buf', function()
       eq(6, bufmeths.get_offset(1,1))
       command("bunload! 1")
       eq(-1, bufmeths.get_offset(1,1))
+      eq(-1, bufmeths.get_offset(1,0))
+    end)
+
+    it('works in empty buffer', function()
+      eq(0, get_offset(0))
+      eq(1, get_offset(1))
+      eq(-1, funcs.line2byte('$'))
+    end)
+
+    it('works in buffer with one line inserted', function()
+      feed('itext')
+      eq(0, get_offset(0))
+      eq(5, get_offset(1))
     end)
   end)
 
@@ -799,11 +1990,13 @@ describe('api/buf', function()
       curbufmeths.set_lines(-1, -1, true, {'a', 'bit of', 'text'})
       eq(true, curbufmeths.set_mark('z', 1, 1, {}))
       eq({1, 1}, curbufmeths.get_mark('z'))
+      eq({0, 1, 2, 0}, funcs.getpos("'z"))
     end)
     it('works with file/uppercase marks', function()
       curbufmeths.set_lines(-1, -1, true, {'a', 'bit of', 'text'})
-      eq(true, curbufmeths.set_mark('Z', 3, 1, {}))
-      eq({3, 1}, curbufmeths.get_mark('Z'))
+      eq(true, curbufmeths.set_mark('Z', 3, 2, {}))
+      eq({3, 2}, curbufmeths.get_mark('Z'))
+      eq({curbuf().id, 3, 3, 0}, funcs.getpos("'Z"))
     end)
     it('fails when invalid marks names are used', function()
       eq(false, pcall(curbufmeths.set_mark, '!', 1, 0, {}))

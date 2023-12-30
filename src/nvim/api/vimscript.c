@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -8,23 +5,22 @@
 #include <string.h>
 
 #include "klib/kvec.h"
+#include "nvim/api/keysets_defs.h"
 #include "nvim/api/private/converter.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/api/vimscript.h"
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/eval.h"
 #include "nvim/eval/typval.h"
-#include "nvim/eval/typval_defs.h"
 #include "nvim/eval/userfunc.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/garray.h"
 #include "nvim/globals.h"
 #include "nvim/memory.h"
-#include "nvim/pos.h"
 #include "nvim/runtime.h"
-#include "nvim/vim.h"
+#include "nvim/vim_defs.h"
 #include "nvim/viml/parser/expressions.h"
 #include "nvim/viml/parser/parser.h"
 
@@ -61,7 +57,7 @@ Dictionary nvim_exec2(uint64_t channel_id, String src, Dict(exec_opts) *opts, Er
     return result;
   }
 
-  if (HAS_KEY(opts->output) && api_object_to_bool(opts->output, "opts.output", false, err)) {
+  if (opts->output) {
     PUT(result, "output", STRING_OBJ(output));
   }
 
@@ -70,19 +66,17 @@ Dictionary nvim_exec2(uint64_t channel_id, String src, Dict(exec_opts) *opts, Er
 
 String exec_impl(uint64_t channel_id, String src, Dict(exec_opts) *opts, Error *err)
 {
-  Boolean output = api_object_to_bool(opts->output, "opts.output", false, err);
-
   const int save_msg_silent = msg_silent;
   garray_T *const save_capture_ga = capture_ga;
   const int save_msg_col = msg_col;
   garray_T capture_local;
-  if (output) {
+  if (opts->output) {
     ga_init(&capture_local, 1, 80);
     capture_ga = &capture_local;
   }
 
   try_start();
-  if (output) {
+  if (opts->output) {
     msg_silent++;
     msg_col = 0;  // prevent leading spaces
   }
@@ -90,7 +84,7 @@ String exec_impl(uint64_t channel_id, String src, Dict(exec_opts) *opts, Error *
   const sctx_T save_current_sctx = api_set_sctx(channel_id);
 
   do_source_str(src.data, "nvim_exec2()");
-  if (output) {
+  if (opts->output) {
     capture_ga = save_capture_ga;
     msg_silent = save_msg_silent;
     // Put msg_col back where it was, since nothing should have been written.
@@ -104,7 +98,7 @@ String exec_impl(uint64_t channel_id, String src, Dict(exec_opts) *opts, Error *
     goto theend;
   }
 
-  if (output && capture_local.ga_len > 1) {
+  if (opts->output && capture_local.ga_len > 1) {
     String s = (String){
       .data = capture_local.ga_data,
       .size = (size_t)capture_local.ga_len,
@@ -118,7 +112,7 @@ String exec_impl(uint64_t channel_id, String src, Dict(exec_opts) *opts, Error *
     return s;  // Caller will free the memory.
   }
 theend:
-  if (output) {
+  if (opts->output) {
     ga_clear(&capture_local);
   }
   return (String)STRING_INIT;
@@ -214,9 +208,7 @@ static Object _call_function(String fn, Array args, dict_T *self, Error *err)
   typval_T vim_args[MAX_FUNC_ARGS + 1];
   size_t i = 0;  // also used for freeing the variables
   for (; i < args.size; i++) {
-    if (!object_to_vim(args.items[i], &vim_args[i], err)) {
-      goto free_vim_args;
-    }
+    object_to_vim(args.items[i], &vim_args[i], err);
   }
 
   // Initialize `force_abort`  and `suppress_errthrow` at the top level.
@@ -250,7 +242,6 @@ static Object _call_function(String fn, Array args, dict_T *self, Error *err)
   tv_clear(&rettv);
   recursive--;
 
-free_vim_args:
   while (i > 0) {
     tv_clear(&vim_args[--i]);
   }
@@ -304,9 +295,7 @@ Object nvim_call_dict_function(Object dict, String fn, Array args, Error *err)
     mustfree = true;
     break;
   case kObjectTypeDictionary:
-    if (!object_to_vim(dict, &rettv, err)) {
-      goto end;
-    }
+    object_to_vim(dict, &rettv, err);
     break;
   default:
     api_set_error(err, kErrorTypeValidation,
@@ -402,7 +391,7 @@ typedef kvec_withinit_t(ExprASTConvStackItem, 16) ExprASTConvStack;
 ///                    stringified without "kExprNode" prefix.
 ///          - "start": a pair [line, column] describing where node is "started"
 ///                     where "line" is always 0 (will not be 0 if you will be
-///                     using nvim_parse_viml() on e.g. ":let", but that is not
+///                     using this API on e.g. ":let", but that is not
 ///                     present yet). Both elements are Integers.
 ///          - "len": “length” of the node. This and "start" are there for
 ///                   debugging purposes primary (debugging parser and providing

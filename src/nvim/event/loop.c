@@ -1,16 +1,14 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <uv.h>
 
-#include "nvim/event/defs.h"
 #include "nvim/event/loop.h"
+#include "nvim/event/multiqueue.h"
 #include "nvim/log.h"
 #include "nvim/memory.h"
 #include "nvim/os/time.h"
+#include "nvim/types_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "event/loop.c.generated.h"
@@ -20,6 +18,7 @@ void loop_init(Loop *loop, void *data)
 {
   uv_loop_init(&loop->uv);
   loop->recursive = 0;
+  loop->closing = false;
   loop->uv.data = loop;
   loop->children = kl_init(WatcherPtr);
   loop->events = multiqueue_new_parent(loop_on_put, loop);
@@ -61,9 +60,9 @@ bool loop_uv_run(Loop *loop, int64_t ms, bool once)
     mode = UV_RUN_NOWAIT;
   }
 
-  do {  // -V1044
+  do {
     uv_run(&loop->uv, mode);
-  } while (ms > 0 && !once && !*timeout_expired);  // -V560
+  } while (ms > 0 && !once && !*timeout_expired);
 
   if (ms > 0) {
     uv_timer_stop(&loop->poll_timer);
@@ -113,7 +112,7 @@ void loop_schedule_deferred(Loop *loop, Event event)
 {
   Event *eventp = xmalloc(sizeof(*eventp));
   *eventp = event;
-  loop_schedule_fast(loop, event_create(loop_deferred_event, 2, loop, eventp));
+  loop_schedule_fast(loop, event_create(loop_deferred_event, loop, eventp));
 }
 static void loop_deferred_event(void **argv)
 {
@@ -152,6 +151,7 @@ static void loop_walk_cb(uv_handle_t *handle, void *arg)
 bool loop_close(Loop *loop, bool wait)
 {
   bool rv = true;
+  loop->closing = true;
   uv_mutex_destroy(&loop->mutex);
   uv_close((uv_handle_t *)&loop->children_watcher, NULL);
   uv_close((uv_handle_t *)&loop->children_kill_timer, NULL);
@@ -163,7 +163,7 @@ bool loop_close(Loop *loop, bool wait)
   while (true) {
     // Run the loop to tickle close-callbacks (which should then free memory).
     // Use UV_RUN_NOWAIT to avoid a hang. #11820
-    uv_run(&loop->uv, didstop ? UV_RUN_DEFAULT : UV_RUN_NOWAIT);  // -V547
+    uv_run(&loop->uv, didstop ? UV_RUN_DEFAULT : UV_RUN_NOWAIT);
     if ((uv_loop_close(&loop->uv) != UV_EBUSY) || !wait) {
       break;
     }

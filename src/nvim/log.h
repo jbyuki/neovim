@@ -1,21 +1,26 @@
-#ifndef NVIM_LOG_H
-#define NVIM_LOG_H
+#pragma once
 
 #include <stdbool.h>
 #include <stdio.h>
 
 #include "auto/config.h"
-#include "nvim/macros.h"
+#include "nvim/macros_defs.h"
 
 // USDT probes. Example invocation:
 //     NVIM_PROBE(nvim_foo_bar, 1, string.data);
 #if defined(HAVE_SYS_SDT_H)
-# include <sys/sdt.h>  // NOLINT
+# include <sys/sdt.h>  // IWYU pragma: keep
 
 # define NVIM_PROBE(name, n, ...) STAP_PROBE##n(neovim, name, __VA_ARGS__)
 #else
 # define NVIM_PROBE(name, n, ...)
 #endif
+
+// uncrustify:off
+#if NVIM_HAS_INCLUDE(<sanitizer/asan_interface.h>)
+# include <sanitizer/asan_interface.h>  // IWYU pragma: keep
+#endif
+// uncrustify:on
 
 #define LOGLVL_DBG 1
 #define LOGLVL_INF 2
@@ -46,11 +51,6 @@
 # define LOG_CALLSTACK_TO_FILE(fp) log_callstack_to_file(fp, __func__, __LINE__)
 #endif
 
-#if NVIM_HAS_INCLUDE("sanitizer/asan_interface.h")
-# include "sanitizer/asan_interface.h"
-#endif
-
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "log.h.generated.h"
 #endif
-#endif  // NVIM_LOG_H

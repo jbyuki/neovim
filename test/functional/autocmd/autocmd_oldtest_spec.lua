@@ -1,10 +1,12 @@
 local helpers = require('test.functional.helpers')(after_each)
+local Screen = require('test.functional.ui.screen')
 
 local clear = helpers.clear
 local eq = helpers.eq
 local meths = helpers.meths
 local funcs = helpers.funcs
 local exec = helpers.exec
+local feed = helpers.feed
 
 describe('oldtests', function()
   before_each(clear)
@@ -73,12 +75,52 @@ describe('oldtests', function()
     funcs.writefile(funcs.split(content, "\n"), fname)
 
     funcs.delete('Xout')
-    funcs.system(string.format('%s -u NORC -i NONE -N -S %s', meths.get_vvar('progpath'), fname))
+    funcs.system(string.format('%s --clean -N -S %s', meths.get_vvar('progpath'), fname))
     eq(1, funcs.filereadable('Xout'))
 
     funcs.delete('Xxx1')
     funcs.delete('Xxx2')
     funcs.delete(fname)
     funcs.delete('Xout')
+  end)
+
+  -- oldtest: Test_delete_ml_get_errors()
+  it('no ml_get error with TextChanged autocommand and delete', function()
+    local screen = Screen.new(75, 10)
+    screen:attach()
+    screen:set_default_attr_ids({
+      [1] = {background = Screen.colors.Cyan};
+    })
+    exec([[
+      set noshowcmd noruler scrolloff=0
+      source test/old/testdir/samples/matchparen.vim
+      edit test/old/testdir/samples/box.txt
+    ]])
+    feed('249GV<C-End>d')
+    screen:expect{grid=[[
+              const auto themeEmoji = _forPeer->themeEmoji();                    |
+              if (themeEmoji.isEmpty()) {                                        |
+                      return nonCustom;                                          |
+              }                                                                  |
+              const auto &themes = _forPeer->owner().cloudThemes();              |
+              const auto theme = themes.themeForEmoji(themeEmoji);               |
+              if (!theme) {1:{}                                                      |
+                      return nonCustom;                                          |
+              {1:^}}                                                                  |
+      353 fewer lines                                                            |
+    ]]}
+    feed('<PageUp>')
+    screen:expect{grid=[[
+                                                                                 |
+      auto BackgroundBox::Inner::resolveResetCustomPaper() const                 |
+      -> std::optional<Data::WallPaper> {                                        |
+              if (!_forPeer) {                                                   |
+                      return {};                                                 |
+              }                                                                  |
+              const auto nonCustom = Window::Theme::Background()->paper();       |
+              const auto themeEmoji = _forPeer->themeEmoji();                    |
+              ^if (themeEmoji.isEmpty()) {                                        |
+      353 fewer lines                                                            |
+    ]]}
   end)
 end)

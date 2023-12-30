@@ -1,4 +1,5 @@
 local uv = vim.uv
+local uri_encode = vim.uri_encode
 
 --- @type (fun(modename: string): fun()|string)[]
 local loaders = package.loaders
@@ -17,11 +18,14 @@ local M = {}
 ---@class ModuleInfo
 ---@field modpath string Path of the module
 ---@field modname string Name of the module
----@field stat? uv_fs_t File stat of the module path
+---@field stat? uv.uv_fs_t File stat of the module path
 
 ---@alias LoaderStats table<string, {total:number, time:number, [string]:number?}?>
 
+---@nodoc
 M.path = vim.fn.stdpath('cache') .. '/luac'
+
+---@nodoc
 M.enabled = false
 
 ---@class Loader
@@ -30,7 +34,7 @@ M.enabled = false
 ---@field _rtp_key string
 ---@field _hashes? table<string, CacheHash>
 local Loader = {
-  VERSION = 3,
+  VERSION = 4,
   ---@type table<string, table<string,ModuleInfo>>
   _indexed = {},
   ---@type table<string, string[]>
@@ -58,7 +62,6 @@ function Loader.get_hash(path)
   return Loader._hashes[path]
 end
 
----@private
 local function normalize(path)
   return vim.fs.normalize(path, { expand_env = false })
 end
@@ -97,7 +100,7 @@ end
 ---@return string file_name
 ---@private
 function Loader.cache_file(name)
-  local ret = M.path .. '/' .. name:gsub('[/\\:]', '%%')
+  local ret = ('%s/%s'):format(M.path, uri_encode(name, 'rfc2396'))
   return ret:sub(-4) == '.lua' and (ret .. 'c') or (ret .. '.luac')
 end
 
@@ -122,7 +125,6 @@ end
 --- @param path string
 --- @param mode integer
 --- @return string? data
---- @private
 local function readfile(path, mode)
   local f = uv.fs_open(path, 'r', mode)
   if f then
@@ -310,7 +312,6 @@ function M.find(modname, opts)
   local results = {}
 
   -- Only continue if we haven't found anything yet or we want to find all
-  ---@private
   local function continue()
     return #results == 0 or opts.all
   end
@@ -318,7 +319,6 @@ function M.find(modname, opts)
   -- Checks if the given paths contain the top-level module.
   -- If so, it tries to find the module path for the given module name.
   ---@param paths string[]
-  ---@private
   local function _find(paths)
     for _, path in ipairs(paths) do
       if topmod == '*' then
@@ -504,7 +504,6 @@ end
 ---@private
 function M._inspect(opts)
   if opts and opts.print then
-    ---@private
     local function ms(nsec)
       return math.floor(nsec / 1e6 * 1000 + 0.5) / 1000 .. 'ms'
     end

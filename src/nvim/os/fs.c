@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // fs.c -- filesystem access
 #include <assert.h>
 #include <errno.h>
@@ -12,11 +9,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <uv.h>
 
 #ifdef MSWIN
 # include <shlobj.h>
 #endif
+
+#include "auto/config.h"
+#include "nvim/os/fs.h"
 
 #if defined(HAVE_ACL)
 # ifdef HAVE_SYS_ACL_H
@@ -27,21 +28,22 @@
 # endif
 #endif
 
-#include "auto/config.h"
-#include "nvim/ascii.h"
+#ifdef HAVE_XATTR
+# include <sys/xattr.h>
+#endif
+
+#include "nvim/ascii_defs.h"
 #include "nvim/gettext.h"
 #include "nvim/globals.h"
 #include "nvim/log.h"
-#include "nvim/macros.h"
-#include "nvim/main.h"
+#include "nvim/macros_defs.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
-#include "nvim/option_defs.h"
-#include "nvim/os/fs_defs.h"
+#include "nvim/option_vars.h"
 #include "nvim/os/os.h"
 #include "nvim/path.h"
-#include "nvim/types.h"
-#include "nvim/vim.h"
+#include "nvim/types_defs.h"
+#include "nvim/vim_defs.h"
 
 #ifdef HAVE_SYS_UIO_H
 # include <sys/uio.h>
@@ -50,13 +52,21 @@
 #ifdef MSWIN
 # include "nvim/mbyte.h"
 # include "nvim/option.h"
+# include "nvim/strings.h"
 #endif
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "os/fs.c.generated.h"
 #endif
 
-struct iovec;
+#ifdef HAVE_XATTR
+static const char e_xattr_erange[]
+  = N_("E1506: Buffer too small to copy xattr value or key");
+static const char e_xattr_e2big[]
+  = N_("E1508: Size of the extended attribute value is larger than the maximum size allowed");
+static const char e_xattr_other[]
+  = N_("E1509: Error occurred when reading or writing extended attribute");
+#endif
 
 #define RUN_UV_FS_FUNC(ret, func, ...) \
   do { \
@@ -76,7 +86,7 @@ int os_chdir(const char *path)
 {
   if (p_verbose >= 5) {
     verbose_enter();
-    smsg("chdir(%s)", path);
+    smsg(0, "chdir(%s)", path);
     verbose_leave();
   }
   return uv_chdir(path);
@@ -743,6 +753,85 @@ int os_setperm(const char *const name, int perm)
   RUN_UV_FS_FUNC(r, uv_fs_chmod, name, perm, NULL);
   return (r == kLibuvSuccess ? OK : FAIL);
 }
+
+#ifdef HAVE_XATTR
+/// Copy extended attributes from_file to to_file
+void os_copy_xattr(const char *from_file, const char *to_file)
+{
+  if (from_file == NULL) {
+    return;
+  }
+
+  // get the length of the extended attributes
+  ssize_t size = listxattr((char *)from_file, NULL, 0);
+  // not supported or no attributes to copy
+  if (errno == ENOTSUP || size <= 0) {
+    return;
+  }
+  char *xattr_buf = xmalloc((size_t)size);
+  size = listxattr(from_file, xattr_buf, (size_t)size);
+  ssize_t tsize = size;
+
+  errno = 0;
+
+  ssize_t max_vallen = 0;
+  char *val = NULL;
+  const char *errmsg = NULL;
+
+  for (int round = 0; round < 2; round++) {
+    char *key = xattr_buf;
+    if (round == 1) {
+      size = tsize;
+    }
+
+    while (size > 0) {
+      ssize_t vallen = getxattr(from_file, key, val, round ? (size_t)max_vallen : 0);
+      // only set the attribute in the second round
+      if (vallen >= 0 && round
+          && setxattr(to_file, key, val, (size_t)vallen, 0) == 0) {
+        //
+      } else if (errno) {
+        switch (errno) {
+        case E2BIG:
+          errmsg = e_xattr_e2big;
+          goto error_exit;
+        case ENOTSUP:
+        case EACCES:
+        case EPERM:
+          break;
+        case ERANGE:
+          errmsg = e_xattr_erange;
+          goto error_exit;
+        default:
+          errmsg = e_xattr_other;
+          goto error_exit;
+        }
+      }
+
+      if (round == 0 && vallen > max_vallen) {
+        max_vallen = vallen;
+      }
+
+      // add one for terminating null
+      ssize_t keylen = (ssize_t)strlen(key) + 1;
+      size -= keylen;
+      key += keylen;
+    }
+    if (round) {
+      break;
+    }
+
+    val = xmalloc((size_t)max_vallen + 1);
+  }
+error_exit:
+  xfree(xattr_buf);
+  xfree(val);
+
+  if (errmsg != NULL) {
+    emsg(_(errmsg));
+  }
+}
+#endif
 
 // Return a pointer to the ACL of file "fname" in allocated memory.
 // Return NULL if the ACL is not available for whatever reason.

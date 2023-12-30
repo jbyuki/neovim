@@ -1,10 +1,6 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // Some of this code was adapted from 'if_py_both.h' from the original
 // vim source
 
-#include <assert.h>
 #include <lauxlib.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -14,13 +10,14 @@
 #include "klib/kvec.h"
 #include "lua.h"
 #include "nvim/api/buffer.h"
+#include "nvim/api/keysets_defs.h"
 #include "nvim/api/private/defs.h"
+#include "nvim/api/private/dispatch.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/api/private/validate.h"
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/autocmd.h"
 #include "nvim/buffer.h"
-#include "nvim/buffer_defs.h"
 #include "nvim/buffer_updates.h"
 #include "nvim/change.h"
 #include "nvim/cursor.h"
@@ -35,10 +32,11 @@
 #include "nvim/memory.h"
 #include "nvim/move.h"
 #include "nvim/ops.h"
-#include "nvim/pos.h"
-#include "nvim/types.h"
+#include "nvim/pos_defs.h"
+#include "nvim/state_defs.h"
+#include "nvim/types_defs.h"
 #include "nvim/undo.h"
-#include "nvim/vim.h"
+#include "nvim/vim_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "api/buffer.c.generated.h"
@@ -85,11 +83,15 @@ Integer nvim_buf_line_count(Buffer buffer, Error *err)
 ///
 /// Example (Lua): capture buffer updates in a global `events` variable
 /// (use "vim.print(events)" to see its contents):
-/// <pre>lua
-///   events = {}
-///   vim.api.nvim_buf_attach(0, false, {
-///     on_lines=function(...) table.insert(events, {...}) end})
-/// </pre>
+///
+/// ```lua
+/// events = {}
+/// vim.api.nvim_buf_attach(0, false, {
+///   on_lines = function(...)
+///     table.insert(events, {...})
+///   end,
+/// })
+/// ```
 ///
 /// @see |nvim_buf_detach()|
 /// @see |api-buffer-updates-lua|
@@ -150,7 +152,7 @@ Integer nvim_buf_line_count(Buffer buffer, Error *err)
 /// @return False if attach failed (invalid parameter, or buffer isn't loaded);
 ///         otherwise True. TODO: LUA_API_NO_EVAL
 Boolean nvim_buf_attach(uint64_t channel_id, Buffer buffer, Boolean send_buffer,
-                        DictionaryOf(LuaRef) opts, Error *err)
+                        Dict(buf_attach) *opts, Error *err)
   FUNC_API_SINCE(4)
 {
   buf_T *buf = find_buffer_by_handle(buffer, err);
@@ -159,7 +161,6 @@ Boolean nvim_buf_attach(uint64_t channel_id, Buffer buffer, Boolean send_buffer,
     return false;
   }
 
-  bool is_lua = (channel_id == LUA_INTERNAL_CALL);
   BufUpdateCallbacks cb = BUF_UPDATE_CALLBACKS_INIT;
   struct {
     const char *name;
@@ -175,50 +176,38 @@ Boolean nvim_buf_attach(uint64_t channel_id, Buffer buffer, Boolean send_buffer,
     { NULL, NULL },
   };
 
-  for (size_t i = 0; i < opts.size; i++) {
-    String k = opts.items[i].key;
-    Object *v = &opts.items[i].value;
-    bool key_used = false;
-    if (is_lua) {
-      for (size_t j = 0; cbs[j].name; j++) {
-        if (strequal(cbs[j].name, k.data)) {
-          VALIDATE_T(cbs[j].name, kObjectTypeLuaRef, v->type, {
-            goto error;
-          });
-          *(cbs[j].dest) = v->data.luaref;
-          v->data.luaref = LUA_NOREF;
-          key_used = true;
-          break;
-        }
-      }
-
-      if (key_used) {
-        continue;
-      } else if (strequal("utf_sizes", k.data)) {
-        VALIDATE_T("utf_sizes", kObjectTypeBoolean, v->type, {
-          goto error;
-        });
-        cb.utf_sizes = v->data.boolean;
-        key_used = true;
-      } else if (strequal("preview", k.data)) {
-        VALIDATE_T("preview", kObjectTypeBoolean, v->type, {
-          goto error;
-        });
-        cb.preview = v->data.boolean;
-        key_used = true;
-      }
+  if (channel_id == LUA_INTERNAL_CALL) {
+    if (HAS_KEY(opts, buf_attach, on_lines)) {
+      cb.on_lines = opts->on_lines;
+      opts->on_lines = LUA_NOREF;
     }
 
-    VALIDATE_S(key_used, "'opts' key", k.data, {
-      goto error;
-    });
+    if (HAS_KEY(opts, buf_attach, on_bytes)) {
+      cb.on_bytes = opts->on_bytes;
+      opts->on_bytes = LUA_NOREF;
+    }
+
+    if (HAS_KEY(opts, buf_attach, on_changedtick)) {
+      cb.on_changedtick = opts->on_changedtick;
+      opts->on_changedtick = LUA_NOREF;
+    }
+
+    if (HAS_KEY(opts, buf_attach, on_detach)) {
+      cb.on_detach = opts->on_detach;
+      opts->on_detach = LUA_NOREF;
+    }
+
+    if (HAS_KEY(opts, buf_attach, on_reload)) {
+      cb.on_reload = opts->on_reload;
+      opts->on_reload = LUA_NOREF;
+    }
+
+    cb.utf_sizes = opts->utf_sizes;
+
+    cb.preview = opts->preview;
   }
 
   return buf_updates_register(buf, channel_id, cb, send_buffer);
-
-error:
-  buffer_update_callbacks_free(cb);
-  return false;
 }
 
 /// Deactivates buffer-update events on the channel.
@@ -349,12 +338,20 @@ end:
 void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integer end,
                         Boolean strict_indexing, ArrayOf(String) replacement, Error *err)
   FUNC_API_SINCE(1)
-  FUNC_API_CHECK_TEXTLOCK
+  FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
   buf_T *buf = find_buffer_by_handle(buffer, err);
 
   if (!buf) {
     return;
+  }
+
+  // load buffer first if it's not loaded
+  if (buf->b_ml.ml_mfp == NULL) {
+    if (!buf_ensure_loaded(buf)) {
+      api_set_error(err, kErrorTypeException, "Failed to load buffer");
+      return;
+    }
   }
 
   bool oob = false;
@@ -388,27 +385,25 @@ void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integ
   }
 
   try_start();
-  aco_save_T aco;
-  aucmd_prepbuf(&aco, buf);
 
   if (!MODIFIABLE(buf)) {
     api_set_error(err, kErrorTypeException, "Buffer is not 'modifiable'");
     goto end;
   }
 
-  if (u_save((linenr_T)(start - 1), (linenr_T)end) == FAIL) {
+  if (u_save_buf(buf, (linenr_T)(start - 1), (linenr_T)end) == FAIL) {
     api_set_error(err, kErrorTypeException, "Failed to save undo information");
     goto end;
   }
 
-  bcount_t deleted_bytes = get_region_bytecount(curbuf, (linenr_T)start, (linenr_T)end, 0, 0);
+  bcount_t deleted_bytes = get_region_bytecount(buf, (linenr_T)start, (linenr_T)end, 0, 0);
 
   // If the size of the range is reducing (ie, new_len < old_len) we
   // need to delete some old_len. We do this at the start, by
   // repeatedly deleting line "start".
   size_t to_delete = (new_len < old_len) ? old_len - new_len : 0;
   for (size_t i = 0; i < to_delete; i++) {
-    if (ml_delete((linenr_T)start, false) == FAIL) {
+    if (ml_delete_buf(buf, (linenr_T)start, false) == FAIL) {
       api_set_error(err, kErrorTypeException, "Failed to delete line");
       goto end;
     }
@@ -430,7 +425,7 @@ void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integ
       goto end;
     });
 
-    if (ml_replace((linenr_T)lnum, lines[i], false) == FAIL) {
+    if (ml_replace_buf(buf, (linenr_T)lnum, lines[i], false) == FAIL) {
       api_set_error(err, kErrorTypeException, "Failed to replace line");
       goto end;
     }
@@ -449,7 +444,7 @@ void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integ
       goto end;
     });
 
-    if (ml_append((linenr_T)lnum, lines[i], 0, false) == FAIL) {
+    if (ml_append_buf(buf, (linenr_T)lnum, lines[i], 0, false) == FAIL) {
       api_set_error(err, kErrorTypeException, "Failed to insert line");
       goto end;
     }
@@ -464,20 +459,21 @@ void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integ
 
   // Adjust marks. Invalidate any which lie in the
   // changed range, and move any in the remainder of the buffer.
-  // Only adjust marks if we managed to switch to a window that holds
-  // the buffer, otherwise line numbers will be invalid.
-  mark_adjust((linenr_T)start,
-              (linenr_T)(end - 1),
-              MAXLNUM,
-              (linenr_T)extra,
-              kExtmarkNOOP);
+  linenr_T adjust = end > start ? MAXLNUM : 0;
+  mark_adjust_buf(buf, (linenr_T)start, (linenr_T)(end - 1), adjust, (linenr_T)extra,
+                  true, true, kExtmarkNOOP);
 
-  extmark_splice(curbuf, (int)start - 1, 0, (int)(end - start), 0,
+  extmark_splice(buf, (int)start - 1, 0, (int)(end - start), 0,
                  deleted_bytes, (int)new_len, 0, inserted_bytes,
                  kExtmarkUndo);
 
-  changed_lines((linenr_T)start, 0, (linenr_T)end, (linenr_T)extra, true);
-  fix_cursor((linenr_T)start, (linenr_T)end, (linenr_T)extra);
+  changed_lines(buf, (linenr_T)start, 0, (linenr_T)end, (linenr_T)extra, true);
+
+  FOR_ALL_TAB_WINDOWS(tp, win) {
+    if (win->w_buffer == buf) {
+      fix_cursor(win, (linenr_T)start, (linenr_T)end, (linenr_T)extra);
+    }
+  }
 
 end:
   for (size_t i = 0; i < new_len; i++) {
@@ -485,7 +481,6 @@ end:
   }
 
   xfree(lines);
-  aucmd_restbuf(&aco);
   try_end(err);
 }
 
@@ -504,7 +499,10 @@ end:
 ///
 /// Prefer |nvim_buf_set_lines()| if you are only adding or deleting entire lines.
 ///
+/// Prefer |nvim_put()| if you want to insert text at the cursor position.
+///
 /// @see |nvim_buf_set_lines()|
+/// @see |nvim_put()|
 ///
 /// @param channel_id
 /// @param buffer           Buffer handle, or 0 for current buffer
@@ -517,6 +515,7 @@ end:
 void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, Integer start_col,
                        Integer end_row, Integer end_col, ArrayOf(String) replacement, Error *err)
   FUNC_API_SINCE(7)
+  FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
   MAXSIZE_TEMP_ARRAY(scratch, 1);
   if (replacement.size == 0) {
@@ -527,6 +526,14 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
   buf_T *buf = find_buffer_by_handle(buffer, err);
   if (!buf) {
     return;
+  }
+
+  // load buffer first if it's not loaded
+  if (buf->b_ml.ml_mfp == NULL) {
+    if (!buf_ensure_loaded(buf)) {
+      api_set_error(err, kErrorTypeException, "Failed to load buffer");
+      return;
+    }
   }
 
   bool oob = false;
@@ -547,15 +554,17 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
   char *str_at_end = NULL;
 
   // Another call to ml_get_buf() may free the line, so make a copy.
-  str_at_start = xstrdup(ml_get_buf(buf, (linenr_T)start_row, false));
+  str_at_start = xstrdup(ml_get_buf(buf, (linenr_T)start_row));
   size_t len_at_start = strlen(str_at_start);
+  start_col = start_col < 0 ? (int64_t)len_at_start + start_col + 1 : start_col;
   VALIDATE_RANGE((start_col >= 0 && (size_t)start_col <= len_at_start), "start_col", {
     goto early_end;
   });
 
   // Another call to ml_get_buf() may free the line, so make a copy.
-  str_at_end = xstrdup(ml_get_buf(buf, (linenr_T)end_row, false));
+  str_at_end = xstrdup(ml_get_buf(buf, (linenr_T)end_row));
   size_t len_at_end = strlen(str_at_end);
+  end_col = end_col < 0 ? (int64_t)len_at_end + end_col + 1 : end_col;
   VALIDATE_RANGE((end_col >= 0 && (size_t)end_col <= len_at_end), "end_col", {
     goto early_end;
   });
@@ -583,7 +592,7 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
     for (int64_t i = 1; i < end_row - start_row; i++) {
       int64_t lnum = start_row + i;
 
-      const char *bufline = ml_get_buf(buf, (linenr_T)lnum, false);
+      const char *bufline = ml_get_buf(buf, (linenr_T)lnum);
       old_byte += (bcount_t)(strlen(bufline)) + 1;
     }
     old_byte += (bcount_t)end_col + 1;
@@ -629,8 +638,6 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
   }
 
   try_start();
-  aco_save_T aco;
-  aucmd_prepbuf(&aco, buf);
 
   if (!MODIFIABLE(buf)) {
     api_set_error(err, kErrorTypeException, "Buffer is not 'modifiable'");
@@ -639,7 +646,7 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
 
   // Small note about undo states: unlike set_lines, we want to save the
   // undo state of one past the end_row, since end_row is inclusive.
-  if (u_save((linenr_T)start_row - 1, (linenr_T)end_row + 1) == FAIL) {
+  if (u_save_buf(buf, (linenr_T)start_row - 1, (linenr_T)end_row + 1) == FAIL) {
     api_set_error(err, kErrorTypeException, "Failed to save undo information");
     goto end;
   }
@@ -652,7 +659,7 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
   // repeatedly deleting line "start".
   size_t to_delete = (new_len < old_len) ? old_len - new_len : 0;
   for (size_t i = 0; i < to_delete; i++) {
-    if (ml_delete((linenr_T)start_row, false) == FAIL) {
+    if (ml_delete_buf(buf, (linenr_T)start_row, false) == FAIL) {
       api_set_error(err, kErrorTypeException, "Failed to delete line");
       goto end;
     }
@@ -673,7 +680,7 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
       goto end;
     });
 
-    if (ml_replace((linenr_T)lnum, lines[i], false) == FAIL) {
+    if (ml_replace_buf(buf, (linenr_T)lnum, lines[i], false) == FAIL) {
       api_set_error(err, kErrorTypeException, "Failed to replace line");
       goto end;
     }
@@ -690,7 +697,7 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
       goto end;
     });
 
-    if (ml_append((linenr_T)lnum, lines[i], 0, false) == FAIL) {
+    if (ml_append_buf(buf, (linenr_T)lnum, lines[i], 0, false) == FAIL) {
       api_set_error(err, kErrorTypeException, "Failed to insert line");
       goto end;
     }
@@ -701,35 +708,39 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
     extra++;
   }
 
-  // Adjust marks. Invalidate any which lie in the
-  // changed range, and move any in the remainder of the buffer.
-  mark_adjust((linenr_T)start_row,
-              (linenr_T)end_row,
-              MAXLNUM,
-              (linenr_T)extra,
-              kExtmarkNOOP);
-
   colnr_T col_extent = (colnr_T)(end_col
                                  - ((end_row == start_row) ? start_col : 0));
+
+  // Adjust marks. Invalidate any which lie in the
+  // changed range, and move any in the remainder of the buffer.
+  // Do not adjust any cursors. need to use column-aware logic (below)
+  linenr_T adjust = end_row >= start_row ? MAXLNUM : 0;
+  mark_adjust_buf(buf, (linenr_T)start_row, (linenr_T)end_row, adjust, (linenr_T)extra,
+                  true, true, kExtmarkNOOP);
+
   extmark_splice(buf, (int)start_row - 1, (colnr_T)start_col,
                  (int)(end_row - start_row), col_extent, old_byte,
                  (int)new_len - 1, (colnr_T)last_item.size, new_byte,
                  kExtmarkUndo);
 
-  changed_lines((linenr_T)start_row, 0, (linenr_T)end_row + 1, (linenr_T)extra, true);
+  changed_lines(buf, (linenr_T)start_row, 0, (linenr_T)end_row + 1, (linenr_T)extra, true);
 
-  // adjust cursor like an extmark ( i e it was inside last_part_len)
-  if (curwin->w_cursor.lnum == end_row && curwin->w_cursor.col > end_col) {
-    curwin->w_cursor.col -= col_extent - (colnr_T)last_item.size;
+  FOR_ALL_TAB_WINDOWS(tp, win) {
+    if (win->w_buffer == buf) {
+      if (win->w_cursor.lnum >= start_row && win->w_cursor.lnum <= end_row) {
+        fix_cursor_cols(win, (linenr_T)start_row, (colnr_T)start_col, (linenr_T)end_row,
+                        (colnr_T)end_col, (linenr_T)new_len, (colnr_T)last_item.size);
+      } else {
+        fix_cursor(win, (linenr_T)start_row, (linenr_T)end_row, (linenr_T)extra);
+      }
+    }
   }
-  fix_cursor((linenr_T)start_row, (linenr_T)end_row, (linenr_T)extra);
 
 end:
   for (size_t i = 0; i < new_len; i++) {
     xfree(lines[i]);
   }
   xfree(lines);
-  aucmd_restbuf(&aco);
   try_end(err);
 
 early_end:
@@ -759,15 +770,11 @@ early_end:
 ArrayOf(String) nvim_buf_get_text(uint64_t channel_id, Buffer buffer,
                                   Integer start_row, Integer start_col,
                                   Integer end_row, Integer end_col,
-                                  Dictionary opts, lua_State *lstate,
+                                  Dict(empty) *opts, lua_State *lstate,
                                   Error *err)
   FUNC_API_SINCE(9)
 {
   Array rv = ARRAY_DICT_INIT;
-
-  VALIDATE((opts.size == 0), "%s", "opts dict isn't empty", {
-    return rv;
-  });
 
   buf_T *buf = find_buffer_by_handle(buffer, err);
 
@@ -1059,9 +1066,9 @@ Boolean nvim_buf_is_loaded(Buffer buffer)
 /// @param opts  Optional parameters. Keys:
 ///          - force:  Force deletion and ignore unsaved changes.
 ///          - unload: Unloaded only, do not delete. See |:bunload|
-void nvim_buf_delete(Buffer buffer, Dictionary opts, Error *err)
+void nvim_buf_delete(Buffer buffer, Dict(buf_delete) *opts, Error *err)
   FUNC_API_SINCE(7)
-  FUNC_API_CHECK_TEXTLOCK
+  FUNC_API_TEXTLOCK
 {
   buf_T *buf = find_buffer_by_handle(buffer, err);
 
@@ -1069,25 +1076,9 @@ void nvim_buf_delete(Buffer buffer, Dictionary opts, Error *err)
     return;
   }
 
-  bool force = false;
-  bool unload = false;
-  for (size_t i = 0; i < opts.size; i++) {
-    String k = opts.items[i].key;
-    Object v = opts.items[i].value;
-    if (strequal("force", k.data)) {
-      force = api_object_to_bool(v, "force", false, err);
-    } else if (strequal("unload", k.data)) {
-      unload = api_object_to_bool(v, "unload", false, err);
-    } else {
-      VALIDATE_S(false, "'opts' key", k.data, {
-        return;
-      });
-    }
-  }
+  bool force = opts->force;
 
-  if (ERROR_SET(err)) {
-    return;
-  }
+  bool unload = opts->unload;
 
   int result = do_buffer(unload ? DOBUF_UNLOAD : DOBUF_WIPE,
                          DOBUF_FIRST,
@@ -1171,7 +1162,7 @@ Boolean nvim_buf_del_mark(Buffer buffer, String name, Error *err)
 /// @return true if the mark was set, else false.
 /// @see |nvim_buf_del_mark()|
 /// @see |nvim_buf_get_mark()|
-Boolean nvim_buf_set_mark(Buffer buffer, String name, Integer line, Integer col, Dictionary opts,
+Boolean nvim_buf_set_mark(Buffer buffer, String name, Integer line, Integer col, Dict(empty) *opts,
                           Error *err)
   FUNC_API_SINCE(8)
 {
@@ -1191,8 +1182,9 @@ Boolean nvim_buf_set_mark(Buffer buffer, String name, Integer line, Integer col,
   return res;
 }
 
-/// Returns a tuple (row,col) representing the position of the named mark. See
-/// |mark-motions|.
+/// Returns a `(row,col)` tuple representing the position of the named mark.
+/// "End of line" column position is returned as |v:maxcol| (big number).
+/// See |mark-motions|.
 ///
 /// Marks are (1,0)-indexed. |api-indexing|
 ///
@@ -1248,8 +1240,8 @@ ArrayOf(Integer, 2) nvim_buf_get_mark(Buffer buffer, String name, Error *err)
 /// Otherwise a temporary scratch window (called the "autocmd window" for
 /// historical reasons) will be used.
 ///
-/// This is useful e.g. to call vimL functions that only work with the current
-/// buffer/window currently, like |termopen()|.
+/// This is useful e.g. to call Vimscript functions that only work with the
+/// current buffer/window currently, like |termopen()|.
 ///
 /// @param buffer     Buffer handle, or 0 for current buffer
 /// @param fun        Function to call inside the buffer (currently Lua callable
@@ -1315,42 +1307,92 @@ Dictionary nvim__buf_stats(Buffer buffer, Error *err)
 
 // Check if deleting lines made the cursor position invalid.
 // Changed lines from `lo` to `hi`; added `extra` lines (negative if deleted).
-static void fix_cursor(linenr_T lo, linenr_T hi, linenr_T extra)
+static void fix_cursor(win_T *win, linenr_T lo, linenr_T hi, linenr_T extra)
 {
-  if (curwin->w_cursor.lnum >= lo) {
+  if (win->w_cursor.lnum >= lo) {
     // Adjust cursor position if it's in/after the changed lines.
-    if (curwin->w_cursor.lnum >= hi) {
-      curwin->w_cursor.lnum += extra;
-      check_cursor_col();
+    if (win->w_cursor.lnum >= hi) {
+      win->w_cursor.lnum += extra;
     } else if (extra < 0) {
-      check_cursor();
-    } else {
-      check_cursor_col();
+      check_cursor_lnum(win);
     }
-    changed_cline_bef_curs();
+    check_cursor_col_win(win);
+    changed_cline_bef_curs(win);
   }
-  invalidate_botline();
+  invalidate_botline(win);
 }
 
-// Normalizes 0-based indexes to buffer line numbers
-static int64_t normalize_index(buf_T *buf, int64_t index, bool end_exclusive, bool *oob)
+/// Fix cursor position after replacing text
+/// between (start_row, start_col) and (end_row, end_col).
+///
+/// win->w_cursor.lnum is assumed to be >= start_row and <= end_row.
+static void fix_cursor_cols(win_T *win, linenr_T start_row, colnr_T start_col, linenr_T end_row,
+                            colnr_T end_col, linenr_T new_rows, colnr_T new_cols_at_end_row)
 {
-  assert(buf->b_ml.ml_line_count > 0);
-  int64_t max_index = buf->b_ml.ml_line_count + (int)end_exclusive - 1;
-  // Fix if < 0
-  index = index < 0 ? max_index + index + 1 : index;
+  colnr_T mode_col_adj = win == curwin && (State & MODE_INSERT) ? 0 : 1;
 
-  // Check for oob
-  if (index > max_index) {
-    *oob = true;
-    index = max_index;
-  } else if (index < 0) {
-    *oob = true;
-    index = 0;
+  colnr_T end_row_change_start = new_rows == 1 ? start_col : 0;
+  colnr_T end_row_change_end = end_row_change_start + new_cols_at_end_row;
+
+  // check if cursor is after replaced range or not
+  if (win->w_cursor.lnum == end_row && win->w_cursor.col + mode_col_adj > end_col) {
+    // if cursor is after replaced range, it's shifted
+    // to keep it's position the same, relative to end_col
+
+    linenr_T old_rows = end_row - start_row + 1;
+    win->w_cursor.lnum += new_rows - old_rows;
+    win->w_cursor.col += end_row_change_end - end_col;
+  } else {
+    // if cursor is inside replaced range
+    // and the new range got smaller,
+    // it's shifted to keep it inside the new range
+    //
+    // if cursor is before range or range did not
+    // got smaller, position is not changed
+
+    colnr_T old_coladd = win->w_cursor.coladd;
+
+    // it's easier to work with a single value here.
+    // col and coladd are fixed by a later call
+    // to check_cursor_col_win when necessary
+    win->w_cursor.col += win->w_cursor.coladd;
+    win->w_cursor.coladd = 0;
+
+    linenr_T new_end_row = start_row + new_rows - 1;
+
+    // make sure cursor row is in the new row range
+    if (win->w_cursor.lnum > new_end_row) {
+      win->w_cursor.lnum = new_end_row;
+
+      // don't simply move cursor up, but to the end
+      // of new_end_row, if it's not at or after
+      // it already (in case virtualedit is active)
+      // column might be additionally adjusted below
+      // to keep it inside col range if needed
+      colnr_T len = (colnr_T)strlen(ml_get_buf(win->w_buffer, new_end_row));
+      if (win->w_cursor.col < len) {
+        win->w_cursor.col = len;
+      }
+    }
+
+    // if cursor is at the last row and
+    // it wasn't after eol before, move it exactly
+    // to end_row_change_end
+    if (win->w_cursor.lnum == new_end_row
+        && win->w_cursor.col > end_row_change_end && old_coladd == 0) {
+      win->w_cursor.col = end_row_change_end;
+
+      // make sure cursor is inside range, not after it,
+      // except when doing so would move it before new range
+      if (win->w_cursor.col - mode_col_adj >= end_row_change_start) {
+        win->w_cursor.col -= mode_col_adj;
+      }
+    }
   }
-  // Convert the index to a vim line number
-  index++;
-  return index;
+
+  check_cursor_col_win(win);
+  changed_cline_bef_curs(win);
+  invalidate_botline(win);
 }
 
 /// Initialise a string array either:
@@ -1434,7 +1476,7 @@ bool buf_collect_lines(buf_T *buf, size_t n, linenr_T start, int start_idx, bool
       return false;
     }
 
-    char *bufstr = ml_get_buf(buf, lnum, false);
+    char *bufstr = ml_get_buf(buf, lnum);
     push_linestr(lstate, l, bufstr, strlen(bufstr), start_idx + (int)i, replace_nl);
   }
 

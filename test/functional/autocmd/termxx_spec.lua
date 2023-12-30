@@ -1,5 +1,6 @@
 local luv = require('luv')
 local helpers = require('test.functional.helpers')(after_each)
+local thelpers = require('test.functional.terminal.helpers')
 
 local clear, command, nvim, testprg =
   helpers.clear, helpers.command, helpers.nvim, helpers.testprg
@@ -8,6 +9,7 @@ local eval, eq, neq, retry =
 local matches = helpers.matches
 local ok = helpers.ok
 local feed = helpers.feed
+local meths = helpers.meths
 local pcall_err = helpers.pcall_err
 local assert_alive = helpers.assert_alive
 local skip = helpers.skip
@@ -19,7 +21,6 @@ describe('autocmd TermClose', function()
     nvim('set_option_value', 'shell', testprg('shell-test'), {})
     command('set shellcmdflag=EXE shellredir= shellpipe= shellquote= shellxquote=')
   end)
-
 
   local function test_termclose_delete_own_buf()
     -- The terminal process needs to keep running so that TermClose isn't triggered immediately.
@@ -101,12 +102,13 @@ describe('autocmd TermClose', function()
 
   it('reports the correct <abuf>', function()
     command('set hidden')
+    command('set shellcmdflag=EXE')
     command('autocmd TermClose * let g:abuf = expand("<abuf>")')
     command('edit foo')
     command('edit bar')
     eq(2, eval('bufnr("%")'))
 
-    command('terminal')
+    command('terminal ls')
     retry(nil, nil, function() eq(3, eval('bufnr("%")')) end)
 
     command('buffer 1')
@@ -146,19 +148,37 @@ it('autocmd TermEnter, TermLeave', function()
 
   -- TermLeave is also triggered by :quit.
   command('split foo')
+  feed('<Ignore>')  -- Add input to separate two RPC requests
   command('wincmd w')
   feed('i')
   command('q!')
-  eq(
-    {
-     {'TermOpen',  'n'},
-     {'TermEnter', 't'},
-     {'TermLeave', 'n'},
-     {'TermEnter', 't'},
-     {'TermLeave', 'n'},
-     {'TermEnter', 't'},
-     {'TermClose', 't'},
-     {'TermLeave', 'n'},
-    },
-    eval('g:evs'))
+  feed('<Ignore>')  -- Add input to separate two RPC requests
+  eq({
+    {'TermOpen',  'n'},
+    {'TermEnter', 't'},
+    {'TermLeave', 'n'},
+    {'TermEnter', 't'},
+    {'TermLeave', 'n'},
+    {'TermEnter', 't'},
+    {'TermClose', 't'},
+    {'TermLeave', 'n'},
+  }, eval('g:evs'))
+end)
+
+describe('autocmd TextChangedT', function()
+  clear()
+  local screen = thelpers.screen_setup()
+
+  it('works', function()
+    command('autocmd TextChangedT * ++once let g:called = 1')
+    thelpers.feed_data('a')
+    retry(nil, nil, function() eq(1, meths.get_var('called')) end)
+  end)
+
+  it('cannot delete terminal buffer', function()
+    command([[autocmd TextChangedT * call nvim_input('<CR>') | bwipe!]])
+    thelpers.feed_data('a')
+    screen:expect({any = 'E937: '})
+    matches('^E937: Attempt to delete a buffer that is in use: term://', meths.get_vvar('errmsg'))
+  end)
 end)

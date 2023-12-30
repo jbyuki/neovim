@@ -1,15 +1,18 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
+#include <assert.h>
 #include <stdbool.h>
 #include <string.h>
 
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/fileio.h"
+#include "nvim/globals.h"
 #include "nvim/memory.h"
 #include "nvim/os/os.h"
 #include "nvim/os/stdpaths_defs.h"
 #include "nvim/path.h"
+
+#ifdef INCLUDE_GENERATED_DECLARATIONS
+# include "os/stdpaths.c.generated.h"
+#endif
 
 /// Names of the environment variables, mapped to XDGVarType values
 static const char *xdg_env_vars[] = {
@@ -69,15 +72,23 @@ const char *get_appname(void)
   return env_val;
 }
 
-/// Ensure that APPNAME is valid. In particular, it cannot contain directory separators.
+/// Ensure that APPNAME is valid. Must be a name or relative path.
 bool appname_is_valid(void)
 {
   const char *appname = get_appname();
-  const size_t appname_len = strlen(appname);
-  for (size_t i = 0; i < appname_len; i++) {
-    if (appname[i] == PATHSEP) {
-      return false;
-    }
+  if (path_is_absolute(appname)
+      // TODO(justinmk): on Windows, path_is_absolute says "/" is NOT absolute. Should it?
+      || strequal(appname, "/")
+      || strequal(appname, "\\")
+      || strequal(appname, ".")
+      || strequal(appname, "..")
+#ifdef BACKSLASH_IN_FILENAME
+      || strstr(appname, "\\..") != NULL
+      || strstr(appname, "..\\") != NULL
+#endif
+      || strstr(appname, "/..") != NULL
+      || strstr(appname, "../") != NULL) {
+    return false;
   }
   return true;
 }
@@ -117,7 +128,7 @@ char *stdpaths_get_xdg_var(const XDGVarType idx)
       ret = "/tmp/";
     }
     size_t len = strlen(ret);
-    ret = xstrndup(ret, len >= 2 ? len - 1 : 0);  // Trim trailing slash.
+    ret = xmemdupz(ret, len >= 2 ? len - 1 : 0);  // Trim trailing slash.
   }
 
   return ret;

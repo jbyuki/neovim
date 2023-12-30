@@ -75,6 +75,7 @@ function(add_glob_target)
     list(APPEND ARG_FILES ${globfiles})
   endforeach()
 
+  list(APPEND ARG_EXCLUDE runtime/lua/vim/_meta) # only generated files, always ignore
   foreach(exclude_pattern ${ARG_EXCLUDE})
     list(FILTER ARG_FILES EXCLUDE REGEX ${exclude_pattern})
   endforeach()
@@ -162,8 +163,8 @@ endfunction()
 # cmake -B build
 # cmake --build build --config Release
 #
-# Passing CMAKE_BUILD_TYPE for multi-config generators will now not only
-# not be used, but also generate a warning for the user.
+# Passing CMAKE_BUILD_TYPE for multi-config generators will not only not be
+# used, but also generate a warning for the user.
 function(set_default_buildtype)
   set(allowableBuildTypes Debug Release MinSizeRel RelWithDebInfo)
 

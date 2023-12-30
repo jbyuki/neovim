@@ -1,5 +1,4 @@
-#ifndef NVIM_VIML_PARSER_PARSER_H
-#define NVIM_VIML_PARSER_PARSER_H
+#pragma once
 
 #include <assert.h>
 #include <stdbool.h>
@@ -8,7 +7,6 @@
 #include "klib/kvec.h"
 #include "nvim/func_attr.h"
 #include "nvim/mbyte.h"
-#include "nvim/mbyte_defs.h"
 #include "nvim/memory.h"
 
 /// One parsed line
@@ -227,5 +225,3 @@ static inline void viml_parser_highlight(ParserState *const pstate, const Parser
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "viml/parser/parser.h.generated.h"
 #endif
-
-#endif  // NVIM_VIML_PARSER_PARSER_H

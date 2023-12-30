@@ -1,10 +1,7 @@
-#ifndef NVIM_SHA256_H
-#define NVIM_SHA256_H
+#pragma once
 
-#include <stddef.h>
+#include <stddef.h>  // IWYU pragma: keep
 #include <stdint.h>
-
-#include "nvim/types.h"
 
 #define SHA256_BUFFER_SIZE 64
 #define SHA256_SUM_SIZE    32
@@ -18,4 +15,3 @@ typedef struct {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "sha256.h.generated.h"
 #endif
-#endif  // NVIM_SHA256_H

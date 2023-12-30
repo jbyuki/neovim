@@ -11,7 +11,9 @@ local meths = helpers.meths
 local funcs = helpers.funcs
 local curbufmeths = helpers.curbufmeths
 local command = helpers.command
+local eq = helpers.eq
 local assert_alive = helpers.assert_alive
+local pcall_err = helpers.pcall_err
 
 describe('decorations providers', function()
   local screen
@@ -37,6 +39,7 @@ describe('decorations providers', function()
       [15] = {special = Screen.colors.Blue, undercurl = true},
       [16] = {special = Screen.colors.Red, undercurl = true},
       [17] = {foreground = Screen.colors.Red},
+      [18] = {bold = true, foreground = Screen.colors.SeaGreen};
     }
   end)
 
@@ -102,7 +105,7 @@ describe('decorations providers', function()
     ]]}
     check_trace {
       { "start", 4 };
-      { "win", 1000, 1, 0, 8 };
+      { "win", 1000, 1, 0, 6 };
       { "line", 1000, 1, 0 };
       { "line", 1000, 1, 1 };
       { "line", 1000, 1, 2 };
@@ -127,7 +130,7 @@ describe('decorations providers', function()
     check_trace {
       { "start", 5 };
       { "buf", 1, 5 };
-      { "win", 1000, 1, 0, 8 };
+      { "win", 1000, 1, 0, 6 };
       { "line", 1000, 1, 6 };
       { "end", 5 };
     }
@@ -194,7 +197,7 @@ describe('decorations providers', function()
 
     check_trace {
       { "start", 5 };
-      { "win", 1000, 1, 0, 5 };
+      { "win", 1000, 1, 0, 3 };
       { "line", 1000, 1, 0 };
       { "line", 1000, 1, 1 };
       { "line", 1000, 1, 2 };
@@ -209,9 +212,7 @@ describe('decorations providers', function()
       {15:i} am not capitalized.                   |
       I am a {16:speling} {16:mistakke}.                |
                                               |
-      {1:~                                       }|
-      {1:~                                       }|
-      {1:~                                       }|
+      {1:~                                       }|*3
                                               |
     ]]}
 
@@ -224,9 +225,7 @@ describe('decorations providers', function()
       {15:^i} am not capitalized.                   |
       I am a {16:speling} {16:mistakke}.                |
                                               |
-      {1:~                                       }|
-      {1:~                                       }|
-      {1:~                                       }|
+      {1:~                                       }|*3
                                               |
     ]]}
 
@@ -239,9 +238,7 @@ describe('decorations providers', function()
       {15:i} am not capitalized.                   |
       I am a {16:^speling} {16:mistakke}.                |
                                               |
-      {1:~                                       }|
-      {1:~                                       }|
-      {1:~                                       }|
+      {1:~                                       }|*3
                                               |
     ]]}
 
@@ -254,9 +251,7 @@ describe('decorations providers', function()
       i am not capitalized.                   |
       I am a ^speling mistakke.                |
                                               |
-      {1:~                                       }|
-      {1:~                                       }|
-      {1:~                                       }|
+      {1:~                                       }|*3
                                               |
     ]]}
 
@@ -266,9 +261,7 @@ describe('decorations providers', function()
       i am not capitalized.                   |
       I am a ^speling mistakke.                |
                                               |
-      {1:~                                       }|
-      {1:~                                       }|
-      {1:~                                       }|
+      {1:~                                       }|*3
       {17:search hit BOTTOM, continuing at TOP}    |
     ]]}
     command('echo ""')
@@ -281,9 +274,7 @@ describe('decorations providers', function()
       {15:i} am not capitalized.                   |
       I am a {16:^speling} {16:mistakke}.                |
                                               |
-      {1:~                                       }|
-      {1:~                                       }|
-      {1:~                                       }|
+      {1:~                                       }|*3
                                               |
     ]]}
 
@@ -293,9 +284,7 @@ describe('decorations providers', function()
       {15:i} am not capitalized.                   |
       I am a {16:speling} {16:^mistakke}.                |
                                               |
-      {1:~                                       }|
-      {1:~                                       }|
-      {1:~                                       }|
+      {1:~                                       }|*3
                                               |
     ]]}
 
@@ -520,6 +509,72 @@ describe('decorations providers', function()
     ]]}
   end)
 
+  it('virtual text works with wrapped lines', function()
+    insert(mulholland)
+    feed('ggJj3JjJ')
+    setup_provider [[
+      local hl = api.nvim_get_hl_id_by_name "ErrorMsg"
+      local test_ns = api.nvim_create_namespace "mulholland"
+      function on_do(event, ...)
+        if event == "line" then
+          local win, buf, line = ...
+          api.nvim_buf_set_extmark(buf, test_ns, line, 0, {
+            virt_text = {{string.rep('/', line+1), 'ErrorMsg'}};
+            virt_text_pos='eol';
+            ephemeral = true;
+          })
+          api.nvim_buf_set_extmark(buf, test_ns, line, 6, {
+            virt_text = {{string.rep('*', line+1), 'ErrorMsg'}};
+            virt_text_pos='overlay';
+            ephemeral = true;
+          })
+          api.nvim_buf_set_extmark(buf, test_ns, line, 39, {
+            virt_text = {{string.rep('!', line+1), 'ErrorMsg'}};
+            virt_text_win_col=20;
+            ephemeral = true;
+          })
+          api.nvim_buf_set_extmark(buf, test_ns, line, 40, {
+            virt_text = {{string.rep('?', line+1), 'ErrorMsg'}};
+            virt_text_win_col=10;
+            ephemeral = true;
+          })
+          api.nvim_buf_set_extmark(buf, test_ns, line, 40, {
+            virt_text = {{string.rep(';', line+1), 'ErrorMsg'}};
+            virt_text_pos='overlay';
+            ephemeral = true;
+          })
+          api.nvim_buf_set_extmark(buf, test_ns, line, 40, {
+            virt_text = {{'+'}, {string.rep(' ', line+1), 'ErrorMsg'}};
+            virt_text_pos='right_align';
+            ephemeral = true;
+          })
+        end
+      end
+    ]]
+
+    screen:expect{grid=[[
+      // jus{2:*} to see if th{2:!}re was an accident |
+      {2:;}n Mulholl{2:?}nd Drive {2:/}                 +{2: }|
+      try_st{2:**}t(); bufref_{2:!!}save_buf; switch_b|
+      {2:;;}fer(&sav{2:??}buf, buf); {2://}            +{2:  }|
+      posp ={2:***}tmark(mark,{2:!!!}lse);^ restore_buf|
+      {2:;;;}(&save_{2:???});  {2:///}                +{2:   }|
+      {1:~                                       }|
+                                              |
+    ]]}
+    command('setlocal breakindent breakindentopt=shift:2')
+    screen:expect{grid=[[
+      // jus{2:*} to see if th{2:!}re was an accident |
+        {2:;}n Mulho{2:?}land Drive {2:/}               +{2: }|
+      try_st{2:**}t(); bufref_{2:!!}save_buf; switch_b|
+        {2:;;}fer(&s{2:??}e_buf, buf); {2://}          +{2:  }|
+      posp ={2:***}tmark(mark,{2:!!!}lse);^ restore_buf|
+        {2:;;;}(&sav{2:???}uf);  {2:///}              +{2:   }|
+      {1:~                                       }|
+                                              |
+    ]]}
+  end)
+
   it('can highlight beyond EOL', function()
     insert(mulholland)
     setup_provider [[
@@ -595,7 +650,7 @@ describe('decorations providers', function()
     ]])
   end)
 
-  it('does not allow removing extmarks during on_line callbacks', function()
+  it('does allow removing extmarks during on_line callbacks', function()
     exec_lua([[
       eok = true
     ]])
@@ -608,8 +663,40 @@ describe('decorations providers', function()
       end
     ]])
     exec_lua([[
-      assert(eok == false)
+      assert(eok == true)
     ]])
+  end)
+
+  it('errors gracefully', function()
+    insert(mulholland)
+
+    setup_provider [[
+    function on_do(...)
+      error "Foo"
+    end
+    ]]
+
+    screen:expect{grid=[[
+      {2:Error in decoration provider ns1.start:} |
+      {2:Error executing lua: [string "<nvim>"]:4}|
+      {2:: Foo}                                   |
+      {2:stack traceback:}                        |
+      {2:        [C]: in function 'error'}        |
+      {2:        [string "<nvim>"]:4: in function}|
+      {2: <[string "<nvim>"]:3>}                  |
+      {18:Press ENTER or type command to continue}^ |
+    ]]}
+  end)
+
+   it('can add new providers during redraw #26652', function()
+    setup_provider [[
+    local ns = api.nvim_create_namespace('test_no_add')
+    function on_do(...)
+      api.nvim_set_decoration_provider(ns, {})
+    end
+    ]]
+
+    helpers.assert_alive()
   end)
 end)
 
@@ -669,6 +756,14 @@ describe('extmark decorations', function()
       [33] = {foreground = Screen.colors.DarkBlue, background = Screen.colors.LightGray};
       [34] = {background = Screen.colors.Yellow};
       [35] = {background = Screen.colors.Yellow, bold = true, foreground = Screen.colors.Blue};
+      [36] = {foreground = Screen.colors.Blue1, bold = true, background = Screen.colors.Red};
+      [37] = {background = Screen.colors.WebGray, foreground = Screen.colors.DarkBlue};
+      [38] = {background = Screen.colors.LightBlue};
+      [39] = {foreground = Screen.colors.Blue1, background = Screen.colors.LightCyan1, bold = true};
+      [40] = {reverse = true};
+      [41] = {bold = true, reverse = true};
+      [42] = {undercurl = true, special = Screen.colors.Red};
+      [43] = {background = Screen.colors.Yellow, undercurl = true, special = Screen.colors.Red};
     }
 
     ns = meths.create_namespace 'test'
@@ -691,8 +786,7 @@ describe('extmark decorations', function()
               colpos = colpos+1              {25: }          |
           end                                {25: }          |
       end                                    {25: }          |
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*2
                                                         |
     ]])
     meths.buf_set_extmark(0, ns, 4, 0, { virt_text={{''}}, virt_text_pos='eol'})
@@ -731,8 +825,7 @@ describe('extmark decorations', function()
       {2:|}   {1:|}   cofoo{3:bar}{4:!!}olpos+1                         |
           end                                           |
       end                                               |
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*2
                                                         |
     ]]}
 
@@ -761,8 +854,7 @@ describe('extmark decorations', function()
       s+1                   |
           end               |
       end                   |
-      {1:~                     }|
-      {1:~                     }|
+      {1:~                     }|*2
                             |
     ]]}
 
@@ -796,8 +888,7 @@ describe('extmark decorations', function()
       s+1                   |
           end  -- ???????{4:口 }|
       end  -- {4:口口} 古古{4:口口 }|
-      {1:~                     }|
-      {1:~                     }|
+      {1:~                     }|*2
                             |
     ]]}
 
@@ -833,6 +924,104 @@ describe('extmark decorations', function()
           end  -- ??????????                                                            |
       end  -- ?古古古古?古古                                                            |
                                                                                         |
+    ]]}
+  end)
+
+  it('overlay virtual text works with wrapped lines #25158', function()
+    screen:try_resize(50, 6)
+    insert(('ab'):rep(100))
+    for i = 0, 9 do
+      meths.buf_set_extmark(0, ns, 0, 42 + i, { virt_text={{tostring(i), 'ErrorMsg'}}, virt_text_pos='overlay'})
+      meths.buf_set_extmark(0, ns, 0, 91 + i, { virt_text={{tostring(i), 'ErrorMsg'}}, virt_text_pos='overlay', virt_text_hide=true})
+    end
+    screen:expect{grid=[[
+      ababababababababababababababababababababab{4:01234567}|
+      {4:89}abababababababababababababababababababa{4:012345678}|
+      {4:9}babababababababababababababababababababababababab|
+      ababababababababababababababababababababababababa^b|
+      {1:~                                                 }|
+                                                        |
+    ]]}
+
+    command('set showbreak=++')
+    screen:expect{grid=[[
+      ababababababababababababababababababababab{4:01234567}|
+      {1:++}{4:89}abababababababababababababababababababa{4:0123456}|
+      {1:++}{4:789}babababababababababababababababababababababab|
+      {1:++}abababababababababababababababababababababababab|
+      {1:++}ababa^b                                          |
+                                                        |
+    ]]}
+
+    feed('2gkvg0')
+    screen:expect{grid=[[
+      ababababababababababababababababababababab{4:01234567}|
+      {1:++}{4:89}abababababababababababababababababababa{4:0123456}|
+      {1:++}^a{18:babab}ababababababababababababababababababababab|
+      {1:++}abababababababababababababababababababababababab|
+      {1:++}ababab                                          |
+      {24:-- VISUAL --}                                      |
+    ]]}
+
+    feed('o')
+    screen:expect{grid=[[
+      ababababababababababababababababababababab{4:01234567}|
+      {1:++}{4:89}abababababababababababababababababababa{4:0123456}|
+      {1:++}{18:ababa}^bababababababababababababababababababababab|
+      {1:++}abababababababababababababababababababababababab|
+      {1:++}ababab                                          |
+      {24:-- VISUAL --}                                      |
+    ]]}
+
+    feed('gk')
+    screen:expect{grid=[[
+      ababababababababababababababababababababab{4:01234567}|
+      {1:++}{4:89}aba^b{18:ababababababababababababababababababababab}|
+      {1:++}{18:a}{4:89}babababababababababababababababababababababab|
+      {1:++}abababababababababababababababababababababababab|
+      {1:++}ababab                                          |
+      {24:-- VISUAL --}                                      |
+    ]]}
+
+    feed('o')
+    screen:expect{grid=[[
+      ababababababababababababababababababababab{4:01234567}|
+      {1:++}{4:89}aba{18:bababababababababababababababababababababab}|
+      {1:++}^a{4:89}babababababababababababababababababababababab|
+      {1:++}abababababababababababababababababababababababab|
+      {1:++}ababab                                          |
+      {24:-- VISUAL --}                                      |
+    ]]}
+
+    feed('<Esc>$')
+    command('set number showbreak=')
+    screen:expect{grid=[[
+      {2:  1 }ababababababababababababababababababababab{4:0123}|
+      {2:    }{4:456789}abababababababababababababababababababa{4:0}|
+      {2:    }{4:123456789}babababababababababababababababababab|
+      {2:    }ababababababababababababababababababababababab|
+      {2:    }abababababababa^b                              |
+                                                        |
+    ]]}
+
+    command('set cpoptions+=n')
+    screen:expect{grid=[[
+      {2:  1 }ababababababababababababababababababababab{4:0123}|
+      {4:456789}abababababababababababababababababababa{4:01234}|
+      {4:56789}babababababababababababababababababababababab|
+      ababababababababababababababababababababababababab|
+      aba^b                                              |
+                                                        |
+    ]]}
+
+    feed('0g$hi<Tab>')
+    screen:expect{grid=[[
+      {2:  1 }ababababababababababababababababababababab{4:01}  |
+        {4:^23456789}abababababababababababababababababababa{4:0}|
+      {4:123456789}babababababababababababababababababababab|
+      ababababababababababababababababababababababababab|
+      abababab                                          |
+      {24:-- INSERT --}                                      |
     ]]}
   end)
 
@@ -931,8 +1120,7 @@ describe('extmark decorations', function()
               colpos {5:=} colpos{5:+}{13:1}                         |
           {5:end}                                           |
       {5:end}                                               |
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*2
                                                         |
     ]]}
 
@@ -958,8 +1146,7 @@ describe('extmark decorations', function()
               colpos {5:=} colpos{5:+}{13:1}                         |
           {5:end}                                           |
       {5:end}                                               |
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*2
                                                         |
     ]]}
 
@@ -977,8 +1164,7 @@ describe('extmark decorations', function()
               colpos {5:=} colpos{5:+}{13:1}                         |
           {5:end}                                           |
       {5:end}                                               |
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*2
       {24:-- VISUAL LINE --}                                 |
     ]]}
 
@@ -996,8 +1182,7 @@ describe('extmark decorations', function()
               colpos {5:=} colpos{5:+}{13:1}                         |
           {5:end}                                           |
       {5:end}                                               |
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*2
       {24:-- VISUAL LINE --}                                 |
     ]]}
   end)
@@ -1005,12 +1190,12 @@ describe('extmark decorations', function()
   it('can have virtual text of right_align and fixed win_col position', function()
     insert(example_text)
     feed 'gg'
-    meths.buf_set_extmark(0, ns, 1, 0, { virt_text={{'Very', 'ErrorMsg'}},   virt_text_win_col=31, hl_mode='blend'})
+    meths.buf_set_extmark(0, ns, 1, 0, { virt_text={{'Very', 'ErrorMsg'}}, virt_text_win_col=31, hl_mode='blend'})
     meths.buf_set_extmark(0, ns, 1, 0, { virt_text={{'VERY', 'ErrorMsg'}}, virt_text_pos='right_align', hl_mode='blend'})
-    meths.buf_set_extmark(0, ns, 2, 10, { virt_text={{'Much', 'ErrorMsg'}},   virt_text_win_col=31, hl_mode='blend'})
+    meths.buf_set_extmark(0, ns, 2, 10, { virt_text={{'Much', 'ErrorMsg'}}, virt_text_win_col=31, hl_mode='blend'})
     meths.buf_set_extmark(0, ns, 2, 10, { virt_text={{'MUCH', 'ErrorMsg'}}, virt_text_pos='right_align', hl_mode='blend'})
-    meths.buf_set_extmark(0, ns, 3, 15, { virt_text={{'Error', 'ErrorMsg'}}, virt_text_win_col=31, hl_mode='blend'})
-    meths.buf_set_extmark(0, ns, 3, 15, { virt_text={{'ERROR', 'ErrorMsg'}}, virt_text_pos='right_align', hl_mode='blend'})
+    meths.buf_set_extmark(0, ns, 3, 14, { virt_text={{'Error', 'ErrorMsg'}}, virt_text_win_col=31, hl_mode='blend'})
+    meths.buf_set_extmark(0, ns, 3, 14, { virt_text={{'ERROR', 'ErrorMsg'}}, virt_text_pos='right_align', hl_mode='blend'})
     meths.buf_set_extmark(0, ns, 7, 21, { virt_text={{'-', 'NonText'}}, virt_text_win_col=4, hl_mode='blend'})
     meths.buf_set_extmark(0, ns, 7, 21, { virt_text={{'-', 'NonText'}}, virt_text_pos='right_align', hl_mode='blend'})
     -- empty virt_text should not change anything
@@ -1030,8 +1215,7 @@ describe('extmark decorations', function()
               colpos = colpos+1                         |
           end                                           |
       end                                               |
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*2
                                                         |
     ]]}
 
@@ -1068,8 +1252,7 @@ describe('extmark decorations', function()
               colpos = colpos+1                         |
           end                                           |
       end                                               |
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*2
       :                                                 |
     ]]}
 
@@ -1111,6 +1294,25 @@ describe('extmark decorations', function()
                                                         |
     ]]}
 
+    meths.buf_set_extmark(0, ns, 4, 50, { virt_text={{'EOL', 'NonText'}} })
+    screen:expect{grid=[[
+      for _,item in ipairs(items) do                    |
+          local text, hl_id_cell, cou{4:Very} unpack(ite{4:VERY}|
+          if                                            |
+      hl_id_cell ~= nil then         {4:Much}           {4:MUCH}|
+              --^ -- -- -- -- -- -- --{4:Error}- -- hl_i{4:ERROR}|
+      l_id_cell {1:EOL}                                     |
+          end                                           |
+          for _ = 1, (count or 1) do                    |
+              local cell = line[colpos]                 |
+          {1:-}   cell.text = text                         {1:-}|
+              cell.hl_id = hl_id                        |
+              colpos = colpos+1                         |
+          end                                           |
+      end                                               |
+                                                        |
+    ]]}
+
     feed '.'
     screen:expect{grid=[[
       for _,item in ipairs(items) do                    |
@@ -1118,7 +1320,7 @@ describe('extmark decorations', function()
           if                                            |
       hl_id_cell ~= nil then         {4:Much}           {4:MUCH}|
               --^ -- -- -- -- -- -- -- -- -- -- -- hl_id |
-      = hl_id_cell                   {4:Error}         {4:ERROR}|
+      = hl_id_cell {1:EOL}               {4:Error}         {4:ERROR}|
           end                                           |
           for _ = 1, (count or 1) do                    |
               local cell = line[colpos]                 |
@@ -1130,43 +1332,136 @@ describe('extmark decorations', function()
                                                         |
     ]]}
 
-    command 'set nowrap'
+    command 'set number'
     screen:expect{grid=[[
-      for _,item in ipairs(items) do                    |
-          local text, hl_id_cell, cou{4:Very} unpack(ite{4:VERY}|
-          if                                            |
-      hl_id_cell ~= nil then         {4:Much}           {4:MUCH}|
-              --^ -- -- -- -- -- -- --{4:Error}- -- -- h{4:ERROR}|
-          end                                           |
-          for _ = 1, (count or 1) do                    |
-              local cell = line[colpos]                 |
-          {1:-}   cell.text = text                         {1:-}|
-              cell.hl_id = hl_id                        |
-              colpos = colpos+1                         |
-          end                                           |
-      end                                               |
+      {2:  1 }for _,item in ipairs(items) do                |
+      {2:  2 }    local text, hl_id_cell, cou{4:Very} unpack{4:VERY}|
+      {2:    }m)                                            |
+      {2:  3 }    if                                        |
+      {2:  4 }hl_id_cell ~= nil then         {4:Much}       {4:MUCH}|
+      {2:  5 }        --^ -- -- -- -- -- -- -- -- -- -- -- hl|
+      {2:    }_id = hl_id_cell {1:EOL}           {4:Error}     {4:ERROR}|
+      {2:  6 }    end                                       |
+      {2:  7 }    for _ = 1, (count or 1) do                |
+      {2:  8 }        local cell = line[colpos]             |
+      {2:  9 }    {1:-}   cell.text = text                     {1:-}|
+      {2: 10 }        cell.hl_id = hl_id                    |
+      {2: 11 }        colpos = colpos+1                     |
+      {2: 12 }    end                                       |
+                                                        |
+    ]]}
+
+    command 'set cpoptions+=n'
+    screen:expect{grid=[[
+      {2:  1 }for _,item in ipairs(items) do                |
+      {2:  2 }    local text, hl_id_cell, cou{4:Very} unpack{4:VERY}|
+      m)                                                |
+      {2:  3 }    if                                        |
+      {2:  4 }hl_id_cell ~= nil then         {4:Much}       {4:MUCH}|
+      {2:  5 }        --^ -- -- -- -- -- -- -- -- -- -- -- hl|
+      _id = hl_id_cell {1:EOL}           {4:Error}         {4:ERROR}|
+      {2:  6 }    end                                       |
+      {2:  7 }    for _ = 1, (count or 1) do                |
+      {2:  8 }        local cell = line[colpos]             |
+      {2:  9 }    {1:-}   cell.text = text                     {1:-}|
+      {2: 10 }        cell.hl_id = hl_id                    |
+      {2: 11 }        colpos = colpos+1                     |
+      {2: 12 }    end                                       |
+                                                        |
+    ]]}
+
+    command 'set cpoptions-=n nowrap'
+    screen:expect{grid=[[
+      {2:  1 }for _,item in ipairs(items) do                |
+      {2:  2 }    local text, hl_id_cell, cou{4:Very} unpack{4:VERY}|
+      {2:  3 }    if                                        |
+      {2:  4 }hl_id_cell ~= nil then         {4:Much}       {4:MUCH}|
+      {2:  5 }        --^ -- -- -- -- -- -- --{4:Error}- -- {4:ERROR}|
+      {2:  6 }    end                                       |
+      {2:  7 }    for _ = 1, (count or 1) do                |
+      {2:  8 }        local cell = line[colpos]             |
+      {2:  9 }    {1:-}   cell.text = text                     {1:-}|
+      {2: 10 }        cell.hl_id = hl_id                    |
+      {2: 11 }        colpos = colpos+1                     |
+      {2: 12 }    end                                       |
+      {2: 13 }end                                           |
       {1:~                                                 }|
                                                         |
     ]]}
 
-    feed('8zl')
+    feed '12zl'
     screen:expect{grid=[[
-      em in ipairs(items) do                            |
-      l text, hl_id_cell, count = unp{4:Very}item)      {4:VERY}|
-                                                        |
-      ll ~= nil then                 {4:Much}           {4:MUCH}|
-      --^ -- -- -- -- -- -- -- -- -- -{4:Error}hl_id = h{4:ERROR}|
-                                                        |
-      _ = 1, (count or 1) do                            |
-      local cell = line[colpos]                         |
-      cell{1:-}text = text                                 {1:-}|
-      cell.hl_id = hl_id                                |
-      colpos = colpos+1                                 |
-                                                        |
-                                                        |
+      {2:  1 }n ipairs(items) do                            |
+      {2:  2 }xt, hl_id_cell, count = unpack({4:Very})      {4:VERY}|
+      {2:  3 }                                              |
+      {2:  4 }= nil then                     {4:Much}       {4:MUCH}|
+      {2:  5 }^- -- -- -- -- -- -- -- -- -- --{4:Error}d = h{4:ERROR}|
+      {2:  6 }                                              |
+      {2:  7 }1, (count or 1) do                            |
+      {2:  8 }l cell = line[colpos]                         |
+      {2:  9 }.tex{1:-} = text                                 {1:-}|
+      {2: 10 }.hl_id = hl_id                                |
+      {2: 11 }os = colpos+1                                 |
+      {2: 12 }                                              |
+      {2: 13 }                                              |
       {1:~                                                 }|
                                                         |
     ]]}
+
+    feed('fhi<Tab>')
+    screen:expect{grid=[[
+      {2:  1 }n ipairs(items) do                            |
+      {2:  2 }xt, hl_id_cell, count = unpack({4:Very})      {4:VERY}|
+      {2:  3 }                                              |
+      {2:  4 }= nil then                     {4:Much}       {4:MUCH}|
+      {2:  5 }- -- -- -- -- -- -- -- -- -- --{4:Error}^hl_id{4:ERROR}|
+      {2:  6 }                                              |
+      {2:  7 }1, (count or 1) do                            |
+      {2:  8 }l cell = line[colpos]                         |
+      {2:  9 }.tex{1:-} = text                                 {1:-}|
+      {2: 10 }.hl_id = hl_id                                |
+      {2: 11 }os = colpos+1                                 |
+      {2: 12 }                                              |
+      {2: 13 }                                              |
+      {1:~                                                 }|
+      {24:-- INSERT --}                                      |
+    ]]}
+
+    feed('<Esc>0')
+    screen:expect{grid=[[
+      {2:  1 }for _,item in ipairs(items) do                |
+      {2:  2 }    local text, hl_id_cell, cou{4:Very} unpack{4:VERY}|
+      {2:  3 }    if                                        |
+      {2:  4 }hl_id_cell ~= nil then         {4:Much}       {4:MUCH}|
+      {2:  5 }^        -- -- -- -- -- -- -- --{4:Error}- -- {4:ERROR}|
+      {2:  6 }    end                                       |
+      {2:  7 }    for _ = 1, (count or 1) do                |
+      {2:  8 }        local cell = line[colpos]             |
+      {2:  9 }    {1:-}   cell.text = text                     {1:-}|
+      {2: 10 }        cell.hl_id = hl_id                    |
+      {2: 11 }        colpos = colpos+1                     |
+      {2: 12 }    end                                       |
+      {2: 13 }end                                           |
+      {1:~                                                 }|
+                                                        |
+    ]]}
+  end)
+
+  it('virtual text win_col out of window does not break display #25645', function()
+    screen:try_resize(51, 6)
+    command('vnew')
+    meths.buf_set_lines(0, 0, -1, false, { string.rep('a', 50) })
+    screen:expect{grid=[[
+      ^aaaaaaaaaaaaaaaaaaaaaaaaa│                         |
+      aaaaaaaaaaaaaaaaaaaaaaaaa│{1:~                        }|
+      {1:~                        }│{1:~                        }|*2
+      {41:[No Name] [+]             }{40:[No Name]                }|
+                                                         |
+    ]]}
+    local extmark_opts = { virt_text_win_col = 35, virt_text = { { ' ', 'Comment' } } }
+    meths.buf_set_extmark(0, ns, 0, 0, extmark_opts)
+    screen:expect_unchanged()
+    assert_alive()
   end)
 
   it('can have virtual text on folded line', function()
@@ -1175,20 +1470,21 @@ describe('extmark decorations', function()
       22222
       33333]])
     command('1,2fold')
-    command('set nowrap')
     screen:try_resize(50, 3)
     feed('zb')
     -- XXX: the behavior of overlay virtual text at non-zero column is strange:
     -- 1. With 'wrap' it is never shown.
     -- 2. With 'nowrap' it is shown only if the extmark is hidden before leftcol.
     meths.buf_set_extmark(0, ns, 0, 0, { virt_text = {{'AA', 'Underlined'}}, hl_mode = 'combine', virt_text_pos = 'overlay' })
-    meths.buf_set_extmark(0, ns, 0, 1, { virt_text = {{'BB', 'Underlined'}}, hl_mode = 'combine', virt_text_win_col = 10 })
+    meths.buf_set_extmark(0, ns, 0, 5, { virt_text = {{'BB', 'Underlined'}}, hl_mode = 'combine', virt_text_win_col = 10 })
     meths.buf_set_extmark(0, ns, 0, 2, { virt_text = {{'CC', 'Underlined'}}, hl_mode = 'combine', virt_text_pos = 'right_align' })
     screen:expect{grid=[[
       {29:AA}{33:-  2 lin}{29:BB}{33:: 11111·····························}{29:CC}|
       3333^3                                             |
                                                         |
     ]]}
+    command('set nowrap')
+    screen:expect_unchanged()
     feed('zl')
     screen:expect{grid=[[
       {29:AA}{33:-  2 lin}{29:BB}{33:: 11111·····························}{29:CC}|
@@ -1209,7 +1505,41 @@ describe('extmark decorations', function()
     ]]}
   end)
 
+  it('virtual text works below diff filler lines', function()
+    screen:try_resize(53, 8)
+    insert([[
+      aaaaa
+      bbbbb
+      ccccc
+      ddddd
+      eeeee]])
+    command('rightbelow vnew')
+    insert([[
+      bbbbb
+      ccccc
+      ddddd
+      eeeee]])
+    command('windo diffthis')
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = {{'AA', 'Underlined'}}, virt_text_pos = 'overlay' })
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = {{'BB', 'Underlined'}}, virt_text_win_col = 10 })
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = {{'CC', 'Underlined'}}, virt_text_pos = 'right_align' })
+    screen:expect{grid=[[
+      {37:  }{38:aaaaa                   }│{37:  }{39:------------------------}|
+      {37:  }bbbbb                   │{37:  }{28:AA}bbb     {28:BB}          {28:CC}|
+      {37:  }ccccc                   │{37:  }ccccc                   |
+      {37:  }ddddd                   │{37:  }ddddd                   |
+      {37:  }eeeee                   │{37:  }eeee^e                   |
+      {1:~                         }│{1:~                         }|
+      {40:[No Name] [+]              }{41:[No Name] [+]             }|
+                                                           |
+    ]]}
+    command('windo set wrap')
+    screen:expect_unchanged()
+  end)
+
   it('can have virtual text which combines foreground and background groups', function()
+    screen:try_resize(20, 5)
+
     screen:set_default_attr_ids {
       [1] = {bold=true, foreground=Screen.colors.Blue};
       [2] = {background = tonumber('0x123456'), foreground = tonumber('0xbbbbbb')};
@@ -1227,30 +1557,23 @@ describe('extmark decorations', function()
       hi VeryBold gui=bold
     ]]
 
-    meths.buf_set_extmark(0, ns, 0, 0, { virt_text={
+    insert('##')
+    local vt = {
       {'a', {'BgOne', 'FgEin'}};
       {'b', {'BgOne', 'FgZwei'}};
       {'c', {'BgTwo', 'FgEin'}};
       {'d', {'BgTwo', 'FgZwei'}};
       {'X', {'BgTwo', 'FgZwei', 'VeryBold'}};
-    }})
-
+    }
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = vt, virt_text_pos = 'eol' })
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = vt, virt_text_pos = 'right_align' })
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = vt, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_lines = { vt, vt } })
     screen:expect{grid=[[
-      ^ {2:a}{3:b}{4:c}{5:d}{6:X}                                            |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-                                                        |
+      {2:a}{3:b}{4:c}{5:d}{6:X}#^# {2:a}{3:b}{4:c}{5:d}{6:X}  {2:a}{3:b}{4:c}{5:d}{6:X}|
+      {2:a}{3:b}{4:c}{5:d}{6:X}               |*2
+      {1:~                   }|
+                          |
     ]]}
   end)
 
@@ -1261,19 +1584,7 @@ describe('extmark decorations', function()
     ]]
     screen:expect{grid=[[
       ^ a                                                |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*13
                                                         |
     ]]}
 
@@ -1283,36 +1594,72 @@ describe('extmark decorations', function()
     ]]
     screen:expect{grid=[[
       ^                                                  |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*13
                                                         |
     ]]}
     assert_alive()
   end)
 
-  it('conceal #19007', function()
+  it('conceal with conceal char #19007', function()
     screen:try_resize(50, 5)
     insert('foo\n')
-    command('let &conceallevel=2')
     meths.buf_set_extmark(0, ns, 0, 0, {end_col=0, end_row=2, conceal='X'})
+    command('set conceallevel=2')
     screen:expect([[
-        {26:X}                                                 |
-        ^                                                  |
-        {1:~                                                 }|
-        {1:~                                                 }|
-                                                          |
-      ]])
+      {26:X}                                                 |
+      ^                                                  |
+      {1:~                                                 }|*2
+                                                        |
+    ]])
+    command('set conceallevel=1')
+    screen:expect_unchanged()
+
+    eq("conceal char has to be printable", pcall_err(meths.buf_set_extmark, 0, ns, 0, 0, {end_col=0, end_row=2, conceal='\255'}))
+  end)
+
+  it('conceal with composed conceal char', function()
+    screen:try_resize(50, 5)
+    insert('foo\n')
+    meths.buf_set_extmark(0, ns, 0, 0, {end_col=0, end_row=2, conceal='ẍ̲'})
+    command('set conceallevel=2')
+    screen:expect([[
+      {26:ẍ̲}                                                 |
+      ^                                                  |
+      {1:~                                                 }|*2
+                                                        |
+    ]])
+    command('set conceallevel=1')
+    screen:expect_unchanged()
+
+    -- this is rare, but could happen. Save at least the first codepoint
+    meths._invalidate_glyph_cache()
+    screen:expect{grid=[[
+      {26:x}                                                 |
+      ^                                                  |
+      {1:~                                                 }|*2
+                                                        |
+    ]]}
+  end)
+
+  it('conceal without conceal char #24782', function()
+    screen:try_resize(50, 5)
+    insert('foobar\n')
+    meths.buf_set_extmark(0, ns, 0, 0, {end_col=3, conceal=''})
+    command('set listchars=conceal:?')
+    command('let &conceallevel=1')
+    screen:expect([[
+      {26:?}bar                                              |
+      ^                                                  |
+      {1:~                                                 }|*2
+                                                        |
+    ]])
+    command('let &conceallevel=2')
+    screen:expect([[
+      bar                                               |
+      ^                                                  |
+      {1:~                                                 }|*2
+                                                        |
+    ]])
   end)
 
   it('conceal works just before truncated double-width char #21486', function()
@@ -1365,19 +1712,10 @@ describe('extmark decorations', function()
 
     screen:expect{grid=[[
       {27: }                                                 |
-      XXX                                               |
-      XXX                                               |
+      XXX                                               |*2
       ^XXX HELLO                                         |
-      XXX                                               |
-      XXX                                               |
-      XXX                                               |
-      XXX                                               |
-      XXX                                               |
-      XXX                                               |
-      XXX                                               |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+      XXX                                               |*7
+      {1:~                                                 }|*3
                                                         |
     ]]}
 
@@ -1434,30 +1772,36 @@ describe('extmark decorations', function()
     ]])
 
     -- When only one highlight group has an underline attribute, it should always take effect.
-    meths.buf_clear_namespace(0, ns, 0, -1)
-    meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUL', priority = 20 })
-    meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestBold', priority = 30 })
-    screen:expect([[
-      {1:aaa}{5:bbb}{1:aa^a}                                         |
-      {0:~                                                 }|
-                                                        |
-    ]])
-    meths.buf_clear_namespace(0, ns, 0, -1)
-    meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUL', priority = 30 })
-    meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestBold', priority = 20 })
-    screen:expect_unchanged(true)
-    meths.buf_clear_namespace(0, ns, 0, -1)
-    meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUC', priority = 20 })
-    meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestBold', priority = 30 })
-    screen:expect([[
-      {2:aaa}{6:bbb}{2:aa^a}                                         |
-      {0:~                                                 }|
-                                                        |
-    ]])
-    meths.buf_clear_namespace(0, ns, 0, -1)
-    meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUC', priority = 30 })
-    meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestBold', priority = 20 })
-    screen:expect_unchanged(true)
+    for _, d in ipairs({-5, 5}) do
+      meths.buf_clear_namespace(0, ns, 0, -1)
+      screen:expect([[
+        aaabbbaa^a                                         |
+        {0:~                                                 }|
+                                                          |
+      ]])
+      meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUL', priority = 25 + d })
+      meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestBold', priority = 25 - d })
+      screen:expect([[
+        {1:aaa}{5:bbb}{1:aa^a}                                         |
+        {0:~                                                 }|
+                                                          |
+      ]])
+    end
+    for _, d in ipairs({-5, 5}) do
+      meths.buf_clear_namespace(0, ns, 0, -1)
+      screen:expect([[
+        aaabbbaa^a                                         |
+        {0:~                                                 }|
+                                                          |
+      ]])
+      meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUC', priority = 25 + d })
+      meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestBold', priority = 25 - d })
+      screen:expect([[
+        {2:aaa}{6:bbb}{2:aa^a}                                         |
+        {0:~                                                 }|
+                                                          |
+      ]])
+    end
   end)
 
   it('highlight is combined with syntax and sign linehl #20004', function()
@@ -1547,25 +1891,253 @@ describe('extmark decorations', function()
     meths.buf_set_extmark(0, ns, 0, 0, {end_row = 5, end_col = 0, hl_group = 'Underlined'})
     screen:expect([[
       {28:^asdf}                                              |
-      {28:        asdf}                                      |
-      {28:        asdf}                                      |
-      {28:        asdf}                                      |
+      {28:        asdf}                                      |*3
       {28:asdf}                                              |
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*2
                                                         |
     ]])
     feed('<C-V>Gll')
     screen:expect([[
       {29:asd}{28:f}                                              |
-      {29:   }{28:     asdf}                                      |
-      {29:   }{28:     asdf}                                      |
-      {29:   }{28:     asdf}                                      |
+      {29:   }{28:     asdf}                                      |*3
       {29:as}{28:^df}                                              |
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*2
       {24:-- VISUAL BLOCK --}                                |
     ]])
+  end)
+
+  it('highlight works properly with multibyte text and spell #26771', function()
+    insert('口口\n')
+    screen:try_resize(50, 3)
+    meths.buf_set_extmark(0, ns, 0, 0, { end_col = 3, hl_group = 'Search' })
+    screen:expect([[
+      {34:口}口                                              |
+      ^                                                  |
+                                                        |
+    ]])
+    command('setlocal spell')
+    screen:expect([[
+      {43:口}{42:口}                                              |
+      ^                                                  |
+                                                        |
+    ]])
+  end)
+
+  it('supports multiline highlights', function()
+    insert(example_text)
+    feed 'gg'
+    for _,i in ipairs {1,2,3,5,6,7} do
+      for _,j in ipairs {2,5,10,15} do
+        meths.buf_set_extmark(0, ns, i, j, { end_col=j+2, hl_group = 'NonText'})
+      end
+    end
+    screen:expect{grid=[[
+      ^for _,item in ipairs(items) do                    |
+        {1:  }l{1:oc}al {1:te}xt,{1: h}l_id_cell, count = unpack(item)  |
+        {1:  }i{1:f }hl_{1:id}_ce{1:ll} ~= nil then                     |
+        {1:  } {1:  } hl{1:_i}d ={1: h}l_id_cell                        |
+          end                                           |
+        {1:  }f{1:or} _ {1:= }1, {1:(c}ount or 1) do                    |
+        {1:  } {1:  } lo{1:ca}l c{1:el}l = line[colpos]                 |
+        {1:  } {1:  } ce{1:ll}.te{1:xt} = text                          |
+              cell.hl_id = hl_id                        |
+              colpos = colpos+1                         |
+          end                                           |
+      end                                               |
+      {1:~                                                 }|*2
+                                                        |
+    ]]}
+    feed'5<c-e>'
+    screen:expect{grid=[[
+      ^  {1:  }f{1:or} _ {1:= }1, {1:(c}ount or 1) do                    |
+        {1:  } {1:  } lo{1:ca}l c{1:el}l = line[colpos]                 |
+        {1:  } {1:  } ce{1:ll}.te{1:xt} = text                          |
+              cell.hl_id = hl_id                        |
+              colpos = colpos+1                         |
+          end                                           |
+      end                                               |
+      {1:~                                                 }|*7
+                                                        |
+    ]]}
+
+    meths.buf_set_extmark(0, ns, 1, 0, { end_line=8, end_col=10, hl_group = 'ErrorMsg'})
+    screen:expect{grid=[[
+      {4:^  }{36:  }{4:f}{36:or}{4: _ }{36:= }{4:1, }{36:(c}{4:ount or 1) do}                    |
+      {4:  }{36:  }{4: }{36:  }{4: lo}{36:ca}{4:l c}{36:el}{4:l = line[colpos]}                 |
+      {4:  }{36:  }{4: }{36:  }{4: ce}{36:ll}{4:.te}{36:xt}{4: = text}                          |
+      {4:        ce}ll.hl_id = hl_id                        |
+              colpos = colpos+1                         |
+          end                                           |
+      end                                               |
+      {1:~                                                 }|*7
+                                                        |
+    ]]}
+  end)
+
+  local function with_undo_restore(val)
+    screen:try_resize(50, 5)
+    insert(example_text)
+    feed'gg'
+    meths.buf_set_extmark(0, ns, 0, 6, { end_col=13, hl_group = 'NonText', undo_restore=val})
+    screen:expect{grid=[[
+      ^for _,{1:item in} ipairs(items) do                    |
+          local text, hl_id_cell, count = unpack(item)  |
+          if hl_id_cell ~= nil then                     |
+              hl_id = hl_id_cell                        |
+                                                        |
+    ]]}
+
+    meths.buf_set_text(0, 0, 4, 0, 8, {''})
+    screen:expect{grid=[[
+      ^for {1:em in} ipairs(items) do                        |
+          local text, hl_id_cell, count = unpack(item)  |
+          if hl_id_cell ~= nil then                     |
+              hl_id = hl_id_cell                        |
+                                                        |
+    ]]}
+  end
+
+  it("highlights do reapply to restored text after delete", function()
+    with_undo_restore(true) -- also default behavior
+
+    command('silent undo')
+    screen:expect{grid=[[
+      ^for _,{1:item in} ipairs(items) do                    |
+          local text, hl_id_cell, count = unpack(item)  |
+          if hl_id_cell ~= nil then                     |
+              hl_id = hl_id_cell                        |
+                                                        |
+    ]]}
+  end)
+
+  it("highlights don't reapply to restored text after delete with undo_restore=false", function()
+    with_undo_restore(false)
+
+    command('silent undo')
+    screen:expect{grid=[[
+      ^for _,it{1:em in} ipairs(items) do                    |
+          local text, hl_id_cell, count = unpack(item)  |
+          if hl_id_cell ~= nil then                     |
+              hl_id = hl_id_cell                        |
+                                                        |
+    ]]}
+
+    eq({ { 1, 0, 8, { end_col = 13, end_right_gravity = false, end_row = 0,
+                       hl_eol = false, hl_group = "NonText", undo_restore = false,
+                       ns_id = 1, priority = 4096, right_gravity = true } } },
+       meths.buf_get_extmarks(0, ns, {0,0}, {0, -1}, {details=true}))
+  end)
+
+  it('virtual text works with rightleft', function()
+    screen:try_resize(50, 3)
+    insert('abcdefghijklmn')
+    feed('0')
+    command('set rightleft')
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = {{'EOL', 'Underlined'}}})
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = {{'right_align', 'Underlined'}}, virt_text_pos = 'right_align' })
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = {{'win_col', 'Underlined'}}, virt_text_win_col = 20 })
+    meths.buf_set_extmark(0, ns, 0, 2, { virt_text = {{'overlayed', 'Underlined'}}, virt_text_pos = 'overlay' })
+    screen:expect{grid=[[
+      {28:ngila_thgir}            {28:loc_niw}  {28:LOE} nml{28:deyalrevo}b^a|
+      {1:                                                 ~}|
+                                                        |
+    ]]}
+
+    insert(('#'):rep(32))
+    feed('0')
+    screen:expect{grid=[[
+      {28:ngila_tdeyalrevo}ba#####{28:loc_niw}###################^#|
+      {1:                                                 ~}|
+                                                        |
+    ]]}
+
+    insert(('#'):rep(16))
+    feed('0')
+    screen:expect{grid=[[
+      {28:ngila_thgir}############{28:loc_niw}###################^#|
+                                        {28:LOE} nml{28:deyalrevo}|
+                                                        |
+    ]]}
+
+    insert('###')
+    feed('0')
+    screen:expect{grid=[[
+      #################################################^#|
+      {28:ngila_thgir}            {28:loc_niw} {28:LOE} nml{28:deyalrevo}ba#|
+                                                        |
+    ]]}
+
+    command('set number')
+    screen:expect{grid=[[
+      #############################################^#{2: 1  }|
+      {28:ngila_thgir}        {28:loc_niw} nml{28:deyalrevo}ba#####{2:    }|
+                                                        |
+    ]]}
+
+    command('set cpoptions+=n')
+    screen:expect{grid=[[
+      #############################################^#{2: 1  }|
+      {28:ngila_thgir}            {28:loc_niw} nml{28:deyalrevo}ba#####|
+                                                        |
+    ]]}
+  end)
+
+  it('works with double width char and rightleft', function()
+    screen:try_resize(50, 3)
+    insert('abcdefghij口klmnopqrstu口vwx口yz')
+    feed('0')
+    command('set rightleft')
+    screen:expect{grid=[[
+                        zy口xwv口utsrqponmlk口jihgfedcb^a|
+      {1:                                                 ~}|
+                                                        |
+    ]]}
+    meths.buf_set_extmark(0, ns, 0, 2, { virt_text = {{'overlayed', 'Underlined'}}, virt_text_pos = 'overlay' })
+    meths.buf_set_extmark(0, ns, 0, 14, { virt_text = {{'古', 'Underlined'}}, virt_text_pos = 'overlay' })
+    meths.buf_set_extmark(0, ns, 0, 20, { virt_text = {{'\t', 'Underlined'}}, virt_text_pos = 'overlay' })
+    meths.buf_set_extmark(0, ns, 0, 29, { virt_text = {{'古', 'Underlined'}}, virt_text_pos = 'overlay' })
+    screen:expect{grid=[[
+                        zy {28:古}wv {28:     }qpon{28:古}k {28:deyalrevo}b^a|
+      {1:                                                 ~}|
+                                                        |
+    ]]}
+  end)
+
+  it('works with both hl_group and sign_hl_group', function()
+    screen:try_resize(screen._width, 3)
+    insert('abcdefghijklmn')
+    meths.buf_set_extmark(0, ns, 0, 0, {sign_text='S', sign_hl_group='NonText', hl_group='Error', end_col=14})
+    screen:expect{grid=[[
+      {1:S }{4:abcdefghijklm^n}                                  |
+      {1:~                                                 }|
+                                                        |
+    ]]}
+  end)
+
+  it('virt_text_repeat_linebreak repeats virtual text on wrapped lines', function()
+    screen:try_resize(40, 5)
+    meths.set_option_value('breakindent', true, {})
+    insert(example_text)
+    meths.buf_set_extmark(0, ns, 1, 0, { virt_text = {{'│', 'NonText'}}, virt_text_pos = 'overlay', virt_text_repeat_linebreak = true })
+    meths.buf_set_extmark(0, ns, 1, 3, { virt_text = {{'│', 'NonText'}}, virt_text_pos = 'overlay', virt_text_repeat_linebreak = true })
+    command('norm gg')
+    screen:expect{grid=[[
+      ^for _,item in ipairs(items) do          |
+      {1:│}  {1:│}local text, hl_id_cell, count = unpa|
+      {1:│}  {1:│}ck(item)                            |
+          if hl_id_cell ~= nil then           |
+                                              |
+    ]]}
+    meths.buf_clear_namespace(0, ns, 0, -1)
+    meths.buf_set_extmark(0, ns, 1, 0, { virt_text = {{'│', 'NonText'}}, virt_text_repeat_linebreak = true, virt_text_win_col = 0 })
+    meths.buf_set_extmark(0, ns, 1, 0, { virt_text = {{'│', 'NonText'}}, virt_text_repeat_linebreak = true, virt_text_win_col = 2 })
+    screen:expect{grid=[[
+      ^for _,item in ipairs(items) do          |
+      {1:│} {1:│} local text, hl_id_cell, count = unpa|
+      {1:│} {1:│} ck(item)                            |
+          if hl_id_cell ~= nil then           |
+                                              |
+    ]]}
   end)
 end)
 
@@ -1573,7 +2145,7 @@ describe('decorations: inline virtual text', function()
   local screen, ns
   before_each( function()
     clear()
-    screen = Screen.new(50, 10)
+    screen = Screen.new(50, 3)
     screen:attach()
     screen:set_default_attr_ids {
       [1] = {bold=true, foreground=Screen.colors.Blue};
@@ -1596,6 +2168,7 @@ describe('decorations: inline virtual text', function()
       [18] = {background = Screen.colors.LightGrey, foreground = Screen.colors.Red};
       [19] = {background = Screen.colors.Yellow, foreground = Screen.colors.SlateBlue};
       [20] = {background = Screen.colors.LightGrey, foreground = Screen.colors.SlateBlue};
+      [21] = {reverse = true, foreground = Screen.colors.SlateBlue}
     }
 
     ns = meths.create_namespace 'test'
@@ -1603,6 +2176,7 @@ describe('decorations: inline virtual text', function()
 
 
   it('works', function()
+    screen:try_resize(50, 10)
     insert(example_text)
     feed 'gg'
     screen:expect{grid=[[
@@ -1661,7 +2235,8 @@ describe('decorations: inline virtual text', function()
     ]]}
   end)
 
-  it('works with empty chunk', function()
+  it('works with 0-width chunk', function()
+    screen:try_resize(50, 10)
     insert(example_text)
     feed 'gg'
     screen:expect{grid=[[
@@ -1678,7 +2253,22 @@ describe('decorations: inline virtual text', function()
     ]]}
 
     meths.buf_set_extmark(0, ns, 0, 5, {virt_text={{''}, {''}}, virt_text_pos='inline'})
-    meths.buf_set_extmark(0, ns, 1, 14, {virt_text={{''}, {': ', 'Special'}, {'string', 'Type'}}, virt_text_pos='inline'})
+    meths.buf_set_extmark(0, ns, 1, 14, {virt_text={{''}, {': ', 'Special'}}, virt_text_pos='inline'})
+    meths.buf_set_extmark(0, ns, 1, 48, {virt_text={{''}, {''}}, virt_text_pos='inline'})
+    screen:expect{grid=[[
+      ^for _,item in ipairs(items) do                    |
+          local text{10:: }, hl_id_cell, count = unpack(item)|
+          if hl_id_cell ~= nil then                     |
+              hl_id = hl_id_cell                        |
+          end                                           |
+          for _ = 1, (count or 1) do                    |
+              local cell = line[colpos]                 |
+              cell.text = text                          |
+              cell.hl_id = hl_id                        |
+                                                        |
+    ]]}
+
+    meths.buf_set_extmark(0, ns, 1, 14, {virt_text={{''}, {'string', 'Type'}}, virt_text_pos='inline'})
     feed('V')
     screen:expect{grid=[[
       ^f{7:or _,item in ipairs(items) do}                    |
@@ -1708,518 +2298,620 @@ describe('decorations: inline virtual text', function()
     ]]}
   end)
 
-  it('cursor positions are correct with multiple inline virtual text', function()
-    insert('12345678')
-    meths.buf_set_extmark(0, ns, 0, 4,
-        { virt_text = { { ' virtual text ', 'Special' } }, virt_text_pos = 'inline' })
-    meths.buf_set_extmark(0, ns, 0, 4,
-        { virt_text = { { ' virtual text ', 'Special' } }, virt_text_pos = 'inline' })
-    feed '^'
-    feed '4l'
-    screen:expect { grid = [[
-      1234{10: virtual text  virtual text }^5678              |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+  it('Normal mode "gM" command works properly', function()
+    command([[call setline(1, '123456789')]])
+    meths.buf_set_extmark(0, ns, 0, 2, { virt_text = { { 'bbb', 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 7, { virt_text = { { 'bbb', 'Special' } }, virt_text_pos = 'inline' })
+    feed('gM')
+    screen:expect{grid=[[
+      12{10:bbb}34^567{10:bbb}89                                   |
       {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
+  end)
+
+  local function test_normal_gj_gk()
+    screen:try_resize(60, 6)
+    command([[call setline(1, repeat([repeat('a', 55)], 2))]])
+    meths.buf_set_extmark(0, ns, 0, 40, { virt_text = { { ('b'):rep(10), 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 1, 40, { virt_text = { { ('b'):rep(10), 'Special' } }, virt_text_pos = 'inline' })
+    screen:expect{grid=[[
+      ^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      aaaaa                                                       |
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      aaaaa                                                       |
+      {1:~                                                           }|
+                                                                  |
+    ]]}
+    feed('gj')
+    screen:expect{grid=[[
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      ^aaaaa                                                       |
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      aaaaa                                                       |
+      {1:~                                                           }|
+                                                                  |
+    ]]}
+    feed('gj')
+    screen:expect{grid=[[
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      aaaaa                                                       |
+      ^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      aaaaa                                                       |
+      {1:~                                                           }|
+                                                                  |
+    ]]}
+    feed('gj')
+    screen:expect{grid=[[
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      aaaaa                                                       |
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      ^aaaaa                                                       |
+      {1:~                                                           }|
+                                                                  |
+    ]]}
+    feed('gk')
+    screen:expect{grid=[[
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      aaaaa                                                       |
+      ^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      aaaaa                                                       |
+      {1:~                                                           }|
+                                                                  |
+    ]]}
+    feed('gk')
+    screen:expect{grid=[[
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      ^aaaaa                                                       |
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      aaaaa                                                       |
+      {1:~                                                           }|
+                                                                  |
+    ]]}
+    feed('gk')
+    screen:expect{grid=[[
+      ^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      aaaaa                                                       |
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbbbbbbbbb}aaaaaaaaaa|
+      aaaaa                                                       |
+      {1:~                                                           }|
+                                                                  |
+    ]]}
+  end
+
+  describe('Normal mode "gj" "gk" commands work properly', function()
+    it('with virtualedit=', function()
+      test_normal_gj_gk()
+    end)
+
+    it('with virtualedit=all', function()
+      command('set virtualedit=all')
+      test_normal_gj_gk()
+    end)
+  end)
+
+  it('cursor positions are correct with multiple inline virtual text', function()
+    insert('12345678')
+    meths.buf_set_extmark(0, ns, 0, 4, { virt_text = { { ' virtual text ', 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 4, { virt_text = { { ' virtual text ', 'Special' } }, virt_text_pos = 'inline' })
+    feed '^'
+    feed '4l'
+    screen:expect{grid=[[
+      1234{10: virtual text  virtual text }^5678              |
+      {1:~                                                 }|
+                                                        |
+    ]]}
   end)
 
   it('adjusts cursor location correctly when inserting around inline virtual text', function()
     insert('12345678')
     feed '$'
-    meths.buf_set_extmark(0, ns, 0, 4,
-            { virt_text = { { ' virtual text ', 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 4, { virt_text = { { ' virtual text ', 'Special' } }, virt_text_pos = 'inline' })
 
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       1234{10: virtual text }567^8                            |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
   end)
 
   it('has correct highlighting with multi-byte characters', function()
     insert('12345678')
-    meths.buf_set_extmark(0, ns, 0, 4,
-            { virt_text = { { 'múlti-byté chñröcters 修补', 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 4, { virt_text = { { 'múlti-byté chñröcters 修补', 'Special' } }, virt_text_pos = 'inline' })
 
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       1234{10:múlti-byté chñröcters 修补}567^8                |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
   end)
 
   it('has correct cursor position when inserting around virtual text', function()
     insert('12345678')
-    meths.buf_set_extmark(0, ns, 0, 4,
-            { virt_text = { { 'virtual text', 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 4, { virt_text = { { 'virtual text', 'Special' } }, virt_text_pos = 'inline' })
     feed '^'
     feed '3l'
     feed 'a'
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       1234{10:^virtual text}5678                              |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
       {8:-- INSERT --}                                      |
-      ]]}
+    ]]}
     feed '<ESC>'
     screen:expect{grid=[[
       123^4{10:virtual text}5678                              |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
       {1:~                                                 }|
                                                         |
     ]]}
     feed '^'
     feed '4l'
     feed 'i'
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       1234{10:^virtual text}5678                              |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
       {8:-- INSERT --}                                      |
-      ]]}
+    ]]}
   end)
 
   it('has correct cursor position with virtual text on an empty line', function()
-    meths.buf_set_extmark(0, ns, 0, 0,
-            { virt_text = { { 'virtual text', 'Special' } }, virt_text_pos = 'inline' })
-    screen:expect { grid = [[
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = { { 'virtual text', 'Special' } }, virt_text_pos = 'inline' })
+    screen:expect{grid=[[
       {10:^virtual text}                                      |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
   end)
 
-  it('text is drawn correctly when inserting a wrapping virtual text on an empty line', function()
-    feed('o<esc>')
-    insert([[aaaaaaa
-
-bbbbbbb]])
-    meths.buf_set_extmark(0, ns, 0, 0,
-            { virt_text = { { string.rep('X', 51), 'Special' } }, virt_text_pos = 'inline' })
-    meths.buf_set_extmark(0, ns, 2, 0,
-            { virt_text = { { string.rep('X', 50), 'Special' } }, virt_text_pos = 'inline' })
-    feed('gg0')
-    screen:expect { grid = [[
-      {10:^XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
-      {10:X}                                                 |
-      aaaaaaa                                           |
-      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
-      bbbbbbb                                           |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-                                                        |
-      ]]}
-
+  it('text is drawn correctly with a wrapping virtual text', function()
+    screen:try_resize(60, 8)
+    exec([[
+      call setline(1, ['', 'aaa', '', 'bbbbbb'])
+      normal gg0
+    ]])
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = { { string.rep('X', 60), 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 2, 0, { virt_text = { { string.rep('X', 61), 'Special' } }, virt_text_pos = 'inline' })
+    feed('$')
+    screen:expect{grid=[[
+      {10:^XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      aaa                                                         |
+      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      {10:X}                                                           |
+      bbbbbb                                                      |
+      {1:~                                                           }|*2
+                                                                  |
+    ]]}
     feed('j')
-    screen:expect { grid = [[
-      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
-      {10:X}                                                 |
-      ^aaaaaaa                                           |
-      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
-      bbbbbbb                                           |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-                                                        |
-      ]]}
-
+    screen:expect{grid=[[
+      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      aa^a                                                         |
+      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      {10:X}                                                           |
+      bbbbbb                                                      |
+      {1:~                                                           }|*2
+                                                                  |
+    ]]}
     feed('j')
-    screen:expect { grid = [[
-      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
-      {10:X}                                                 |
-      aaaaaaa                                           |
-      {10:^XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
-      bbbbbbb                                           |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-                                                        |
-      ]]}
-
+    screen:expect{grid=[[
+      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      aaa                                                         |
+      {10:^XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      {10:X}                                                           |
+      bbbbbb                                                      |
+      {1:~                                                           }|*2
+                                                                  |
+    ]]}
     feed('j')
-    screen:expect { grid = [[
-      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
-      {10:X}                                                 |
-      aaaaaaa                                           |
-      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
-      ^bbbbbbb                                           |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-                                                        |
-      ]]}
+    screen:expect{grid=[[
+      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      aaa                                                         |
+      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      {10:X}                                                           |
+      bbbbb^b                                                      |
+      {1:~                                                           }|*2
+                                                                  |
+    ]]}
+    feed('0<C-V>2l2k')
+    screen:expect{grid=[[
+      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      {7:aa}^a                                                         |
+      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      {10:X}                                                           |
+      {7:bbb}bbb                                                      |
+      {1:~                                                           }|*2
+      {8:-- VISUAL BLOCK --}                                          |
+    ]]}
+    feed([[<Esc>/aaa\n\%V<CR>]])
+    screen:expect{grid=[[
+      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      {12:^aaa }                                                        |
+      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      {10:X}                                                           |
+      bbbbbb                                                      |
+      {1:~                                                           }|*2
+      {16:search hit BOTTOM, continuing at TOP}                        |
+    ]]}
+    feed('3ggic')
+    screen:expect{grid=[[
+      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      {12:aaa }                                                        |
+      c{10:^XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      {10:XX}                                                          |
+      bbbbbb                                                      |
+      {1:~                                                           }|*2
+      {8:-- INSERT --}                                                |
+    ]]}
+    feed([[<Esc>/aaa\nc\%V<CR>]])
+    screen:expect{grid=[[
+      {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      {12:^aaa }                                                        |
+      {12:c}{10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
+      {10:XX}                                                          |
+      bbbbbb                                                      |
+      {1:~                                                           }|*2
+      {16:search hit BOTTOM, continuing at TOP}                        |
+    ]]}
   end)
 
-  it('cursor position is correct with virtual text attached to hard tabs', function()
+  it('cursor position is correct with virtual text attached to hard TABs', function()
     command('set noexpandtab')
     feed('i')
     feed('<TAB>')
     feed('<TAB>')
     feed('test')
     feed('<ESC>')
-    meths.buf_set_extmark(0, ns, 0, 1,
-            { virt_text = { { 'virtual text', 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 1, { virt_text = { { 'virtual text', 'Special' } }, virt_text_pos = 'inline' })
     feed('0')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
              ^ {10:virtual text}    test                      |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
 
     feed('l')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
               {10:virtual text}   ^ test                      |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
 
     feed('l')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
               {10:virtual text}    ^test                      |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
 
     feed('l')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
               {10:virtual text}    t^est                      |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
 
     feed('l')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
               {10:virtual text}    te^st                      |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
   end)
 
   it('cursor position is correct with virtual text on an empty line', function()
     command('set linebreak')
     insert('one twoword')
     feed('0')
-    meths.buf_set_extmark(0, ns, 0, 3,
-            { virt_text = { { ': virtual text', 'Special' } }, virt_text_pos = 'inline' })
-    screen:expect { grid = [[
+    meths.buf_set_extmark(0, ns, 0, 3, { virt_text = { { ': virtual text', 'Special' } }, virt_text_pos = 'inline' })
+    screen:expect{grid=[[
       ^one{10:: virtual text} twoword                         |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
   end)
 
   it('search highlight is correct', function()
-    insert('foo foo foo foo\nfoo foo foo foo')
+    insert('foo foo foo bar\nfoo foo foo bar')
     feed('gg0')
     meths.buf_set_extmark(0, ns, 0, 9, { virt_text = { { 'AAA', 'Special' } }, virt_text_pos = 'inline' })
     meths.buf_set_extmark(0, ns, 0, 9, { virt_text = { { 'BBB', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'combine' })
     meths.buf_set_extmark(0, ns, 1, 9, { virt_text = { { 'CCC', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'combine' })
     meths.buf_set_extmark(0, ns, 1, 9, { virt_text = { { 'DDD', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'replace' })
-    screen:expect { grid = [[
-      ^foo foo f{10:AAABBB}oo foo                             |
-      foo foo f{10:CCCDDD}oo foo                             |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+    screen:expect{grid=[[
+      ^foo foo f{10:AAABBB}oo bar                             |
+      foo foo f{10:CCCDDD}oo bar                             |
                                                         |
-      ]]}
+    ]]}
 
     feed('/foo')
-    screen:expect { grid = [[
-      {12:foo} {13:foo} {12:f}{10:AAA}{19:BBB}{12:oo} {12:foo}                             |
-      {12:foo} {12:foo} {12:f}{19:CCC}{10:DDD}{12:oo} {12:foo}                             |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+    screen:expect{grid=[[
+      {12:foo} {13:foo} {12:f}{10:AAA}{19:BBB}{12:oo} bar                             |
+      {12:foo} {12:foo} {12:f}{19:CCC}{10:DDD}{12:oo} bar                             |
       /foo^                                              |
-      ]]}
+    ]]}
+
+    meths.buf_set_extmark(0, ns, 0, 13, { virt_text = { { 'EEE', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'combine' })
+    feed('<C-G>')
+    screen:expect{grid=[[
+      {12:foo} {12:foo} {13:f}{10:AAA}{21:BBB}{13:oo} b{10:EEE}ar                          |
+      {12:foo} {12:foo} {12:f}{19:CCC}{10:DDD}{12:oo} bar                             |
+      /foo^                                              |
+    ]]}
   end)
 
-  it('visual select highlight is correct', function()
-    insert('foo foo foo foo\nfoo foo foo foo')
+  it('Visual select highlight is correct', function()
+    insert('foo foo foo bar\nfoo foo foo bar')
     feed('gg0')
     meths.buf_set_extmark(0, ns, 0, 8, { virt_text = { { 'AAA', 'Special' } }, virt_text_pos = 'inline' })
     meths.buf_set_extmark(0, ns, 0, 8, { virt_text = { { 'BBB', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'combine' })
     meths.buf_set_extmark(0, ns, 1, 8, { virt_text = { { 'CCC', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'combine' })
     meths.buf_set_extmark(0, ns, 1, 8, { virt_text = { { 'DDD', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'replace' })
     feed('8l')
-    screen:expect { grid = [[
-      foo foo {10:AAABBB}^foo foo                             |
-      foo foo {10:CCCDDD}foo foo                             |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+    screen:expect{grid=[[
+      foo foo {10:AAABBB}^foo bar                             |
+      foo foo {10:CCCDDD}foo bar                             |
                                                         |
-      ]]}
+    ]]}
 
     feed('<C-V>')
     feed('2hj')
-    screen:expect { grid = [[
-      foo fo{7:o }{10:AAA}{20:BBB}{7:f}oo foo                             |
-      foo fo^o{7: }{20:CCC}{10:DDD}{7:f}oo foo                             |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+    screen:expect{grid=[[
+      foo fo{7:o }{10:AAA}{20:BBB}{7:f}oo bar                             |
+      foo fo^o{7: }{20:CCC}{10:DDD}{7:f}oo bar                             |
       {8:-- VISUAL BLOCK --}                                |
-      ]]}
+    ]]}
+
+    meths.buf_set_extmark(0, ns, 0, 10, { virt_text = { { 'EEE', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'combine' })
+    screen:expect{grid=[[
+      foo fo{7:o }{10:AAA}{20:BBB}{7:f}o{10:EEE}o bar                          |
+      foo fo^o{7: }{20:CCC}{10:DDD}{7:f}oo bar                             |
+      {8:-- VISUAL BLOCK --}                                |
+    ]]}
   end)
 
-  it('cursor position is correct when inserting around a virtual text with right gravity set to false', function()
-    insert('foo foo foo foo')
-    meths.buf_set_extmark(0, ns, 0, 8,
-      { virt_text = { { 'virtual text', 'Special' } }, virt_text_pos = 'inline', right_gravity = false })
-    feed('0')
-    feed('8l')
-    screen:expect { grid = [[
-      foo foo {10:virtual text}^foo foo                       |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+  it('inside highlight range of another extmark', function()
+    insert('foo foo foo bar\nfoo foo foo bar')
+    meths.buf_set_extmark(0, ns, 0, 8, { virt_text = { { 'AAA', 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 8, { virt_text = { { 'BBB', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'combine' })
+    meths.buf_set_extmark(0, ns, 1, 8, { virt_text = { { 'CCC', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'combine' })
+    meths.buf_set_extmark(0, ns, 1, 8, { virt_text = { { 'DDD', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'replace' })
+    meths.buf_set_extmark(0, ns, 0, 4, { end_col = 11, hl_group = 'Search' })
+    meths.buf_set_extmark(0, ns, 1, 4, { end_col = 11, hl_group = 'Search' })
+    screen:expect{grid=[[
+      foo {12:foo }{10:AAA}{19:BBB}{12:foo} bar                             |
+      foo {12:foo }{19:CCC}{10:DDD}{12:foo} ba^r                             |
                                                         |
-      ]]}
+    ]]}
+  end)
 
+  it('inside highlight range of syntax', function()
+    insert('foo foo foo bar\nfoo foo foo bar')
+    meths.buf_set_extmark(0, ns, 0, 8, { virt_text = { { 'AAA', 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 8, { virt_text = { { 'BBB', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'combine' })
+    meths.buf_set_extmark(0, ns, 1, 8, { virt_text = { { 'CCC', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'combine' })
+    meths.buf_set_extmark(0, ns, 1, 8, { virt_text = { { 'DDD', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'replace' })
+    command([[syntax match Search 'foo \zsfoo foo\ze bar']])
+    screen:expect{grid=[[
+      foo {12:foo }{10:AAA}{19:BBB}{12:foo} bar                             |
+      foo {12:foo }{19:CCC}{10:DDD}{12:foo} ba^r                             |
+                                                        |
+    ]]}
+  end)
+
+  it('cursor position is correct when inserting around a virtual text with left gravity', function()
+    screen:try_resize(27, 4)
+    insert(('a'):rep(15))
+    meths.buf_set_extmark(0, ns, 0, 8, { virt_text = { { ('>'):rep(43), 'Special' } }, virt_text_pos = 'inline', right_gravity = false })
+    command('setlocal showbreak=+ breakindent breakindentopt=shift:2')
+    feed('08l')
+    screen:expect{grid=[[
+      aaaaaaaa{10:>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}^aaaaaaa                 |
+                                 |
+    ]]}
     feed('i')
-    screen:expect { grid = [[
-      foo foo {10:virtual text}^foo foo                       |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {8:-- INSERT --}                                      |
-      ]]}
+    screen:expect{grid=[[
+      aaaaaaaa{10:>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}^aaaaaaa                 |
+      {8:-- INSERT --}               |
+    ]]}
+    feed([[<C-\><C-O>]])
+    screen:expect{grid=[[
+      aaaaaaaa{10:>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}^aaaaaaa                 |
+      {8:-- (insert) --}             |
+    ]]}
+    feed('D')
+    screen:expect{grid=[[
+      aaaaaaaa{10:>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>>>>>>>>>>>>>>>}|
+      {1:^~                          }|
+      {8:-- INSERT --}               |
+    ]]}
+    command('setlocal list listchars=eol:$')
+    screen:expect{grid=[[
+      aaaaaaaa{10:>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+^$}                       |
+      {8:-- INSERT --}               |
+    ]]}
+    feed('<C-U>')
+    screen:expect{grid=[[
+      {10:>>>>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>>>>>>>}{1:^$}       |
+      {1:~                          }|
+      {8:-- INSERT --}               |
+    ]]}
+    feed('a')
+    screen:expect{grid=[[
+      {10:>>>>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>>>>>>>}a{1:^$}      |
+      {1:~                          }|
+      {8:-- INSERT --}               |
+    ]]}
+    feed('<Esc>')
+    screen:expect{grid=[[
+      {10:>>>>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>>>>>>>}^a{1:$}      |
+      {1:~                          }|
+                                 |
+    ]]}
+    feed('x')
+    screen:expect{grid=[[
+      {10:^>>>>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>>>>>>>}{1:$}       |
+      {1:~                          }|
+                                 |
+    ]]}
   end)
 
   it('cursor position is correct when inserting around virtual texts with both left and right gravity', function()
-    insert('foo foo foo foo')
-    meths.buf_set_extmark(0, ns, 0, 8, { virt_text = {{ '>>', 'Special' }}, virt_text_pos = 'inline', right_gravity = false })
-    meths.buf_set_extmark(0, ns, 0, 8, { virt_text = {{ '<<', 'Special' }}, virt_text_pos = 'inline', right_gravity = true })
+    screen:try_resize(30, 4)
+    command('setlocal showbreak=+ breakindent breakindentopt=shift:2')
+    insert(('a'):rep(15))
+    meths.buf_set_extmark(0, ns, 0, 8, { virt_text = {{ ('>'):rep(32), 'Special' }}, virt_text_pos = 'inline', right_gravity = false })
+    meths.buf_set_extmark(0, ns, 0, 8, { virt_text = {{ ('<'):rep(32), 'Special' }}, virt_text_pos = 'inline', right_gravity = true })
     feed('08l')
-    screen:expect{ grid = [[
-      foo foo {10:>><<}^foo foo                               |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-                                                        |
-      ]]}
-
+    screen:expect{grid=[[
+      aaaaaaaa{10:>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>><<<<<<<<<<<<<<<<<}|
+        {1:+}{10:<<<<<<<<<<<<<<<}^aaaaaaa     |
+                                    |
+    ]]}
     feed('i')
-    screen:expect { grid = [[
-      foo foo {10:>>^<<}foo foo                               |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {8:-- INSERT --}                                      |
-      ]]}
+    screen:expect{grid=[[
+      aaaaaaaa{10:>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>^<<<<<<<<<<<<<<<<<}|
+        {1:+}{10:<<<<<<<<<<<<<<<}aaaaaaa     |
+      {8:-- INSERT --}                  |
+    ]]}
+    feed('a')
+    screen:expect{grid=[[
+      aaaaaaaa{10:>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>}a{10:^<<<<<<<<<<<<<<<<}|
+        {1:+}{10:<<<<<<<<<<<<<<<<}aaaaaaa    |
+      {8:-- INSERT --}                  |
+    ]]}
+    feed([[<C-\><C-O>]])
+    screen:expect{grid=[[
+      aaaaaaaa{10:>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>}a{10:<<<<<<<<<<<<<<<<}|
+        {1:+}{10:<<<<<<<<<<<<<<<<}^aaaaaaa    |
+      {8:-- (insert) --}                |
+    ]]}
+    feed('D')
+    screen:expect{grid=[[
+      aaaaaaaa{10:>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>}a{10:^<<<<<<<<<<<<<<<<}|
+        {1:+}{10:<<<<<<<<<<<<<<<<}           |
+      {8:-- INSERT --}                  |
+    ]]}
+    feed('<BS>')
+    screen:expect{grid=[[
+      aaaaaaaa{10:>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>>>>>>>>>^<<<<<<<<<<<<<<<<<}|
+        {1:+}{10:<<<<<<<<<<<<<<<}            |
+      {8:-- INSERT --}                  |
+    ]]}
+    feed('<C-U>')
+    screen:expect{grid=[[
+      {10:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>^<<<<<<<<<<<<<<<<<<<<<<<<<}|
+        {1:+}{10:<<<<<<<}                    |
+      {8:-- INSERT --}                  |
+    ]]}
+    feed('a')
+    screen:expect{grid=[[
+      {10:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>}a{10:^<<<<<<<<<<<<<<<<<<<<<<<<}|
+        {1:+}{10:<<<<<<<<}                   |
+      {8:-- INSERT --}                  |
+    ]]}
+    feed('<Esc>')
+    screen:expect{grid=[[
+      {10:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>}^a{10:<<<<<<<<<<<<<<<<<<<<<<<<}|
+        {1:+}{10:<<<<<<<<}                   |
+                                    |
+    ]]}
+    feed('x')
+    screen:expect{grid=[[
+      {10:^>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>><<<<<<<<<<<<<<<<<<<<<<<<<}|
+        {1:+}{10:<<<<<<<}                    |
+                                    |
+    ]]}
+    feed('i')
+    screen:expect{grid=[[
+      {10:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:>>^<<<<<<<<<<<<<<<<<<<<<<<<<}|
+        {1:+}{10:<<<<<<<}                    |
+      {8:-- INSERT --}                  |
+    ]]}
+    screen:try_resize(32, 4)
+    screen:expect{grid=[[
+      {10:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>}|
+        {1:+}{10:^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<}|
+        {1:+}{10:<<<}                          |
+      {8:-- INSERT --}                    |
+    ]]}
+    command('setlocal nobreakindent')
+    screen:expect{grid=[[
+      {10:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>}|
+      {1:+}{10:^<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<}|
+      {1:+}{10:<}                              |
+      {8:-- INSERT --}                    |
+    ]]}
   end)
 
   it('draws correctly with no wrap multiple virtual text, where one is hidden', function()
     insert('abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz')
     command("set nowrap")
-    meths.buf_set_extmark(0, ns, 0, 50,
-      { virt_text = { { 'virtual text', 'Special' } }, virt_text_pos = 'inline' })
-    meths.buf_set_extmark(0, ns, 0, 2,
-      { virt_text = { { 'virtual text', 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 50, { virt_text = { { 'virtual text', 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 2, { virt_text = { { 'virtual text', 'Special' } }, virt_text_pos = 'inline' })
     feed('$')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       opqrstuvwxyzabcdefghijklmnopqrstuvwx{10:virtual text}y^z|
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
   end)
 
   it('draws correctly with no wrap and a long virtual text', function()
     insert('abcdefghi')
     command("set nowrap")
-    meths.buf_set_extmark(0, ns, 0, 2,
-      { virt_text = { { string.rep('X', 55), 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 2, { virt_text = { { string.rep('X', 55), 'Special' } }, virt_text_pos = 'inline' })
     feed('$')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}cdefgh^i|
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
   end)
 
   it('tabs are the correct length with no wrap following virtual text', function()
     command('set nowrap')
     feed('itest<TAB>a<ESC>')
-    meths.buf_set_extmark(0, ns, 0, 0,
-      { virt_text = { { string.rep('a', 55), 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = { { string.rep('a', 55), 'Special' } }, virt_text_pos = 'inline' })
     feed('gg$')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       {10:aaaaaaaaaaaaaaaaaaaaaaaaa}test     ^a               |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
   end)
 
-  it('highlighting does not extend when no wrap is enabled with a long virtual text', function()
+  it('highlighting does not extend with no wrap and a long virtual text', function()
     insert('abcdef')
     command("set nowrap")
-    meths.buf_set_extmark(0, ns, 0, 3,
-      { virt_text = { { string.rep('X', 50), 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 3, { virt_text = { { string.rep('X', 50), 'Special' } }, virt_text_pos = 'inline' })
     feed('$')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       {10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}de^f|
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
   end)
 
   it('hidden virtual text does not interfere with Visual highlight', function()
@@ -2230,25 +2922,11 @@ bbbbbbb]])
     screen:expect{grid=[[
       {10:X}{7:abcde}^f                                           |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
       {8:-- VISUAL LINE --}                                 |
     ]]}
     feed('zl')
     screen:expect{grid=[[
       {7:abcde}^f                                            |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
       {1:~                                                 }|
       {8:-- VISUAL LINE --}                                 |
     ]]}
@@ -2256,105 +2934,64 @@ bbbbbbb]])
     screen:expect{grid=[[
       {7:bcde}^f                                             |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
       {8:-- VISUAL LINE --}                                 |
     ]]}
   end)
 
   it('highlighting is correct when virtual text wraps with number', function()
+    screen:try_resize(50, 5)
     insert([[
     test
     test]])
     command('set number')
-    meths.buf_set_extmark(0, ns, 0, 1,
-      { virt_text = { { string.rep('X', 55), 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 1, { virt_text = { { string.rep('X', 55), 'Special' } }, virt_text_pos = 'inline' })
     feed('gg0')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       {2:  1 }^t{10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
       {2:    }{10:XXXXXXXXXX}est                                 |
       {2:  2 }test                                          |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
   end)
 
   it('highlighting is correct when virtual text is proceeded with a match', function()
     insert([[test]])
-    meths.buf_set_extmark(0, ns, 0, 2,
-      { virt_text = { { 'virtual text', 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 2, { virt_text = { { 'virtual text', 'Special' } }, virt_text_pos = 'inline' })
     feed('gg0')
     command('match ErrorMsg /e/')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       ^t{4:e}{10:virtual text}st                                  |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
     command('match ErrorMsg /s/')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       ^te{10:virtual text}{4:s}t                                  |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
   end)
 
   it('smoothscroll works correctly when virtual text wraps', function()
     insert('foobar')
-    meths.buf_set_extmark(0, ns, 0, 3,
-      { virt_text = { { string.rep('X', 55), 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 3, { virt_text = { { string.rep('X', 55), 'Special' } }, virt_text_pos = 'inline' })
     command('setlocal smoothscroll')
     screen:expect{grid=[[
       foo{10:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}|
       {10:XXXXXXXX}ba^r                                       |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
     ]]}
     feed('<C-E>')
     screen:expect{grid=[[
       {1:<<<}{10:XXXXX}ba^r                                       |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
     ]]}
   end)
 
   it('in diff mode is highlighted correct', function()
+    screen:try_resize(50, 10)
     insert([[
     9000
     0009
@@ -2378,81 +3015,53 @@ bbbbbbb]])
     insert('aaabbb')
     command("set diff")
     feed('gg0')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       {9:^000                      }│{5:9}{14:test}{9:000                }|
-      {9:000                      }│{9:000}{5:9}{9:                    }|
-      {9:000                      }│{9:000}{5:9}{9:                    }|
+      {9:000                      }│{9:000}{5:9}{9:                    }|*2
       {9:000                      }│{5:9}{9:000                    }|
       {9:000                      }│{9:000}{5:9}{9:                    }|
       {9:aaabbb                   }│{14:!}{9:aaa}{5:    }{9:bbb             }|
-      {1:~                        }│{1:~                       }|
-      {1:~                        }│{1:~                       }|
+      {1:~                        }│{1:~                       }|*2
       {15:[No Name] [+]             }{13:[No Name] [+]           }|
                                                         |
-      ]]}
+    ]]}
     command('wincmd w | set nowrap')
     feed('zl')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       {9:000                      }│{14:test}{9:000                 }|
-      {9:000                      }│{9:00}{5:9}{9:                     }|
-      {9:000                      }│{9:00}{5:9}{9:                     }|
+      {9:000                      }│{9:00}{5:9}{9:                     }|*2
       {9:000                      }│{9:000                     }|
       {9:000                      }│{9:00}{5:9}{9:                     }|
       {9:aaabbb                   }│{9:aaa}{5:    }{9:bb^b              }|
-      {1:~                        }│{1:~                       }|
-      {1:~                        }│{1:~                       }|
+      {1:~                        }│{1:~                       }|*2
       {13:[No Name] [+]             }{15:[No Name] [+]           }|
                                                         |
-      ]]}
+    ]]}
   end)
 
   it('correctly draws when there are multiple overlapping virtual texts on the same line with nowrap', function()
     command('set nowrap')
     insert('a')
-    meths.buf_set_extmark(0, ns, 0, 0,
-      { virt_text = { { string.rep('a', 55), 'Special' } }, virt_text_pos = 'inline' })
-    meths.buf_set_extmark(0, ns, 0, 0,
-      { virt_text = { { string.rep('b', 55), 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = { { string.rep('a', 55), 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = { { string.rep('b', 55), 'Special' } }, virt_text_pos = 'inline' })
     feed('$')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       {10:bbbbbbbbbbbbbbbbbbbbbbbbb}^a                        |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
   end)
 
-  it('correctly draws when overflowing virtual text is followed by tab with no wrap', function()
+  it('correctly draws when overflowing virtual text is followed by TAB with no wrap', function()
     command('set nowrap')
     feed('i<TAB>test<ESC>')
-    meths.buf_set_extmark(
-      0,
-      ns,
-      0,
-      0,
-      { virt_text = { { string.rep('a', 60), 'Special' } }, virt_text_pos = 'inline' }
-    )
+    meths.buf_set_extmark( 0, ns, 0, 0, { virt_text = { { string.rep('a', 60), 'Special' } }, virt_text_pos = 'inline' })
     feed('0')
-    screen:expect({
-      grid = [[
+    screen:expect({grid=[[
       {10:aaaaaaaaaaaaaaaaaaaaaa}   ^ test                    |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]],
-    })
+    ]]})
   end)
 
   it('does not crash at column 0 when folded in a wide window', function()
@@ -2493,16 +3102,14 @@ bbbbbbb]])
     screen:expect{grid=[[
       {18:^+--  2 lines: aaaaa·······························································}|
       {17:+--  2 lines: ccccc·······························································}|
-      {1:~                                                                                 }|
-      {1:~                                                                                 }|
+      {1:~                                                                                 }|*2
                                                                                         |
     ]]}
     feed('j')
     screen:expect{grid=[[
       {17:+--  2 lines: aaaaa·······························································}|
       {18:^+--  2 lines: ccccc·······························································}|
-      {1:~                                                                                 }|
-      {1:~                                                                                 }|
+      {1:~                                                                                 }|*2
                                                                                         |
     ]]}
   end)
@@ -2513,24 +3120,19 @@ bbbbbbb]])
     screen:expect{grid=[[
       ^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       b                                                                                 |
-      {1:~                                                                                 }|
-      {1:~                                                                                 }|
+      {1:~                                                                                 }|*2
                                                                                         |
     ]]}
     command('set nowrap')
     screen:expect{grid=[[
       ^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      {1:~                                                                                 }|
-      {1:~                                                                                 }|
-      {1:~                                                                                 }|
+      {1:~                                                                                 }|*3
                                                                                         |
     ]]}
     feed('82i0<Esc>0')
     screen:expect{grid=[[
       ^0000000000000000000000000000000000000000000000000000000000000000000000000000000000|
-      {1:~                                                                                 }|
-      {1:~                                                                                 }|
-      {1:~                                                                                 }|
+      {1:~                                                                                 }|*3
                                                                                         |
     ]]}
     command('set wrap')
@@ -2543,26 +3145,545 @@ bbbbbbb]])
     ]]}
   end)
 
-  it('list "extends" is drawn with only inline virtual text offscreen', function()
+  it('lcs-extends is drawn with inline virtual text at end of screen line', function()
+    exec([[
+      setlocal nowrap list listchars=extends:!
+      call setline(1, repeat('a', 51))
+    ]])
+    meths.buf_set_extmark(0, ns, 0, 50, { virt_text = { { 'bbb', 'Special' } }, virt_text_pos = 'inline' })
+    feed('20l')
+    screen:expect{grid=[[
+      aaaaaaaaaaaaaaaaaaaa^aaaaaaaaaaaaaaaaaaaaaaaaaaaaa{1:!}|
+      {1:~                                                 }|
+                                                        |
+    ]]}
+    feed('zl')
+    screen:expect{grid=[[
+      aaaaaaaaaaaaaaaaaaa^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{1:!}|
+      {1:~                                                 }|
+                                                        |
+    ]]}
+    feed('zl')
+    screen:expect{grid=[[
+      aaaaaaaaaaaaaaaaaa^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:b}{1:!}|
+      {1:~                                                 }|
+                                                        |
+    ]]}
+    feed('zl')
+    screen:expect{grid=[[
+      aaaaaaaaaaaaaaaaa^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bb}{1:!}|
+      {1:~                                                 }|
+                                                        |
+    ]]}
+    feed('zl')
+    screen:expect{grid=[[
+      aaaaaaaaaaaaaaaa^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{10:bbb}a|
+      {1:~                                                 }|
+                                                        |
+    ]]}
+  end)
+
+  it('lcs-extends is drawn with only inline virtual text offscreen', function()
     command('set nowrap')
     command('set list')
     command('set listchars+=extends:c')
-    meths.buf_set_extmark(0, ns, 0, 0,
-      { virt_text = { { 'test', 'Special' } }, virt_text_pos = 'inline' })
+    meths.buf_set_extmark(0, ns, 0, 0, { virt_text = { { 'test', 'Special' } }, virt_text_pos = 'inline' })
     insert(string.rep('a', 50))
     feed('gg0')
-    screen:expect { grid = [[
+    screen:expect{grid=[[
       ^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa{1:c}|
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
                                                         |
-      ]]}
+    ]]}
+  end)
+
+  it('blockwise Visual highlight with double-width virtual text (replace)', function()
+    screen:try_resize(60, 6)
+    insert('123456789\n123456789\n123456789\n123456789')
+    meths.buf_set_extmark(0, ns, 1, 1, { virt_text = { { '-口-', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'replace' })
+    meths.buf_set_extmark(0, ns, 2, 2, { virt_text = { { '口', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'replace' })
+    feed('gg0')
+    screen:expect{grid=[[
+      ^123456789                                                   |
+      1{10:-口-}23456789                                               |
+      12{10:口}3456789                                                 |
+      123456789                                                   |
+      {1:~                                                           }|
+                                                                  |
+    ]]}
+    feed('<C-V>3jl')
+    screen:expect{grid=[[
+      {7:12}3456789                                                   |
+      {7:1}{10:-口-}23456789                                               |
+      {7:12}{10:口}3456789                                                 |
+      {7:1}^23456789                                                   |
+      {1:~                                                           }|
+      {8:-- VISUAL BLOCK --}                                          |
+    ]]}
+    feed('l')
+    screen:expect{grid=[[
+      {7:123}456789                                                   |
+      {7:1}{10:-口-}23456789                                               |
+      {7:12}{10:口}3456789                                                 |
+      {7:12}^3456789                                                   |
+      {1:~                                                           }|
+      {8:-- VISUAL BLOCK --}                                          |
+    ]]}
+    feed('4l')
+    screen:expect{grid=[[
+      {7:1234567}89                                                   |
+      {7:1}{10:-口-}{7:23}456789                                               |
+      {7:12}{10:口}{7:345}6789                                                 |
+      {7:123456}^789                                                   |
+      {1:~                                                           }|
+      {8:-- VISUAL BLOCK --}                                          |
+    ]]}
+    feed('Ol')
+    screen:expect{grid=[[
+      1{7:234567}89                                                   |
+      1{10:-口-}{7:23}456789                                               |
+      1{7:2}{10:口}{7:345}6789                                                 |
+      1^2{7:34567}89                                                   |
+      {1:~                                                           }|
+      {8:-- VISUAL BLOCK --}                                          |
+    ]]}
+    feed('l')
+    screen:expect{grid=[[
+      12{7:34567}89                                                   |
+      1{10:-口-}{7:23}456789                                               |
+      12{10:口}{7:345}6789                                                 |
+      12^3{7:4567}89                                                   |
+      {1:~                                                           }|
+      {8:-- VISUAL BLOCK --}                                          |
+    ]]}
+    feed('l')
+    screen:expect{grid=[[
+      123{7:4567}89                                                   |
+      1{10:-口-}{7:23}456789                                               |
+      12{10:口}{7:345}6789                                                 |
+      123^4{7:567}89                                                   |
+      {1:~                                                           }|
+      {8:-- VISUAL BLOCK --}                                          |
+    ]]}
+  end)
+
+  it('blockwise Visual highlight with double-width virtual text (combine)', function()
+    screen:try_resize(60, 6)
+    insert('123456789\n123456789\n123456789\n123456789')
+    meths.buf_set_extmark(0, ns, 1, 1, { virt_text = { { '-口-', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'combine' })
+    meths.buf_set_extmark(0, ns, 2, 2, { virt_text = { { '口', 'Special' } }, virt_text_pos = 'inline', hl_mode = 'combine' })
+    feed('gg0')
+    screen:expect{grid=[[
+      ^123456789                                                   |
+      1{10:-口-}23456789                                               |
+      12{10:口}3456789                                                 |
+      123456789                                                   |
+      {1:~                                                           }|
+                                                                  |
+    ]]}
+    feed('<C-V>3jl')
+    screen:expect{grid=[[
+      {7:12}3456789                                                   |
+      {7:1}{20:-}{10:口-}23456789                                               |
+      {7:12}{10:口}3456789                                                 |
+      {7:1}^23456789                                                   |
+      {1:~                                                           }|
+      {8:-- VISUAL BLOCK --}                                          |
+    ]]}
+    feed('l')
+    screen:expect{grid=[[
+      {7:123}456789                                                   |
+      {7:1}{20:-口}{10:-}23456789                                               |
+      {7:12}{20:口}3456789                                                 |
+      {7:12}^3456789                                                   |
+      {1:~                                                           }|
+      {8:-- VISUAL BLOCK --}                                          |
+    ]]}
+    feed('4l')
+    screen:expect{grid=[[
+      {7:1234567}89                                                   |
+      {7:1}{20:-口-}{7:23}456789                                               |
+      {7:12}{20:口}{7:345}6789                                                 |
+      {7:123456}^789                                                   |
+      {1:~                                                           }|
+      {8:-- VISUAL BLOCK --}                                          |
+    ]]}
+    feed('Ol')
+    screen:expect{grid=[[
+      1{7:234567}89                                                   |
+      1{20:-口-}{7:23}456789                                               |
+      1{7:2}{20:口}{7:345}6789                                                 |
+      1^2{7:34567}89                                                   |
+      {1:~                                                           }|
+      {8:-- VISUAL BLOCK --}                                          |
+    ]]}
+    feed('l')
+    screen:expect{grid=[[
+      12{7:34567}89                                                   |
+      1{10:-}{20:口-}{7:23}456789                                               |
+      12{20:口}{7:345}6789                                                 |
+      12^3{7:4567}89                                                   |
+      {1:~                                                           }|
+      {8:-- VISUAL BLOCK --}                                          |
+    ]]}
+    feed('l')
+    screen:expect{grid=[[
+      123{7:4567}89                                                   |
+      1{10:-}{20:口-}{7:23}456789                                               |
+      12{20:口}{7:345}6789                                                 |
+      123^4{7:567}89                                                   |
+      {1:~                                                           }|
+      {8:-- VISUAL BLOCK --}                                          |
+    ]]}
+  end)
+
+  local function test_virt_inline_showbreak_smoothscroll()
+    screen:try_resize(30, 6)
+    exec([[
+      highlight! link LineNr Normal
+      setlocal number showbreak=+ breakindent breakindentopt=shift:2
+      setlocal scrolloff=0 smoothscroll
+      call setline(1, repeat('a', 28))
+      normal! $
+    ]])
+    meths.buf_set_extmark(0, ns, 0, 27, { virt_text = { { ('123'):rep(23) } }, virt_text_pos = 'inline' })
+    feed(':<CR>')  -- Have a screen line that doesn't start with spaces
+    screen:expect{grid=[[
+        1 aaaaaaaaaaaaaaaaaaaaaaaaaa|
+            {1:+}a1231231231231231231231|
+            {1:+}23123123123123123123123|
+            {1:+}12312312312312312312312|
+            {1:+}3^a                     |
+      :                             |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+            {1:+}a1231231231231231231231|
+            {1:+}23123123123123123123123|
+            {1:+}12312312312312312312312|
+            {1:+}3^a                     |
+      {1:~                             }|
+      :                             |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+            {1:+}23123123123123123123123|
+            {1:+}12312312312312312312312|
+            {1:+}3^a                     |
+      {1:~                             }|*2
+      :                             |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+            {1:+}12312312312312312312312|
+            {1:+}3^a                     |
+      {1:~                             }|*3
+      :                             |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+            {1:+}3^a                     |
+      {1:~                             }|*4
+      :                             |
+    ]]}
+    feed('zbi')
+    screen:expect{grid=[[
+        1 aaaaaaaaaaaaaaaaaaaaaaaaaa|
+            {1:+}a^1231231231231231231231|
+            {1:+}23123123123123123123123|
+            {1:+}12312312312312312312312|
+            {1:+}3a                     |
+      {8:-- INSERT --}                  |
+    ]]}
+    feed('<BS>')
+    screen:expect{grid=[[
+        1 aaaaaaaaaaaaaaaaaaaaaaaaaa|
+            {1:+}^12312312312312312312312|
+            {1:+}31231231231231231231231|
+            {1:+}23123123123123123123123|
+            {1:+}a                      |
+      {8:-- INSERT --}                  |
+    ]]}
+    feed('<Esc>l')
+    feed(':<CR>')  -- Have a screen line that doesn't start with spaces
+    screen:expect{grid=[[
+        1 aaaaaaaaaaaaaaaaaaaaaaaaaa|
+            {1:+}12312312312312312312312|
+            {1:+}31231231231231231231231|
+            {1:+}23123123123123123123123|
+            {1:+}^a                      |
+      :                             |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+            {1:+}12312312312312312312312|
+            {1:+}31231231231231231231231|
+            {1:+}23123123123123123123123|
+            {1:+}^a                      |
+      {1:~                             }|
+      :                             |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+            {1:+}31231231231231231231231|
+            {1:+}23123123123123123123123|
+            {1:+}^a                      |
+      {1:~                             }|*2
+      :                             |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+            {1:+}23123123123123123123123|
+            {1:+}^a                      |
+      {1:~                             }|*3
+      :                             |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+            {1:+}^a                      |
+      {1:~                             }|*4
+      :                             |
+    ]]}
+    feed('023x$')
+    screen:expect{grid=[[
+        1 aaa12312312312312312312312|
+            {1:+}31231231231231231231231|
+            {1:+}23123123123123123123123|
+            {1:+}^a                      |
+      {1:~                             }|
+      :                             |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+            {1:+}31231231231231231231231|
+            {1:+}23123123123123123123123|
+            {1:+}^a                      |
+      {1:~                             }|*2
+      :                             |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+            {1:+}23123123123123123123123|
+            {1:+}^a                      |
+      {1:~                             }|*3
+      :                             |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+            {1:+}^a                      |
+      {1:~                             }|*4
+      :                             |
+    ]]}
+    feed('zbi')
+    screen:expect{grid=[[
+        1 aaa^12312312312312312312312|
+            {1:+}31231231231231231231231|
+            {1:+}23123123123123123123123|
+            {1:+}a                      |
+      {1:~                             }|
+      {8:-- INSERT --}                  |
+    ]]}
+    feed('<C-U>')
+    screen:expect{grid=[[
+        1 ^12312312312312312312312312|
+            {1:+}31231231231231231231231|
+            {1:+}23123123123123123123a  |
+      {1:~                             }|*2
+      {8:-- INSERT --}                  |
+    ]]}
+    feed('<Esc>')
+    screen:expect{grid=[[
+        1 12312312312312312312312312|
+            {1:+}31231231231231231231231|
+            {1:+}23123123123123123123^a  |
+      {1:~                             }|*2
+                                    |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+            {1:+}31231231231231231231231|
+            {1:+}23123123123123123123^a  |
+      {1:~                             }|*3
+                                    |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+            {1:+}23123123123123123123^a  |
+      {1:~                             }|*4
+                                    |
+    ]]}
+    feed('zbx')
+    screen:expect{grid=[[
+        1 ^12312312312312312312312312|
+            {1:+}31231231231231231231231|
+            {1:+}23123123123123123123   |
+      {1:~                             }|*2
+                                    |
+    ]]}
+    feed('26ia<Esc>a')
+    screen:expect{grid=[[
+        1 aaaaaaaaaaaaaaaaaaaaaaaaaa|
+            {1:+}^12312312312312312312312|
+            {1:+}31231231231231231231231|
+            {1:+}23123123123123123123123|
+      {1:~                             }|
+      {8:-- INSERT --}                  |
+    ]]}
+    feed([[<C-\><C-O>:setlocal breakindentopt=<CR>]])
+    screen:expect{grid=[[
+        1 aaaaaaaaaaaaaaaaaaaaaaaaaa|
+          {1:+}^1231231231231231231231231|
+          {1:+}2312312312312312312312312|
+          {1:+}3123123123123123123      |
+      {1:~                             }|
+      {8:-- INSERT --}                  |
+    ]]}
+  end
+
+  describe('with showbreak, smoothscroll', function()
+    it('and cpoptions-=n', function()
+      test_virt_inline_showbreak_smoothscroll()
+    end)
+
+    it('and cpoptions+=n', function()
+      command('set cpoptions+=n')
+      -- because of 'breakindent' the screen states are the same
+      test_virt_inline_showbreak_smoothscroll()
+    end)
+  end)
+
+  it('before TABs with smoothscroll', function()
+    screen:try_resize(30, 6)
+    exec([[
+      setlocal list listchars=tab:<-> scrolloff=0 smoothscroll
+      call setline(1, repeat("\t", 4) .. 'a')
+      normal! $
+    ]])
+    meths.buf_set_extmark(0, ns, 0, 3, { virt_text = { { ('12'):rep(32) } }, virt_text_pos = 'inline' })
+    screen:expect{grid=[[
+      {1:<------><------><------>}121212|
+      121212121212121212121212121212|
+      1212121212121212121212121212{1:<-}|
+      {1:----->}^a                       |
+      {1:~                             }|
+                                    |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+      {1:<<<}212121212121212121212121212|
+      1212121212121212121212121212{1:<-}|
+      {1:----->}^a                       |
+      {1:~                             }|*2
+                                    |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+      {1:<<<}2121212121212121212121212{1:<-}|
+      {1:----->}^a                       |
+      {1:~                             }|*3
+                                    |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+      {1:<<<-->}^a                       |
+      {1:~                             }|*4
+                                    |
+    ]]}
+    feed('zbh')
+    screen:expect{grid=[[
+      {1:<------><------><------>}121212|
+      121212121212121212121212121212|
+      1212121212121212121212121212{1:^<-}|
+      {1:----->}a                       |
+      {1:~                             }|
+                                    |
+    ]]}
+    feed('i')
+    screen:expect{grid=[[
+      {1:<------><------><------>}^121212|
+      121212121212121212121212121212|
+      1212121212121212121212121212{1:<-}|
+      {1:----->}a                       |
+      {1:~                             }|
+      {8:-- INSERT --}                  |
+    ]]}
+    feed('<C-O>:setlocal nolist<CR>')
+    screen:expect{grid=[[
+                              ^121212|
+      121212121212121212121212121212|
+      1212121212121212121212121212  |
+            a                       |
+      {1:~                             }|
+      {8:-- INSERT --}                  |
+    ]]}
+    feed('<Esc>l')
+    screen:expect{grid=[[
+                              121212|
+      121212121212121212121212121212|
+      1212121212121212121212121212  |
+           ^ a                       |
+      {1:~                             }|
+                                    |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+      {1:<<<}212121212121212121212121212|
+      1212121212121212121212121212  |
+           ^ a                       |
+      {1:~                             }|*2
+                                    |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+      {1:<<<}2121212121212121212121212  |
+           ^ a                       |
+      {1:~                             }|*3
+                                    |
+    ]]}
+    feed('<C-E>')
+    screen:expect{grid=[[
+      {1:<<<}  ^ a                       |
+      {1:~                             }|*4
+                                    |
+    ]]}
+  end)
+
+  it('before a space with linebreak', function()
+    screen:try_resize(50, 6)
+    exec([[
+      setlocal linebreak showbreak=+ breakindent breakindentopt=shift:2
+      call setline(1, repeat('a', 50) .. ' ' .. repeat('c', 45))
+      normal! $
+    ]])
+    meths.buf_set_extmark(0, ns, 0, 50, { virt_text = { { ('b'):rep(10) } }, virt_text_pos = 'inline' })
+    screen:expect{grid=[[
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+        {1:+}bbbbbbbbbb                                     |
+        {1:+}cccccccccccccccccccccccccccccccccccccccccccc^c  |
+      {1:~                                                 }|*2
+                                                        |
+    ]]}
+    feed('05x$')
+    screen:expect{grid=[[
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbb|
+        {1:+}bbbbb                                          |
+        {1:+}cccccccccccccccccccccccccccccccccccccccccccc^c  |
+      {1:~                                                 }|*2
+                                                        |
+    ]]}
+  end)
+
+  it('before double-width char that wraps', function()
+    exec([[
+      call setline(1, repeat('a', 40) .. '口' .. '12345')
+      normal! $
+    ]])
+    meths.buf_set_extmark(0, ns, 0, 40, { virt_text = { { ('b'):rep(9) } }, virt_text_pos = 'inline' })
+    screen:expect{grid=[[
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbb{1:>}|
+      口1234^5                                           |
+                                                        |
+    ]]}
   end)
 end)
 
@@ -2951,9 +4072,7 @@ if (h->n_buckets < new_n_buckets) { // expand
           ^char *new_vals = krealloc( h->vals_buf, new_n_|
       buckets * val_size);                              |
       Grugg                                             |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*3
                                                         |
     ]]}
 
@@ -2961,31 +4080,14 @@ if (h->n_buckets < new_n_buckets) { // expand
     screen:expect{grid=[[
       ^                                                  |
       Grugg                                             |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*9
       --No lines in buffer--                            |
     ]]}
 
     meths.buf_del_extmark(0, ns, id)
     screen:expect{grid=[[
       ^                                                  |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*10
       --No lines in buffer--                            |
     ]]}
   end)
@@ -2998,15 +4100,7 @@ if (h->n_buckets < new_n_buckets) { // expand
     screen:expect([[
       fo^o                                               |
       {6:bar}                                               |
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+      {1:~                                                 }|*9
                                                         |
     ]])
   end)
@@ -3118,8 +4212,7 @@ if (h->n_buckets < new_n_buckets) { // expand
       they                          |
       {7:hatin'}                        |
       ^hh                            |
-      {1:~                             }|
-      {1:~                             }|
+      {1:~                             }|*2
                                     |
     ]]}
 
@@ -3128,9 +4221,7 @@ if (h->n_buckets < new_n_buckets) { // expand
       they                          |
       {7:hatin'}                        |
       ^hh                            |
-      {1:~                             }|
-      {1:~                             }|
-      {1:~                             }|
+      {1:~                             }|*3
                                     |
     ]]}
 
@@ -3138,21 +4229,14 @@ if (h->n_buckets < new_n_buckets) { // expand
     screen:expect{grid=[[
       {7:hatin'}                        |
       ^hh                            |
-      {1:~                             }|
-      {1:~                             }|
-      {1:~                             }|
-      {1:~                             }|
+      {1:~                             }|*4
                                     |
     ]]}
 
     feed '<c-e>'
     screen:expect{grid=[[
       ^hh                            |
-      {1:~                             }|
-      {1:~                             }|
-      {1:~                             }|
-      {1:~                             }|
-      {1:~                             }|
+      {1:~                             }|*5
                                     |
     ]]}
   end)
@@ -3223,7 +4307,7 @@ if (h->n_buckets < new_n_buckets) { // expand
   end)
 
 
-  it('works with hard tabs', function()
+  it('works with hard TABs', function()
     insert(example_text2)
     feed 'gg'
     meths.buf_set_extmark(0, ns, 1, 0, {
@@ -3294,6 +4378,7 @@ if (h->n_buckets < new_n_buckets) { // expand
   end)
 
   it('does not show twice if end_row or end_col is specified #18622', function()
+    screen:try_resize(50, 8)
     insert([[
       aaa
       bbb
@@ -3309,10 +4394,78 @@ if (h->n_buckets < new_n_buckets) { // expand
       dd^d                                               |
       {1:VIRT LINE 2}                                       |
       {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
-      {1:~                                                 }|
+                                                        |
+    ]]}
+  end)
+
+  it('works with rightleft', function()
+    screen:try_resize(50, 8)
+    insert([[
+      aaa
+      bbb
+      ccc
+      ddd]])
+    command('set number rightleft')
+    meths.buf_set_extmark(0, ns, 0, 0, {virt_lines = {{{'VIRT LINE 1', 'NonText'}}}, virt_lines_leftcol = true})
+    meths.buf_set_extmark(0, ns, 3, 0, {virt_lines = {{{'VIRT LINE 2', 'NonText'}}}})
+    screen:expect{grid=[[
+                                                 aaa{9: 1  }|
+                                             {1:1 ENIL TRIV}|
+                                                 bbb{9: 2  }|
+                                                 ccc{9: 3  }|
+                                                 ^ddd{9: 4  }|
+                                         {1:2 ENIL TRIV}{9:    }|
+      {1:                                                 ~}|
+                                                        |
+    ]]}
+  end)
+
+  it('works when using dd or yyp #23915 #23916', function()
+    insert([[
+      line1
+      line2
+      line3
+      line4
+      line5]])
+    meths.buf_set_extmark(0, ns, 0, 0, {virt_lines={{{"foo"}}, {{"bar"}}, {{"baz"}}}})
+    screen:expect{grid=[[
+      line1                                             |
+      foo                                               |
+      bar                                               |
+      baz                                               |
+      line2                                             |
+      line3                                             |
+      line4                                             |
+      line^5                                             |
+      {1:~                                                 }|*3
+                                                        |
+    ]]}
+
+    feed('gg')
+    feed('dd')
+    screen:expect{grid=[[
+      ^line2                                             |
+      foo                                               |
+      bar                                               |
+      baz                                               |
+      line3                                             |
+      line4                                             |
+      line5                                             |
+      {1:~                                                 }|*4
+                                                        |
+    ]]}
+
+    feed('yyp')
+    screen:expect{grid=[[
+      line2                                             |
+      foo                                               |
+      bar                                               |
+      baz                                               |
+      ^line2                                             |
+      line3                                             |
+      line4                                             |
+      line5                                             |
+      {1:~                                                 }|*3
                                                         |
     ]]}
   end)
@@ -3356,12 +4509,9 @@ l5
       {1:  }l4                                              |
       {1:  }l5                                              |
       {1:  }                                                |
-      {2:~                                                 }|
-      {2:~                                                 }|
-      {2:~                                                 }|
+      {2:~                                                 }|*3
                                                         |
     ]]}
-
   end)
 
   it('can add a single sign (with end row)', function()
@@ -3377,16 +4527,31 @@ l5
       {1:  }l4                                              |
       {1:  }l5                                              |
       {1:  }                                                |
-      {2:~                                                 }|
-      {2:~                                                 }|
-      {2:~                                                 }|
+      {2:~                                                 }|*3
+                                                        |
+    ]]}
+  end)
+
+  it('can add a single sign and text highlight', function()
+    insert(example_test3)
+    feed 'gg'
+
+    meths.buf_set_extmark(0, ns, 1, 0, {sign_text='S', hl_group='Todo', end_col=1})
+    screen:expect{grid=[[
+      {1:  }^l1                                              |
+      S {3:l}2                                              |
+      {1:  }l3                                              |
+      {1:  }l4                                              |
+      {1:  }l5                                              |
+      {1:  }                                                |
+      {2:~                                                 }|*3
                                                         |
     ]]}
 
+    meths.buf_clear_namespace(0, ns, 0, -1)
   end)
 
   it('can add multiple signs (single extmark)', function()
-    pending('TODO(lewis6991): Support ranged signs')
     insert(example_test3)
     feed 'gg'
 
@@ -3399,16 +4564,12 @@ l5
       {1:  }l4                                              |
       {1:  }l5                                              |
       {1:  }                                                |
-      {2:~                                                 }|
-      {2:~                                                 }|
-      {2:~                                                 }|
+      {2:~                                                 }|*3
                                                         |
     ]]}
-
   end)
 
   it('can add multiple signs (multiple extmarks)', function()
-    pending('TODO(lewis6991): Support ranged signs')
     insert(example_test3)
     feed'gg'
 
@@ -3422,54 +4583,30 @@ l5
       S2l4                                              |
       S2l5                                              |
       {1:  }                                                |
-      {2:~                                                 }|
-      {2:~                                                 }|
-      {2:~                                                 }|
+      {2:~                                                 }|*3
                                                         |
     ]]}
-
   end)
 
   it('can add multiple signs (multiple extmarks) 2', function()
     insert(example_test3)
     feed 'gg'
 
-    meths.buf_set_extmark(0, ns, 1, -1, {sign_text='S1'})
-    meths.buf_set_extmark(0, ns, 1, -1, {sign_text='S2'})
-
+    meths.buf_set_extmark(0, ns, 3, -1, {sign_text='S1'})
+    meths.buf_set_extmark(0, ns, 1, -1, {sign_text='S2', end_row = 3})
     screen:expect{grid=[[
       {1:    }^l1                                            |
-      S2S1l2                                            |
-      {1:    }l3                                            |
-      {1:    }l4                                            |
+      S2{1:  }l2                                            |
+      S2{1:  }l3                                            |
+      S1S2l4                                            |
       {1:    }l5                                            |
       {1:    }                                              |
-      {2:~                                                 }|
-      {2:~                                                 }|
-      {2:~                                                 }|
+      {2:~                                                 }|*3
                                                         |
     ]]}
-
-    -- TODO(lewis6991): Support ranged signs
-    -- meths.buf_set_extmark(1, ns, 1, -1, {sign_text='S3', end_row = 2})
-
-    -- screen:expect{grid=[[
-    --   {1:      }^l1                                          |
-    --   S3S2S1l2                                          |
-    --   S3{1:    }l3                                          |
-    --   {1:      }l4                                          |
-    --   {1:      }l5                                          |
-    --   {1:      }                                            |
-    --   {2:~                                                 }|
-    --   {2:~                                                 }|
-    --   {2:~                                                 }|
-    --                                                     |
-    -- ]]}
-
   end)
 
   it('can add multiple signs (multiple extmarks) 3', function()
-    pending('TODO(lewis6991): Support ranged signs')
 
     insert(example_test3)
     feed 'gg'
@@ -3480,13 +4617,11 @@ l5
     screen:expect{grid=[[
       {1:    }^l1                                            |
       S1{1:  }l2                                            |
-      S2S1l3                                            |
+      S1S2l3                                            |
       S2{1:  }l4                                            |
       {1:    }l5                                            |
       {1:    }                                              |
-      {2:~                                                 }|
-      {2:~                                                 }|
-      {2:~                                                 }|
+      {2:~                                                 }|*3
                                                         |
     ]]}
   end)
@@ -3505,9 +4640,7 @@ l5
       {1:  }l4                                              |
       {1:  }l5                                              |
       {1:  }                                                |
-      {2:~                                                 }|
-      {2:~                                                 }|
-      {2:~                                                 }|
+      {2:~                                                 }|*3
                                                         |
     ]]}
   end)
@@ -3525,21 +4658,18 @@ l5
     meths.buf_set_extmark(0, ns, 2, -1, {sign_text='S5'})
 
     screen:expect{grid=[[
-      S4S1^l1                                            |
+      S1S4^l1                                            |
       x S2l2                                            |
       S5{1:  }l3                                            |
       {1:    }l4                                            |
       {1:    }l5                                            |
       {1:    }                                              |
-      {2:~                                                 }|
-      {2:~                                                 }|
-      {2:~                                                 }|
+      {2:~                                                 }|*3
                                                         |
     ]]}
   end)
 
   it('works with old signs (with range)', function()
-    pending('TODO(lewis6991): Support ranged signs')
     insert(example_test3)
     feed 'gg'
 
@@ -3553,22 +4683,18 @@ l5
     meths.buf_set_extmark(0, ns, 2, -1, {sign_text='S5'})
 
     screen:expect{grid=[[
-      S3S4S1^l1                                          |
-      S2S3x l2                                          |
-      S5S3{1:  }l3                                          |
+      S1S3S4^l1                                          |
+      x S2S3l2                                          |
+      S3S5{1:  }l3                                          |
       S3{1:    }l4                                          |
       S3{1:    }l5                                          |
       {1:      }                                            |
-      {2:~                                                 }|
-      {2:~                                                 }|
-      {2:~                                                 }|
+      {2:~                                                 }|*3
                                                         |
     ]]}
   end)
 
   it('can add a ranged sign (with start out of view)', function()
-    pending('TODO(lewis6991): Support ranged signs')
-
     insert(example_test3)
     command 'set signcolumn=yes:2'
     feed 'gg'
@@ -3581,14 +4707,9 @@ l5
       X {1:  }l4                                            |
       {1:    }l5                                            |
       {1:    }                                              |
-      {2:~                                                 }|
-      {2:~                                                 }|
-      {2:~                                                 }|
-      {2:~                                                 }|
-      {2:~                                                 }|
+      {2:~                                                 }|*5
                                                         |
     ]]}
-
   end)
 
   it('can add lots of signs', function()
@@ -3611,15 +4732,8 @@ l5
     end
 
     screen:expect{grid=[[
-      X Y Z W {3:a} {3:b} {3:c} {3:d} {3:e} {3:f} {3:g} {3:h}                 |
-      X Y Z W {3:a} {3:b} {3:c} {3:d} {3:e} {3:f} {3:g} {3:h}                 |
-      X Y Z W {3:a} {3:b} {3:c} {3:d} {3:e} {3:f} {3:g} {3:h}                 |
-      X Y Z W {3:a} {3:b} {3:c} {3:d} {3:e} {3:f} {3:g} {3:h}                 |
-      X Y Z W {3:a} {3:b} {3:c} {3:d} {3:e} {3:f} {3:g} {3:h}                 |
-      X Y Z W {3:a} {3:b} {3:c} {3:d} {3:e} {3:f} {3:g} {3:h}                 |
-      X Y Z W {3:a} {3:b} {3:c} {3:d} {3:e} {3:f} {3:g} {3:h}                 |
-      X Y Z W {3:a} {3:b} {3:c} {3:d} {3:e} {3:f} {3:g} {3:h}                 |
-      X Y Z W {3:a} {3:b} {3:c} {3:d} {3:e} {3:f} {3:g} {3:^h}                 |
+      W X Y Z {3:a} {3:b} {3:c} {3:d} {3:e} {3:f} {3:g} {3:h}                 |*8
+      W X Y Z {3:a} {3:b} {3:c} {3:d} {3:e} {3:f} {3:g} {3:^h}                 |
                                               |
     ]]}
   end)
@@ -3699,6 +4813,36 @@ l5
     ]]}
   end)
 
+  it('correct width when removing multiple signs from sentinel line', function()
+    screen:try_resize(20, 4)
+    insert(example_test3)
+    meths.buf_set_extmark(0, ns, 0, -1, {sign_text='S1', end_row=3})
+    meths.buf_set_extmark(0, ns, 1, -1, {invalidate = true, sign_text='S2'})
+    meths.buf_set_extmark(0, ns, 1, -1, {invalidate = true, sign_text='S3'})
+    feed('2Gdd')
+
+    screen:expect{grid=[[
+      S1l1                |
+      S1^l3                |
+      S1l4                |
+                          |
+    ]]}
+  end)
+
+  it('correct width with multiple overlapping signs', function()
+    screen:try_resize(20, 4)
+    insert(example_test3)
+    meths.buf_set_extmark(0, ns, 0, -1, {sign_text='S1', end_row=2})
+    meths.buf_set_extmark(0, ns, 1, -1, {sign_text='S2', end_row=2})
+    feed('gg')
+
+    screen:expect{grid=[[
+      S1{1:  }^l1              |
+      S1S2l2              |
+      S1S2l3              |
+                          |
+    ]]}
+  end)
 end)
 
 describe('decorations: virt_text', function()
@@ -3737,10 +4881,7 @@ describe('decorations: virt_text', function()
       {1:  2 }hello               {2:hello}                     |
       {1:  1 }hello                                         |
       {1:5   }helloVIRTUA^L                                  |
-      {3:~                                                 }|
-      {3:~                                                 }|
-      {3:~                                                 }|
-      {3:~                                                 }|
+      {3:~                                                 }|*4
                                                         |
     ]]}
 
@@ -3753,10 +4894,7 @@ describe('decorations: virt_text', function()
       {1:  1 }hello               {2:hello}                     |
       {1:4   }hell^o                                         |
       {1:  1 }helloVIRTUAL                                  |
-      {3:~                                                 }|
-      {3:~                                                 }|
-      {3:~                                                 }|
-      {3:~                                                 }|
+      {3:~                                                 }|*4
                                                         |
     ]]}
   end)
@@ -3766,14 +4904,9 @@ describe('decorations: virt_text', function()
 
     screen:expect{grid=[[
                                                         |
-      hello                                             |
-      hello                                             |
-      hello                                             |
-      hello                                             |
+      hello                                             |*4
       hell^o                                             |
-      {3:~                                                 }|
-      {3:~                                                 }|
-      {3:~                                                 }|
+      {3:~                                                 }|*3
                                                         |
     ]]}
 
@@ -3784,16 +4917,10 @@ describe('decorations: virt_text', function()
 
     screen:expect{grid=[[
                                                         |
-      hello                                             |
-      hello                                             |
-      hello                                             |
-      hello                                             |
+      hello                                             |*4
       hell^o world                                       |
-      {3:~                                                 }|
-      {3:~                                                 }|
-      {3:~                                                 }|
+      {3:~                                                 }|*3
                                                         |
     ]]}
   end)
-
 end)

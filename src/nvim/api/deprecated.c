@@ -1,13 +1,11 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>
+#include <string.h>
 
 #include "nvim/api/buffer.h"
 #include "nvim/api/deprecated.h"
 #include "nvim/api/extmark.h"
+#include "nvim/api/keysets_defs.h"
 #include "nvim/api/options.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
@@ -22,8 +20,8 @@
 #include "nvim/lua/executor.h"
 #include "nvim/memory.h"
 #include "nvim/option.h"
-#include "nvim/pos.h"
-#include "nvim/types.h"
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "api/deprecated.c.generated.h"
@@ -35,8 +33,7 @@ String nvim_exec(uint64_t channel_id, String src, Boolean output, Error *err)
   FUNC_API_SINCE(7)
   FUNC_API_DEPRECATED_SINCE(11)
 {
-  Dict(exec_opts) opts = { 0 };
-  opts.output = BOOLEAN_OBJ(output);
+  Dict(exec_opts) opts = { .output = output };
   return exec_impl(channel_id, src, &opts, err);
 }
 
@@ -46,8 +43,7 @@ String nvim_command_output(uint64_t channel_id, String command, Error *err)
   FUNC_API_SINCE(1)
   FUNC_API_DEPRECATED_SINCE(7)
 {
-  Dict(exec_opts) opts = { 0 };
-  opts.output = BOOLEAN_OBJ(true);
+  Dict(exec_opts) opts = { .output = true };
   return exec_impl(channel_id, command, &opts, err);
 }
 
@@ -131,7 +127,7 @@ void nvim_buf_clear_highlight(Buffer buffer, Integer ns_id, Integer line_start, 
 /// @param[out] err   Error details, if any
 /// @return The ns_id that was used
 Integer nvim_buf_set_virtual_text(Buffer buffer, Integer src_id, Integer line, Array chunks,
-                                  Dictionary opts, Error *err)
+                                  Dict(empty) *opts, Error *err)
   FUNC_API_SINCE(5)
   FUNC_API_DEPRECATED_SINCE(8)
 {
@@ -145,11 +141,6 @@ Integer nvim_buf_set_virtual_text(Buffer buffer, Integer src_id, Integer line, A
     return 0;
   }
 
-  if (opts.size > 0) {
-    api_set_error(err, kErrorTypeValidation, "opts dict isn't empty");
-    return 0;
-  }
-
   uint32_t ns_id = src2ns(&src_id);
   int width;
 
@@ -158,22 +149,25 @@ Integer nvim_buf_set_virtual_text(Buffer buffer, Integer src_id, Integer line, A
     return 0;
   }
 
-  Decoration *existing = decor_find_virttext(buf, (int)line, ns_id);
+  DecorVirtText *existing = decor_find_virttext(buf, (int)line, ns_id);
 
   if (existing) {
-    clear_virttext(&existing->virt_text);
-    existing->virt_text = virt_text;
-    existing->virt_text_width = width;
+    clear_virttext(&existing->data.virt_text);
+    existing->data.virt_text = virt_text;
+    existing->width = width;
     return src_id;
   }
 
-  Decoration decor = DECORATION_INIT;
-  decor.virt_text = virt_text;
-  decor.virt_text_width = width;
-  decor.priority = 0;
+  DecorVirtText *vt = xmalloc(sizeof *vt);
+  *vt = (DecorVirtText)DECOR_VIRT_TEXT_INIT;
+  vt->data.virt_text = virt_text;
+  vt->width = width;
+  vt->priority = 0;
 
-  extmark_set(buf, ns_id, NULL, (int)line, 0, -1, -1, &decor, true,
-              false, kExtmarkNoUndo, NULL);
+  DecorInline decor = { .ext = true, .data.ext.vt = vt, .data.ext.sh_idx = DECOR_ID_INVALID };
+
+  extmark_set(buf, ns_id, NULL, (int)line, 0, -1, -1, decor, 0, true,
+              false, false, false, NULL);
   return src_id;
 }
 
@@ -520,6 +514,7 @@ static int64_t convert_index(int64_t index)
 /// @return         Option Information
 Dictionary nvim_get_option_info(String name, Error *err)
   FUNC_API_SINCE(7)
+  FUNC_API_DEPRECATED_SINCE(11)
 {
   return get_vimoption(name, OPT_GLOBAL, curbuf, curwin, err);
 }
@@ -533,8 +528,9 @@ Dictionary nvim_get_option_info(String name, Error *err)
 /// @param[out] err Error details, if any
 void nvim_set_option(uint64_t channel_id, String name, Object value, Error *err)
   FUNC_API_SINCE(1)
+  FUNC_API_DEPRECATED_SINCE(11)
 {
-  set_option_to(channel_id, NULL, SREQ_GLOBAL, name, value, err);
+  set_option_to(channel_id, NULL, kOptReqGlobal, name, value, err);
 }
 
 /// Gets the global value of an option.
@@ -545,8 +541,9 @@ void nvim_set_option(uint64_t channel_id, String name, Object value, Error *err)
 /// @return         Option value (global)
 Object nvim_get_option(String name, Arena *arena, Error *err)
   FUNC_API_SINCE(1)
+  FUNC_API_DEPRECATED_SINCE(11)
 {
-  return get_option_from(NULL, SREQ_GLOBAL, name, err);
+  return get_option_from(NULL, kOptReqGlobal, name, err);
 }
 
 /// Gets a buffer option value
@@ -558,6 +555,7 @@ Object nvim_get_option(String name, Arena *arena, Error *err)
 /// @return Option value
 Object nvim_buf_get_option(Buffer buffer, String name, Arena *arena, Error *err)
   FUNC_API_SINCE(1)
+  FUNC_API_DEPRECATED_SINCE(11)
 {
   buf_T *buf = find_buffer_by_handle(buffer, err);
 
@@ -565,7 +563,7 @@ Object nvim_buf_get_option(Buffer buffer, String name, Arena *arena, Error *err)
     return (Object)OBJECT_INIT;
   }
 
-  return get_option_from(buf, SREQ_BUF, name, err);
+  return get_option_from(buf, kOptReqBuf, name, err);
 }
 
 /// Sets a buffer option value. Passing `nil` as value deletes the option (only
@@ -579,6 +577,7 @@ Object nvim_buf_get_option(Buffer buffer, String name, Arena *arena, Error *err)
 /// @param[out] err   Error details, if any
 void nvim_buf_set_option(uint64_t channel_id, Buffer buffer, String name, Object value, Error *err)
   FUNC_API_SINCE(1)
+  FUNC_API_DEPRECATED_SINCE(11)
 {
   buf_T *buf = find_buffer_by_handle(buffer, err);
 
@@ -586,7 +585,7 @@ void nvim_buf_set_option(uint64_t channel_id, Buffer buffer, String name, Object
     return;
   }
 
-  set_option_to(channel_id, buf, SREQ_BUF, name, value, err);
+  set_option_to(channel_id, buf, kOptReqBuf, name, value, err);
 }
 
 /// Gets a window option value
@@ -598,6 +597,7 @@ void nvim_buf_set_option(uint64_t channel_id, Buffer buffer, String name, Object
 /// @return Option value
 Object nvim_win_get_option(Window window, String name, Arena *arena, Error *err)
   FUNC_API_SINCE(1)
+  FUNC_API_DEPRECATED_SINCE(11)
 {
   win_T *win = find_window_by_handle(window, err);
 
@@ -605,7 +605,7 @@ Object nvim_win_get_option(Window window, String name, Arena *arena, Error *err)
     return (Object)OBJECT_INIT;
   }
 
-  return get_option_from(win, SREQ_WIN, name, err);
+  return get_option_from(win, kOptReqWin, name, err);
 }
 
 /// Sets a window option value. Passing `nil` as value deletes the option (only
@@ -619,6 +619,7 @@ Object nvim_win_get_option(Window window, String name, Arena *arena, Error *err)
 /// @param[out] err Error details, if any
 void nvim_win_set_option(uint64_t channel_id, Window window, String name, Object value, Error *err)
   FUNC_API_SINCE(1)
+  FUNC_API_DEPRECATED_SINCE(11)
 {
   win_T *win = find_window_by_handle(window, err);
 
@@ -626,118 +627,73 @@ void nvim_win_set_option(uint64_t channel_id, Window window, String name, Object
     return;
   }
 
-  set_option_to(channel_id, win, SREQ_WIN, name, value, err);
+  set_option_to(channel_id, win, kOptReqWin, name, value, err);
 }
 
 /// Gets the value of a global or local (buffer, window) option.
 ///
-/// @param from If `type` is `SREQ_WIN` or `SREQ_BUF`, this must be a pointer
-///        to the window or buffer.
-/// @param type One of `SREQ_GLOBAL`, `SREQ_WIN` or `SREQ_BUF`
-/// @param name The option name
-/// @param[out] err Details of an error that may have occurred
-/// @return the option value
-static Object get_option_from(void *from, int type, String name, Error *err)
+/// @param[in]   from       Pointer to buffer or window for local option value.
+/// @param       req_scope  Requested option scope. See OptReqScope in option.h.
+/// @param       name       The option name.
+/// @param[out]  err        Details of an error that may have occurred.
+///
+/// @return  the option value.
+static Object get_option_from(void *from, OptReqScope req_scope, String name, Error *err)
 {
-  Object rv = OBJECT_INIT;
-
   VALIDATE_S(name.size > 0, "option name", "<empty>", {
-    return rv;
+    return (Object)OBJECT_INIT;
   });
 
-  // Return values
-  int64_t numval;
-  char *stringval = NULL;
-
-  int flags = get_option_value_strict(name.data, &numval, &stringval, type, from);
-  VALIDATE_S(flags != 0, "option name", name.data, {
-    return rv;
-  });
-
-  if (flags & SOPT_BOOL) {
-    rv.type = kObjectTypeBoolean;
-    rv.data.boolean = numval ? true : false;
-  } else if (flags & SOPT_NUM) {
-    rv.type = kObjectTypeInteger;
-    rv.data.integer = numval;
-  } else if (flags & SOPT_STRING) {
-    if (!stringval) {
-      api_set_error(err, kErrorTypeException, "Failed to get option '%s'", name.data);
-      return rv;
-    }
-    rv.type = kObjectTypeString;
-    rv.data.string.data = stringval;
-    rv.data.string.size = strlen(stringval);
-  } else {
-    api_set_error(err, kErrorTypeException, "Unknown type for option '%s'", name.data);
+  OptVal value = get_option_value_strict(find_option(name.data), req_scope, from, err);
+  if (ERROR_SET(err)) {
+    return (Object)OBJECT_INIT;
   }
 
-  return rv;
+  VALIDATE_S(value.type != kOptValTypeNil, "option name", name.data, {
+    return (Object)OBJECT_INIT;
+  });
+
+  return optval_as_object(value);
 }
 
 /// Sets the value of a global or local (buffer, window) option.
 ///
-/// @param to If `type` is `SREQ_WIN` or `SREQ_BUF`, this must be a pointer
-///        to the window or buffer.
-/// @param type One of `SREQ_GLOBAL`, `SREQ_WIN` or `SREQ_BUF`
-/// @param name The option name
-/// @param[out] err Details of an error that may have occurred
-static void set_option_to(uint64_t channel_id, void *to, int type, String name, Object value,
-                          Error *err)
+/// @param[in]   to         Pointer to buffer or window for local option value.
+/// @param       req_scope  Requested option scope. See OptReqScope in option.h.
+/// @param       name       The option name.
+/// @param       value      New option value.
+/// @param[out]  err        Details of an error that may have occurred.
+static void set_option_to(uint64_t channel_id, void *to, OptReqScope req_scope, String name,
+                          Object value, Error *err)
 {
   VALIDATE_S(name.size > 0, "option name", "<empty>", {
     return;
   });
 
-  int flags = get_option_value_strict(name.data, NULL, NULL, type, to);
-  VALIDATE_S(flags != 0, "option name", name.data, {
+  OptIndex opt_idx = find_option(name.data);
+  VALIDATE_S(opt_idx != kOptInvalid, "option name", name.data, {
     return;
   });
 
-  if (value.type == kObjectTypeNil) {
-    if (type == SREQ_GLOBAL) {
-      api_set_error(err, kErrorTypeException, "Cannot unset option '%s'", name.data);
-      return;
-    } else if (!(flags & SOPT_GLOBAL)) {
-      api_set_error(err, kErrorTypeException,
-                    "Cannot unset option '%s' because it doesn't have a global value",
-                    name.data);
-      return;
-    } else {
-      unset_global_local_option(name.data, to);
-      return;
-    }
-  }
+  bool error = false;
+  OptVal optval = object_as_optval(value, &error);
 
-  OptVal optval;
+  // Handle invalid option value type.
+  // Don't use `name` in the error message here, because `name` can be any String.
+  // No need to check if value type actually matches the types for the option, as set_option_value()
+  // already handles that.
+  VALIDATE_EXP(!error, "value", "valid option type", api_typename(value.type), {
+    return;
+  });
 
-  if (flags & SOPT_BOOL) {
-    VALIDATE(value.type == kObjectTypeBoolean, "Option '%s' value must be Boolean", name.data, {
-      return;
-    });
-    optval = BOOLEAN_OPTVAL(value.data.boolean);
-  } else if (flags & SOPT_NUM) {
-    VALIDATE(value.type == kObjectTypeInteger, "Option '%s' value must be Integer", name.data, {
-      return;
-    });
-    VALIDATE((value.data.integer <= INT_MAX && value.data.integer >= INT_MIN),
-             "Option '%s' value is out of range", name.data, {
-      return;
-    });
-    optval = NUMBER_OPTVAL(value.data.integer);
-  } else {
-    VALIDATE(value.type == kObjectTypeString, "Option '%s' value must be String", name.data, {
-      return;
-    });
-    optval = STRING_OPTVAL(value.data.string);
-  }
-
+  int attrs = get_option_attrs(opt_idx);
   // For global-win-local options -> setlocal
   // For        win-local options -> setglobal and setlocal (opt_flags == 0)
-  const int opt_flags = (type == SREQ_WIN && !(flags & SOPT_GLOBAL)) ? 0 :
-                        (type == SREQ_GLOBAL) ? OPT_GLOBAL : OPT_LOCAL;
+  const int opt_flags = (req_scope == kOptReqWin && !(attrs & SOPT_GLOBAL))
+                        ? 0
+                        : (req_scope == kOptReqGlobal) ? OPT_GLOBAL : OPT_LOCAL;
 
   WITH_SCRIPT_CONTEXT(channel_id, {
-    set_option_value_for(name.data, optval, opt_flags, type, to, err);
+    set_option_value_for(name.data, opt_idx, optval, opt_flags, req_scope, to, err);
   });
 }

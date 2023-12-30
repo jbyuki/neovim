@@ -4,10 +4,10 @@ local clear = helpers.clear
 local command = helpers.command
 local eq = helpers.eq
 local eval = helpers.eval
-local feed_command = helpers.feed_command
 local expect = helpers.expect
 local feed = helpers.feed
 local insert = helpers.insert
+local funcs = helpers.funcs
 local meths = helpers.meths
 local neq = helpers.neq
 local ok = helpers.ok
@@ -136,14 +136,14 @@ describe(":substitute, 'inccommand' preserves", function()
     local screen = Screen.new(30,10)
     common_setup(screen, "split", "ABC")
 
-    feed_command("%s/AB/BA/")
-    feed_command("ls")
+    feed(':%s/AB/BA/')
+    poke_eventloop()
+    feed('<CR>')
+    feed(':ls<CR>')
 
     screen:expect([[
       BAC                           |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*3
       {11:                              }|
       :ls                           |
         1 %a + "[No Name]"          |
@@ -153,30 +153,58 @@ describe(":substitute, 'inccommand' preserves", function()
     ]])
   end)
 
+  it("'[ and '] marks #26439", function()
+    local screen = Screen.new(30, 10)
+    common_setup(screen, 'nosplit', ('abc\ndef\n'):rep(50))
+
+    feed('ggyG')
+    local X = meths.get_vvar('maxcol')
+    eq({0, 1, 1, 0}, funcs.getpos("'["))
+    eq({0, 101, X, 0}, funcs.getpos("']"))
+
+    feed(":'[,']s/def/")
+    poke_eventloop()
+    eq({0, 1, 1, 0}, funcs.getpos("'["))
+    eq({0, 101, X, 0}, funcs.getpos("']"))
+
+    feed('DEF/g')
+    poke_eventloop()
+    eq({0, 1, 1, 0}, funcs.getpos("'["))
+    eq({0, 101, X, 0}, funcs.getpos("']"))
+
+    feed('<CR>')
+    expect(('abc\nDEF\n'):rep(50))
+  end)
+
   for _, case in pairs{"", "split", "nosplit"} do
     it("various delimiters (inccommand="..case..")", function()
       insert(default_text)
-      feed_command("set inccommand=" .. case)
+      command("set inccommand=" .. case)
 
       local delims = { '/', '#', ';', '%', ',', '@', '!' }
       for _,delim in pairs(delims) do
-        feed_command("%s"..delim.."lines"..delim.."LINES"..delim.."g")
+        feed(":%s"..delim.."lines"..delim.."LINES"..delim.."g")
+        poke_eventloop()
+        feed('<CR>')
         expect([[
           Inc substitution on
           two LINES
           ]])
-        feed_command("undo")
+        command("undo")
       end
     end)
   end
 
   for _, case in pairs{"", "split", "nosplit"} do
     it("'undolevels' (inccommand="..case..")", function()
-      feed_command("set undolevels=139")
-      feed_command("setlocal undolevels=34")
-      feed_command("set inccommand=" .. case)
+      command("set undolevels=139")
+      command("setlocal undolevels=34")
+      command("split")  -- Show the buffer in multiple windows
+      command("set inccommand=" .. case)
       insert("as")
-      feed(":%s/as/glork/<enter>")
+      feed(":%s/as/glork/")
+      poke_eventloop()
+      feed("<enter>")
       eq(meths.get_option_value('undolevels', {scope='global'}), 139)
       eq(meths.get_option_value('undolevels', {buf=0}), 34)
     end)
@@ -184,8 +212,8 @@ describe(":substitute, 'inccommand' preserves", function()
 
   for _, case in ipairs({"", "split", "nosplit"}) do
     it("empty undotree() (inccommand="..case..")", function()
-      feed_command("set undolevels=1000")
-      feed_command("set inccommand=" .. case)
+      command("set undolevels=1000")
+      command("set inccommand=" .. case)
       local expected_undotree = eval("undotree()")
 
       -- Start typing an incomplete :substitute command.
@@ -202,8 +230,8 @@ describe(":substitute, 'inccommand' preserves", function()
 
   for _, case in ipairs({"", "split", "nosplit"}) do
     it("undotree() with branches (inccommand="..case..")", function()
-      feed_command("set undolevels=1000")
-      feed_command("set inccommand=" .. case)
+      command("set undolevels=1000")
+      command("set inccommand=" .. case)
       -- Make some changes.
       feed([[isome text 1<C-\><C-N>]])
       feed([[osome text 2<C-\><C-N>]])
@@ -237,7 +265,7 @@ describe(":substitute, 'inccommand' preserves", function()
 
   for _, case in pairs{"", "split", "nosplit"} do
     it("b:changedtick (inccommand="..case..")", function()
-      feed_command("set inccommand=" .. case)
+      command("set inccommand=" .. case)
       feed([[isome text 1<C-\><C-N>]])
       feed([[osome text 2<C-\><C-N>]])
       local expected_tick = eval("b:changedtick")
@@ -323,37 +351,41 @@ describe(":substitute, 'inccommand' preserves undo", function()
   local cases = { "", "split", "nosplit" }
 
   local substrings = {
-    ":%s/1",
-    ":%s/1/",
-    ":%s/1/<bs>",
-    ":%s/1/a",
-    ":%s/1/a<bs>",
-    ":%s/1/ax",
-    ":%s/1/ax<bs>",
-    ":%s/1/ax<bs><bs>",
-    ":%s/1/ax<bs><bs><bs>",
-    ":%s/1/ax/",
-    ":%s/1/ax/<bs>",
-    ":%s/1/ax/<bs>/",
-    ":%s/1/ax/g",
-    ":%s/1/ax/g<bs>",
-    ":%s/1/ax/g<bs><bs>"
+    { ':%s/', '1' },
+    { ':%s/', '1', '/' },
+    { ':%s/', '1', '/', '<bs>' },
+    { ':%s/', '1', '/', 'a' },
+    { ':%s/', '1', '/', 'a', '<bs>' },
+    { ':%s/', '1', '/', 'a', 'x' },
+    { ':%s/', '1', '/', 'a', 'x', '<bs>' },
+    { ':%s/', '1', '/', 'a', 'x', '<bs>', '<bs>' },
+    { ':%s/', '1', '/', 'a', 'x', '<bs>', '<bs>', '<bs>' },
+    { ':%s/', '1', '/', 'a', 'x', '/' },
+    { ':%s/', '1', '/', 'a', 'x', '/', '<bs>' },
+    { ':%s/', '1', '/', 'a', 'x', '/', '<bs>', '/' },
+    { ':%s/', '1', '/', 'a', 'x', '/', 'g' },
+    { ':%s/', '1', '/', 'a', 'x', '/', 'g', '<bs>' },
+    { ':%s/', '1', '/', 'a', 'x', '/', 'g', '<bs>', '<bs>' },
   }
 
   local function test_sub(substring, split, redoable)
     command('bwipe!')
-    feed_command("set inccommand=" .. split)
+    command("set inccommand=" .. split)
 
     insert("1")
     feed("o2<esc>")
-    feed_command("undo")
+    command("undo")
     feed("o3<esc>")
     if redoable then
       feed("o4<esc>")
-      feed_command("undo")
+      command("undo")
     end
-    feed(substring.. "<enter>")
-    feed_command("undo")
+    for _, s in pairs(substring) do
+      feed(s)
+    end
+    poke_eventloop()
+    feed("<enter>")
+    command("undo")
 
     feed("g-")
     expect([[
@@ -368,17 +400,21 @@ describe(":substitute, 'inccommand' preserves undo", function()
 
   local function test_notsub(substring, split, redoable)
     command('bwipe!')
-    feed_command("set inccommand=" .. split)
+    command("set inccommand=" .. split)
 
     insert("1")
     feed("o2<esc>")
-    feed_command("undo")
+    command("undo")
     feed("o3<esc>")
     if redoable then
       feed("o4<esc>")
-      feed_command("undo")
+      command("undo")
     end
-    feed(substring .. "<esc>")
+    for _, s in pairs(substring) do
+      feed(s)
+    end
+    poke_eventloop()
+    feed("<esc>")
 
     feed("g-")
     expect([[
@@ -402,7 +438,7 @@ describe(":substitute, 'inccommand' preserves undo", function()
 
   local function test_threetree(substring, split)
     command('bwipe!')
-    feed_command("set inccommand=" .. split)
+    command("set inccommand=" .. split)
 
     insert("1")
     feed("o2<esc>")
@@ -422,7 +458,11 @@ describe(":substitute, 'inccommand' preserves undo", function()
     --  1 - 2 - 3
 
     feed("2u")
-    feed(substring .. "<esc>")
+    for _, s in pairs(substring) do
+      feed(s)
+      poke_eventloop()
+    end
+    feed("<esc>")
     expect([[
       1]])
     feed("g-")
@@ -438,7 +478,11 @@ describe(":substitute, 'inccommand' preserves undo", function()
 
     feed("g-") -- go to b
     feed("2u")
-    feed(substring .. "<esc>")
+    for _, s in pairs(substring) do
+      feed(s)
+      poke_eventloop()
+    end
+    feed("<esc>")
     feed("<c-r>")
     expect([[
       1
@@ -446,7 +490,11 @@ describe(":substitute, 'inccommand' preserves undo", function()
 
     feed("g-") -- go to 3
     feed("2u")
-    feed(substring .. "<esc>")
+    for _, s in pairs(substring) do
+      feed(s)
+      poke_eventloop()
+    end
+    feed("<esc>")
     feed("<c-r>")
     expect([[
       1
@@ -497,22 +545,26 @@ describe(":substitute, 'inccommand' preserves undo", function()
     for _, case in pairs(cases) do
       clear()
       common_setup(nil, case, default_text)
-      feed_command("set undolevels=0")
+      command("set undolevels=0")
 
       feed("1G0")
       insert("X")
-      feed(":%s/tw/MO/<esc>")
-      feed_command("undo")
+      feed(":%s/tw/MO/")
+      poke_eventloop()
+      feed("<esc>")
+      command("undo")
       expect(default_text)
-      feed_command("undo")
+      command("undo")
       expect(default_text:gsub("Inc", "XInc"))
-      feed_command("undo")
+      command("undo")
 
-      feed_command("%s/tw/MO/g")
+      feed(":%s/tw/MO/g")
+      poke_eventloop()
+      feed("<CR>")
       expect(default_text:gsub("tw", "MO"))
-      feed_command("undo")
+      command("undo")
       expect(default_text)
-      feed_command("undo")
+      command("undo")
       expect(default_text:gsub("tw", "MO"))
     end
   end)
@@ -527,29 +579,31 @@ describe(":substitute, 'inccommand' preserves undo", function()
         Inc substitution on |
         two lines           |
         ^                    |
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
+        {15:~                   }|*6
                             |
       ]])
-      feed_command("set undolevels=1")
+      command("set undolevels=1")
 
       feed("1G0")
       insert("X")
       feed("IY<esc>")
-      feed(":%s/tw/MO/<esc>")
-      -- feed_command("undo") here would cause "Press ENTER".
+      feed(":%s/tw/MO/")
+      poke_eventloop()
+      feed("<esc>")
       feed("u")
       expect(default_text:gsub("Inc", "XInc"))
       feed("u")
       expect(default_text)
 
-      feed(":%s/tw/MO/g<enter>")
-      feed(":%s/MO/GO/g<enter>")
-      feed(":%s/GO/NO/g<enter>")
+      feed(":%s/tw/MO/g")
+      poke_eventloop()
+      feed("<enter>")
+      feed(":%s/MO/GO/g")
+      poke_eventloop()
+      feed("<enter>")
+      feed(":%s/GO/NO/g")
+      poke_eventloop()
+      feed("<enter>")
       feed("u")
       expect(default_text:gsub("tw", "GO"))
       feed("u")
@@ -561,12 +615,7 @@ describe(":substitute, 'inccommand' preserves undo", function()
           Inc substitution on |
           ^MOo lines           |
                               |
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
+          {15:~                   }|*6
           Already ...t change |
         ]])
       else
@@ -574,12 +623,7 @@ describe(":substitute, 'inccommand' preserves undo", function()
           Inc substitution on |
           ^MOo lines           |
                               |
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
+          {15:~                   }|*6
           Already ...t change |
         ]])
       end
@@ -592,13 +636,14 @@ describe(":substitute, 'inccommand' preserves undo", function()
     for _, case in pairs(cases) do
       clear()
       common_setup(screen, case, default_text)
-      feed_command("set undolevels=2")
+      command("set undolevels=2")
 
       feed("2GAx<esc>")
       feed("Ay<esc>")
       feed("Az<esc>")
-      feed(":%s/tw/AR<esc>")
-      -- feed_command("undo") here would cause "Press ENTER".
+      feed(":%s/tw/AR")
+      poke_eventloop()
+      feed("<esc>")
       feed("u")
       expect(default_text:gsub("lines", "linesxy"))
       feed("u")
@@ -612,12 +657,7 @@ describe(":substitute, 'inccommand' preserves undo", function()
           Inc substitution on |
           two line^s           |
                               |
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
+          {15:~                   }|*6
           Already ...t change |
         ]])
       else
@@ -625,20 +665,23 @@ describe(":substitute, 'inccommand' preserves undo", function()
           Inc substitution on |
           two line^s           |
                               |
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
+          {15:~                   }|*6
           Already ...t change |
         ]])
       end
 
-      feed(":%s/tw/MO/g<enter>")
-      feed(":%s/MO/GO/g<enter>")
-      feed(":%s/GO/NO/g<enter>")
-      feed(":%s/NO/LO/g<enter>")
+      feed(":%s/tw/MO/g")
+      poke_eventloop()
+      feed("<enter>")
+      feed(":%s/MO/GO/g")
+      poke_eventloop()
+      feed("<enter>")
+      feed(":%s/GO/NO/g")
+      poke_eventloop()
+      feed("<enter>")
+      feed(":%s/NO/LO/g")
+      poke_eventloop()
+      feed("<enter>")
       feed("u")
       expect(default_text:gsub("tw", "NO"))
       feed("u")
@@ -652,12 +695,7 @@ describe(":substitute, 'inccommand' preserves undo", function()
           Inc substitution on |
           ^MOo lines           |
                               |
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
+          {15:~                   }|*6
           Already ...t change |
         ]])
       else
@@ -665,12 +703,7 @@ describe(":substitute, 'inccommand' preserves undo", function()
           Inc substitution on |
           ^MOo lines           |
                               |
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
+          {15:~                   }|*6
           Already ...t change |
         ]])
       end
@@ -684,21 +717,17 @@ describe(":substitute, 'inccommand' preserves undo", function()
       clear()
       common_setup(screen, case, default_text)
 
-      feed_command("set undolevels=-1")
-      feed(":%s/tw/MO/g<enter>")
-      -- feed_command("undo") here will result in a "Press ENTER" prompt
+      command("set undolevels=-1")
+      feed(":%s/tw/MO/g")
+      poke_eventloop()
+      feed("<enter>")
       feed("u")
       if case == "split" then
         screen:expect([[
           Inc substitution on |
           ^MOo lines           |
                               |
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
+          {15:~                   }|*6
           Already ...t change |
         ]])
       else
@@ -706,12 +735,7 @@ describe(":substitute, 'inccommand' preserves undo", function()
           Inc substitution on |
           ^MOo lines           |
                               |
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
-          {15:~                   }|
+          {15:~                   }|*6
           Already ...t change |
         ]])
       end
@@ -720,22 +744,19 @@ describe(":substitute, 'inccommand' preserves undo", function()
       clear()
       common_setup(screen, case, default_text)
 
-      feed_command("set undolevels=-1")
+      command("set undolevels=-1")
       feed("1G")
       feed("IL<esc>")
-      feed(":%s/tw/MO/g<esc>")
+      feed(":%s/tw/MO/g")
+      poke_eventloop()
+      feed("<esc>")
       feed("u")
 
       screen:expect([[
         ^LInc substitution on|
         two lines           |
                             |
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
+        {15:~                   }|*6
         Already ...t change |
       ]])
     end
@@ -753,7 +774,7 @@ describe(":substitute, inccommand=split", function()
   end)
 
   it("preserves 'modified' buffer flag", function()
-    feed_command("set nomodified")
+    command("set nomodified")
     feed(":%s/tw")
     screen:expect([[
       Inc substitution on           |
@@ -764,11 +785,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name]                     }|
       |2| {12:tw}o lines                 |
       |4| {12:tw}o lines                 |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :%s/tw^                        |
     ]])
@@ -797,15 +814,7 @@ describe(":substitute, inccommand=split", function()
       Inc substitution on           |
       two lines                     |
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*9
       :silent tabedit %s/tw/to^      |
     ]])
     feed('<Esc>')
@@ -829,11 +838,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name] [+]                 }|
       |2| {12:to}o lines                 |
       |4| {12:to}o lines                 |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :topleft %s/tw/to^             |
     ]])
@@ -851,11 +856,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name] [+]                 }|
       |2| {12:to}o lines                 |
       |4| {12:to}o lines                 |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :topleft vert %s/tw/to^        |
     ]])
@@ -874,11 +875,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name] [+]                 }|
       |2| {12:tw}o lines                 |
       |4| {12:tw}o lines                 |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :%s/tw^                        |
     ]])
@@ -895,11 +892,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name] [+]                 }|
       |2| o lines                   |
       |4| o lines                   |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :%s/tw/^                       |
     ]])
@@ -914,11 +907,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name] [+]                 }|
       |2| {12:x}o lines                  |
       |4| {12:x}o lines                  |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :%s/tw/x^                      |
     ]])
@@ -933,11 +922,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name] [+]                 }|
       |2| o lines                   |
       |4| o lines                   |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :%s/tw/^                       |
     ]])
@@ -955,11 +940,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name] [+]                 }|
       |2| {12:XX}o lines                 |
       |4| {12:XX}o lines                 |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :%s/tw/XX^                     |
     ]])
@@ -974,21 +955,13 @@ describe(":substitute, inccommand=split", function()
       Inc substitution on           |
       two lines                     |
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*9
       :s/tw^                         |
     ]])
   end)
 
   it("'hlsearch' is active, 'cursorline' is not", function()
-    feed_command("set hlsearch cursorline")
+    command("set hlsearch cursorline")
     feed("gg")
 
     -- Assert that 'cursorline' is active.
@@ -998,16 +971,8 @@ describe(":substitute, inccommand=split", function()
       Inc substitution on           |
       two lines                     |
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      :set hlsearch cursorline      |
+      {15:~                             }|*9
+                                    |
     ]])
 
     feed(":%s/tw")
@@ -1021,11 +986,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name] [+]                 }|
       |2| {12:tw}o lines                 |
       |4| {12:tw}o lines                 |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :%s/tw^                        |
     ]])
@@ -1043,12 +1004,7 @@ describe(":substitute, inccommand=split", function()
       two lines                     |
       {11:[No Name] [+]                 }|
       |1| {12:123}     {12:123}       {12:123}     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*6
       {10:[Preview]                     }|
       :%s/M/123/g^                   |
     ]])
@@ -1065,33 +1021,20 @@ describe(":substitute, inccommand=split", function()
                                     |
       {11:[No Name] [+]                 }|
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*6
       {10:[Preview]                     }|
       :%s/Inx^                       |
     ]])
   end)
 
   it('previews correctly when previewhight is small', function()
-    feed_command('set cwh=3')
-    feed_command('set hls')
+    command('set cwh=3')
+    command('set hls')
     feed('ggdG')
     insert(string.rep('abc abc abc\n', 20))
     feed(':%s/abc/MMM/g')
     screen:expect([[
-      {12:MMM} {12:MMM} {12:MMM}                   |
-      {12:MMM} {12:MMM} {12:MMM}                   |
-      {12:MMM} {12:MMM} {12:MMM}                   |
-      {12:MMM} {12:MMM} {12:MMM}                   |
-      {12:MMM} {12:MMM} {12:MMM}                   |
-      {12:MMM} {12:MMM} {12:MMM}                   |
-      {12:MMM} {12:MMM} {12:MMM}                   |
-      {12:MMM} {12:MMM} {12:MMM}                   |
-      {12:MMM} {12:MMM} {12:MMM}                   |
+      {12:MMM} {12:MMM} {12:MMM}                   |*9
       {11:[No Name] [+]                 }|
       | 1| {12:MMM} {12:MMM} {12:MMM}              |
       | 2| {12:MMM} {12:MMM} {12:MMM}              |
@@ -1102,7 +1045,9 @@ describe(":substitute, inccommand=split", function()
   end)
 
   it('actually replaces text', function()
-    feed(":%s/tw/XX/g<Enter>")
+    feed(":%s/tw/XX/g")
+    poke_eventloop()
+    feed("<Enter>")
 
     screen:expect([[
       Inc substitution on           |
@@ -1110,15 +1055,7 @@ describe(":substitute, inccommand=split", function()
       Inc substitution on           |
       ^XXo lines                     |
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*9
       :%s/tw/XX/g                   |
     ]])
   end)
@@ -1127,7 +1064,7 @@ describe(":substitute, inccommand=split", function()
     feed("gg")
     feed("2yy")
     feed("2000p")
-    feed_command("1,1000s/tw/BB/g")
+    command("1,1000s/tw/BB/g")
 
     feed(":%s/tw/X")
     screen:expect([[
@@ -1165,26 +1102,20 @@ describe(":substitute, inccommand=split", function()
     feed("<CR>")
     poke_eventloop()
     feed(":vs tmp<enter>")
-    eq(3, helpers.call('bufnr', '$'))
+    eq(3, funcs.bufnr('$'))
   end)
 
   it('works with the n flag', function()
-    feed(":%s/tw/Mix/n<Enter>")
+    feed(":%s/tw/Mix/n")
+    poke_eventloop()
+    feed("<Enter>")
     screen:expect([[
       Inc substitution on           |
       two lines                     |
       Inc substitution on           |
       two lines                     |
       ^                              |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*9
       2 matches on 2 lines          |
     ]])
   end)
@@ -1195,9 +1126,9 @@ describe(":substitute, inccommand=split", function()
     -- Assert that 'inccommand' is ENABLED initially.
     eq("split", eval("&inccommand"))
     -- Set 'redrawtime' to minimal value, to ensure timeout is triggered.
-    feed_command("set redrawtime=1 nowrap")
+    command("set redrawtime=1 nowrap")
     -- Load a big file.
-    feed_command("silent edit! test/functional/fixtures/bigfile_oneline.txt")
+    command("silent edit! test/functional/fixtures/bigfile_oneline.txt")
     -- Start :substitute with a slow pattern.
     feed([[:%s/B.*N/x]])
     poke_eventloop()
@@ -1264,7 +1195,7 @@ describe(":substitute, inccommand=split", function()
   it("clears preview if non-previewable command is edited #5585", function()
     feed('gg')
     -- Put a non-previewable command in history.
-    feed_command("echo 'foo'")
+    feed(":echo 'foo'<CR>")
     -- Start an incomplete :substitute command.
     feed(":1,2s/t/X")
 
@@ -1277,11 +1208,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name] [+]                 }|
       |1| Inc subs{12:X}itution on       |
       |2| {12:X}wo lines                 |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :1,2s/t/X^                     |
     ]])
@@ -1295,15 +1222,7 @@ describe(":substitute, inccommand=split", function()
       Inc substitution on           |
       two lines                     |
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*9
       :echo 'foo'^                   |
     ]])
   end)
@@ -1320,11 +1239,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name] [+]                 }|
       |1| Inc subs{12:X}itution on       |
       |2| {12:X}wo lines                 |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :1,2s/t/X^                     |
     ]])
@@ -1340,11 +1255,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name] [+]                 }|
       |1| Inc subs{12:X}itution on       |
       |2| {12:X}wo lines                 |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       ={1:'Y'}^                          |
     ]])
@@ -1360,11 +1271,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name] [+]                 }|
       |1| Inc subs{12:XY}itution on      |
       |2| {12:XY}wo lines                |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :1,2s/t/XY^                    |
     ]])
@@ -1380,11 +1287,7 @@ describe(":substitute, inccommand=split", function()
       {11:[No Name] [+]                 }|
       |1| Inc subs{12:XY}itution on      |
       |2| {12:XY}wo lines                |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       ={1:'echo'}^                       |
     ]])
@@ -1397,15 +1300,7 @@ describe(":substitute, inccommand=split", function()
       Inc substitution on           |
       two lines                     |
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*9
       :echo^                         |
     ]])
   end)
@@ -1422,7 +1317,7 @@ describe("inccommand=nosplit", function()
   end)
 
   it("works with :smagic, :snomagic", function()
-    feed_command("set hlsearch")
+    command("set hlsearch")
     insert("Line *.3.* here")
 
     feed(":%smagic/3.*/X")    -- start :smagic command
@@ -1432,10 +1327,7 @@ describe("inccommand=nosplit", function()
       Inc substitution on |
       two lines           |
       Line *.{12:X}            |
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
+      {15:~                   }|*4
       :%smagic/3.*/X^      |
     ]])
 
@@ -1447,10 +1339,7 @@ describe("inccommand=nosplit", function()
       Inc substitution on |
       two lines           |
       Line *.{12:X} here       |
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
+      {15:~                   }|*4
       :%snomagic/3.*/X^    |
     ]])
   end)
@@ -1476,8 +1365,7 @@ describe("inccommand=nosplit", function()
       Inc substitution on |
       two lines           |
                           |
-      {15:~                   }|
-      {15:~                   }|
+      {15:~                   }|*2
       {11:                    }|
       :silent tabedit %s/t|
       w/to^                |
@@ -1499,16 +1387,13 @@ describe("inccommand=nosplit", function()
       Inc substitution on |
       {12:OKOK}o lines         |
                           |
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
+      {15:~                   }|*4
       :%s/tw/OKOK^         |
     ]])
   end)
 
   it('never shows preview buffer', function()
-    feed_command("set hlsearch")
+    command("set hlsearch")
 
     feed(":%s/tw")
     screen:expect([[
@@ -1517,10 +1402,7 @@ describe("inccommand=nosplit", function()
       Inc substitution on |
       {12:tw}o lines           |
                           |
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
+      {15:~                   }|*4
       :%s/tw^              |
     ]])
 
@@ -1531,10 +1413,7 @@ describe("inccommand=nosplit", function()
       Inc substitution on |
       {12:BM}o lines           |
                           |
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
+      {15:~                   }|*4
       :%s/tw/BM^           |
     ]])
 
@@ -1545,10 +1424,7 @@ describe("inccommand=nosplit", function()
       Inc substitution on |
       {12:BM}o lines           |
                           |
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
+      {15:~                   }|*4
       :%s/tw/BM/^          |
     ]])
 
@@ -1559,17 +1435,14 @@ describe("inccommand=nosplit", function()
       Inc substitution on |
       ^BMo lines           |
                           |
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
+      {15:~                   }|*4
       :%s/tw/BM/          |
     ]])
   end)
 
   it("clears preview if non-previewable command is edited", function()
     -- Put a non-previewable command in history.
-    feed_command("echo 'foo'")
+    feed(":echo 'foo'<CR>")
     -- Start an incomplete :substitute command.
     feed(":1,2s/t/X")
 
@@ -1579,10 +1452,7 @@ describe("inccommand=nosplit", function()
       Inc substitution on |
       two lines           |
                           |
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
+      {15:~                   }|*4
       :1,2s/t/X^           |
     ]])
 
@@ -1595,10 +1465,7 @@ describe("inccommand=nosplit", function()
       Inc substitution on |
       two lines           |
                           |
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
+      {15:~                   }|*4
       :echo 'foo'^         |
     ]])
   end)
@@ -1611,10 +1478,7 @@ describe("inccommand=nosplit", function()
       Inc substitution on |
       {12:three} lines         |
                           |
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
+      {15:~                   }|*4
       :%s/two/three/g|q!^  |
     ]])
     eq(eval('v:null'), eval('v:exiting'))
@@ -1635,10 +1499,7 @@ describe("inccommand=nosplit", function()
       Inc substitution on |
       two lines           |
                           |
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
-      {15:~                   }|
+      {15:~                   }|*4
       :%s/^                |
     ]])
   end)
@@ -1657,8 +1518,10 @@ describe(":substitute, 'inccommand' with a failing expression", function()
   it('in the pattern does nothing', function()
     for _, case in pairs(cases) do
       refresh(case)
-      feed_command("set inccommand=" .. case)
-      feed(":silent! %s/tw\\(/LARD/<enter>")
+      command("set inccommand=" .. case)
+      feed(":silent! %s/tw\\(/LARD/")
+      poke_eventloop()
+      feed("<enter>")
       expect(default_text)
     end
   end)
@@ -1669,10 +1532,12 @@ describe(":substitute, 'inccommand' with a failing expression", function()
       local replacements = { "\\='LARD", "\\=xx_novar__xx" }
 
       for _, repl in pairs(replacements) do
-        feed_command("set inccommand=" .. case)
-        feed(":silent! %s/tw/" .. repl .. "/<enter>")
+        command("set inccommand=" .. case)
+        feed(":silent! %s/tw/" .. repl .. "/")
+        poke_eventloop()
+        feed("<enter>")
         expect(default_text:gsub("tw", ""))
-        feed_command("undo")
+        command("undo")
       end
     end
   end)
@@ -1686,12 +1551,7 @@ describe(":substitute, 'inccommand' with a failing expression", function()
         Inc substitution on |
         two lines           |
                             |
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
+        {15:~                   }|*6
         :100s/^              |
       ]])
 
@@ -1700,12 +1560,7 @@ describe(":substitute, 'inccommand' with a failing expression", function()
         Inc substitution on |
         two lines           |
         ^                    |
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
-        {15:~                   }|
+        {15:~                   }|*6
         {14:E16: Invalid range}  |
       ]])
     end
@@ -1730,10 +1585,12 @@ describe("'inccommand' and :cnoremap", function()
 
       for i = 1, string.len(cmd) do
         local c = string.sub(cmd, i, i)
-        feed_command("cnoremap ".. c .. " " .. c)
+        command("cnoremap ".. c .. " " .. c)
       end
 
-      feed_command(cmd)
+      feed(':' .. cmd)
+      poke_eventloop()
+      feed('<CR>')
       expect([[
         Inc substitution on
         two LINES
@@ -1744,30 +1601,47 @@ describe("'inccommand' and :cnoremap", function()
   it('work when mappings move the cursor', function()
     for _, case in pairs(cases) do
       refresh(case)
-      feed_command("cnoremap ,S LINES/<left><left><left><left><left><left>")
+      command("cnoremap ,S LINES/<left><left><left><left><left><left>")
 
-      feed(":%s/lines/,Sor three <enter>")
+      feed(":%s/lines/")
+      poke_eventloop()
+      feed(",S")
+      poke_eventloop()
+      feed("or three <enter>")
+      poke_eventloop()
       expect([[
         Inc substitution on
         two or three LINES
         ]])
 
-      feed_command("cnoremap ;S /X/<left><left><left>")
-      feed(":%s/;SI<enter>")
+      command("cnoremap ;S /X/<left><left><left>")
+      feed(":%s/")
+      poke_eventloop()
+      feed(";S")
+      poke_eventloop()
+      feed("I<enter>")
       expect([[
         Xnc substitution on
         two or three LXNES
         ]])
 
-      feed_command("cnoremap ,T //Y/<left><left><left>")
-      feed(":%s,TX<enter>")
+      command("cnoremap ,T //Y/<left><left><left>")
+      feed(":%s")
+      poke_eventloop()
+      feed(",T")
+      poke_eventloop()
+      feed("X<enter>")
       expect([[
         Ync substitution on
         two or three LYNES
         ]])
 
-      feed_command("cnoremap ;T s//Z/<left><left><left>")
-      feed(":%;TY<enter>")
+      command("cnoremap ;T s//Z/<left><left><left>")
+      feed(":%")
+      poke_eventloop()
+      feed(";T")
+      poke_eventloop()
+      feed("Y<enter>")
       expect([[
         Znc substitution on
         two or three LZNES
@@ -1778,7 +1652,7 @@ describe("'inccommand' and :cnoremap", function()
   it('still works with a broken mapping', function()
     for _, case in pairs(cases) do
       refresh(case, true)
-      feed_command("cnoremap <expr> x execute('bwipeout!')[-1].'x'")
+      command("cnoremap <expr> x execute('bwipeout!')[-1].'x'")
 
       feed(":%s/tw/tox<enter>")
       screen:expect{any=[[{14:^E565:]]}
@@ -1796,9 +1670,11 @@ describe("'inccommand' and :cnoremap", function()
   it('work when temporarily moving the cursor', function()
     for _, case in pairs(cases) do
       refresh(case)
-      feed_command("cnoremap <expr> x cursor(1, 1)[-1].'x'")
+      command("cnoremap <expr> x cursor(1, 1)[-1].'x'")
 
-      feed(":%s/tw/tox/g<enter>")
+      feed(":%s/tw/tox")
+      poke_eventloop()
+      feed("/g<enter>")
       expect(default_text:gsub("tw", "tox"))
     end
   end)
@@ -1806,9 +1682,11 @@ describe("'inccommand' and :cnoremap", function()
   it("work when a mapping disables 'inccommand'", function()
     for _, case in pairs(cases) do
       refresh(case)
-      feed_command("cnoremap <expr> x execute('set inccommand=')[-1]")
+      command("cnoremap <expr> x execute('set inccommand=')[-1]")
 
-      feed(":%s/tw/toxa/g<enter>")
+      feed(":%s/tw/tox")
+      poke_eventloop()
+      feed("a/g<enter>")
       expect(default_text:gsub("tw", "toa"))
     end
   end)
@@ -1820,6 +1698,7 @@ describe("'inccommand' and :cnoremap", function()
       \.fo<CR><C-c>:new<CR>:bw!<CR>:<C-r>=remove(g:, 'fo')<CR>x]])
 
       feed(":%s/tw/tox")
+      poke_eventloop()
       feed("/<enter>")
       expect(default_text:gsub("tw", "tox"))
     end
@@ -1880,7 +1759,7 @@ describe("'inccommand' autocommands", function()
 
   local function register_autocmd(event)
     meths.set_var(event .. "_fired", {})
-    feed_command("autocmd " .. event .. " * call add(g:" .. event .. "_fired, expand('<abuf>'))")
+    command("autocmd " .. event .. " * call add(g:" .. event .. "_fired, expand('<abuf>'))")
   end
 
   it('are not fired when splitting', function()
@@ -1927,95 +1806,63 @@ describe("'inccommand' split windows", function()
     refresh()
 
     feed("gg")
-    feed_command("vsplit")
-    feed_command("split")
+    command("vsplit")
+    command("split")
     feed(":%s/tw")
     screen:expect([[
       Inc substitution on │Inc substitution on|
       {12:tw}o lines           │{12:tw}o lines          |
                           │                   |
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
+      {15:~                   }│{15:~                  }|*11
       {11:[No Name] [+]       }│{15:~                  }|
       Inc substitution on │{15:~                  }|
       {12:tw}o lines           │{15:~                  }|
                           │{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
+      {15:~                   }│{15:~                  }|*2
       {10:[No Name] [+]        [No Name] [+]      }|
       |2| {12:tw}o lines                           |
-      {15:~                                       }|
-      {15:~                                       }|
-      {15:~                                       }|
-      {15:~                                       }|
-      {15:~                                       }|
-      {15:~                                       }|
+      {15:~                                       }|*6
       {10:[Preview]                               }|
       :%s/tw^                                  |
     ]])
 
     feed("<esc>")
-    feed_command("only")
-    feed_command("split")
-    feed_command("vsplit")
+    command("only")
+    command("split")
+    command("vsplit")
 
     feed(":%s/tw")
     screen:expect([[
       Inc substitution on │Inc substitution on|
       {12:tw}o lines           │{12:tw}o lines          |
                           │                   |
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
-      {15:~                   }│{15:~                  }|
+      {15:~                   }│{15:~                  }|*11
       {11:[No Name] [+]        }{10:[No Name] [+]      }|
       Inc substitution on                     |
       {12:tw}o lines                               |
                                               |
-      {15:~                                       }|
-      {15:~                                       }|
+      {15:~                                       }|*2
       {10:[No Name] [+]                           }|
       |2| {12:tw}o lines                           |
-      {15:~                                       }|
-      {15:~                                       }|
-      {15:~                                       }|
-      {15:~                                       }|
-      {15:~                                       }|
-      {15:~                                       }|
+      {15:~                                       }|*6
       {10:[Preview]                               }|
       :%s/tw^                                  |
     ]])
   end)
 
   local settings = {
-  "splitbelow",
-  "splitright",
-  "noequalalways",
-  "equalalways eadirection=ver",
-  "equalalways eadirection=hor",
-  "equalalways eadirection=both",
+    "splitbelow",
+    "splitright",
+    "noequalalways",
+    "equalalways eadirection=ver",
+    "equalalways eadirection=hor",
+    "equalalways eadirection=both",
   }
 
   it("are not affected by various settings", function()
     for _, setting in pairs(settings) do
       refresh()
-      feed_command("set " .. setting)
+      command("set " .. setting)
 
       feed(":%s/tw")
 
@@ -2023,31 +1870,10 @@ describe("'inccommand' split windows", function()
         Inc substitution on                     |
         {12:tw}o lines                               |
                                                 |
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
+        {15:~                                       }|*17
         {11:[No Name] [+]                           }|
         |2| {12:tw}o lines                           |
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
-        {15:~                                       }|
+        {15:~                                       }|*6
         {10:[Preview]                               }|
         :%s/tw^                                  |
       ]])
@@ -2151,9 +1977,7 @@ describe(":substitute", function()
       |2|{12: A B C}                     |
       |3|{12: 4 5 6}                     |
       |4|{12: X} Y Z                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*3
       {10:[Preview]                     }|
       :%s/2\_.*X^                    |
     ]])
@@ -2163,16 +1987,10 @@ describe(":substitute", function()
       1 {12:MMM} Y Z                     |
       7 8 9                         |
                                     |
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*2
       {11:[No Name] [+]                 }|
       |1| 1 {12:MMM} Y Z                 |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*6
       {10:[Preview]                     }|
       :%s/2\_.*X/MMM^                |
     ]])
@@ -2188,10 +2006,7 @@ describe(":substitute", function()
       |1| 1 {12:MMM}                     |
       |2|{12: K}                         |
       |3|{12: LLL} Y Z                   |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*4
       {10:[Preview]                     }|
       :%s/2\_.*X/MMM\rK\rLLL^        |
     ]])
@@ -2206,17 +2021,7 @@ describe(":substitute", function()
       1 {12:MMM} Y Z                     |
       7 8 9                         |
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*11
       :%s/2\_.*X/MMM^                |
     ]])
 
@@ -2227,15 +2032,7 @@ describe(":substitute", function()
       {12:LLL} Y Z                       |
       7 8 9                         |
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*9
       :%s/2\_.*X/MMM\rK\rLLL^        |
     ]])
   end)
@@ -2250,16 +2047,11 @@ describe(":substitute", function()
       {12:XLK} bdc e{12:XLK}e {12:XLK} fgl lzi{12:XLK} r|
       x                             |
                                     |
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*2
       {11:[No Name] [+]                 }|
       |1| {12:XLK} bdc e{12:XLK}e {12:XLK} fgl lzi{12:X}|
       {12:LK} r                          |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :%s/a/XLK^                     |
     ]])
@@ -2275,17 +2067,7 @@ describe(":substitute", function()
       {12:XLK} bdc e{12:XLK}e {12:XLK} fgl lzi{12:XLK} r|
       x                             |
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*11
       :%s/a/XLK^                     |
     ]])
   end)
@@ -2306,9 +2088,7 @@ describe(":substitute", function()
       |2| {12:OKO} B C                   |
       |3| 4 5 6                     |
       |4| {12:OKO} Y Z                   |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*3
       {10:[Preview]                     }|
       :%s/[0-9]\n\zs[A-Z]/OKO^       |
     ]])
@@ -2326,14 +2106,7 @@ describe(":substitute", function()
       {12:OKO} Y Z                       |
       7 8 9                         |
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*8
       :%s/[0-9]\n\zs[A-Z]/OKO^       |
     ]])
   end)
@@ -2345,17 +2118,11 @@ describe(":substitute", function()
     screen:expect([[
       T {12:123123} {12:22}T TTT {12:090804090804} |
       x                             |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*3
       {11:[No Name] [+]                 }|
       |1| T {12:123123} {12:22}T TTT {12:090804090}|
       {12:804}                           |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       {10:[Preview]                     }|
       :%s/T\([0-9]\+\)/\1\1/g^       |
     ]])
@@ -2368,18 +2135,7 @@ describe(":substitute", function()
     screen:expect([[
       T {12:123123} {12:22}T TTT {12:090804090804} |
       x                             |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*12
       :%s/T\([0-9]\+\)/\1\1/g^       |
     ]])
   end)
@@ -2405,10 +2161,7 @@ describe(":substitute", function()
       |3| afa {12:Q}                     |
       |4|{12: }adf la;lkd {12:R}              |
       |5|{12: }alx                       |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*4
       {10:[Preview]                     }|
       :%s/[QR]\n^                    |
     ]])
@@ -2422,12 +2175,7 @@ describe(":substitute", function()
       {15:~                             }|
       {11:[No Name] [+]                 }|
       |3| afa {12:KKK}adf la;lkd {12:KKK}alx  |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*6
       {10:[Preview]                     }|
       :%s/[QR]\n/KKK^                |
     ]])
@@ -2449,16 +2197,7 @@ describe(":substitute", function()
       x                             |
       afa {12:KKK}adf la;lkd {12:KKK}alx      |
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*10
       :%s/[QR]\n/KKK^                |
     ]])
   end)
@@ -2542,10 +2281,7 @@ describe(":substitute", function()
       |1|  {12:X¥¥} PEPPERS              |
       |2| {12:X¥¥}                       |
       |3|  a{12:X¥¥}¥KOL                 |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*4
       {10:[Preview]                     }|
       :%s/£.*ѫ/X¥¥^                  |
     ]])
@@ -2580,14 +2316,7 @@ describe(":substitute", function()
       £ ¥  libm                     |
       £ ¥                           |
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*8
       :%s/£.*ѫ/X¥¥^                  |
     ]])
 
@@ -2602,11 +2331,7 @@ describe(":substitute", function()
       £ ¥  libm                     |
       £ ¥                           |
                                     |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*5
       :%s/£.*ѫ/X¥¥\ra££   ¥^         |
     ]])
   end)
@@ -2742,16 +2467,10 @@ describe(":substitute", function()
       some{12:one}                       |
       everything                    |
       someone                       |
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*2
       {11:[No Name] [+]                 }|
       |1| some{12:one}                   |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*6
       {10:[Preview]                     }|
       :%s/\(some\)\@<=thing/one/^    |
     ]])
@@ -2764,16 +2483,10 @@ describe(":substitute", function()
       something                     |
       every{12:one}                      |
       someone                       |
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*2
       {11:[No Name] [+]                 }|
       |2| every{12:one}                  |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*6
       {10:[Preview]                     }|
       :%s/\(some\)\@<!thing/one/^    |
     ]])
@@ -2785,16 +2498,10 @@ describe(":substitute", function()
       {12:every}thing                    |
       everything                    |
       someone                       |
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*2
       {11:[No Name] [+]                 }|
       |1| {12:every}thing                |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*6
       {10:[Preview]                     }|
       :%s/some\(thing\)\@=/every/^   |
     ]])
@@ -2806,16 +2513,10 @@ describe(":substitute", function()
       something                     |
       everything                    |
       {12:every}one                      |
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*2
       {11:[No Name] [+]                 }|
       |3| {12:every}one                  |
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
-      {15:~                             }|
+      {15:~                             }|*6
       {10:[Preview]                     }|
       :%s/some\(thing\)\@!/every/^   |
     ]])
@@ -2831,9 +2532,7 @@ describe(":substitute", function()
       {12:MO}o lines                                         |
       {11:[No Name] [+]                                     }|
       |2| {12:MO}o lines                                     |
-      {15:~                                                 }|
-      {15:~                                                 }|
-      {15:~                                                 }|
+      {15:~                                                 }|*3
       {10:[Preview]                                         }|
       :2,1s/tw/MO/g^                                     |
     ]])
@@ -2844,9 +2543,7 @@ describe(":substitute", function()
       {12:MO}o lines                                         |
       {11:[No Name] [+]                                     }|
       |2| {12:MO}o lines                                     |
-      {15:~                                                 }|
-      {15:~                                                 }|
-      {15:~                                                 }|
+      {15:~                                                 }|*3
       {10:[Preview]                                         }|
       {13:Backwards range given, OK to swap (y/n)?}^          |
     ]])
@@ -2856,10 +2553,7 @@ describe(":substitute", function()
       Inc substitution on                               |
       ^MOo lines                                         |
                                                         |
-      {15:~                                                 }|
-      {15:~                                                 }|
-      {15:~                                                 }|
-      {15:~                                                 }|
+      {15:~                                                 }|*4
       {13:Backwards range given, OK to swap (y/n)?}y         |
     ]])
   end)
@@ -2905,9 +2599,7 @@ it(':substitute with inccommand, timer-induced :redraw #9777', function()
     {12:ZZZ} bar baz                   |
     bar baz fox                   |
     bar {12:ZZZ} baz                   |
-    {15:~                             }|
-    {15:~                             }|
-    {15:~                             }|
+    {15:~                             }|*3
     {11:[No Name] [+]                 }|
     |1| {12:ZZZ} bar baz               |
     |3| bar {12:ZZZ} baz               |
@@ -2926,7 +2618,16 @@ it(':substitute with inccommand, allows :redraw before first separator is typed 
   meths.open_win(float_buf, false, {
     relative = 'editor', height = 1, width = 5, row = 3, col = 0, focusable = false,
   })
-  feed(':%s')
+  feed(':')
+  screen:expect([[
+    foo bar baz                   |
+    bar baz fox                   |
+    bar foo baz                   |
+    {16:     }{15:                         }|
+    {15:~                             }|
+    :^                             |
+  ]])
+  feed('%s')
   screen:expect([[
     foo bar baz                   |
     bar baz fox                   |
@@ -2954,10 +2655,7 @@ it(':substitute with inccommand, does not crash if range contains invalid marks'
   feed([[:'a,'bs]])
   screen:expect([[
     test                          |
-    {15:~                             }|
-    {15:~                             }|
-    {15:~                             }|
-    {15:~                             }|
+    {15:~                             }|*4
     :'a,'bs^                       |
   ]])
   -- v:errmsg shouldn't be set either before the first separator is typed
@@ -2965,10 +2663,7 @@ it(':substitute with inccommand, does not crash if range contains invalid marks'
   feed('/')
   screen:expect([[
     test                          |
-    {15:~                             }|
-    {15:~                             }|
-    {15:~                             }|
-    {15:~                             }|
+    {15:~                             }|*4
     :'a,'bs/^                      |
   ]])
 end)
@@ -3018,10 +2713,7 @@ it(':substitute with inccommand, no unnecessary redraw if preview is not shown',
   -- now inccommand is shown, so screen is redrawn
   screen:expect([[
     {12:test}                                                        |
-    {15:~                                                           }|
-    {15:~                                                           }|
-    {15:~                                                           }|
-    {15:~                                                           }|
+    {15:~                                                           }|*4
     :s/test^                                                     |
   ]])
 end)
@@ -3038,9 +2730,7 @@ it(":substitute doesn't crash with inccommand, if undo is empty #12932", functio
   feed('f')
   screen:expect([[
   {12:f}           |
-  {15:~           }|
-  {15:~           }|
-  {15:~           }|
+  {15:~           }|*3
   :%s/test/f^  |
   ]])
   assert_alive()
@@ -3083,11 +2773,40 @@ it(':substitute with inccommand works properly if undo is not synced #20029', fu
     baz]])
 end)
 
+it(':substitute with inccommand does not unexpectedly change viewport #25697', function()
+  clear()
+  local screen = Screen.new(45, 5)
+  common_setup(screen, 'nosplit', long_multiline_text)
+  command('vnew | tabnew | tabclose')
+  screen:expect([[
+    ^                      │£ m n                 |
+    {15:~                     }│t œ ¥                 |
+    {15:~                     }│                      |
+    {11:[No Name]              }{10:[No Name] [+]         }|
+                                                 |
+  ]])
+  feed(':s/')
+  screen:expect([[
+                          │£ m n                 |
+    {15:~                     }│t œ ¥                 |
+    {15:~                     }│                      |
+    {11:[No Name]              }{10:[No Name] [+]         }|
+    :s/^                                          |
+  ]])
+  feed('<Esc>')
+  screen:expect([[
+    ^                      │£ m n                 |
+    {15:~                     }│t œ ¥                 |
+    {15:~                     }│                      |
+    {11:[No Name]              }{10:[No Name] [+]         }|
+                                                 |
+  ]])
+end)
+
 it('long :%s/ with inccommand does not collapse cmdline', function()
   clear()
   local screen = Screen.new(10,5)
-  common_setup(screen)
-  command('set inccommand=nosplit')
+  common_setup(screen, 'nosplit')
   feed(':%s/AAAAAAA', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A',
     'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A', 'A')
   screen:expect([[
@@ -3096,6 +2815,18 @@ it('long :%s/ with inccommand does not collapse cmdline', function()
     :%s/AAAAAAAA|
     AAAAAAAAAAAA|
     AAAAAAA^     |
+  ]])
+end)
+
+it("with 'inccommand' typing invalid `={expr}` does not show error", function()
+  clear()
+  local screen = Screen.new(30, 6)
+  common_setup(screen, 'nosplit')
+  feed(':edit `=`')
+  screen:expect([[
+                                  |
+    {15:~                             }|*4
+    :edit `=`^                     |
   ]])
 end)
 
@@ -3109,5 +2840,33 @@ it("with 'inccommand' typing :filter doesn't segfault or leak memory #19057", fu
   feed('h')
   assert_alive()
   feed('i')
+  assert_alive()
+end)
+
+it("'inccommand' cannot be changed during preview #23136", function()
+  clear()
+  local screen = Screen.new(30, 6)
+  common_setup(screen, 'nosplit', 'foo\nbar\nbaz')
+  source([[
+    function! IncCommandToggle()
+      let prev = &inccommand
+
+      if &inccommand ==# 'split'
+        set inccommand=nosplit
+      elseif &inccommand ==# 'nosplit'
+        set inccommand=split
+      elseif &inccommand ==# ''
+        set inccommand=nosplit
+      else
+        throw 'unknown inccommand'
+      endif
+
+      return " \<BS>"
+    endfun
+
+    cnoremap <expr> <C-E> IncCommandToggle()
+  ]])
+
+  feed(':%s/foo/bar<C-E><C-E><C-E>')
   assert_alive()
 end)

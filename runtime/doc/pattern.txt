@@ -72,7 +72,7 @@ N			Repeat the latest "/" or "?" [count] times in
 			command "/\<keyword\>".  |exclusive|
 			'ignorecase' is used, 'smartcase' is not.
 							*v_star-default*
-			In Visual mode, search forward for the current selection.
+{Visual}*		In Visual mode, search forward for the current selection.
 			|default-mappings|
 
 							*#*
@@ -81,7 +81,7 @@ N			Repeat the latest "/" or "?" [count] times in
 			backspace, try using "stty erase <BS>" before starting
 			Vim (<BS> is CTRL-H or a real backspace).
 							*v_#-default*
-			In Visual mode, search backward for the current selection.
+{Visual}#		In Visual mode, search backward for the current selection.
 			|default-mappings|
 
 							*gstar*
@@ -1065,7 +1065,7 @@ match ASCII characters, as indicated by the range.
 
 \(\)	A pattern enclosed by escaped parentheses.	*/\(* */\(\)* */\)*
 	E.g., "\(^a\)" matches 'a' at the start of a line.
-	There can only be ten of these.  You can use "\%(" to add more, but
+	There can only be nine of these.  You can use "\%(" to add more, but
 	not counting it as a sub-expression.
 	*E51* *E54* *E55* *E872* *E873*
 
@@ -1442,10 +1442,11 @@ Finally, these constructs are unique to Perl:
 		Just like |:match| above, but set a separate match.  Thus
 		there can be three matches active at the same time.  The match
 		with the lowest number has priority if several match at the
-		same position.
-		The ":3match" command is used by the |matchparen| plugin.  You
-		are suggested to use ":match" for manual matching and
-		":2match" for another plugin.
+		same position.  It uses the match id 3.
+		The ":3match" command is used by (older Vims) |matchparen|
+		plugin. You are suggested to use ":match" for manual matching
+		and ":2match" for another plugin or even better make use of
+		the more flexible |matchadd()| (and similar) functions instead.
 
 ==============================================================================
 11. Fuzzy matching					*fuzzy-matching*

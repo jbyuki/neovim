@@ -1,7 +1,5 @@
-#ifndef NVIM_CONTEXT_H
-#define NVIM_CONTEXT_H
+#pragma once
 
-#include <msgpack.h>
 #include <msgpack/sbuffer.h>
 #include <stddef.h>
 
@@ -45,5 +43,3 @@ extern int kCtxAll;
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "context.h.generated.h"
 #endif
-
-#endif  // NVIM_CONTEXT_H

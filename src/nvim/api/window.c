@@ -1,15 +1,15 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "nvim/api/keysets_defs.h"
 #include "nvim/api/private/defs.h"
+#include "nvim/api/private/dispatch.h"
 #include "nvim/api/private/helpers.h"
+#include "nvim/api/private/validate.h"
 #include "nvim/api/window.h"
-#include "nvim/ascii.h"
+#include "nvim/autocmd.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/cursor.h"
 #include "nvim/drawscreen.h"
@@ -18,11 +18,17 @@
 #include "nvim/gettext.h"
 #include "nvim/globals.h"
 #include "nvim/lua/executor.h"
-#include "nvim/memline_defs.h"
+#include "nvim/memory.h"
+#include "nvim/message.h"
 #include "nvim/move.h"
-#include "nvim/pos.h"
-#include "nvim/types.h"
+#include "nvim/plines.h"
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"
 #include "nvim/window.h"
+
+#ifdef INCLUDE_GENERATED_DECLARATIONS
+# include "api/window.c.generated.h"
+#endif
 
 /// Gets the current buffer in a window
 ///
@@ -48,9 +54,18 @@ Buffer nvim_win_get_buf(Window window, Error *err)
 /// @param[out] err Error details, if any
 void nvim_win_set_buf(Window window, Buffer buffer, Error *err)
   FUNC_API_SINCE(5)
-  FUNC_API_CHECK_TEXTLOCK
+  FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
-  win_set_buf(window, buffer, false, err);
+  win_T *win = find_window_by_handle(window, err);
+  buf_T *buf = find_buffer_by_handle(buffer, err);
+  if (!win || !buf) {
+    return;
+  }
+  if (cmdwin_type != 0 && (win == curwin || win == cmdwin_old_curwin || buf == curbuf)) {
+    api_set_error(err, kErrorTypeException, "%s", e_cmdwin);
+    return;
+  }
+  win_set_buf(win, buf, false, err);
 }
 
 /// Gets the (1,0)-indexed, buffer-relative cursor position for a given window
@@ -351,10 +366,10 @@ Boolean nvim_win_is_valid(Window window)
 /// @param[out] err Error details, if any
 void nvim_win_hide(Window window, Error *err)
   FUNC_API_SINCE(7)
-  FUNC_API_CHECK_TEXTLOCK
+  FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
   win_T *win = find_window_by_handle(window, err);
-  if (!win) {
+  if (!win || !can_close_in_cmdwin(win, err)) {
     return;
   }
 
@@ -383,19 +398,10 @@ void nvim_win_hide(Window window, Error *err)
 /// @param[out] err Error details, if any
 void nvim_win_close(Window window, Boolean force, Error *err)
   FUNC_API_SINCE(6)
-  FUNC_API_CHECK_TEXTLOCK
+  FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
   win_T *win = find_window_by_handle(window, err);
-  if (!win) {
-    return;
-  }
-
-  if (cmdwin_type != 0) {
-    if (win == curwin) {
-      cmdwin_result = Ctrl_C;
-    } else {
-      api_set_error(err, kErrorTypeException, "%s", _(e_cmdwin));
-    }
+  if (!win || !can_close_in_cmdwin(win, err)) {
     return;
   }
 
@@ -429,10 +435,12 @@ Object nvim_win_call(Window window, LuaRef fun, Error *err)
 
   try_start();
   Object res = OBJECT_INIT;
-  WIN_EXECUTE(win, tabpage, {
+  win_execute_T win_execute_args;
+  if (win_execute_before(&win_execute_args, win, tabpage)) {
     Array args = ARRAY_DICT_INIT;
     res = nlua_call_ref(fun, NULL, args, true, err);
-  });
+  }
+  win_execute_after(&win_execute_args);
   try_end(err);
   return res;
 }
@@ -461,4 +469,107 @@ void nvim_win_set_hl_ns(Window window, Integer ns_id, Error *err)
   win->w_ns_hl = (NS)ns_id;
   win->w_hl_needs_update = true;
   redraw_later(win, UPD_NOT_VALID);
+}
+
+/// Computes the number of screen lines occupied by a range of text in a given window.
+/// Works for off-screen text and takes folds into account.
+///
+/// Diff filler or virtual lines above a line are counted as a part of that line,
+/// unless the line is on "start_row" and "start_vcol" is specified.
+///
+/// Diff filler or virtual lines below the last buffer line are counted in the result
+/// when "end_row" is omitted.
+///
+/// Line indexing is similar to |nvim_buf_get_text()|.
+///
+/// @param window  Window handle, or 0 for current window.
+/// @param opts    Optional parameters:
+///                - start_row: Starting line index, 0-based inclusive.
+///                             When omitted start at the very top.
+///                - end_row: Ending line index, 0-based inclusive.
+///                           When omitted end at the very bottom.
+///                - start_vcol: Starting virtual column index on "start_row",
+///                              0-based inclusive, rounded down to full screen lines.
+///                              When omitted include the whole line.
+///                - end_vcol: Ending virtual column index on "end_row",
+///                            0-based exclusive, rounded up to full screen lines.
+///                            When omitted include the whole line.
+/// @return  Dictionary containing text height information, with these keys:
+///          - all: The total number of screen lines occupied by the range.
+///          - fill: The number of diff filler or virtual lines among them.
+///
+/// @see |virtcol()| for text width.
+Dictionary nvim_win_text_height(Window window, Dict(win_text_height) *opts, Arena *arena,
+                                Error *err)
+  FUNC_API_SINCE(12)
+{
+  Dictionary rv = arena_dict(arena, 2);
+
+  win_T *const win = find_window_by_handle(window, err);
+  if (!win) {
+    return rv;
+  }
+  buf_T *const buf = win->w_buffer;
+  const linenr_T line_count = buf->b_ml.ml_line_count;
+
+  linenr_T start_lnum = 1;
+  linenr_T end_lnum = line_count;
+  int64_t start_vcol = -1;
+  int64_t end_vcol = -1;
+
+  bool oob = false;
+
+  if (HAS_KEY(opts, win_text_height, start_row)) {
+    start_lnum = (linenr_T)normalize_index(buf, opts->start_row, false, &oob);
+  }
+
+  if (HAS_KEY(opts, win_text_height, end_row)) {
+    end_lnum = (linenr_T)normalize_index(buf, opts->end_row, false, &oob);
+  }
+
+  VALIDATE(!oob, "%s", "Line index out of bounds", {
+    return rv;
+  });
+  VALIDATE((start_lnum <= end_lnum), "%s", "'start_row' is higher than 'end_row'", {
+    return rv;
+  });
+
+  if (HAS_KEY(opts, win_text_height, start_vcol)) {
+    VALIDATE(HAS_KEY(opts, win_text_height, start_row),
+             "%s", "'start_vcol' specified without 'start_row'", {
+      return rv;
+    });
+    start_vcol = opts->start_vcol;
+    VALIDATE_RANGE((start_vcol >= 0 && start_vcol <= MAXCOL), "start_vcol", {
+      return rv;
+    });
+  }
+
+  if (HAS_KEY(opts, win_text_height, end_vcol)) {
+    VALIDATE(HAS_KEY(opts, win_text_height, end_row),
+             "%s", "'end_vcol' specified without 'end_row'", {
+      return rv;
+    });
+    end_vcol = opts->end_vcol;
+    VALIDATE_RANGE((end_vcol >= 0 && end_vcol <= MAXCOL), "end_vcol", {
+      return rv;
+    });
+  }
+
+  if (start_lnum == end_lnum && start_vcol >= 0 && end_vcol >= 0) {
+    VALIDATE((start_vcol <= end_vcol), "%s", "'start_vcol' is higher than 'end_vcol'", {
+      return rv;
+    });
+  }
+
+  int64_t fill = 0;
+  int64_t all = win_text_height(win, start_lnum, start_vcol, end_lnum, end_vcol, &fill);
+  if (!HAS_KEY(opts, win_text_height, end_row)) {
+    const int64_t end_fill = win_get_fill(win, line_count + 1);
+    fill += end_fill;
+    all += end_fill;
+  }
+  PUT_C(rv, "all", INTEGER_OBJ(all));
+  PUT_C(rv, "fill", INTEGER_OBJ(fill));
+  return rv;
 }

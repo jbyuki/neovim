@@ -1,12 +1,11 @@
-#ifndef NVIM_OS_PROCESS_H
-#define NVIM_OS_PROCESS_H
+#pragma once
 
-#include <stddef.h>
+#include <stddef.h>  // IWYU pragma: keep
 
-#include "nvim/api/private/defs.h"
+#ifdef MSWIN
+# include "nvim/api/private/defs.h"  // IWYU pragma: keep
+#endif
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "os/process.h.generated.h"
 #endif
-
-#endif  // NVIM_OS_PROCESS_H

@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // users.c -- operating system user information
 
 #include <stdbool.h>
@@ -9,17 +6,24 @@
 #include <uv.h>
 
 #include "auto/config.h"
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
+#include "nvim/cmdexpand_defs.h"
 #include "nvim/garray.h"
 #include "nvim/memory.h"
 #include "nvim/os/os.h"
-#include "nvim/types.h"
-#include "nvim/vim.h"
+#include "nvim/vim_defs.h"
 #ifdef HAVE_PWD_FUNCS
 # include <pwd.h>
 #endif
 #ifdef MSWIN
 # include <lm.h>
+
+# include "nvim/mbyte.h"
+# include "nvim/message.h"
+#endif
+
+#ifdef INCLUDE_GENERATED_DECLARATIONS
+# include "os/users.c.generated.h"
 #endif
 
 // All user names (for ~user completion as done by shell).
@@ -30,7 +34,7 @@ static garray_T ga_users = GA_EMPTY_INIT_VALUE;
 static void add_user(garray_T *users, char *user, bool need_copy)
 {
   char *user_copy = (user != NULL && need_copy)
-    ? xstrdup(user) : user;
+                    ? xstrdup(user) : user;
 
   if (user_copy == NULL || *user_copy == NUL) {
     if (need_copy) {
@@ -186,7 +190,7 @@ void free_users(void)
 /// Done only once and then cached.
 static void init_users(void)
 {
-  static int lazy_init_done = false;
+  static bool lazy_init_done = false;
 
   if (lazy_init_done) {
     return;

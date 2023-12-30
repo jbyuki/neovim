@@ -4,6 +4,7 @@ local clear = helpers.clear
 local eq = helpers.eq
 local exec_lua = helpers.exec_lua
 local insert = helpers.insert
+local assert_alive = helpers.assert_alive
 
 before_each(clear)
 
@@ -13,6 +14,45 @@ end
 
 describe('treesitter node API', function()
   clear()
+
+  it('double free tree', function()
+    insert('F')
+    exec_lua([[
+      vim.treesitter.start(0, 'lua')
+      vim.treesitter.get_node():tree()
+      vim.treesitter.get_node():tree()
+      collectgarbage()
+    ]])
+    assert_alive()
+  end)
+
+  it('double free tree 2', function()
+    exec_lua([[
+      parser = vim.treesitter.get_parser(0, "c")
+      local x = parser:parse()[1]:root():tree()
+      vim.api.nvim_buf_set_text(0, 0,0, 0,0, {'y'})
+      parser:parse()
+      vim.api.nvim_buf_set_text(0, 0,0, 0,1, {'z'})
+      parser:parse()
+      collectgarbage()
+      x:root()
+    ]])
+    assert_alive()
+  end)
+
+  it('get_node() with lang given', function()
+    -- this buffer doesn't have filetype set!
+    insert('local foo = function() end')
+    exec_lua([[
+      node = vim.treesitter.get_node({
+        bufnr = 0,
+        pos = { 0, 6 },  -- on "foo"
+        lang = 'lua',
+      })
+    ]])
+    eq('foo', lua_eval('vim.treesitter.query.get_node_text(node, 0)'))
+    eq('identifier', lua_eval('node:type()'))
+  end)
 
   it('can move between siblings', function()
     insert([[

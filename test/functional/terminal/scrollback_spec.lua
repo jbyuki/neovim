@@ -2,10 +2,9 @@ local Screen = require('test.functional.ui.screen')
 local helpers = require('test.functional.helpers')(after_each)
 local thelpers = require('test.functional.terminal.helpers')
 local clear, eq, curbuf = helpers.clear, helpers.eq, helpers.curbuf
-local feed, testprg, feed_command = helpers.feed, helpers.testprg, helpers.feed_command
+local feed, testprg = helpers.feed, helpers.testprg
 local eval = helpers.eval
 local command = helpers.command
-local matches = helpers.matches
 local poke_eventloop = helpers.poke_eventloop
 local retry = helpers.retry
 local meths = helpers.meths
@@ -349,8 +348,7 @@ describe(':terminal prints more lines than the screen height and exits', functio
     clear()
     local screen = Screen.new(30, 7)
     screen:attach({rgb=false})
-    feed_command(("call termopen(['%s', '10']) | startinsert"):format(testprg('tty-test')))
-    poke_eventloop()
+    command(("call termopen(['%s', '10']) | startinsert"):format(testprg('tty-test')))
     screen:expect([[
       line6                         |
       line7                         |
@@ -364,11 +362,7 @@ describe(':terminal prints more lines than the screen height and exits', functio
     -- closes the buffer correctly after pressing a key
     screen:expect([[
       ^                              |
-      ~                             |
-      ~                             |
-      ~                             |
-      ~                             |
-      ~                             |
+      ~                             |*5
                                     |
     ]])
   end)
@@ -380,9 +374,7 @@ describe("'scrollback' option", function()
   end)
 
   local function set_fake_shell()
-    -- shell-test.c is a fake shell that prints its arguments and exits.
-    nvim('set_option_value', 'shell', testprg('shell-test'), {})
-    nvim('set_option_value', 'shellcmdflag', 'EXE', {})
+    nvim('set_option_value', 'shell', string.format('"%s" INTERACT', testprg('shell-test')), {})
   end
 
   local function expect_lines(expected, epsilon)
@@ -396,9 +388,9 @@ describe("'scrollback' option", function()
   it('set to 0 behaves as 1', function()
     local screen
     if is_os('win') then
-      screen = thelpers.screen_setup(nil, "['cmd.exe']", 30)
+      screen = thelpers.screen_setup(nil, { 'cmd.exe' }, 30)
     else
-      screen = thelpers.screen_setup(nil, "['sh']", 30)
+      screen = thelpers.screen_setup(nil, { 'sh' }, 30)
     end
 
     meths.set_option_value('scrollback', 0, {})
@@ -411,10 +403,10 @@ describe("'scrollback' option", function()
     local screen
     if is_os('win') then
       command([[let $PROMPT='$$']])
-      screen = thelpers.screen_setup(nil, "['cmd.exe']", 30)
+      screen = thelpers.screen_setup(nil, { 'cmd.exe' }, 30)
     else
       command('let $PS1 = "$"')
-      screen = thelpers.screen_setup(nil, "['sh']", 30)
+      screen = thelpers.screen_setup(nil, { 'sh' }, 30)
     end
 
     meths.set_option_value('scrollback', 200, {})
@@ -460,8 +452,8 @@ describe("'scrollback' option", function()
     expect_lines(58)
 
     -- Verify off-screen state
-    matches((is_os('win') and '^36: line[ ]*$' or '^35: line[ ]*$'), eval("getline(line('w0') - 1)"))
-    matches((is_os('win') and '^27: line[ ]*$' or '^26: line[ ]*$'), eval("getline(line('w0') - 10)"))
+    eq((is_os('win') and '36: line' or '35: line'), eval("getline(line('w0') - 1)->trim(' ', 2)"))
+    eq((is_os('win') and '27: line' or '26: line'), eval("getline(line('w0') - 10)->trim(' ', 2)"))
   end)
 
   it('deletes extra lines immediately', function()
@@ -584,41 +576,41 @@ describe("pending scrollback line handling", function()
     ]]
     screen:expect [[
       {1:  1 }^a                         |
-      {1:  2 } a                        |
-      {1:  3 }  a                       |
-      {1:  4 }   a                      |
-      {1:  5 }    a                     |
-      {1:  6 }     a                    |
+      {1:  2 }a                         |
+      {1:  3 }a                         |
+      {1:  4 }a                         |
+      {1:  5 }a                         |
+      {1:  6 }a                         |
                                     |
     ]]
     feed('G')
     screen:expect [[
-      {1:  7 }      a                   |
-      {1:  8 }       a                  |
-      {1:  9 }        a                 |
-      {1: 10 }         a                |
-      {1: 11 }          a               |
-      {1: 12 }           ^a              |
+      {1:  7 }a                         |
+      {1:  8 }a                         |
+      {1:  9 }a                         |
+      {1: 10 }a                         |
+      {1: 11 }a                         |
+      {1: 12 }^a                         |
                                     |
     ]]
     assert_alive()
   end)
 
-  it("does not crash after nvim_buf_call #14891", function()
-    skip(is_os('win'))
-    exec_lua [[
+  it('does not crash after nvim_buf_call #14891', function()
+    exec_lua([[
       local bufnr = vim.api.nvim_create_buf(false, true)
+      local args = ...
       vim.api.nvim_buf_call(bufnr, function()
-        vim.fn.termopen({"echo", ("hi\n"):rep(11)})
+        vim.fn.termopen(args)
       end)
       vim.api.nvim_win_set_buf(0, bufnr)
-      vim.cmd("startinsert")
-    ]]
+      vim.cmd('startinsert')
+    ]], is_os('win')
+          and {'cmd.exe', '/c', 'for /L %I in (1,1,12) do @echo hi'}
+          or {'printf', ('hi\n'):rep(12)}
+    )
     screen:expect [[
-      hi                            |
-      hi                            |
-      hi                            |
-                                    |
+      hi                            |*4
                                     |
       [Process exited 0]{2: }           |
       {3:-- TERMINAL --}                |

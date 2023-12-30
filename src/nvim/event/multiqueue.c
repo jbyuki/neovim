@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // Multi-level queue for selective async event processing.
 // Not threadsafe; access must be synchronized externally.
 //
@@ -48,7 +45,6 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <uv.h>
 
 #include "nvim/event/defs.h"
 #include "nvim/event/multiqueue.h"
@@ -264,7 +260,7 @@ Event event_create_oneshot(Event ev, int num)
   data->event = ev;
   data->fired = false;
   data->refcount = num;
-  return event_create(multiqueue_oneshot_event, 1, data);
+  return event_create(multiqueue_oneshot_event, data);
 }
 static void multiqueue_oneshot_event(void **argv)
 {

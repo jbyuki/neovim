@@ -6,7 +6,47 @@
 -- or the test suite. (Eventually the test suite will be run in a worker process,
 -- so this wouldn't be a separate case to consider)
 
+---@diagnostic disable-next-line: lowercase-global
 vim = vim or {}
+
+local function _id(v)
+  return v
+end
+
+local deepcopy
+
+local deepcopy_funcs = {
+  table = function(orig, cache)
+    if cache[orig] then
+      return cache[orig]
+    end
+    local copy = {}
+
+    cache[orig] = copy
+    local mt = getmetatable(orig)
+    for k, v in pairs(orig) do
+      copy[deepcopy(k, cache)] = deepcopy(v, cache)
+    end
+    return setmetatable(copy, mt)
+  end,
+  number = _id,
+  string = _id,
+  ['nil'] = _id,
+  boolean = _id,
+  ['function'] = _id,
+}
+
+deepcopy = function(orig, _cache)
+  local f = deepcopy_funcs[type(orig)]
+  if f then
+    return f(orig, _cache or {})
+  else
+    if type(orig) == 'userdata' and orig == vim.NIL then
+      return vim.NIL
+    end
+    error('Cannot deepcopy object of type ' .. type(orig))
+  end
+end
 
 --- Returns a deep copy of the given object. Non-table objects are copied as
 --- in a typical Lua assignment, whereas table objects are copied recursively.
@@ -17,66 +57,33 @@ vim = vim or {}
 ---@generic T: table
 ---@param orig T Table to copy
 ---@return T Table of copied keys and (nested) values.
-function vim.deepcopy(orig) end -- luacheck: no unused
-vim.deepcopy = (function()
-  local function _id(v)
-    return v
-  end
+function vim.deepcopy(orig)
+  return deepcopy(orig)
+end
 
-  local deepcopy_funcs = {
-    table = function(orig, cache)
-      if cache[orig] then
-        return cache[orig]
-      end
-      local copy = {}
-
-      cache[orig] = copy
-      local mt = getmetatable(orig)
-      for k, v in pairs(orig) do
-        copy[vim.deepcopy(k, cache)] = vim.deepcopy(v, cache)
-      end
-      return setmetatable(copy, mt)
-    end,
-    number = _id,
-    string = _id,
-    ['nil'] = _id,
-    boolean = _id,
-    ['function'] = _id,
-  }
-
-  return function(orig, cache)
-    local f = deepcopy_funcs[type(orig)]
-    if f then
-      return f(orig, cache or {})
-    else
-      if type(orig) == 'userdata' and orig == vim.NIL then
-        return vim.NIL
-      end
-      error('Cannot deepcopy object of type ' .. type(orig))
-    end
-  end
-end)()
-
---- Splits a string at each instance of a separator.
+--- Gets an |iterator| that splits a string at each instance of a separator, in "lazy" fashion
+--- (as opposed to |vim.split()| which is "eager").
 ---
 --- Example:
----   <pre>lua
----   for s in vim.gsplit(':aa::b:', ':', {plain=true}) do
----     print(s)
----   end
----   </pre>
+---
+--- ```lua
+--- for s in vim.gsplit(':aa::b:', ':', {plain=true}) do
+---   print(s)
+--- end
+--- ```
 ---
 --- If you want to also inspect the separator itself (instead of discarding it), use
 --- |string.gmatch()|. Example:
----   <pre>lua
----   for word, num in ('foo111bar222'):gmatch('([^0-9]*)(%d*)') do
----     print(('word: %s num: %s'):format(word, num))
----   end
----   </pre>
+---
+--- ```lua
+--- for word, num in ('foo111bar222'):gmatch('([^0-9]*)(%d*)') do
+---   print(('word: %s num: %s'):format(word, num))
+--- end
+--- ```
 ---
 --- @see |string.gmatch()|
 --- @see |vim.split()|
---- @see |luaref-patterns|
+--- @see |lua-patterns|
 --- @see https://www.lua.org/pil/20.2.html
 --- @see http://lua-users.org/wiki/StringLibraryTutorial
 ---
@@ -156,15 +163,17 @@ function vim.gsplit(s, sep, opts)
   end
 end
 
---- Splits a string at each instance of a separator.
+--- Splits a string at each instance of a separator and returns the result as a table (unlike
+--- |vim.gsplit()|).
 ---
 --- Examples:
---- <pre>lua
----  split(":aa::b:", ":")                   --> {'','aa','','b',''}
----  split("axaby", "ab?")                   --> {'','x','y'}
----  split("x*yz*o", "*", {plain=true})      --> {'x','yz','o'}
----  split("|x|y|z|", "|", {trimempty=true}) --> {'x', 'y', 'z'}
---- </pre>
+---
+--- ```lua
+--- split(":aa::b:", ":")                   --> {'','aa','','b',''}
+--- split("axaby", "ab?")                   --> {'','x','y'}
+--- split("x*yz*o", "*", {plain=true})      --> {'x','yz','o'}
+--- split("|x|y|z|", "|", {trimempty=true}) --> {'x', 'y', 'z'}
+--- ```
 ---
 ---@see |vim.gsplit()|
 ---@see |string.gmatch()|
@@ -253,12 +262,13 @@ end
 --- a predicate that is checked for each value.
 ---
 --- Example:
---- <pre>lua
----  vim.tbl_contains({ 'a', { 'b', 'c' } }, function(v)
----    return vim.deep_equal(v, { 'b', 'c' })
----  end, { predicate = true })
----  -- true
---- </pre>
+---
+--- ```lua
+--- vim.tbl_contains({ 'a', { 'b', 'c' } }, function(v)
+---   return vim.deep_equal(v, { 'b', 'c' })
+--- end, { predicate = true })
+--- -- true
+--- ```
 ---
 ---@see |vim.list_contains()| for checking values in list-like tables
 ---
@@ -318,7 +328,6 @@ function vim.tbl_isempty(t)
 end
 
 --- We only merge empty tables or tables that are not an array (indexed by integers)
----@private
 local function can_merge(v)
   return type(v) == 'table' and (vim.tbl_isempty(v) or not vim.tbl_isarray(v))
 end
@@ -450,10 +459,11 @@ end
 --- Return `nil` if the key does not exist.
 ---
 --- Examples:
---- <pre>lua
----  vim.tbl_get({ key = { nested_key = true }}, 'key', 'nested_key') == true
----  vim.tbl_get({ key = {}}, 'key', 'nested_key') == nil
---- </pre>
+---
+--- ```lua
+--- vim.tbl_get({ key = { nested_key = true }}, 'key', 'nested_key') == true
+--- vim.tbl_get({ key = {}}, 'key', 'nested_key') == nil
+--- ```
 ---
 ---@param o table Table to index
 ---@param ... any Optional keys (0 or more, variadic) via which to index the table
@@ -524,12 +534,12 @@ function vim.tbl_flatten(t)
   return result
 end
 
---- Enumerate a table sorted by its keys.
+--- Enumerates key-value pairs of a table, ordered by key.
 ---
 ---@see Based on https://github.com/premake/premake-core/blob/master/src/base/table.lua
 ---
----@param t table List-like table
----@return iterator over sorted keys and their values
+---@param t table Dict-like table
+---@return function # |for-in| iterator over sorted keys and their values
 function vim.spairs(t)
   assert(type(t) == 'table', string.format('Expected table, got %s', type(t)))
 
@@ -541,7 +551,6 @@ function vim.spairs(t)
   table.sort(keys)
 
   -- Return the iterator function.
-  -- TODO(justinmk): Return "iterator function, table {t}, and nil", like pairs()?
   local i = 0
   return function()
     i = i + 1
@@ -551,11 +560,14 @@ function vim.spairs(t)
   end
 end
 
---- Tests if a Lua table can be treated as an array (a table indexed by integers).
+--- Tests if `t` is an "array": a table indexed _only_ by integers (potentially non-contiguous).
 ---
---- Empty table `{}` is assumed to be an array, unless it was created by
---- |vim.empty_dict()| or returned as a dict-like |API| or Vimscript result,
---- for example from |rpcrequest()| or |vim.fn|.
+--- If the indexes start from 1 and are contiguous then the array is also a list. |vim.tbl_islist()|
+---
+--- Empty table `{}` is an array, unless it was created by |vim.empty_dict()| or returned as
+--- a dict-like |API| or Vimscript result, for example from |rpcrequest()| or |vim.fn|.
+---
+---@see https://github.com/openresty/luajit2#tableisarray
 ---
 ---@param t table
 ---@return boolean `true` if array-like table, else `false`.
@@ -587,11 +599,13 @@ function vim.tbl_isarray(t)
   end
 end
 
---- Tests if a Lua table can be treated as a list (a table indexed by consecutive integers starting from 1).
+--- Tests if `t` is a "list": a table indexed _only_ by contiguous integers starting from 1 (what
+--- |lua-length| calls a "regular array").
 ---
---- Empty table `{}` is assumed to be an list, unless it was created by
---- |vim.empty_dict()| or returned as a dict-like |API| or Vimscript result,
---- for example from |rpcrequest()| or |vim.fn|.
+--- Empty table `{}` is a list, unless it was created by |vim.empty_dict()| or returned as
+--- a dict-like |API| or Vimscript result, for example from |rpcrequest()| or |vim.fn|.
+---
+---@see |vim.tbl_isarray()|
 ---
 ---@param t table
 ---@return boolean `true` if list-like table, else `false`.
@@ -621,10 +635,10 @@ end
 
 --- Counts the number of non-nil values in table `t`.
 ---
---- <pre>lua
+--- ```lua
 --- vim.tbl_count({ a=1, b=2 })  --> 2
 --- vim.tbl_count({ 1, 2 })      --> 2
---- </pre>
+--- ```
 ---
 ---@see https://github.com/Tieske/Penlight/blob/master/lua/pl/tablex.lua
 ---@param t table Table
@@ -656,7 +670,7 @@ end
 
 --- Trim whitespace (Lua pattern "%s") from both sides of a string.
 ---
----@see |luaref-patterns|
+---@see |lua-patterns|
 ---@see https://www.lua.org/pil/20.2.html
 ---@param s string String to trim
 ---@return string String with whitespace removed from its beginning and end
@@ -695,58 +709,6 @@ function vim.endswith(s, suffix)
   return #suffix == 0 or s:sub(-#suffix) == suffix
 end
 
---- Validates a parameter specification (types and values).
----
---- Usage example:
---- <pre>lua
----  function user.new(name, age, hobbies)
----    vim.validate{
----      name={name, 'string'},
----      age={age, 'number'},
----      hobbies={hobbies, 'table'},
----    }
----    ...
----  end
---- </pre>
----
---- Examples with explicit argument values (can be run directly):
---- <pre>lua
----  vim.validate{arg1={{'foo'}, 'table'}, arg2={'foo', 'string'}}
----     --> NOP (success)
----
----  vim.validate{arg1={1, 'table'}}
----     --> error('arg1: expected table, got number')
----
----  vim.validate{arg1={3, function(a) return (a % 2) == 0 end, 'even number'}}
----     --> error('arg1: expected even number, got 3')
---- </pre>
----
---- If multiple types are valid they can be given as a list.
---- <pre>lua
----  vim.validate{arg1={{'foo'}, {'table', 'string'}}, arg2={'foo', {'table', 'string'}}}
----     --> NOP (success)
----
----  vim.validate{arg1={1, {'string', 'table'}}}
----     --> error('arg1: expected string|table, got number')
----
---- </pre>
----
----@param opt table Names of parameters to validate. Each key is a parameter
----          name; each value is a tuple in one of these forms:
----          1. (arg_value, type_name, optional)
----             - arg_value: argument value
----             - type_name: string|table type name, one of: ("table", "t", "string",
----               "s", "number", "n", "boolean", "b", "function", "f", "nil",
----               "thread", "userdata") or list of them.
----             - optional: (optional) boolean, if true, `nil` is valid
----          2. (arg_value, fn, msg)
----             - arg_value: argument value
----             - fn: any function accepting one argument, returns true if and
----               only if the argument is valid. Can optionally return an additional
----               informative error message as the second returned value.
----             - msg: (optional) error string if validation fails
-function vim.validate(opt) end -- luacheck: no unused
-
 do
   local type_names = {
     ['table'] = 'table',
@@ -770,7 +732,6 @@ do
     return type(val) == t or (t == 'callable' and vim.is_callable(val))
   end
 
-  ---@private
   local function is_valid(opt)
     if type(opt) ~= 'table' then
       return false, string.format('opt: expected table, got %s', type(opt))
@@ -832,6 +793,59 @@ do
     return true, nil
   end
 
+  --- Validates a parameter specification (types and values).
+  ---
+  --- Usage example:
+  ---
+  --- ```lua
+  ---  function user.new(name, age, hobbies)
+  ---    vim.validate{
+  ---      name={name, 'string'},
+  ---      age={age, 'number'},
+  ---      hobbies={hobbies, 'table'},
+  ---    }
+  ---    ...
+  ---  end
+  --- ```
+  ---
+  --- Examples with explicit argument values (can be run directly):
+  ---
+  --- ```lua
+  ---  vim.validate{arg1={{'foo'}, 'table'}, arg2={'foo', 'string'}}
+  ---     --> NOP (success)
+  ---
+  ---  vim.validate{arg1={1, 'table'}}
+  ---     --> error('arg1: expected table, got number')
+  ---
+  ---  vim.validate{arg1={3, function(a) return (a % 2) == 0 end, 'even number'}}
+  ---     --> error('arg1: expected even number, got 3')
+  --- ```
+  ---
+  --- If multiple types are valid they can be given as a list.
+  ---
+  --- ```lua
+  ---  vim.validate{arg1={{'foo'}, {'table', 'string'}}, arg2={'foo', {'table', 'string'}}}
+  ---  -- NOP (success)
+  ---
+  ---  vim.validate{arg1={1, {'string', 'table'}}}
+  ---  -- error('arg1: expected string|table, got number')
+  ---
+  --- ```
+  ---
+  ---@param opt table Names of parameters to validate. Each key is a parameter
+  ---          name; each value is a tuple in one of these forms:
+  ---          1. (arg_value, type_name, optional)
+  ---             - arg_value: argument value
+  ---             - type_name: string|table type name, one of: ("table", "t", "string",
+  ---               "s", "number", "n", "boolean", "b", "function", "f", "nil",
+  ---               "thread", "userdata") or list of them.
+  ---             - optional: (optional) boolean, if true, `nil` is valid
+  ---          2. (arg_value, fn, msg)
+  ---             - arg_value: argument value
+  ---             - fn: any function accepting one argument, returns true if and
+  ---               only if the argument is valid. Can optionally return an additional
+  ---               informative error message as the second returned value.
+  ---             - msg: (optional) error string if validation fails
   function vim.validate(opt)
     local ok, err_msg = is_valid(opt)
     if not ok then
@@ -854,28 +868,25 @@ function vim.is_callable(f)
   return type(m.__call) == 'function'
 end
 
---- Creates a table whose members are automatically created when accessed, if they don't already
---- exist.
+--- Creates a table whose missing keys are provided by {createfn} (like Python's "defaultdict").
 ---
---- They mimic defaultdict in python.
+--- If {createfn} is `nil` it defaults to defaulttable() itself, so accessing nested keys creates
+--- nested tables:
 ---
---- If {create} is `nil`, this will create a defaulttable whose constructor function is
---- this function, effectively allowing to create nested tables on the fly:
----
---- <pre>lua
+--- ```lua
 --- local a = vim.defaulttable()
 --- a.b.c = 1
---- </pre>
+--- ```
 ---
----@param create function?(key:any):any The function called to create a missing value.
----@return table Empty table with metamethod
-function vim.defaulttable(create)
-  create = create or function(_)
+---@param createfn function?(key:any):any Provides the value for a missing `key`.
+---@return table # Empty table with `__index` metamethod.
+function vim.defaulttable(createfn)
+  createfn = createfn or function(_)
     return vim.defaulttable()
   end
   return setmetatable({}, {
     __index = function(tbl, key)
-      rawset(tbl, key, create(key))
+      rawset(tbl, key, createfn(key))
       return rawget(tbl, key)
     end,
   })
@@ -934,7 +945,7 @@ do
   --- Create a ring buffer limited to a maximal number of items.
   --- Once the buffer is full, adding a new entry overrides the oldest entry.
   ---
-  --- <pre>
+  --- ```lua
   ---   local ringbuf = vim.ringbuf(4)
   ---   ringbuf:push("a")
   ---   ringbuf:push("b")
@@ -948,7 +959,7 @@ do
   ---   for val in ringbuf do
   ---     print(val)
   ---   end
-  --- </pre>
+  --- ```
   ---
   --- Returns a Ringbuf instance with the following methods:
   ---

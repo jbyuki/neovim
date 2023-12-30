@@ -418,7 +418,7 @@ describe('lua: nvim_buf_attach on_bytes', function()
         -- meths.set_option_value('autoindent', true, {})
         feed 'Go'
         check_events {
-          { "test1", "bytes", 1, 4, 7, 0, 114, 0, 0, 0, 1, 0, 1 };
+          { "test1", "bytes", 1, 3, 7, 0, 114, 0, 0, 0, 1, 0, 1 };
         }
         feed '<cr>'
         check_events {
@@ -431,7 +431,7 @@ describe('lua: nvim_buf_attach on_bytes', function()
         meths.set_option_value('autoindent', true, {})
         feed 'Go'
         check_events {
-          { "test1", "bytes", 1, 4, 7, 0, 114, 0, 0, 0, 1, 0, 5 };
+          { "test1", "bytes", 1, 3, 7, 0, 114, 0, 0, 0, 1, 0, 5 };
         }
         feed '<cr>'
         check_events {
@@ -476,7 +476,7 @@ describe('lua: nvim_buf_attach on_bytes', function()
 
       feed 'ggo' -- goto first line to continue testing
       check_events {
-        { "test1", "bytes", 1, 6, 1, 0, 11, 0, 0, 0, 1, 0, 4 };
+        { "test1", "bytes", 1, 5, 1, 0, 11, 0, 0, 0, 1, 0, 4 };
       }
 
       feed '<CR>'
@@ -826,53 +826,53 @@ describe('lua: nvim_buf_attach on_bytes', function()
 
       feed("<esc>u")
       check_events {
-        { "test1", "bytes", 1, 8, 0, 0, 0, 0, 1, 1, 0, 4, 4 },
-        { "test1", "bytes", 1, 8, 0, 0, 0, 0, 4, 4, 0, 0, 0 }
+        { "test1", "bytes", 1, 9, 0, 0, 0, 0, 1, 1, 0, 4, 4 },
+        { "test1", "bytes", 1, 9, 0, 0, 0, 0, 4, 4, 0, 0, 0 }
       }
 
       -- in REPLACE mode
       feed("R<tab><tab>")
       check_events {
-        { "test1", "bytes", 1, 9, 0, 0, 0, 0, 1, 1, 0, 1, 1 },
-        { "test1", "bytes", 1, 10, 0, 1, 1, 0, 0, 0, 0, 1, 1 },
-        { "test1", "bytes", 1, 11, 0, 2, 2, 0, 1, 1, 0, 1, 1 },
-        { "test1", "bytes", 1, 12, 0, 3, 3, 0, 0, 0, 0, 1, 1 },
-        { "test1", "bytes", 1, 13, 0, 0, 0, 0, 4, 4, 0, 1, 1 },
+        { "test1", "bytes", 1, 10, 0, 0, 0, 0, 1, 1, 0, 1, 1 },
+        { "test1", "bytes", 1, 11, 0, 1, 1, 0, 0, 0, 0, 1, 1 },
+        { "test1", "bytes", 1, 12, 0, 2, 2, 0, 1, 1, 0, 1, 1 },
+        { "test1", "bytes", 1, 13, 0, 3, 3, 0, 0, 0, 0, 1, 1 },
+        { "test1", "bytes", 1, 14, 0, 0, 0, 0, 4, 4, 0, 1, 1 },
       }
       feed("<esc>u")
       check_events {
-        { "test1", "bytes", 1, 14, 0, 0, 0, 0, 1, 1, 0, 4, 4 },
-        { "test1", "bytes", 1, 14, 0, 2, 2, 0, 2, 2, 0, 1, 1 },
-        { "test1", "bytes", 1, 14, 0, 0, 0, 0, 2, 2, 0, 1, 1 }
+        { "test1", "bytes", 1, 16, 0, 0, 0, 0, 1, 1, 0, 4, 4 },
+        { "test1", "bytes", 1, 16, 0, 2, 2, 0, 2, 2, 0, 1, 1 },
+        { "test1", "bytes", 1, 16, 0, 0, 0, 0, 2, 2, 0, 1, 1 }
       }
 
       -- in VISUALREPLACE mode
       feed("gR<tab><tab>")
       check_events {
-          { "test1", "bytes", 1, 15, 0, 0, 0, 0, 1, 1, 0, 1, 1 };
-          { "test1", "bytes", 1, 16, 0, 1, 1, 0, 1, 1, 0, 1, 1 };
-          { "test1", "bytes", 1, 17, 0, 2, 2, 0, 1, 1, 0, 1, 1 };
-          { "test1", "bytes", 1, 18, 0, 3, 3, 0, 1, 1, 0, 1, 1 };
-          { "test1", "bytes", 1, 19, 0, 3, 3, 0, 1, 1, 0, 0, 0 };
-          { "test1", "bytes", 1, 20, 0, 3, 3, 0, 0, 0, 0, 1, 1 };
-          { "test1", "bytes", 1, 22, 0, 2, 2, 0, 1, 1, 0, 0, 0 };
-          { "test1", "bytes", 1, 23, 0, 2, 2, 0, 0, 0, 0, 1, 1 };
-          { "test1", "bytes", 1, 25, 0, 1, 1, 0, 1, 1, 0, 0, 0 };
-          { "test1", "bytes", 1, 26, 0, 1, 1, 0, 0, 0, 0, 1, 1 };
-          { "test1", "bytes", 1, 28, 0, 0, 0, 0, 1, 1, 0, 0, 0 };
-          { "test1", "bytes", 1, 29, 0, 0, 0, 0, 0, 0, 0, 1, 1 };
-          { "test1", "bytes", 1, 31, 0, 0, 0, 0, 4, 4, 0, 1, 1 };
+          { "test1", "bytes", 1, 17, 0, 0, 0, 0, 1, 1, 0, 1, 1 };
+          { "test1", "bytes", 1, 18, 0, 1, 1, 0, 1, 1, 0, 1, 1 };
+          { "test1", "bytes", 1, 19, 0, 2, 2, 0, 1, 1, 0, 1, 1 };
+          { "test1", "bytes", 1, 20, 0, 3, 3, 0, 1, 1, 0, 1, 1 };
+          { "test1", "bytes", 1, 21, 0, 3, 3, 0, 1, 1, 0, 0, 0 };
+          { "test1", "bytes", 1, 22, 0, 3, 3, 0, 0, 0, 0, 1, 1 };
+          { "test1", "bytes", 1, 24, 0, 2, 2, 0, 1, 1, 0, 0, 0 };
+          { "test1", "bytes", 1, 25, 0, 2, 2, 0, 0, 0, 0, 1, 1 };
+          { "test1", "bytes", 1, 27, 0, 1, 1, 0, 1, 1, 0, 0, 0 };
+          { "test1", "bytes", 1, 28, 0, 1, 1, 0, 0, 0, 0, 1, 1 };
+          { "test1", "bytes", 1, 30, 0, 0, 0, 0, 1, 1, 0, 0, 0 };
+          { "test1", "bytes", 1, 31, 0, 0, 0, 0, 0, 0, 0, 1, 1 };
+          { "test1", "bytes", 1, 33, 0, 0, 0, 0, 4, 4, 0, 1, 1 };
       }
 
       -- inserting tab after other tabs
       command("set sw=4")
       feed("<esc>0a<tab>")
       check_events {
-        { "test1", "bytes", 1, 32, 0, 1, 1, 0, 0, 0, 0, 1, 1 };
-        { "test1", "bytes", 1, 33, 0, 2, 2, 0, 0, 0, 0, 1, 1 };
-        { "test1", "bytes", 1, 34, 0, 3, 3, 0, 0, 0, 0, 1, 1 };
-        { "test1", "bytes", 1, 35, 0, 4, 4, 0, 0, 0, 0, 1, 1 };
-        { "test1", "bytes", 1, 36, 0, 1, 1, 0, 4, 4, 0, 1, 1 };
+        { "test1", "bytes", 1, 34, 0, 1, 1, 0, 0, 0, 0, 1, 1 };
+        { "test1", "bytes", 1, 35, 0, 2, 2, 0, 0, 0, 0, 1, 1 };
+        { "test1", "bytes", 1, 36, 0, 3, 3, 0, 0, 0, 0, 1, 1 };
+        { "test1", "bytes", 1, 37, 0, 4, 4, 0, 0, 0, 0, 1, 1 };
+        { "test1", "bytes", 1, 38, 0, 1, 1, 0, 4, 4, 0, 1, 1 };
       }
     end)
 

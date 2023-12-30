@@ -1,29 +1,24 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <uv.h>
 
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/charset.h"
 #include "nvim/eval/typval_defs.h"
 #include "nvim/eval/vars.h"
 #include "nvim/gettext.h"
 #include "nvim/globals.h"
 #include "nvim/keycodes.h"
-#include "nvim/log.h"
-#include "nvim/macros.h"
+#include "nvim/macros_defs.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
 #include "nvim/mouse.h"
 #include "nvim/strings.h"
-#include "nvim/types.h"
-#include "nvim/vim.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "keycodes.c.generated.h"
@@ -472,12 +467,8 @@ char *get_special_key_name(int c, int modifiers)
 {
   static char string[MAX_KEY_NAME_LEN + 1];
 
-  int i, idx;
-  int table_idx;
-  char *s;
-
   string[0] = '<';
-  idx = 1;
+  int idx = 1;
 
   // Key that stands for a normal character.
   if (IS_SPECIAL(c) && KEY2TERMCAP0(c) == KS_KEY) {
@@ -487,7 +478,7 @@ char *get_special_key_name(int c, int modifiers)
   // Translate shifted special keys into unshifted keys and set modifier.
   // Same for CTRL and ALT modifiers.
   if (IS_SPECIAL(c)) {
-    for (i = 0; modifier_keys_table[i] != 0; i += MOD_KEYS_ENTRY_SIZE) {
+    for (int i = 0; modifier_keys_table[i] != 0; i += MOD_KEYS_ENTRY_SIZE) {
       if (KEY2TERMCAP0(c) == (int)modifier_keys_table[i + 1]
           && (int)KEY2TERMCAP1(c) == (int)modifier_keys_table[i + 2]) {
         modifiers |= modifier_keys_table[i];
@@ -499,7 +490,7 @@ char *get_special_key_name(int c, int modifiers)
   }
 
   // try to find the key in the special key table
-  table_idx = find_special_key_in_table(c);
+  int table_idx = find_special_key_in_table(c);
 
   // When not a known special key, and not a printable character, try to
   // extract modifiers.
@@ -520,7 +511,7 @@ char *get_special_key_name(int c, int modifiers)
   }
 
   // translate the modifier into a string
-  for (i = 0; mod_mask_table[i].name != 'A'; i++) {
+  for (int i = 0; mod_mask_table[i].name != 'A'; i++) {
     if ((modifiers & mod_mask_table[i].mod_mask)
         == mod_mask_table[i].mod_flag) {
       string[idx++] = mod_mask_table[i].name;
@@ -541,7 +532,7 @@ char *get_special_key_name(int c, int modifiers)
       } else if (vim_isprintc(c)) {
         string[idx++] = (char)(uint8_t)c;
       } else {
-        s = transchar(c);
+        char *s = transchar(c);
         while (*s) {
           string[idx++] = *s++;
         }
@@ -629,14 +620,9 @@ int find_special_key(const char **const srcp, const size_t src_len, int *const m
                      const int flags, bool *const did_simplify)
   FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_NONNULL_ARG(1, 3)
 {
-  const char *last_dash;
-  const char *end_of_name;
-  const char *src;
   const char *bp;
   const char *const end = *srcp + src_len - 1;
   const bool in_string = flags & FSK_IN_STRING;
-  int modifiers;
-  int bit;
   uvarnumber_T n;
   int l;
 
@@ -644,7 +630,7 @@ int find_special_key(const char **const srcp, const size_t src_len, int *const m
     return 0;
   }
 
-  src = *srcp;
+  const char *src = *srcp;
   if (src[0] != '<') {
     return 0;
   }
@@ -653,7 +639,7 @@ int find_special_key(const char **const srcp, const size_t src_len, int *const m
   }
 
   // Find end of modifier list
-  last_dash = src;
+  const char *last_dash = src;
   for (bp = src + 1; bp <= end && (*bp == '-' || ascii_isident(*bp)); bp++) {
     if (*bp == '-') {
       last_dash = bp;
@@ -685,13 +671,13 @@ int find_special_key(const char **const srcp, const size_t src_len, int *const m
 
   if (bp <= end && *bp == '>') {  // found matching '>'
     int key;
-    end_of_name = bp + 1;
+    const char *end_of_name = bp + 1;
 
     // Which modifiers are given?
-    modifiers = 0x0;
+    int modifiers = 0x0;
     for (bp = src + 1; bp < last_dash; bp++) {
       if (*bp != '-') {
-        bit = name_to_mod_mask((uint8_t)(*bp));
+        int bit = name_to_mod_mask((uint8_t)(*bp));
         if (bit == 0x0) {
           break;                // Illegal modifier name
         }
@@ -825,6 +811,10 @@ int find_special_key_in_table(int c)
 int get_special_key_code(const char *name)
   FUNC_ATTR_NONNULL_ALL FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT
 {
+  if (name[0] == 't' && name[1] == '_' && name[2] != NUL && name[3] != NUL) {
+    return TERMCAP2KEY((uint8_t)name[2], (uint8_t)name[3]);
+  }
+
   for (int i = 0; key_names_table[i].name != NULL; i++) {
     const char *const table_name = key_names_table[i].name;
     int j;
@@ -845,9 +835,7 @@ int get_special_key_code(const char *name)
 /// @return  which button is down or was released.
 int get_mouse_button(int code, bool *is_click, bool *is_drag)
 {
-  int i;
-
-  for (i = 0; mouse_table[i].pseudo_code; i++) {
+  for (int i = 0; mouse_table[i].pseudo_code; i++) {
     if (code == mouse_table[i].pseudo_code) {
       *is_click = mouse_table[i].is_click;
       *is_drag = mouse_table[i].is_drag;
@@ -864,8 +852,8 @@ int get_mouse_button(int code, bool *is_click, bool *is_drag)
 /// K_SPECIAL by itself is replaced by K_SPECIAL KS_SPECIAL KE_FILLER.
 ///
 /// When "flags" has REPTERM_FROM_PART, trailing <C-v> is included, otherwise it is removed (to make
-/// ":map xx ^V" map xx to nothing). When cpo_flags contains FLAG_CPO_BSLASH, a backslash can be
-/// used in place of <C-v>. All other <C-v> characters are removed.
+/// ":map xx ^V" map xx to nothing). When cpo_val contains CPO_BSLASH, a backslash can be used in
+/// place of <C-v>. All other <C-v> characters are removed.
 ///
 /// @param[in]  from  What characters to replace.
 /// @param[in]  from_len  Length of the "from" argument.
@@ -873,27 +861,25 @@ int get_mouse_button(int code, bool *is_click, bool *is_drag)
 ///                    If `*bufp` is non-NULL, it will be used directly,
 ///                    and is assumed to be 128 bytes long (enough for transcoding LHS of mapping),
 ///                    and will be set to NULL in case of failure.
+/// @param[in]  sid_arg  Script ID to use for <SID>, or 0 to use current_sctx
 /// @param[in]  flags  REPTERM_FROM_PART    see above
 ///                    REPTERM_DO_LT        also translate <lt>
 ///                    REPTERM_NO_SPECIAL   do not accept <key> notation
 ///                    REPTERM_NO_SIMPLIFY  do not simplify <C-H> into 0x08, etc.
-/// @param[out]  did_simplify  set when some <C-H> code was simplied, unless it is NULL.
-/// @param[in]  cpo_flags  Relevant flags derived from p_cpo, see CPO_TO_CPO_FLAGS.
+/// @param[out]  did_simplify  set when some <C-H> code was simplified, unless it is NULL.
+/// @param[in]  cpo_val  The value of 'cpoptions' to use. Only CPO_BSLASH matters.
 ///
 /// @return  The same as what `*bufp` is set to.
 char *replace_termcodes(const char *const from, const size_t from_len, char **const bufp,
-                        const int flags, bool *const did_simplify, const int cpo_flags)
-  FUNC_ATTR_NONNULL_ARG(1, 3)
+                        const scid_T sid_arg, const int flags, bool *const did_simplify,
+                        const char *const cpo_val)
+  FUNC_ATTR_NONNULL_ARG(1, 3, 7)
 {
-  ssize_t i;
-  size_t slen;
-  char key;
   size_t dlen = 0;
-  const char *src;
   const char *const end = from + from_len - 1;
-  char *result;          // buffer for resulting string
 
-  const bool do_backslash = !(cpo_flags & FLAG_CPO_BSLASH);  // backslash is a special character
+  // backslash is a special character
+  const bool do_backslash = (vim_strchr(cpo_val, CPO_BSLASH) == NULL);
   const bool do_special = !(flags & REPTERM_NO_SPECIAL);
 
   bool allocated = (*bufp == NULL);
@@ -901,9 +887,9 @@ char *replace_termcodes(const char *const from, const size_t from_len, char **co
   // Allocate space for the translation.  Worst case a single character is
   // replaced by 6 bytes (shifted special key), plus a NUL at the end.
   const size_t buf_len = allocated ? from_len * 6 + 1 : 128;
-  result = allocated ? xmalloc(buf_len) : *bufp;
+  char *result = allocated ? xmalloc(buf_len) : *bufp;  // buffer for resulting string
 
-  src = from;
+  const char *src = from;
 
   // Copy each byte from *from to result[dlen]
   while (src <= end) {
@@ -913,27 +899,28 @@ char *replace_termcodes(const char *const from, const size_t from_len, char **co
     // Check for special <> keycodes, like "<C-S-LeftMouse>"
     if (do_special && ((flags & REPTERM_DO_LT) || ((end - src) >= 3
                                                    && strncmp(src, "<lt>", 4) != 0))) {
-      // Replace <SID> by K_SNR <script-nr> _.
+      // Change <SID>Func to K_SNR <script-nr> _Func.  This name is used
+      // for script-local user functions.
       // (room: 5 * 6 = 30 bytes; needed: 3 + <nr> + 1 <= 14)
       if (end - src >= 4 && STRNICMP(src, "<SID>", 5) == 0) {
-        if (current_sctx.sc_sid <= 0) {
+        if (sid_arg < 0 || (sid_arg == 0 && current_sctx.sc_sid <= 0)) {
           emsg(_(e_usingsid));
         } else {
+          const scid_T sid = sid_arg != 0 ? sid_arg : current_sctx.sc_sid;
           src += 5;
           result[dlen++] = (char)K_SPECIAL;
           result[dlen++] = (char)KS_EXTRA;
           result[dlen++] = KE_SNR;
-          snprintf(result + dlen, buf_len - dlen, "%" PRId64,
-                   (int64_t)current_sctx.sc_sid);
+          snprintf(result + dlen, buf_len - dlen, "%" PRId64, (int64_t)sid);
           dlen += strlen(result + dlen);
           result[dlen++] = '_';
           continue;
         }
       }
 
-      slen = trans_special(&src, (size_t)(end - src) + 1, result + dlen,
-                           FSK_KEYCODE | ((flags & REPTERM_NO_SIMPLIFY) ? 0 : FSK_SIMPLIFY),
-                           true, did_simplify);
+      size_t slen = trans_special(&src, (size_t)(end - src) + 1, result + dlen,
+                                  FSK_KEYCODE | ((flags & REPTERM_NO_SIMPLIFY) ? 0 : FSK_SIMPLIFY),
+                                  true, did_simplify);
       if (slen) {
         dlen += slen;
         continue;
@@ -977,7 +964,7 @@ char *replace_termcodes(const char *const from, const size_t from_len, char **co
     // For "from" side the CTRL-V at the end is included, for the "to"
     // part it is removed.
     // If 'cpoptions' does not contain 'B', also accept a backslash.
-    key = *src;
+    char key = *src;
     if (key == Ctrl_V || (do_backslash && key == '\\')) {
       src++;  // skip CTRL-V or backslash
       if (src > end) {
@@ -989,7 +976,7 @@ char *replace_termcodes(const char *const from, const size_t from_len, char **co
     }
 
     // skip multibyte char correctly
-    for (i = utfc_ptr2len_len(src, (int)(end - src) + 1); i > 0; i--) {
+    for (ssize_t i = utfc_ptr2len_len(src, (int)(end - src) + 1); i > 0; i--) {
       // If the character is K_SPECIAL, replace it with K_SPECIAL
       // KS_SPECIAL KE_FILLER.
       if (*src == (char)K_SPECIAL) {
@@ -1070,7 +1057,8 @@ char *vim_strsave_escape_ks(char *p)
 /// vim_strsave_escape_ks().  Works in-place.
 void vim_unescape_ks(char *p)
 {
-  uint8_t *s = (uint8_t *)p, *d = (uint8_t *)p;
+  uint8_t *s = (uint8_t *)p;
+  uint8_t *d = (uint8_t *)p;
 
   while (*s != NUL) {
     if (s[0] == K_SPECIAL && s[1] == KS_SPECIAL && s[2] == KE_FILLER) {

@@ -1,5 +1,4 @@
-#ifndef NVIM_MEMLINE_DEFS_H
-#define NVIM_MEMLINE_DEFS_H
+#pragma once
 
 #include "nvim/memfile_defs.h"
 
@@ -17,7 +16,7 @@ typedef struct info_pointer {
 
 typedef struct ml_chunksize {
   int mlcs_numlines;
-  long mlcs_totalsize;
+  int mlcs_totalsize;
 } chunksize_T;
 
 // Flags when calling ml_updatechunk()
@@ -69,5 +68,3 @@ typedef struct memline {
   int ml_numchunks;
   int ml_usedchunks;
 } memline_T;
-
-#endif  // NVIM_MEMLINE_DEFS_H

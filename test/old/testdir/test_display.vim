@@ -79,7 +79,7 @@ func Test_scroll_without_region()
     set t_cs=
     set laststatus=2
   END
-  call writefile(lines, 'Xtestscroll')
+  call writefile(lines, 'Xtestscroll', 'D')
   let buf = RunVimInTerminal('-S Xtestscroll', #{rows: 10})
 
   call VerifyScreenDump(buf, 'Test_scroll_no_region_1', {})
@@ -103,11 +103,9 @@ func Test_scroll_without_region()
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete('Xtestscroll')
 endfunc
 
 func Test_display_listchars_precedes()
-  set fillchars+=vert:\|
   call NewWindow(10, 10)
   " Need a physical line that wraps over the complete
   " window size
@@ -174,15 +172,13 @@ func Test_scroll_CursorLineNr_update()
     exe ":norm! o\<esc>110ia\<esc>"
   END
   let filename = 'Xdrawscreen'
-  call writefile(lines, filename)
+  call writefile(lines, filename, 'D')
   let buf = RunVimInTerminal('-S '.filename, #{rows: 5, cols: 50})
   call term_sendkeys(buf, "k")
-  call term_wait(buf)
   call VerifyScreenDump(buf, 'Test_winline_rnu', {})
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete(filename)
 endfunc
 
 " check a long file name does not result in the hit-enter prompt
@@ -190,90 +186,33 @@ func Test_edit_long_file_name()
   CheckScreendump
 
   let longName = 'x'->repeat(min([&columns, 255]))
-  call writefile([], longName)
+  call writefile([], longName, 'D')
   let buf = RunVimInTerminal('-N -u NONE ' .. longName, #{rows: 8})
 
   call VerifyScreenDump(buf, 'Test_long_file_name_1', {})
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete(longName)
 endfunc
 
 func Test_unprintable_fileformats()
   CheckScreendump
 
-  call writefile(["unix\r", "two"], 'Xunix.txt')
-  call writefile(["mac\r", "two"], 'Xmac.txt')
+  call writefile(["unix\r", "two"], 'Xunix.txt', 'D')
+  call writefile(["mac\r", "two"], 'Xmac.txt', 'D')
   let lines =<< trim END
     edit Xunix.txt
     split Xmac.txt
     edit ++ff=mac
   END
   let filename = 'Xunprintable'
-  call writefile(lines, filename)
+  call writefile(lines, filename, 'D')
   let buf = RunVimInTerminal('-S '.filename, #{rows: 9, cols: 50})
   call VerifyScreenDump(buf, 'Test_display_unprintable_01', {})
   call term_sendkeys(buf, "\<C-W>\<C-W>\<C-L>")
   call VerifyScreenDump(buf, 'Test_display_unprintable_02', {})
 
   " clean up
-  call StopVimInTerminal(buf)
-  call delete('Xunix.txt')
-  call delete('Xmac.txt')
-  call delete(filename)
-endfunc
-
-" Test for scrolling that modifies buffer during visual block
-func Test_visual_block_scroll()
-  CheckScreendump
-
-  let lines =<< trim END
-    source $VIMRUNTIME/plugin/matchparen.vim
-    set scrolloff=1
-    call setline(1, ['a', 'b', 'c', 'd', 'e', '', '{', '}', '{', 'f', 'g', '}'])
-    call cursor(5, 1)
-  END
-
-  let filename = 'Xvisualblockmodifiedscroll'
-  call writefile(lines, filename, 'D')
-
-  let buf = RunVimInTerminal('-S '.filename, #{rows: 7})
-  call term_sendkeys(buf, "V\<C-D>\<C-D>")
-
-  call VerifyScreenDump(buf, 'Test_display_visual_block_scroll', {})
-
-  call StopVimInTerminal(buf)
-endfunc
-
-" Test for clearing paren highlight when switching buffers
-func Test_matchparen_clear_highlight()
-  CheckScreendump
-
-  let lines =<< trim END
-    source $VIMRUNTIME/plugin/matchparen.vim
-    set hidden
-    call setline(1, ['()'])
-    normal 0
-
-    func OtherBuffer()
-       enew
-       exe "normal iaa\<Esc>0"
-    endfunc
-  END
-  call writefile(lines, 'XMatchparenClear', 'D')
-  let buf = RunVimInTerminal('-S XMatchparenClear', #{rows: 5})
-  call VerifyScreenDump(buf, 'Test_matchparen_clear_highlight_1', {})
-
-  call term_sendkeys(buf, ":call OtherBuffer()\<CR>:\<Esc>")
-  call VerifyScreenDump(buf, 'Test_matchparen_clear_highlight_2', {})
-
-  call term_sendkeys(buf, "\<C-^>:\<Esc>")
-  call VerifyScreenDump(buf, 'Test_matchparen_clear_highlight_1', {})
-
-  call term_sendkeys(buf, "\<C-^>:\<Esc>")
-  call VerifyScreenDump(buf, 'Test_matchparen_clear_highlight_2', {})
-
   call StopVimInTerminal(buf)
 endfunc
 
@@ -300,19 +239,18 @@ func Test_display_scroll_update_visual()
       call sign_place(2, 'bar', 'foo', bufnr(), { 'lnum': 1 })
       autocmd CursorMoved * if getcurpos()[1] == 2 | call sign_unplace('bar', { 'id': 1 }) | endif
   END
-  call writefile(lines, 'XupdateVisual.vim')
+  call writefile(lines, 'XupdateVisual.vim', 'D')
 
   let buf = RunVimInTerminal('-S XupdateVisual.vim', #{rows: 8, cols: 60})
   call term_sendkeys(buf, "VG7kk")
   call VerifyScreenDump(buf, 'Test_display_scroll_update_visual', {})
 
   call StopVimInTerminal(buf)
-  call delete('XupdateVisual.vim')
 endfunc
 
 " Test for 'eob' (EndOfBuffer) item in 'fillchars'
 func Test_eob_fillchars()
-  " default value (skipped)
+  " default value
   " call assert_match('eob:\~', &fillchars)
   " invalid values
   call assert_fails(':set fillchars=eob:', 'E474:')
@@ -406,7 +344,7 @@ func Test_local_fillchars()
       call setline(1, ['window 4']->repeat(3))
       setlocal fillchars=stl:4,stlnc:d,vert:>,eob:o
   END
-  call writefile(lines, 'Xdisplayfillchars')
+  call writefile(lines, 'Xdisplayfillchars', 'D')
   let buf = RunVimInTerminal('-S Xdisplayfillchars', #{rows: 12})
   call VerifyScreenDump(buf, 'Test_display_fillchars_1', {})
 
@@ -414,19 +352,25 @@ func Test_local_fillchars()
   call VerifyScreenDump(buf, 'Test_display_fillchars_2', {})
 
   call StopVimInTerminal(buf)
-  call delete('Xdisplayfillchars')
 endfunc
 
 func Test_display_linebreak_breakat()
   new
   vert resize 25
   let _breakat = &breakat
-  setl signcolumn=yes linebreak breakat=) showbreak=+\ 
+  setl signcolumn=yes linebreak breakat=) showbreak=++
   call setline(1, repeat('x', winwidth(0) - 2) .. ')abc')
   let lines = ScreenLines([1, 2], 25)
   let expected = [
           \ '  xxxxxxxxxxxxxxxxxxxxxxx',
-          \ '  + )abc                 '
+          \ '  ++)abc                 ',
+          \ ]
+  call assert_equal(expected, lines)
+  setl breakindent breakindentopt=shift:2
+  let lines = ScreenLines([1, 2], 25)
+  let expected = [
+          \ '  xxxxxxxxxxxxxxxxxxxxxxx',
+          \ '    ++)abc               ',
           \ ]
   call assert_equal(expected, lines)
   %bw!

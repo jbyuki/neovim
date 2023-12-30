@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /// @file sha256.c
 ///
 /// FIPS-180-2 compliant SHA-256 implementation
@@ -18,8 +15,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "nvim/memory.h"
 #include "nvim/sha256.h"
-#include "nvim/vim.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "sha256.c.generated.h"
@@ -230,7 +227,7 @@ void sha256_finish(context_sha256_T *ctx, uint8_t digest[SHA256_SUM_SIZE])
   uint8_t msglen[8];
 
   high = (ctx->total[0] >> 29) | (ctx->total[1] <<  3);
-  low  = (ctx->total[0] <<  3);
+  low = (ctx->total[0] <<  3);
 
   PUT_UINT32(high, msglen, 0);
   PUT_UINT32(low,  msglen, 4);

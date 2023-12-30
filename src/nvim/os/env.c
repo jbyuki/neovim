@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // Environment inspection
 
 #include <assert.h>
@@ -12,26 +9,26 @@
 #include <uv.h>
 
 #include "auto/config.h"
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/charset.h"
 #include "nvim/cmdexpand.h"
 #include "nvim/eval.h"
-#include "nvim/ex_cmds_defs.h"
 #include "nvim/gettext.h"
 #include "nvim/globals.h"
 #include "nvim/log.h"
-#include "nvim/macros.h"
-#include "nvim/map.h"
+#include "nvim/macros_defs.h"
+#include "nvim/map_defs.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
-#include "nvim/option_defs.h"
+#include "nvim/option_vars.h"
+#include "nvim/os/fs.h"
 #include "nvim/os/os.h"
 #include "nvim/path.h"
 #include "nvim/strings.h"
-#include "nvim/types.h"
+#include "nvim/types_defs.h"
 #include "nvim/version.h"
-#include "nvim/vim.h"
+#include "nvim/vim_defs.h"
 
 #ifdef MSWIN
 # include "nvim/mbyte.h"
@@ -49,6 +46,10 @@
 # include <sys/utsname.h>
 #endif
 
+#ifdef INCLUDE_GENERATED_DECLARATIONS
+# include "os/env.c.generated.h"
+#endif
+
 // Because `uv_os_getenv` requires allocating, we must manage a map to maintain
 // the behavior of `os_getenv`.
 static PMap(cstr_t) envmap = MAP_INIT;
@@ -64,7 +65,7 @@ const char *os_getenv(const char *name)
     return NULL;
   }
   int r = 0;
-  if (pmap_has(cstr_t)(&envmap, name)
+  if (map_has(cstr_t, &envmap, name)
       && !!(e = (char *)pmap_get(cstr_t)(&envmap, name))) {
     if (e[0] != '\0') {
       // Found non-empty cached env var.
@@ -294,12 +295,11 @@ char *os_getenvname_at_index(size_t index)
 
       // Some Windows env vars start with =, so skip over that to find the
       // separator between name/value
-      const char * const end = strchr(utf8_str + (utf8_str[0] == '=' ? 1 : 0),
-                                      '=');
+      const char *const end = strchr(utf8_str + (utf8_str[0] == '=' ? 1 : 0), '=');
       assert(end != NULL);
       ptrdiff_t len = end - utf8_str;
       assert(len > 0);
-      name = xstrndup(utf8_str, (size_t)len);
+      name = xmemdupz(utf8_str, (size_t)len);
       xfree(utf8_str);
       break;
     }
@@ -330,7 +330,7 @@ char *os_getenvname_at_index(size_t index)
   assert(end != NULL);
   ptrdiff_t len = end - str;
   assert(len > 0);
-  return xstrndup(str, (size_t)len);
+  return xmemdupz(str, (size_t)len);
 #endif
 }
 
@@ -509,6 +509,17 @@ static char *os_homedir(void)
 void free_homedir(void)
 {
   xfree(homedir);
+}
+
+void free_envmap(void)
+{
+  cstr_t name;
+  ptr_t e;
+  map_foreach(&envmap, name, e, {
+    xfree((char *)name);
+    xfree(e);
+  });
+  map_destroy(cstr_t, &envmap);
 }
 
 #endif
@@ -908,10 +919,7 @@ char *vim_getenv(const char *name)
   // Don't do this when default_vimruntime_dir is non-empty.
   char *vim_path = NULL;
   if (vimruntime
-#ifdef HAVE_PATHDEF
-      && *default_vimruntime_dir == NUL
-#endif
-      ) {
+      && *default_vimruntime_dir == NUL) {
     kos_env_path = os_getenv("VIM");
     if (kos_env_path != NULL) {
       vim_path = vim_version_dir(kos_env_path);
@@ -933,10 +941,8 @@ char *vim_getenv(const char *name)
     // Find runtime path relative to the nvim binary: ../share/nvim/runtime
     if (vim_path == NULL) {
       vim_get_prefix_from_exepath(exe_name);
-      if (append_path(exe_name,
-                      "share" _PATHSEPSTR "nvim" _PATHSEPSTR "runtime" _PATHSEPSTR,
-                      MAXPATHL) == OK) {
-        vim_path = exe_name;  // -V507
+      if (append_path(exe_name, "share/nvim/runtime/", MAXPATHL) == OK) {
+        vim_path = exe_name;
       }
     }
 
@@ -962,7 +968,7 @@ char *vim_getenv(const char *name)
 
       // check that the result is a directory name
       assert(vim_path_end >= vim_path);
-      vim_path = xstrndup(vim_path, (size_t)(vim_path_end - vim_path));
+      vim_path = xmemdupz(vim_path, (size_t)(vim_path_end - vim_path));
 
       if (!os_isdir(vim_path)) {
         xfree(vim_path);
@@ -972,7 +978,6 @@ char *vim_getenv(const char *name)
     assert(vim_path != exe_name);
   }
 
-#ifdef HAVE_PATHDEF
   // When there is a pathdef.c file we can use default_vim_dir and
   // default_vimruntime_dir
   if (vim_path == NULL) {
@@ -986,7 +991,6 @@ char *vim_getenv(const char *name)
       }
     }
   }
-#endif
 
   // Set the environment variable, so that the new value can be found fast
   // next time, and others can also use it (e.g. Perl).

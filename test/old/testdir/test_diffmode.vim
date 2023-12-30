@@ -822,12 +822,13 @@ func Test_diff_lastline()
 endfunc
 
 func WriteDiffFiles(buf, list1, list2)
-  call writefile(a:list1, 'Xfile1')
-  call writefile(a:list2, 'Xfile2')
+  call writefile(a:list1, 'Xdifile1')
+  call writefile(a:list2, 'Xdifile2')
   if a:buf
     call term_sendkeys(a:buf, ":checktime\<CR>")
   endif
 endfunc
+
 " Verify a screendump with both the internal and external diff.
 func VerifyBoth(buf, dumpfile, extra)
   " trailing : for leaving the cursor on the command line
@@ -852,11 +853,11 @@ func VerifyInternal(buf, dumpfile, extra)
   call term_sendkeys(a:buf, ":diffupdate!\<CR>")
   " trailing : for leaving the cursor on the command line
   call term_sendkeys(a:buf, ":set diffopt=internal,filler" . a:extra . "\<CR>:")
-  call TermWait(a:buf)
   call VerifyScreenDump(a:buf, a:dumpfile, {})
 endfunc
 
 func Test_diff_screen()
+  let g:test_is_flaky = 1
   CheckScreendump
   CheckFeature menu
 
@@ -874,15 +875,15 @@ func Test_diff_screen()
         set diffexpr=
       endfunc
   END
-  call writefile(lines, 'XdiffSetup')
+  call writefile(lines, 'XdiffSetup', 'D')
 
   " clean up already existing swap files, just in case
-  call delete('.Xfile1.swp')
-  call delete('.Xfile2.swp')
+  call delete('.Xdifile1.swp')
+  call delete('.Xdifile2.swp')
 
   " Test 1: Add a line in beginning of file 2
   call WriteDiffFiles(0, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-  let buf = RunVimInTerminal('-d -S XdiffSetup Xfile1 Xfile2', {})
+  let buf = RunVimInTerminal('-d -S XdiffSetup Xdifile1 Xdifile2', {})
   " Set autoread mode, so that Vim won't complain once we re-write the test
   " files
   call term_sendkeys(buf, ":set autoread\<CR>\<c-w>w:set autoread\<CR>\<c-w>w")
@@ -1000,9 +1001,8 @@ func Test_diff_screen()
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete('Xfile1')
-  call delete('Xfile2')
-  call delete('XdiffSetup')
+  call delete('Xdifile1')
+  call delete('Xdifile2')
 endfunc
 
 func Test_diff_with_scroll_and_change()
@@ -1016,7 +1016,7 @@ func Test_diff_with_scroll_and_change()
 	wincmd h
 	exe "normal Gl5\<C-E>"
   END
-  call writefile(lines, 'Xtest_scroll_change')
+  call writefile(lines, 'Xtest_scroll_change', 'D')
   let buf = RunVimInTerminal('-S Xtest_scroll_change', {})
 
   call VerifyScreenDump(buf, 'Test_diff_scroll_change_01', {})
@@ -1029,7 +1029,6 @@ func Test_diff_with_scroll_and_change()
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete('Xtest_scroll_change')
 endfunc
 
 func Test_diff_with_cursorline()
@@ -1043,7 +1042,7 @@ func Test_diff_with_cursorline()
 	\ 'call setline(1, ["bee","foo","foo","baz"])',
 	\ 'windo diffthis',
 	\ '2wincmd w',
-	\ ], 'Xtest_diff_cursorline')
+	\ ], 'Xtest_diff_cursorline', 'D')
   let buf = RunVimInTerminal('-S Xtest_diff_cursorline', {})
 
   call VerifyScreenDump(buf, 'Test_diff_with_cursorline_01', {})
@@ -1054,7 +1053,6 @@ func Test_diff_with_cursorline()
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete('Xtest_diff_cursorline')
 endfunc
 
 func Test_diff_with_cursorline_number()
@@ -1071,7 +1069,7 @@ func Test_diff_with_cursorline_number()
       windo diffthis
       1wincmd w
   END
-  call writefile(lines, 'Xtest_diff_cursorline_number')
+  call writefile(lines, 'Xtest_diff_cursorline_number', 'D')
   let buf = RunVimInTerminal('-S Xtest_diff_cursorline_number', {})
 
   call VerifyScreenDump(buf, 'Test_diff_with_cursorline_number_01', {})
@@ -1080,24 +1078,24 @@ func Test_diff_with_cursorline_number()
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete('Xtest_diff_cursorline_number')
 endfunc
 
 func Test_diff_with_cursorline_breakindent()
   CheckScreendump
 
-  call writefile([
-	\ 'hi CursorLine ctermbg=red ctermfg=white',
-	\ 'set noequalalways wrap diffopt=followwrap cursorline breakindent',
-	\ '50vnew',
-	\ 'call setline(1, ["  ","  ","  ","  "])',
-	\ 'exe "norm 20Afoo\<Esc>j20Afoo\<Esc>j20Afoo\<Esc>j20Abar\<Esc>"',
-	\ 'vnew',
-	\ 'call setline(1, ["  ","  ","  ","  "])',
-	\ 'exe "norm 20Abee\<Esc>j20Afoo\<Esc>j20Afoo\<Esc>j20Abaz\<Esc>"',
-	\ 'windo diffthis',
-	\ '2wincmd w',
-	\ ], 'Xtest_diff_cursorline_breakindent')
+  let lines =<< trim END
+    hi CursorLine ctermbg=red ctermfg=white
+    set noequalalways wrap diffopt=followwrap cursorline breakindent
+    50vnew
+    call setline(1, ['  ', '  ', '  ', '  '])
+    exe "norm! 20Afoo\<Esc>j20Afoo\<Esc>j20Afoo\<Esc>j20Abar\<Esc>"
+    vnew
+    call setline(1, ['  ', '  ', '  ', '  '])
+    exe "norm! 20Abee\<Esc>j20Afoo\<Esc>j20Afoo\<Esc>j20Abaz\<Esc>"
+    windo diffthis
+    2wincmd w
+  END
+  call writefile(lines, 'Xtest_diff_cursorline_breakindent', 'D')
   let buf = RunVimInTerminal('-S Xtest_diff_cursorline_breakindent', {})
 
   call term_sendkeys(buf, "gg0")
@@ -1111,43 +1109,58 @@ func Test_diff_with_cursorline_breakindent()
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete('Xtest_diff_cursorline_breakindent')
+endfunc
+
+func Test_diff_breakindent_after_filler()
+  CheckScreendump
+
+  let lines =<< trim END
+    set laststatus=0 diffopt+=followwrap breakindent
+    call setline(1, ['a', '  ' .. repeat('c', 50)])
+    vnew
+    call setline(1, ['a', 'b', '  ' .. repeat('c', 50)])
+    windo diffthis
+    norm! G$
+  END
+  call writefile(lines, 'Xtest_diff_breakindent_after_filler', 'D')
+  let buf = RunVimInTerminal('-S Xtest_diff_breakindent_after_filler', #{rows: 8, cols: 45})
+  call VerifyScreenDump(buf, 'Test_diff_breakindent_after_filler', {})
+
+  " clean up
+  call StopVimInTerminal(buf)
 endfunc
 
 func Test_diff_with_syntax()
   CheckScreendump
 
   let lines =<< trim END
-  	void doNothing() {
+	void doNothing() {
 	   int x = 0;
 	   char *s = "hello";
 	   return 5;
 	}
   END
-  call writefile(lines, 'Xprogram1.c')
+  call writefile(lines, 'Xprogram1.c', 'D')
   let lines =<< trim END
-  	void doSomething() {
+	void doSomething() {
 	   int x = 0;
 	   char *s = "there";
 	   return 5;
 	}
   END
-  call writefile(lines, 'Xprogram2.c')
+  call writefile(lines, 'Xprogram2.c', 'D')
 
   let lines =<< trim END
-  	edit Xprogram1.c
+	edit Xprogram1.c
 	diffsplit Xprogram2.c
   END
-  call writefile(lines, 'Xtest_diff_syntax')
+  call writefile(lines, 'Xtest_diff_syntax', 'D')
   let buf = RunVimInTerminal('-S Xtest_diff_syntax', {})
 
   call VerifyScreenDump(buf, 'Test_diff_syntax_1', {})
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete('Xtest_diff_syntax')
-  call delete('Xprogram1.c')
-  call delete('Xprogram2.c')
 endfunc
 
 func Test_diff_of_diff()
@@ -1159,7 +1172,9 @@ func Test_diff_of_diff()
 	\ 'vnew',
 	\ 'call setline(1, ["aa","bb","cc"])',
 	\ 'windo diffthis',
-	\ ], 'Xtest_diff_diff')
+	\ '1wincmd w',
+	\ 'setlocal number',
+	\ ], 'Xtest_diff_diff', 'D')
   let buf = RunVimInTerminal('-S Xtest_diff_diff', {})
 
   call VerifyScreenDump(buf, 'Test_diff_of_diff_01', {})
@@ -1169,7 +1184,6 @@ func Test_diff_of_diff()
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete('Xtest_diff_diff')
 endfunc
 
 func CloseoffSetup()
@@ -1251,8 +1265,8 @@ func Test_patchexpr()
   endfunc
   set patchexpr=TPatch()
 
-  call writefile(['input file'], 'Xinput')
-  call writefile(['diff file'], 'Xdiff')
+  call writefile(['input file'], 'Xinput', 'D')
+  call writefile(['diff file'], 'Xdiff', 'D')
   %bwipe!
   edit Xinput
   diffpatch Xdiff
@@ -1269,8 +1283,6 @@ func Test_patchexpr()
   set patchexpr=<SID>NewPatchExpr()
   call assert_equal(expand('<SID>') .. 'NewPatchExpr()', &patchexpr)
 
-  call delete('Xinput')
-  call delete('Xdiff')
   set patchexpr&
   delfunc TPatch
   delfunc s:NewPatchExpr
@@ -1290,7 +1302,7 @@ func Test_diff_rnu()
     windo diffthis
     setlocal number rnu foldcolumn=0
   END
-  call writefile(content, 'Xtest_diff_rnu')
+  call writefile(content, 'Xtest_diff_rnu', 'D')
   let buf = RunVimInTerminal('-S Xtest_diff_rnu', {})
 
   call VerifyScreenDump(buf, 'Test_diff_rnu_01', {})
@@ -1302,7 +1314,6 @@ func Test_diff_rnu()
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete('Xtest_diff_rnu')
 endfunc
 
 func Test_diff_multilineconceal()
@@ -1350,7 +1361,7 @@ func Test_diff_filler_cursorcolumn()
     norm! gg0
     redraw!
   END
-  call writefile(content, 'Xtest_diff_cuc')
+  call writefile(content, 'Xtest_diff_cuc', 'D')
   let buf = RunVimInTerminal('-S Xtest_diff_cuc', {})
 
   call VerifyScreenDump(buf, 'Test_diff_cuc_01', {})
@@ -1367,7 +1378,6 @@ func Test_diff_filler_cursorcolumn()
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete('Xtest_diff_cuc')
 endfunc
 
 " Test for adding/removing lines inside diff chunks, between diff chunks
@@ -1466,7 +1476,7 @@ func Test_diff_binary()
     norm! gg0
     redraw!
   END
-  call writefile(content, 'Xtest_diff_bin')
+  call writefile(content, 'Xtest_diff_bin', 'D')
   let buf = RunVimInTerminal('-S Xtest_diff_bin', {})
 
   " Test using internal diff
@@ -1487,7 +1497,6 @@ func Test_diff_binary()
 
   " clean up
   call StopVimInTerminal(buf)
-  call delete('Xtest_diff_bin')
   set diffopt&vim
 endfunc
 
@@ -1495,9 +1504,9 @@ endfunc
 " for the issue fixed by patch 6.2.317)
 func Test_diff_foldinvert()
   %bw!
-  edit Xfile1
-  new Xfile2
-  new Xfile3
+  edit Xdoffile1
+  new Xdoffile2
+  new Xdoffile3
   windo diffthis
   " open a non-diff window
   botright new
@@ -1557,7 +1566,7 @@ func Test_diff_scroll()
       // containing
       // four lines
   END
-  call writefile(left, 'Xleft')
+  call writefile(left, 'Xleft', 'D')
   let right =<< trim END
       line 1
       line 2
@@ -1593,7 +1602,7 @@ func Test_diff_scroll()
       // containing
       // four lines
   END
-  call writefile(right, 'Xright')
+  call writefile(right, 'Xright', 'D')
   let buf = RunVimInTerminal('-d Xleft Xright', {'rows': 12})
   call term_sendkeys(buf, "\<C-W>\<C-W>jjjj")
   call VerifyScreenDump(buf, 'Test_diff_scroll_1', {})
@@ -1601,8 +1610,6 @@ func Test_diff_scroll()
   call VerifyScreenDump(buf, 'Test_diff_scroll_2', {})
 
   call StopVimInTerminal(buf)
-  call delete('Xleft')
-  call delete('Xright')
 endfunc
 
 " This was scrolling too many lines.
@@ -1616,6 +1623,42 @@ func Test_diff_scroll_wrap_on()
   call assert_equal(1, winsaveview().topline)
   normal! j
   call assert_equal(2, winsaveview().topline)
+
+  bwipe!
+  bwipe!
+endfunc
+
+func Test_diff_scroll_many_filler()
+  20new
+  vnew
+  call setline(1, ['^^^', '^^^', '$$$', '$$$'])
+  diffthis
+  setlocal scrolloff=0
+  wincmd p
+  call setline(1, ['^^^', '^^^'] + repeat(['###'], 41) + ['$$$', '$$$'])
+  diffthis
+  setlocal scrolloff=0
+  wincmd p
+  redraw
+
+  " Note: need a redraw after each scroll, otherwise the test always passes.
+  normal! G
+  redraw
+  call assert_equal(3, winsaveview().topline)
+  call assert_equal(18, winsaveview().topfill)
+  exe "normal! \<C-B>"
+  redraw
+  call assert_equal(3, winsaveview().topline)
+  call assert_equal(19, winsaveview().topfill)
+  exe "normal! \<C-B>"
+  redraw
+  call assert_equal(2, winsaveview().topline)
+  call assert_equal(0, winsaveview().topfill)
+  exe "normal! \<C-B>"
+  redraw
+  call assert_equal(1, winsaveview().topline)
+  call assert_equal(0, winsaveview().topfill)
+
   bwipe!
   bwipe!
 endfunc

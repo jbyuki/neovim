@@ -1,8 +1,12 @@
-#ifndef NVIM_API_PRIVATE_VALIDATE_H
-#define NVIM_API_PRIVATE_VALIDATE_H
+#pragma once
 
-#include "nvim/api/private/defs.h"
+#include <stdbool.h>
+#include <stddef.h>
+
+#include "nvim/api/private/defs.h"  // IWYU pragma: export
 #include "nvim/api/private/helpers.h"
+#include "nvim/assert_defs.h"
+#include "nvim/macros_defs.h"
 
 #define VALIDATE(cond, fmt_, fmt_arg1, code) \
   do { \
@@ -90,5 +94,3 @@
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "api/private/validate.h.generated.h"
 #endif
-
-#endif  // NVIM_API_PRIVATE_VALIDATE_H

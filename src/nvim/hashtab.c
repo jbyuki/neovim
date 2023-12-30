@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /// @file hashtab.c
 ///
 /// Handling of a hashtable with Vim-specific properties.
@@ -26,12 +23,12 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
+#include "nvim/gettext.h"
 #include "nvim/hashtab.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
-#include "nvim/types.h"
-#include "nvim/vim.h"
+#include "nvim/vim_defs.h"
 
 // Magic value for algorithm that walks through the array.
 #define PERTURB_SHIFT 5
@@ -350,15 +347,15 @@ static void hash_may_resize(hashtab_T *ht, size_t minitems)
   // so that copying is possible.
   hashitem_T temparray[HT_INIT_SIZE];
   hashitem_T *oldarray = keep_smallarray
-    ? memcpy(temparray, ht->ht_smallarray, sizeof(temparray))
-    : ht->ht_array;
+                         ? memcpy(temparray, ht->ht_smallarray, sizeof(temparray))
+                         : ht->ht_array;
 
   if (newarray_is_small) {
     CLEAR_FIELD(ht->ht_smallarray);
   }
   hashitem_T *newarray = newarray_is_small
-    ? ht->ht_smallarray
-    : xcalloc(newsize, sizeof(hashitem_T));
+                         ? ht->ht_smallarray
+                         : xcalloc(newsize, sizeof(hashitem_T));
 
   // Move all the items from the old array to the new one, placing them in
   // the right spot. The new array won't have any removed items, thus this
@@ -411,7 +408,7 @@ hash_T hash_hash(const char *key)
   hash_T hash = (uint8_t)(*key);
 
   if (hash == 0) {
-    return (hash_T)0;
+    return 0;
   }
 
   // A simplistic algorithm that appears to do very well.

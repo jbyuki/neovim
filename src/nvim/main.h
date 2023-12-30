@@ -1,9 +1,9 @@
-#ifndef NVIM_MAIN_H
-#define NVIM_MAIN_H
+#pragma once
 
 #include <stdbool.h>
 
 #include "nvim/event/loop.h"
+#include "nvim/types_defs.h"
 
 // Maximum number of commands from + or -c arguments.
 #define MAX_ARG_CMDS 10
@@ -51,4 +51,3 @@ typedef struct {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "main.h.generated.h"
 #endif
-#endif  // NVIM_MAIN_H

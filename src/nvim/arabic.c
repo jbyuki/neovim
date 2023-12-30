@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /// @file arabic.c
 ///
 /// Functions for Arabic language.
@@ -22,14 +19,11 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdint.h>
 
 #include "nvim/arabic.h"
-#include "nvim/ascii.h"
-#include "nvim/macros.h"
-#include "nvim/mbyte.h"
-#include "nvim/option_defs.h"
-#include "nvim/vim.h"
+#include "nvim/ascii_defs.h"
+#include "nvim/macros_defs.h"
+#include "nvim/option_vars.h"
 
 // Unicode values for Arabic characters.
 enum {
@@ -276,34 +270,33 @@ bool arabic_combine(int one, int two)
   return false;
 }
 
-/// A_is_iso returns true if 'c' is an Arabic ISO-8859-6 character
+/// @return  true if 'c' is an Arabic ISO-8859-6 character
 ///          (alphabet/number/punctuation)
-static int A_is_iso(int c)
+static bool A_is_iso(int c)
 {
   return find_achar(c) != NULL;
 }
 
-/// A_is_ok returns true if 'c' is an Arabic 10646 (8859-6 or Form-B)
-static int A_is_ok(int c)
+/// @return  true if 'c' is an Arabic 10646 (8859-6 or Form-B)
+static bool A_is_ok(int c)
 {
   return (A_is_iso(c) || c == a_BYTE_ORDER_MARK);
 }
 
-/// A_is_valid returns true if 'c' is an Arabic 10646 (8859-6 or Form-B)
-///            with some exceptions/exclusions
-static int A_is_valid(int c)
+/// @return  true if 'c' is an Arabic 10646 (8859-6 or Form-B)
+///          with some exceptions/exclusions
+static bool A_is_valid(int c)
 {
   return (A_is_ok(c) && c != a_HAMZA);
 }
 
 // Do Arabic shaping on character "c".  Returns the shaped character.
-// out:    "ccp" points to the first byte of the character to be shaped.
 // in/out: "c1p" points to the first composing char for "c".
 // in:     "prev_c"  is the previous character (not shaped)
 // in:     "prev_c1" is the first composing char for the previous char
 //          (not shaped)
 // in:     "next_c"  is the next character (not shaped).
-int arabic_shape(int c, int *ccp, int *c1p, int prev_c, int prev_c1, int next_c)
+int arabic_shape(int c, int *c1p, int prev_c, int prev_c1, int next_c)
 {
   // Deal only with Arabic character, pass back all others
   if (!A_is_ok(c)) {
@@ -311,8 +304,8 @@ int arabic_shape(int c, int *ccp, int *c1p, int prev_c, int prev_c1, int next_c)
   }
 
   int curr_c;
-  int curr_laa = arabic_combine(c, *c1p);
-  int prev_laa = arabic_combine(prev_c, prev_c1);
+  bool curr_laa = arabic_combine(c, *c1p);
+  bool prev_laa = arabic_combine(prev_c, prev_c1);
 
   if (curr_laa) {
     if (A_is_valid(prev_c) && can_join(prev_c, a_LAM) && !prev_laa) {
@@ -345,14 +338,6 @@ int arabic_shape(int c, int *ccp, int *c1p, int prev_c, int prev_c1, int next_c)
   // Character missing from the table means using original character.
   if (curr_c == NUL) {
     curr_c = c;
-  }
-
-  if ((curr_c != c) && (ccp != NULL)) {
-    char buf[MB_MAXBYTES + 1];
-
-    // Update the first byte of the character
-    utf_char2bytes(curr_c, buf);
-    *ccp = (uint8_t)buf[0];
   }
 
   // Return the shaped character

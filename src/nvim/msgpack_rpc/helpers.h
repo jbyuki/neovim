@@ -1,12 +1,8 @@
-#ifndef NVIM_MSGPACK_RPC_HELPERS_H
-#define NVIM_MSGPACK_RPC_HELPERS_H
+#pragma once
 
-#include <msgpack.h>
-#include <stdbool.h>
-#include <stdint.h>
+#include <msgpack.h>  // IWYU pragma: keep
 
 #include "nvim/api/private/defs.h"
-#include "nvim/event/wstream.h"
 
 /// Value by which objects represented as EXT type are shifted
 ///
@@ -19,5 +15,3 @@
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "msgpack_rpc/helpers.h.generated.h"
 #endif
-
-#endif  // NVIM_MSGPACK_RPC_HELPERS_H

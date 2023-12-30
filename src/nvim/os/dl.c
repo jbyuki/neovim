@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /// Functions for using external native libraries
 
 #include <stdbool.h>
@@ -75,7 +72,7 @@ bool os_libcall(const char *libname, const char *funcname, const char *argv, int
 
     // assume that ptr values of NULL, 1 or -1 are illegal
     *str_out = (res && (intptr_t)res != 1 && (intptr_t)res != -1)
-        ? xstrdup(res) : NULL;
+               ? xstrdup(res) : NULL;
   } else {
     str_int_fn sfn = (str_int_fn)fn;
     int_int_fn ifn = (int_int_fn)fn;

@@ -1,4 +1,5 @@
 local helpers = require('test.functional.helpers')(after_each)
+local thelpers = require('test.functional.terminal.helpers')
 local clear, eq, eval, exc_exec, feed_command, feed, insert, neq, next_msg, nvim,
   testprg, ok, source, write_file, mkdir, rmdir = helpers.clear,
   helpers.eq, helpers.eval, helpers.exc_exec, helpers.feed_command, helpers.feed,
@@ -676,7 +677,7 @@ describe('jobs', function()
           on_stderr = function(chan, data, name) stderr = data end,
           on_stdout = function(chan, data, name) stdout = data end,
         }
-        local j1 = vim.fn.jobstart({ vim.v.progpath, '-es', '-V1',( '+echo "%s="..getenv("%s")'):format(envname, envname), '+qa!' }, opt)
+        local j1 = vim.fn.jobstart({ vim.v.progpath, '-es', '-V1',('+echo "%s="..getenv("%s")'):format(envname, envname), '+qa!' }, opt)
         vim.fn.jobwait({ j1 }, 10000)
         return join({ join(stdout), join(stderr) })
       ]],
@@ -700,7 +701,7 @@ describe('jobs', function()
     os.remove('Xtest_jobstart_env')
   end)
 
-  describe('jobwait', function()
+  describe('jobwait()', function()
     before_each(function()
       if is_os('win') then
         helpers.set_shell_powershell()
@@ -873,6 +874,42 @@ describe('jobs', function()
         ]])
         eq({'notification', 'wait', {{-1, -1}}}, next_msg())
       end)
+    end)
+
+    it('hides cursor and flushes messages before blocking', function()
+      local screen = Screen.new(50, 6)
+      screen:set_default_attr_ids({
+        [0] = {foreground = Screen.colors.Blue, bold = true};  -- NonText
+        [1] = {bold = true, reverse = true};  -- MsgSeparator
+        [2] = {bold = true, foreground = Screen.colors.SeaGreen};  -- MoreMsg
+      })
+      screen:attach()
+      command([[let g:id = jobstart([v:progpath, '--clean', '--headless'])]])
+      source([[
+        func PrintAndWait()
+          echon "aaa\nbbb"
+          call jobwait([g:id], 300)
+          echon "\nccc"
+        endfunc
+      ]])
+      feed_command('call PrintAndWait()')
+      screen:expect{grid=[[
+                                                          |
+        {0:~                                                 }|*2
+        {1:                                                  }|
+        aaa                                               |
+        bbb                                               |
+      ]], timeout=100}
+      screen:expect{grid=[[
+                                                          |
+        {1:                                                  }|
+        aaa                                               |
+        bbb                                               |
+        ccc                                               |
+        {2:Press ENTER or type command to continue}^           |
+      ]]}
+      feed('<CR>')
+      funcs.jobstop(meths.get_var('id'))
     end)
   end)
 
@@ -1104,6 +1141,40 @@ describe('jobs', function()
       command('call jobstop(' .. other_jobid .. ')')
     end)
   end)
+
+  it('does not close the same handle twice on exit #25086', function()
+    local filename = string.format('%s.lua', helpers.tmpname())
+    write_file(filename, [[
+      vim.api.nvim_create_autocmd('VimLeavePre', {
+        callback = function()
+          local id = vim.fn.jobstart('sleep 0')
+          vim.fn.jobwait({id})
+        end,
+      })
+    ]])
+
+    local screen = thelpers.setup_child_nvim({
+      '--cmd', 'set notermguicolors',
+      '-i', 'NONE',
+      '-u', filename,
+    })
+    -- Wait for startup to complete, so that all terminal responses are received.
+    screen:expect([[
+      {1: }                                                 |
+      ~                                                 |*3
+      {1:[No Name]                       0,0-1          All}|
+                                                        |
+      {3:-- TERMINAL --}                                    |
+    ]])
+
+    feed(':q<CR>')
+    screen:expect([[
+                                                        |
+      [Process exited 0]{1: }                               |
+                                                        |*4
+      {3:-- TERMINAL --}                                    |
+    ]])
+  end)
 end)
 
 describe("pty process teardown", function()
@@ -1114,10 +1185,7 @@ describe("pty process teardown", function()
     screen:attach()
     screen:expect([[
       ^                              |
-      ~                             |
-      ~                             |
-      ~                             |
-      ~                             |
+      ~                             |*4
                                     |
     ]])
   end)
@@ -1125,20 +1193,18 @@ describe("pty process teardown", function()
   it("does not prevent/delay exit. #4798 #4900", function()
     skip(is_os('win'))
     -- Use a nested nvim (in :term) to test without --headless.
-    feed_command(":terminal '"..helpers.nvim_prog
-      .."' -u NONE -i NONE --cmd '"..nvim_set.."' "
+    funcs.termopen({
+      helpers.nvim_prog, '-u', 'NONE', '-i', "NONE", '--cmd', nvim_set,
       -- Use :term again in the _nested_ nvim to get a PTY process.
       -- Use `sleep` to simulate a long-running child of the PTY.
-      .."+terminal +'!(sleep 300 &)' +qa")
+      '+terminal', '+!(sleep 300 &)', '+qa',
+    }, { env = { VIMRUNTIME = os.getenv('VIMRUNTIME') } })
 
     -- Exiting should terminate all descendants (PTY, its children, ...).
     screen:expect([[
       ^                              |
       [Process exited 0]            |
-                                    |
-                                    |
-                                    |
-                                    |
+                                    |*4
     ]])
   end)
 end)

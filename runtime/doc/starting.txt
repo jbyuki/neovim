@@ -224,9 +224,11 @@ argument.
 		All [args] are treated as {script} arguments and stored in the
 		Lua `_G.arg` global table, thus "-l" ends processing of Nvim
 		arguments. The {script} name is stored at `_G.arg[0]`.
-		
+
 		Sets 'verbose' to 1 (like "-V1"), so Lua `print()` writes to
 		output.
+		If {script} prints messages and doesn't cause Nvim to exit,
+		Nvim ensures output ends with a newline.
 
 		Arguments before "-l" are processed before executing {script}.
 		This example quits before executing "foo.lua": >
@@ -388,6 +390,10 @@ argument.
 <		Then startup will continue without waiting for `nvim_ui_attach`.
 		This is equivalent to: >
 		    nvim --headless --cmd "call stdioopen({'rpc': v:true})"
+<
+		Embedders that use the UI protocol on a socket connection must
+		pass |--listen| as well as |--embed|: >
+		    nvim --embed --listen addr
 
 <		See also: |ui-startup| |channel-stdio|
 
@@ -460,13 +466,13 @@ accordingly, proceeding as follows:
 	|$XDG_CONFIG_HOME|	$XDG_CONFIG_HOME/nvim/init.vim	(or init.lua)
 
 	If Nvim was started with "-u {file}" then {file} is used as the config
-	and all initializations until 5. are skipped. $MYVIMRC is not set.
+	and all initializations until 8. are skipped. $MYVIMRC is not set.
 	"nvim -u NORC" can be used to skip these initializations without
 	reading a file.  "nvim -u NONE" also skips plugins and syntax
 	highlighting.  |-u|
 
-	If Nvim was started with |-es| all initializations until 5. are
-	skipped.
+	If Nvim was started with |-es| or |-Es| or |-l| all initializations until 8.
+	are skipped.
 						*system-vimrc* *sysinit.vim*
      a. The system vimrc file is read for initializations.  If
 	nvim/sysinit.vim file exists in one of $XDG_CONFIG_DIRS, it will be
@@ -504,12 +510,12 @@ accordingly, proceeding as follows:
 
 10. Load the plugin scripts.					*load-plugins*
 	This does the same as the command: >
-		:runtime! plugin/**/*.vim
-		:runtime! plugin/**/*.lua
+		:runtime! plugin/**/*.{vim,lua}
 <	The result is that all directories in 'runtimepath' will be searched
 	for the "plugin" sub-directory and all files ending in ".vim" or
 	".lua" will be sourced (in alphabetical order per directory),
-	also in subdirectories. First "*.vim" are sourced, then "*.lua" files.
+	also in subdirectories. First "*.vim" are sourced, then "*.lua" files,
+	per directory.
 
 	However, directories in 'runtimepath' ending in "after" are skipped
 	here and only loaded after packages, see below.
@@ -1117,7 +1123,8 @@ any free letter from `a` to `z`) while normally it will create this file,
 write to it and then rename `{basename}.tmp.X` to `{basename}`. Such errors
 include:
 
-- Errors which make Nvim think that read file is not a ShaDa file at all:
+- Errors which make Nvim think that the file being read is not a ShaDa
+  file at all:
   non-ShaDa files are not overwritten for safety reasons to avoid accidentally
   destroying an unrelated file.  This could happen e.g. when typing "nvim -i
   file" in place of "nvim -R file" (yes, somebody did that at least with Vim).
@@ -1304,7 +1311,7 @@ exactly four MessagePack objects:
    10 (LocalMark)
    11 (Change)         Map containing some position description:
                        Entry      Position ~
-                       GlobaMark  Global mark position. |'A|
+                       GlobalMark Global mark position. |'A|
                        LocalMark  Local mark position. |'a|
                        Jump       One position from the |jumplist|.
                        Change     One position from the |changelist|.
@@ -1335,10 +1342,13 @@ exactly four MessagePack objects:
                        reasons, see |shada-compatibility|.
 
 								*E575* *E576*
-Errors in ShaDa file may have two types: E575 used for all “logical” errors
-and E576 used for all “critical” errors.  Critical errors trigger behaviour
-described in |shada-error-handling| when writing and skipping the rest of the
-file when reading and include:
+Errors in ShaDa file may have two types:
+1. E575 for “logical” errors.
+2. E576 for “critical” errors.
+When writing, critical errors trigger behaviour described in
+|shada-error-handling|.
+When reading, critical errors cause the rest of the file to be skipped.
+Critical errors include:
 					    *shada-critical-contents-errors*
 - Any of first three MessagePack objects being not an unsigned integer.
 - Third object requesting amount of bytes greater then bytes left in the ShaDa
@@ -1360,9 +1370,12 @@ paths.
 						*base-directories* *xdg*
 The "base" (root) directories conform to the XDG Base Directory Specification.
 https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html
-The $XDG_CONFIG_HOME, $XDG_DATA_HOME, $XDG_RUNTIME_DIR, and $XDG_STATE_HOME
-environment variables are used if defined, else default values (listed below)
-are used.
+The $XDG_CONFIG_HOME, $XDG_DATA_HOME, $XDG_RUNTIME_DIR, $XDG_STATE_HOME,
+$XDG_CACHE_HOME, $XDG_CONFIG_DIRS and $XDG_DATA_DIRS environment variables
+are used if defined, else default values (listed below) are used.
+
+Throughout the help pages these defaults are used as placeholders, e.g.
+"~/.config" is understood to mean "$XDG_CONFIG_HOME or ~/.config".
 
 CONFIG DIRECTORY (DEFAULT) ~
                   *$XDG_CONFIG_HOME*            Nvim: stdpath("config")
@@ -1384,8 +1397,28 @@ STATE DIRECTORY (DEFAULT) ~
     Unix:         ~/.local/state              ~/.local/state/nvim
     Windows:      ~/AppData/Local             ~/AppData/Local/nvim-data
 
-Note: Throughout the help pages these defaults are used as placeholders, e.g.
-"~/.config" is understood to mean "$XDG_CONFIG_HOME or ~/.config".
+CACHE DIRECTORY (DEFAULT) ~
+                  *$XDG_CACHE_HOME*             Nvim: stdpath("cache")
+    Unix:         ~/.cache                    ~/.cache/nvim
+    Windows:      ~/AppData/Local/Temp        ~/AppData/Local/Temp/nvim-data
+
+LOG FILE (DEFAULT) ~
+                  `$NVIM_LOG_FILE`              Nvim: stdpath("log")/log
+    Unix:         ~/.local/state/nvim         ~/.local/state/nvim/log
+    Windows:      ~/AppData/Local/nvim-data   ~/AppData/Local/nvim-data/log
+
+Note that stdpath("log") is currently an alias for stdpath("state").
+
+ADDITIONAL CONFIGS DIRECTORY (DEFAULT) ~
+                  *$XDG_CONFIG_DIRS*            Nvim: stdpath("config_dirs")
+    Unix:         /etc/xdg/                   /etc/xdg/nvim
+    Windows:      Not applicable              Not applicable
+
+ADDITIONAL DATA DIRECTORY (DEFAULT) ~
+                  *$XDG_DATA_DIRS*              Nvim: stdpath("data_dirs")
+    Unix:         /usr/local/share            /usr/local/share/nvim
+                  /usr/share                  /usr/share/nvim
+    Windows:      Not applicable              Not applicable
 
 NVIM_APPNAME					*$NVIM_APPNAME*
 The standard directories can be further configured by the `$NVIM_APPNAME`
@@ -1393,7 +1426,8 @@ environment variable. This variable controls the sub-directory that Nvim will
 read from (and auto-create) in each of the base directories. For example,
 setting `$NVIM_APPNAME` to "foo" before starting will cause Nvim to look for
 configuration files in `$XDG_CONFIG_HOME/foo` instead of
-`$XDG_CONFIG_HOME/nvim`.
+`$XDG_CONFIG_HOME/nvim`. `$NVIM_APPNAME` must be a name, such as "foo", or a
+relative path, such as "foo/bar".
 
 One use-case for $NVIM_APPNAME is to "isolate" Nvim applications.
 Alternatively, for true isolation, on Linux you can use cgroups namespaces: >
@@ -1406,8 +1440,8 @@ LOG FILE					*log* *$NVIM_LOG_FILE* *E5430*
 Besides 'debug' and 'verbose', Nvim keeps a general log file for internal
 debugging, plugins and RPC clients. >
 	:echo $NVIM_LOG_FILE
-By default, the file is located at stdpath("log")/log unless that path
-is inaccessible or if $NVIM_LOG_FILE was set before |startup|.
+By default, the file is located at stdpath("log")/log ($XDG_STATE_HOME/nvim/log)
+unless that path is inaccessible or if $NVIM_LOG_FILE was set before |startup|.
 
 
  vim:noet:tw=78:ts=8:ft=help:norl:

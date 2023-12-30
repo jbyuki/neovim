@@ -815,12 +815,12 @@ func Test_search_cmdline_incsearch_highlight_attr()
 
   call WaitForAssert({-> assert_equal(lines, [term_getline(buf, 1), term_getline(buf, 2)])})
   " wait for vim to complete initialization
-  call term_wait(buf)
+  call TermWait(buf)
 
   " Get attr of normal(a0), incsearch(a1), hlsearch(a2) highlight
   call term_sendkeys(buf, ":set incsearch hlsearch\<cr>")
   call term_sendkeys(buf, '/b')
-  call term_wait(buf, 200)
+  call TermWait(buf, 100)
   let screen_line1 = term_scrape(buf, 1)
   call assert_true(len(screen_line1) > 2)
   " a0: attr_normal
@@ -836,7 +836,7 @@ func Test_search_cmdline_incsearch_highlight_attr()
 
   " Test incremental highlight search
   call term_sendkeys(buf, "/vim")
-  call term_wait(buf, 200)
+  call TermWait(buf, 100)
   " Buffer:
   " abb vim vim vi
   " vimvivim
@@ -848,7 +848,7 @@ func Test_search_cmdline_incsearch_highlight_attr()
 
   " Test <C-g>
   call term_sendkeys(buf, "\<C-g>\<C-g>")
-  call term_wait(buf, 200)
+  call TermWait(buf, 100)
   let attr_line1 = [a0,a0,a0,a0,a2,a2,a2,a0,a2,a2,a2,a0,a0,a0]
   let attr_line2 = [a1,a1,a1,a0,a0,a2,a2,a2]
   call assert_equal(attr_line1, map(term_scrape(buf, 1)[:len(attr_line1)-1], 'v:val.attr'))
@@ -856,7 +856,7 @@ func Test_search_cmdline_incsearch_highlight_attr()
 
   " Test <C-t>
   call term_sendkeys(buf, "\<C-t>")
-  call term_wait(buf, 200)
+  call TermWait(buf, 100)
   let attr_line1 = [a0,a0,a0,a0,a2,a2,a2,a0,a1,a1,a1,a0,a0,a0]
   let attr_line2 = [a2,a2,a2,a0,a0,a2,a2,a2]
   call assert_equal(attr_line1, map(term_scrape(buf, 1)[:len(attr_line1)-1], 'v:val.attr'))
@@ -864,7 +864,7 @@ func Test_search_cmdline_incsearch_highlight_attr()
 
   " Type Enter and a1(incsearch highlight) should become a2(hlsearch highlight)
   call term_sendkeys(buf, "\<cr>")
-  call term_wait(buf, 200)
+  call TermWait(buf, 100)
   let attr_line1 = [a0,a0,a0,a0,a2,a2,a2,a0,a2,a2,a2,a0,a0,a0]
   let attr_line2 = [a2,a2,a2,a0,a0,a2,a2,a2]
   call assert_equal(attr_line1, map(term_scrape(buf, 1)[:len(attr_line1)-1], 'v:val.attr'))
@@ -874,7 +874,7 @@ func Test_search_cmdline_incsearch_highlight_attr()
   call term_sendkeys(buf, ":1\<cr>")
   call term_sendkeys(buf, ":set nohlsearch\<cr>")
   call term_sendkeys(buf, "/vim")
-  call term_wait(buf, 200)
+  call TermWait(buf, 100)
   let attr_line1 = [a0,a0,a0,a0,a1,a1,a1,a0,a0,a0,a0,a0,a0,a0]
   let attr_line2 = [a0,a0,a0,a0,a0,a0,a0,a0]
   call assert_equal(attr_line1, map(term_scrape(buf, 1)[:len(attr_line1)-1], 'v:val.attr'))
@@ -1762,6 +1762,8 @@ func Test_invalid_regexp()
   call assert_fails("call search('\\(')", 'E54:')
   call assert_fails("call search('\\)')", 'E55:')
   call assert_fails("call search('\\z\\(\\)')", 'E66:')
+  call assert_fails("call search('\\z2')", 'E67:')
+  call assert_fails("call search('\\zx')", 'E867:')
   call assert_fails("call search('\\%[ab')", 'E69:')
   call assert_fails("call search('\\%[]')", 'E70:')
   call assert_fails("call search('\\%9999999999999999999999999999v')", 'E951:')
@@ -1996,7 +1998,7 @@ func Test_incsearch_substitute_dump2()
 	\ 'endfor',
 	\ 'call setline(5, "abc|def")',
 	\ '3',
-	\ ], 'Xis_subst_script2')
+	\ ], 'Xis_subst_script2', 'D')
   let buf = RunVimInTerminal('-S Xis_subst_script2', {'rows': 9, 'cols': 70})
 
   call term_sendkeys(buf, ':%s/\vabc|')
@@ -2011,7 +2013,30 @@ func Test_incsearch_substitute_dump2()
 
 
   call StopVimInTerminal(buf)
-  call delete('Xis_subst_script2')
+endfunc
+
+func Test_incsearch_restore_view()
+  CheckOption incsearch
+  CheckScreendump
+
+  let lines =<< trim [CODE]
+    set incsearch nohlsearch
+    setlocal scrolloff=0 smoothscroll
+    call setline(1, [join(range(25), ' '), '', '', '', '', 'xxx'])
+    call feedkeys("2\<C-E>", 't')
+  [CODE]
+  call writefile(lines, 'Xincsearch_restore_view', 'D')
+  let buf = RunVimInTerminal('-S Xincsearch_restore_view', {'rows': 6, 'cols': 20})
+
+  call VerifyScreenDump(buf, 'Test_incsearch_restore_view_01', {})
+  call term_sendkeys(buf, '/xx')
+  call VerifyScreenDump(buf, 'Test_incsearch_restore_view_02', {})
+  call term_sendkeys(buf, 'x')
+  call VerifyScreenDump(buf, 'Test_incsearch_restore_view_03', {})
+  call term_sendkeys(buf, "\<Esc>")
+  call VerifyScreenDump(buf, 'Test_incsearch_restore_view_01', {})
+
+  call StopVimInTerminal(buf)
 endfunc
 
 func Test_pattern_is_uppercase_smartcase()

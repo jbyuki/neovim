@@ -43,6 +43,25 @@ describe('API/win', function()
       eq('Invalid buffer id: 23', pcall_err(window, 'set_buf', nvim('get_current_win'), 23))
       eq('Invalid window id: 23', pcall_err(window, 'set_buf', 23, nvim('get_current_buf')))
     end)
+
+    it('disallowed in cmdwin if win={old_}curwin or buf=curbuf', function()
+      local new_buf = meths.create_buf(true, true)
+      local old_win = meths.get_current_win()
+      local new_win = meths.open_win(new_buf, false, {
+        relative='editor', row=10, col=10, width=50, height=10,
+      })
+      feed('q:')
+      eq('E11: Invalid in command-line window; <CR> executes, CTRL-C quits',
+         pcall_err(meths.win_set_buf, 0, new_buf))
+      eq('E11: Invalid in command-line window; <CR> executes, CTRL-C quits',
+         pcall_err(meths.win_set_buf, old_win, new_buf))
+      eq('E11: Invalid in command-line window; <CR> executes, CTRL-C quits',
+         pcall_err(meths.win_set_buf, new_win, 0))
+
+      local next_buf = meths.create_buf(true, true)
+      meths.win_set_buf(new_win, next_buf)
+      eq(next_buf, meths.win_get_buf(new_win))
+    end)
   end)
 
   describe('{get,set}_cursor', function()
@@ -77,14 +96,7 @@ describe('API/win', function()
 
       screen:expect{grid=[[
         ^prologue                      |
-                                      |
-                                      |
-                                      |
-                                      |
-                                      |
-                                      |
-                                      |
-                                      |
+                                      |*8
       ]]}
       -- cursor position is at beginning
       eq({1, 0}, window('get_cursor', win))
@@ -92,13 +104,7 @@ describe('API/win', function()
       -- move cursor to end
       window('set_cursor', win, {101, 0})
       screen:expect{grid=[[
-                                      |
-                                      |
-                                      |
-                                      |
-                                      |
-                                      |
-                                      |
+                                      |*7
         ^epilogue                      |
                                       |
       ]]}
@@ -107,14 +113,7 @@ describe('API/win', function()
       window('set_cursor', win, {1, 0})
       screen:expect{grid=[[
         ^prologue                      |
-                                      |
-                                      |
-                                      |
-                                      |
-                                      |
-                                      |
-                                      |
-                                      |
+                                      |*8
       ]]}
 
       -- move focus to new window
@@ -125,12 +124,10 @@ describe('API/win', function()
       eq({1, 0}, window('get_cursor', win))
       screen:expect{grid=[[
         ^                              |
-        {1:~                             }|
-        {1:~                             }|
+        {1:~                             }|*2
         {2:[No Name]                     }|
         prologue                      |
-                                      |
-                                      |
+                                      |*2
         {3:[No Name] [+]                 }|
                                       |
       ]]}
@@ -139,11 +136,9 @@ describe('API/win', function()
       window('set_cursor', win, {101, 0})
       screen:expect{grid=[[
         ^                              |
-        {1:~                             }|
-        {1:~                             }|
+        {1:~                             }|*2
         {2:[No Name]                     }|
-                                      |
-                                      |
+                                      |*2
         epilogue                      |
         {3:[No Name] [+]                 }|
                                       |
@@ -153,12 +148,10 @@ describe('API/win', function()
       window('set_cursor', win, {1, 0})
       screen:expect{grid=[[
         ^                              |
-        {1:~                             }|
-        {1:~                             }|
+        {1:~                             }|*2
         {2:[No Name]                     }|
         prologue                      |
-                                      |
-                                      |
+                                      |*2
         {3:[No Name] [+]                 }|
                                       |
       ]]}
@@ -213,8 +206,7 @@ describe('API/win', function()
         bbb                           │bbb                          |
         ccc                           │ccc                          |
         {2:dd^d                           }│{2:ddd                          }|
-        {1:~                             }│{1:~                            }|
-        {1:~                             }│{1:~                            }|
+        {1:~                             }│{1:~                            }|*2
         {3:[No Name] [+]  4,3         All }{4:[No Name] [+]  4,3        All}|
                                                                     |
       ]])
@@ -224,8 +216,7 @@ describe('API/win', function()
         bbb                           │bbb                          |
         ccc                           │ccc                          |
         {2:dd^d                           }│ddd                          |
-        {1:~                             }│{1:~                            }|
-        {1:~                             }│{1:~                            }|
+        {1:~                             }│{1:~                            }|*2
         {3:[No Name] [+]  4,3         All }{4:[No Name] [+]  1,1        All}|
                                                                     |
       ]])
@@ -253,8 +244,7 @@ describe('API/win', function()
         bb{2:b}                           │bb{2:b}                          |
         cc{2:c}                           │cc{2:c}                          |
         dd^d                           │ddd                          |
-        {1:~                             }│{1:~                            }|
-        {1:~                             }│{1:~                            }|
+        {1:~                             }│{1:~                            }|*2
         {3:[No Name] [+]                  }{4:[No Name] [+]                }|
                                                                     |
       ]])
@@ -264,8 +254,7 @@ describe('API/win', function()
         bb{2:b}                           │bbb                          |
         cc{2:c}                           │{2:c}cc                          |
         dd^d                           │{2:d}dd                          |
-        {1:~                             }│{1:~                            }|
-        {1:~                             }│{1:~                            }|
+        {1:~                             }│{1:~                            }|*2
         {3:[No Name] [+]                  }{4:[No Name] [+]                }|
                                                                     |
       ]])
@@ -524,15 +513,21 @@ describe('API/win', function()
       command('split')
       eq(2, #meths.list_wins())
       local oldwin = meths.get_current_win()
+      local otherwin = meths.open_win(0, false, {
+        relative='editor', row=10, col=10, width=10, height=10,
+      })
       -- Open cmdline-window.
       feed('q:')
-      eq(3, #meths.list_wins())
+      eq(4, #meths.list_wins())
       eq(':', funcs.getcmdwintype())
-      -- Vim: not allowed to close other windows from cmdline-window.
+      -- Not allowed to close previous window from cmdline-window.
       eq('E11: Invalid in command-line window; <CR> executes, CTRL-C quits',
-        pcall_err(meths.win_close, oldwin, true))
+         pcall_err(meths.win_close, oldwin, true))
+      -- Closing other windows is fine.
+      meths.win_close(otherwin, true)
+      eq(false, meths.win_is_valid(otherwin))
       -- Close cmdline-window.
-      meths.win_close(0,true)
+      meths.win_close(0, true)
       eq(2, #meths.list_wins())
       eq('', funcs.getcmdwintype())
     end)
@@ -593,6 +588,238 @@ describe('API/win', function()
       eq({oldwin}, meths.list_wins())
       eq({oldbuf}, meths.list_bufs())
     end)
+    it('in the cmdwin', function()
+      feed('q:')
+      -- Can close the cmdwin.
+      meths.win_hide(0)
+      eq('', funcs.getcmdwintype())
+
+      local old_win = meths.get_current_win()
+      local other_win = meths.open_win(0, false, {
+        relative='win', row=3, col=3, width=12, height=3
+      })
+      feed('q:')
+      -- Cannot close the previous window.
+      eq('E11: Invalid in command-line window; <CR> executes, CTRL-C quits',
+         pcall_err(meths.win_hide, old_win))
+      -- Can close other windows.
+      meths.win_hide(other_win)
+      eq(false, meths.win_is_valid(other_win))
+    end)
+  end)
+
+  describe('text_height', function()
+    it('validation', function()
+      local X = meths.get_vvar('maxcol')
+      insert([[
+        aaa
+        bbb
+        ccc
+        ddd
+        eee]])
+      eq("Invalid window id: 23",
+         pcall_err(meths.win_text_height, 23, {}))
+      eq("Line index out of bounds",
+         pcall_err(curwinmeths.text_height, { start_row = 5 }))
+      eq("Line index out of bounds",
+         pcall_err(curwinmeths.text_height, { start_row = -6 }))
+      eq("Line index out of bounds",
+         pcall_err(curwinmeths.text_height, { end_row = 5 }))
+      eq("Line index out of bounds",
+         pcall_err(curwinmeths.text_height, { end_row = -6 }))
+      eq("'start_row' is higher than 'end_row'",
+         pcall_err(curwinmeths.text_height, { start_row = 3, end_row = 1 }))
+      eq("'start_vcol' specified without 'start_row'",
+         pcall_err(curwinmeths.text_height, { end_row = 2, start_vcol = 0 }))
+      eq("'end_vcol' specified without 'end_row'",
+         pcall_err(curwinmeths.text_height, { start_row = 2, end_vcol = 0 }))
+      eq("Invalid 'start_vcol': out of range",
+         pcall_err(curwinmeths.text_height, { start_row = 2, start_vcol = -1 }))
+      eq("Invalid 'start_vcol': out of range",
+         pcall_err(curwinmeths.text_height, { start_row = 2, start_vcol = X + 1 }))
+      eq("Invalid 'end_vcol': out of range",
+         pcall_err(curwinmeths.text_height, { end_row = 2, end_vcol = -1 }))
+      eq("Invalid 'end_vcol': out of range",
+         pcall_err(curwinmeths.text_height, { end_row = 2, end_vcol = X + 1 }))
+      eq("'start_vcol' is higher than 'end_vcol'",
+         pcall_err(curwinmeths.text_height, { start_row = 2, end_row = 2, start_vcol = 10, end_vcol = 5 }))
+    end)
+
+    it('with two diff windows', function()
+      local X = meths.get_vvar('maxcol')
+      local screen = Screen.new(45, 22)
+      screen:set_default_attr_ids({
+        [0] = {foreground = Screen.colors.Blue1, bold = true};
+        [1] = {foreground = Screen.colors.Blue4, background = Screen.colors.Grey};
+        [2] = {foreground = Screen.colors.Brown};
+        [3] = {foreground = Screen.colors.Blue1, background = Screen.colors.LightCyan1, bold = true};
+        [4] = {background = Screen.colors.LightBlue};
+        [5] = {foreground = Screen.colors.Blue4, background = Screen.colors.LightGrey};
+        [6] = {background = Screen.colors.Plum1};
+        [7] = {background = Screen.colors.Red, bold = true};
+        [8] = {reverse = true};
+        [9] = {bold = true, reverse = true};
+      })
+      screen:attach()
+      exec([[
+        set diffopt+=context:2 number
+        let expr = 'printf("%08d", v:val) .. repeat("!", v:val)'
+        call setline(1, map(range(1, 20) + range(25, 45), expr))
+        vnew
+        call setline(1, map(range(3, 20) + range(28, 50), expr))
+        windo diffthis
+      ]])
+      feed('24gg')
+      screen:expect{grid=[[
+        {1:  }{2:    }{3:----------------}│{1:  }{2:  1 }{4:00000001!       }|
+        {1:  }{2:    }{3:----------------}│{1:  }{2:  2 }{4:00000002!!      }|
+        {1:  }{2:  1 }00000003!!!     │{1:  }{2:  3 }00000003!!!     |
+        {1:  }{2:  2 }00000004!!!!    │{1:  }{2:  4 }00000004!!!!    |
+        {1:+ }{2:  3 }{5:+-- 14 lines: 00}│{1:+ }{2:  5 }{5:+-- 14 lines: 00}|
+        {1:  }{2: 17 }00000019!!!!!!!!│{1:  }{2: 19 }00000019!!!!!!!!|
+        {1:  }{2: 18 }00000020!!!!!!!!│{1:  }{2: 20 }00000020!!!!!!!!|
+        {1:  }{2:    }{3:----------------}│{1:  }{2: 21 }{4:00000025!!!!!!!!}|
+        {1:  }{2:    }{3:----------------}│{1:  }{2: 22 }{4:00000026!!!!!!!!}|
+        {1:  }{2:    }{3:----------------}│{1:  }{2: 23 }{4:00000027!!!!!!!!}|
+        {1:  }{2: 19 }00000028!!!!!!!!│{1:  }{2: 24 }^00000028!!!!!!!!|
+        {1:  }{2: 20 }00000029!!!!!!!!│{1:  }{2: 25 }00000029!!!!!!!!|
+        {1:+ }{2: 21 }{5:+-- 14 lines: 00}│{1:+ }{2: 26 }{5:+-- 14 lines: 00}|
+        {1:  }{2: 35 }00000044!!!!!!!!│{1:  }{2: 40 }00000044!!!!!!!!|
+        {1:  }{2: 36 }00000045!!!!!!!!│{1:  }{2: 41 }00000045!!!!!!!!|
+        {1:  }{2: 37 }{4:00000046!!!!!!!!}│{1:  }{2:    }{3:----------------}|
+        {1:  }{2: 38 }{4:00000047!!!!!!!!}│{1:  }{2:    }{3:----------------}|
+        {1:  }{2: 39 }{4:00000048!!!!!!!!}│{1:  }{2:    }{3:----------------}|
+        {1:  }{2: 40 }{4:00000049!!!!!!!!}│{1:  }{2:    }{3:----------------}|
+        {1:  }{2: 41 }{4:00000050!!!!!!!!}│{1:  }{2:    }{3:----------------}|
+        {8:[No Name] [+]          }{9:[No Name] [+]         }|
+                                                     |
+      ]]}
+      screen:try_resize(45, 3)
+      screen:expect{grid=[[
+        {1:  }{2: 19 }00000028!!!!!!!!│{1:  }{2: 24 }^00000028!!!!!!!!|
+        {8:[No Name] [+]          }{9:[No Name] [+]         }|
+                                                     |
+      ]]}
+      eq({ all = 20, fill = 5 }, meths.win_text_height(1000, {}))
+      eq({ all = 20, fill = 5 }, meths.win_text_height(1001, {}))
+      eq({ all = 20, fill = 5 }, meths.win_text_height(1000, { start_row = 0 }))
+      eq({ all = 20, fill = 5 }, meths.win_text_height(1001, { start_row = 0 }))
+      eq({ all = 15, fill = 0 }, meths.win_text_height(1000, { end_row = -1 }))
+      eq({ all = 15, fill = 0 }, meths.win_text_height(1000, { end_row = 40 }))
+      eq({ all = 20, fill = 5 }, meths.win_text_height(1001, { end_row = -1 }))
+      eq({ all = 20, fill = 5 }, meths.win_text_height(1001, { end_row = 40 }))
+      eq({ all = 10, fill = 5 }, meths.win_text_height(1000, { start_row = 23 }))
+      eq({ all = 13, fill = 3 }, meths.win_text_height(1001, { start_row = 18 }))
+      eq({ all = 11, fill = 0 }, meths.win_text_height(1000, { end_row = 23 }))
+      eq({ all = 11, fill = 5 }, meths.win_text_height(1001, { end_row = 18 }))
+      eq({ all = 11, fill = 0 }, meths.win_text_height(1000, { start_row = 3, end_row = 39 }))
+      eq({ all = 11, fill = 3 }, meths.win_text_height(1001, { start_row = 1, end_row = 34 }))
+      eq({ all = 9, fill = 0 }, meths.win_text_height(1000, { start_row = 4, end_row = 38 }))
+      eq({ all = 9, fill = 3 }, meths.win_text_height(1001, { start_row = 2, end_row = 33 }))
+      eq({ all = 9, fill = 0 }, meths.win_text_height(1000, { start_row = 5, end_row = 37 }))
+      eq({ all = 9, fill = 3 }, meths.win_text_height(1001, { start_row = 3, end_row = 32 }))
+      eq({ all = 9, fill = 0 }, meths.win_text_height(1000, { start_row = 17, end_row = 25 }))
+      eq({ all = 9, fill = 3 }, meths.win_text_height(1001, { start_row = 15, end_row = 20 }))
+      eq({ all = 7, fill = 0 }, meths.win_text_height(1000, { start_row = 18, end_row = 24 }))
+      eq({ all = 7, fill = 3 }, meths.win_text_height(1001, { start_row = 16, end_row = 19 }))
+      eq({ all = 6, fill = 5 }, meths.win_text_height(1000, { start_row = -1 }))
+      eq({ all = 5, fill = 5 }, meths.win_text_height(1000, { start_row = -1, start_vcol = X }))
+      eq({ all = 0, fill = 0 }, meths.win_text_height(1000, { start_row = -1, start_vcol = X, end_row = -1 }))
+      eq({ all = 0, fill = 0 }, meths.win_text_height(1000, { start_row = -1, start_vcol = X, end_row = -1, end_vcol = X }))
+      eq({ all = 1, fill = 0 }, meths.win_text_height(1000, { start_row = -1, start_vcol = 0, end_row = -1, end_vcol = X }))
+      eq({ all = 3, fill = 2 }, meths.win_text_height(1001, { end_row = 0 }))
+      eq({ all = 2, fill = 2 }, meths.win_text_height(1001, { end_row = 0, end_vcol = 0 }))
+      eq({ all = 2, fill = 2 }, meths.win_text_height(1001, { start_row = 0, end_row = 0, end_vcol = 0 }))
+      eq({ all = 0, fill = 0 }, meths.win_text_height(1001, { start_row = 0, start_vcol = 0, end_row = 0, end_vcol = 0 }))
+      eq({ all = 1, fill = 0 }, meths.win_text_height(1001, { start_row = 0, start_vcol = 0, end_row = 0, end_vcol = X }))
+      eq({ all = 11, fill = 5 }, meths.win_text_height(1001, { end_row = 18 }))
+      eq({ all = 9, fill = 3 }, meths.win_text_height(1001, { start_row = 0, start_vcol = 0, end_row = 18 }))
+      eq({ all = 10, fill = 5 }, meths.win_text_height(1001, { end_row = 18, end_vcol = 0 }))
+      eq({ all = 8, fill = 3 }, meths.win_text_height(1001, { start_row = 0, start_vcol = 0, end_row = 18, end_vcol = 0 }))
+    end)
+
+    it('with wrapped lines', function()
+      local X = meths.get_vvar('maxcol')
+      local screen = Screen.new(45, 22)
+      screen:set_default_attr_ids({
+        [0] = {foreground = Screen.colors.Blue1, bold = true};
+        [1] = {foreground = Screen.colors.Brown};
+        [2] = {background = Screen.colors.Yellow};
+      })
+      screen:attach()
+      exec([[
+        set number cpoptions+=n
+        call setline(1, repeat([repeat('foobar-', 36)], 3))
+      ]])
+      local ns = meths.create_namespace('')
+      meths.buf_set_extmark(0, ns, 1, 100, { virt_text = {{('?'):rep(15), 'Search'}}, virt_text_pos = 'inline' })
+      meths.buf_set_extmark(0, ns, 2, 200, { virt_text = {{('!'):rep(75), 'Search'}}, virt_text_pos = 'inline' })
+      screen:expect{grid=[[
+        {1:  1 }^foobar-foobar-foobar-foobar-foobar-foobar|
+        -foobar-foobar-foobar-foobar-foobar-foobar-fo|
+        obar-foobar-foobar-foobar-foobar-foobar-fooba|
+        r-foobar-foobar-foobar-foobar-foobar-foobar-f|
+        oobar-foobar-foobar-foobar-foobar-foobar-foob|
+        ar-foobar-foobar-foobar-foobar-              |
+        {1:  2 }foobar-foobar-foobar-foobar-foobar-foobar|
+        -foobar-foobar-foobar-foobar-foobar-foobar-fo|
+        obar-foobar-fo{2:???????????????}obar-foobar-foob|
+        ar-foobar-foobar-foobar-foobar-foobar-foobar-|
+        foobar-foobar-foobar-foobar-foobar-foobar-foo|
+        bar-foobar-foobar-foobar-foobar-foobar-foobar|
+        -                                            |
+        {1:  3 }foobar-foobar-foobar-foobar-foobar-foobar|
+        -foobar-foobar-foobar-foobar-foobar-foobar-fo|
+        obar-foobar-foobar-foobar-foobar-foobar-fooba|
+        r-foobar-foobar-foobar-foobar-foobar-foobar-f|
+        oobar-foobar-foobar-foob{2:!!!!!!!!!!!!!!!!!!!!!}|
+        {2:!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!}|
+        {2:!!!!!!!!!}ar-foobar-foobar-foobar-foobar-fooba|
+        r-foobar-foobar-                             |
+                                                     |
+      ]]}
+      screen:try_resize(45, 2)
+      screen:expect{grid=[[
+        {1:  1 }^foobar-foobar-foobar-foobar-foobar-foobar|
+                                                     |
+      ]]}
+      eq({ all = 21, fill = 0 }, meths.win_text_height(0, {}))
+      eq({ all = 6, fill = 0 }, meths.win_text_height(0, { start_row = 0, end_row = 0 }))
+      eq({ all = 7, fill = 0 }, meths.win_text_height(0, { start_row = 1, end_row = 1 }))
+      eq({ all = 8, fill = 0 }, meths.win_text_height(0, { start_row = 2, end_row = 2 }))
+      eq({ all = 0, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 0, end_row = 1, end_vcol = 0 }))
+      eq({ all = 1, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 0, end_row = 1, end_vcol = 41 }))
+      eq({ all = 2, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 0, end_row = 1, end_vcol = 42 }))
+      eq({ all = 2, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 0, end_row = 1, end_vcol = 86 }))
+      eq({ all = 3, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 0, end_row = 1, end_vcol = 87 }))
+      eq({ all = 6, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 0, end_row = 1, end_vcol = 266 }))
+      eq({ all = 7, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 0, end_row = 1, end_vcol = 267 }))
+      eq({ all = 7, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 0, end_row = 1, end_vcol = 311 }))
+      eq({ all = 7, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 0, end_row = 1, end_vcol = 312 }))
+      eq({ all = 7, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 0, end_row = 1, end_vcol = X }))
+      eq({ all = 7, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 40, end_row = 1, end_vcol = X }))
+      eq({ all = 6, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 41, end_row = 1, end_vcol = X }))
+      eq({ all = 6, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 85, end_row = 1, end_vcol = X }))
+      eq({ all = 5, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 86, end_row = 1, end_vcol = X }))
+      eq({ all = 2, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 265, end_row = 1, end_vcol = X }))
+      eq({ all = 1, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 266, end_row = 1, end_vcol = X }))
+      eq({ all = 1, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 310, end_row = 1, end_vcol = X }))
+      eq({ all = 0, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 311, end_row = 1, end_vcol = X }))
+      eq({ all = 1, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 86, end_row = 1, end_vcol = 131 }))
+      eq({ all = 1, fill = 0 }, meths.win_text_height(0, { start_row = 1, start_vcol = 221, end_row = 1, end_vcol = 266 }))
+      eq({ all = 18, fill = 0 }, meths.win_text_height(0, { start_row = 0, start_vcol = 131 }))
+      eq({ all = 19, fill = 0 }, meths.win_text_height(0, { start_row = 0, start_vcol = 130 }))
+      eq({ all = 20, fill = 0 }, meths.win_text_height(0, { end_row = 2, end_vcol = 311 }))
+      eq({ all = 21, fill = 0 }, meths.win_text_height(0, { end_row = 2, end_vcol = 312 }))
+      eq({ all = 17, fill = 0 }, meths.win_text_height(0, { start_row = 0, start_vcol = 131, end_row = 2, end_vcol = 311 }))
+      eq({ all = 19, fill = 0 }, meths.win_text_height(0, { start_row = 0, start_vcol = 130, end_row = 2, end_vcol = 312 }))
+      eq({ all = 16, fill = 0 }, meths.win_text_height(0, { start_row = 0, start_vcol = 221 }))
+      eq({ all = 17, fill = 0 }, meths.win_text_height(0, { start_row = 0, start_vcol = 220 }))
+      eq({ all = 14, fill = 0 }, meths.win_text_height(0, { end_row = 2, end_vcol = 41 }))
+      eq({ all = 15, fill = 0 }, meths.win_text_height(0, { end_row = 2, end_vcol = 42 }))
+      eq({ all = 9, fill = 0 }, meths.win_text_height(0, { start_row = 0, start_vcol = 221, end_row = 2, end_vcol = 41 }))
+      eq({ all = 11, fill = 0 }, meths.win_text_height(0, { start_row = 0, start_vcol = 220, end_row = 2, end_vcol = 42 }))
+    end)
   end)
 
   describe('open_win', function()
@@ -607,19 +834,45 @@ describe('API/win', function()
       })
       eq(1, funcs.exists('g:fired'))
     end)
+
+    it('disallowed in cmdwin if enter=true or buf=curbuf', function()
+      local new_buf = meths.create_buf(true, true)
+      feed('q:')
+      eq('E11: Invalid in command-line window; <CR> executes, CTRL-C quits',
+         pcall_err(meths.open_win, new_buf, true, {
+           relative='editor', row=5, col=5, width=5, height=5,
+         }))
+      eq('E11: Invalid in command-line window; <CR> executes, CTRL-C quits',
+         pcall_err(meths.open_win, 0, false, {
+           relative='editor', row=5, col=5, width=5, height=5,
+         }))
+
+      eq(new_buf, meths.win_get_buf(meths.open_win(new_buf, false, {
+           relative='editor', row=5, col=5, width=5, height=5,
+         })))
+    end)
+
+    it('aborts if buffer is invalid', function()
+      local wins_before = meths.list_wins()
+      eq('Invalid buffer id: 1337', pcall_err(meths.open_win, 1337, false, {
+           relative='editor', row=5, col=5, width=5, height=5,
+         }))
+      eq(wins_before, meths.list_wins())
+    end)
   end)
 
   describe('get_config', function()
     it('includes border', function()
       local b = { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h' }
       local win = meths.open_win(0, true, {
-         relative='win', row=3, col=3, width=12, height=3,
-         border = b,
+        relative='win', row=3, col=3, width=12, height=3,
+        border = b,
       })
 
       local cfg = meths.win_get_config(win)
       eq(b, cfg.border)
     end)
+
     it('includes border with highlight group', function()
       local b = {
         {'a', 'Normal'},
@@ -632,12 +885,59 @@ describe('API/win', function()
         {'h', 'PreProc'},
       }
       local win = meths.open_win(0, true, {
-         relative='win', row=3, col=3, width=12, height=3,
-         border = b,
+        relative='win', row=3, col=3, width=12, height=3,
+        border = b,
       })
 
       local cfg = meths.win_get_config(win)
       eq(b, cfg.border)
+    end)
+
+    it('includes title and footer', function()
+      local title = { {'A', {'StatusLine', 'TabLine'}}, {'B'}, {'C', 'WinBar'} }
+      local footer = { {'A', 'WinBar'}, {'B'}, {'C', {'StatusLine', 'TabLine'}} }
+      local win = meths.open_win(0, true, {
+        relative='win', row=3, col=3, width=12, height=3,
+        border = 'single', title = title, footer = footer,
+      })
+
+      local cfg = meths.win_get_config(win)
+      eq(title, cfg.title)
+      eq(footer, cfg.footer)
+    end)
+  end)
+
+  describe('set_config', function()
+    it('no crash with invalid title', function ()
+      local win = meths.open_win(0, true, {
+        width = 10,
+        height = 10,
+        relative = "editor",
+        row = 10,
+        col = 10,
+        title = { { "test" } },
+        border = "single",
+      })
+      eq("title/footer cannot be an empty array",
+          pcall_err(meths.win_set_config, win, {title = {}}))
+      command("redraw!")
+      assert_alive()
+    end)
+
+    it('no crash with invalid footer', function ()
+      local win = meths.open_win(0, true, {
+        width = 10,
+        height = 10,
+        relative = "editor",
+        row = 10,
+        col = 10,
+        footer = { { "test" } },
+        border = "single",
+      })
+      eq("title/footer cannot be an empty array",
+          pcall_err(meths.win_set_config, win, {footer = {}}))
+      command("redraw!")
+      assert_alive()
     end)
   end)
 end)

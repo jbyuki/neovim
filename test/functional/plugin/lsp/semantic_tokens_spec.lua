@@ -106,6 +106,7 @@ describe('semantic token highlighting', function()
       exec_lua([[
         bufnr = vim.api.nvim_get_current_buf()
         vim.api.nvim_win_set_buf(0, bufnr)
+        vim.bo[bufnr].filetype = 'some-filetype'
         client_id = vim.lsp.start({ name = 'dummy', cmd = server.cmd })
       ]])
 
@@ -124,9 +125,7 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
       ]] }
     end)
@@ -163,9 +162,7 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
       ]] }
 
@@ -198,9 +195,7 @@ describe('semantic token highlighting', function()
         #endif                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
       ]] }
     end)
@@ -233,9 +228,7 @@ describe('semantic token highlighting', function()
         #endif                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
       ]] }
 
@@ -256,9 +249,7 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
       ]] }
     end)
@@ -285,9 +276,7 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
       ]] }
 
@@ -308,9 +297,7 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
       ]], unchanged = true }
 
@@ -364,9 +351,7 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
       ]] }
       feed_command('%s/int x/int x()/')
@@ -382,11 +367,8 @@ describe('semantic token highlighting', function()
         {6:#else}                                   |
         {6:    printf("%d\n", x);}                  |
         {6:#endif}                                  |
-        }                                       |
-        }                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        }                                       |*2
+        {1:~                                       }|*3
         :noh                                    |
       ]] }
     end)
@@ -446,9 +428,7 @@ describe('semantic token highlighting', function()
           #endif                                  |
           }                                       |
           ^}                                       |
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
+          {1:~                                       }|*3
                                                   |
         ]] }
 
@@ -473,9 +453,7 @@ describe('semantic token highlighting', function()
           #endif                                  |
           }                                       |
           ^}                                       |
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
+          {1:~                                       }|*3
                                                   |
           ]], unchanged = true }
       end)
@@ -519,9 +497,7 @@ describe('semantic token highlighting', function()
         #endif                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
       ]] }
     end)
@@ -564,9 +540,7 @@ describe('semantic token highlighting', function()
         {6:#endif}                                  |
         }                                       |
         ^}                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
                                                 |
       ]] }
       feed_command('%s/int x/int x()/')
@@ -586,11 +560,8 @@ describe('semantic token highlighting', function()
         {6:#else}                                   |
         {6:    printf("%d\n", x);}                  |
         {6:#endif}                                  |
-        }                                       |
-        }                                       |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        }                                       |*2
+        {1:~                                       }|*3
         :noh                                    |
       ]] }
       local messages = exec_lua('return server2.messages')
@@ -632,20 +603,7 @@ describe('semantic token highlighting', function()
         expected_screen = function()
           screen:expect{grid=[[
             char* {7:foo} = "\n"^;                       |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*14
                                                     |
           ]]}
         end,
@@ -773,11 +731,7 @@ int main()
             {6:    comment}                             |
             {6:  #endif}                                |
             ^}                                       |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*5
                                                     |
           ]]}
         end,
@@ -827,18 +781,7 @@ b = "as"]],
             {6:-- comment}                              |
             local {7:a} = 1                             |
             {2:b} = "as^"                                |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*12
                                                     |
           ]]}
         end,
@@ -959,16 +902,7 @@ b = "as"]],
               //{6:/ what?}                             |
             }                                       |
             ^                                        |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*10
                                                     |
           ]]}
         end,
@@ -1054,20 +988,7 @@ b = "as"]],
         expected_screen1 = function()
         screen:expect{grid=[[
           char* {7:foo} = "\n"^;                       |
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
-          {1:~                                       }|
+          {1:~                                       }|*14
                                                   |
         ]]}
         end,
@@ -1075,19 +996,7 @@ b = "as"]],
           screen:expect{grid=[[
             ^                                        |
             char* {7:foo} = "\n";                       |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*13
                                                     |
           ]]}
         end,
@@ -1303,10 +1212,7 @@ int main()
             {6:    printf("%d\n", x);}                  |
             {6:#endif}                                  |
             ^}                                       |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*4
                                                     |
           ]]}
         end,
@@ -1324,9 +1230,7 @@ int main()
             {6:    printf("%d\n", x);}                  |
             {6:^#endif}                                  |
             }                                       |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*3
                                                     |
           ]]}
         end,
@@ -1362,40 +1266,14 @@ int main()
         expected_screen1 = function()
           screen:expect{grid=[[
             {7:string} = "test^"                         |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*14
                                                     |
           ]]}
         end,
         expected_screen2 = function()
           screen:expect{grid=[[
             ^                                        |
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
-            {1:~                                       }|
+            {1:~                                       }|*14
                                                     |
           ]]}
         end,

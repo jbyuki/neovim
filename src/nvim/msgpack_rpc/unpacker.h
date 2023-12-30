@@ -1,19 +1,15 @@
-#ifndef NVIM_MSGPACK_RPC_UNPACKER_H
-#define NVIM_MSGPACK_RPC_UNPACKER_H
+#pragma once
 
 #include <inttypes.h>
-#include <stdbool.h>
 #include <string.h>
 
 #include "mpack/mpack_core.h"
 #include "mpack/object.h"
-#include "nvim/api/private/defs.h"
 #include "nvim/api/private/dispatch.h"
-#include "nvim/api/private/helpers.h"
 #include "nvim/grid_defs.h"
-#include "nvim/memory.h"
-#include "nvim/msgpack_rpc/channel_defs.h"
-#include "nvim/types.h"
+#include "nvim/memory_defs.h"
+#include "nvim/msgpack_rpc/channel_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"
 #include "nvim/ui_client.h"
 
 struct Unpacker {
@@ -49,5 +45,3 @@ struct Unpacker {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "msgpack_rpc/unpacker.h.generated.h"
 #endif
-
-#endif  // NVIM_MSGPACK_RPC_UNPACKER_H

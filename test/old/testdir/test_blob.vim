@@ -38,6 +38,7 @@ func Test_blob_create()
       call assert_fails('VAR b = 0z001122.')
       call assert_fails('call get("", 1)', 'E896:')
       call assert_equal(0, len(v:_null_blob))
+      call assert_equal(0z, copy(v:_null_blob))
   END
   call CheckLegacyAndVim9Success(lines)
 endfunc
@@ -118,6 +119,8 @@ func Test_blob_assign()
       LET b[1 : 1] ..= 0z55
   END
   call CheckLegacyAndVim9Failure(lines, ['E734:', 'E1183:', 'E734:'])
+
+  call assert_fails('let b = readblob("a1b2c3")', 'E484:')
 endfunc
 
 func Test_blob_get_range()
@@ -210,6 +213,8 @@ func Test_blob_compare()
       call assert_true(b1 == b2)
       call assert_false(b1 is b2)
       call assert_true(b1 isnot b2)
+      call assert_true(0z != 0z10)
+      call assert_true(0z10 != 0z)
   END
   call CheckLegacyAndVim9Success(lines)
 
@@ -266,7 +271,8 @@ func Test_blob_index_assign()
       VAR b = 0z00
       LET b[1] = 0x11
       LET b[2] = 0x22
-      call assert_equal(0z001122, b)
+      LET b[0] = 0x33
+      call assert_equal(0z331122, b)
   END
   call CheckLegacyAndVim9Success(lines)
 
@@ -279,6 +285,18 @@ func Test_blob_index_assign()
   let lines =<< trim END
       VAR b = 0z00
       LET b[-2] = 0x33
+  END
+  call CheckLegacyAndVim9Failure(lines, 'E979:')
+
+  let lines =<< trim END
+      VAR b = 0z00010203
+      LET b[0 : -1] = 0z33
+  END
+  call CheckLegacyAndVim9Failure(lines, 'E979:')
+
+  let lines =<< trim END
+      VAR b = 0z00010203
+      LET b[3 : 4] = 0z3344
   END
   call CheckLegacyAndVim9Failure(lines, 'E979:')
 endfunc
@@ -370,6 +388,14 @@ func Test_blob_add()
       add(v:_null_blob, 0x22)
   END
   call CheckDefExecAndScriptFailure(lines, 'E1131:')
+
+  let lines =<< trim END
+      let b = 0zDEADBEEF
+      lockvar b
+      call add(b, 0)
+      unlockvar b
+  END
+  call CheckScriptFailure(lines, 'E741:')
 endfunc
 
 func Test_blob_empty()
@@ -420,6 +446,12 @@ func Test_blob_func_remove()
 
   let lines =<< trim END
       VAR b = 0zDEADBEEF
+      call remove(b, -10)
+  END
+  call CheckLegacyAndVim9Failure(lines, 'E979:')
+
+  let lines =<< trim END
+      VAR b = 0zDEADBEEF
       call remove(b, 3, 2)
   END
   call CheckLegacyAndVim9Failure(lines, 'E979:')
@@ -464,6 +496,9 @@ func Test_blob_func_remove()
       remove(b, 0)
   END
   call CheckScriptFailure(lines, 'E741:')
+
+  call assert_fails('echo remove(0z1020, [])', 'E745:')
+  call assert_fails('echo remove(0z1020, 0, [])', 'E745:')
 endfunc
 
 func Test_blob_read_write()
@@ -524,6 +559,7 @@ func Test_blob_filter()
       call assert_equal(0zADEF, filter(0zDEADBEEF, 'v:key % 2'))
   END
   call CheckLegacyAndVim9Success(lines)
+  call assert_fails('echo filter(0z10, "a10")', 'E121:')
 endfunc
 
 " map() item in blob
@@ -539,6 +575,7 @@ func Test_blob_map()
       call map(0z00, '[9]')
   END
   call CheckLegacyAndVim9Failure(lines, 'E978:')
+  call assert_fails('echo map(0z10, "a10")', 'E121:')
 endfunc
 
 func Test_blob_index()

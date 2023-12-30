@@ -9,7 +9,7 @@ local eval = helpers.eval
 describe('UI receives option updates', function()
   local screen
 
-  local function reset(opts, ...)
+  local function reset(screen_opts, clear_opts)
     local defaults = {
       ambiwidth='single',
       arabicshape=true,
@@ -19,9 +19,11 @@ describe('UI receives option updates', function()
       linespace=0,
       pumblend=0,
       mousefocus=false,
+      mousehide=true,
       mousemoveevent=false,
       showtabline=1,
       termguicolors=false,
+      termsync=true,
       ttimeout=true,
       ttimeoutlen=50,
       verbose=0,
@@ -36,9 +38,12 @@ describe('UI receives option updates', function()
       ext_termcolors=false,
     }
 
-    clear(...)
+    clear_opts = shallowcopy(clear_opts or {})
+    clear_opts.args_rm = clear_opts.args_rm or {}
+    table.insert(clear_opts.args_rm or {}, '--cmd')
+    clear(clear_opts)
     screen = Screen.new(20,5)
-    screen:attach(opts)
+    screen:attach(screen_opts)
     -- NB: UI test suite can be run in both "linegrid" and legacy grid mode.
     -- In both cases check that the received value is the one requested.
     defaults.ext_linegrid = screen._options.ext_linegrid or false
@@ -68,15 +73,18 @@ describe('UI receives option updates', function()
       eq({'mouse_on'}, evs)
     end)
     command("set mouse=")
+    screen:expect(function()
+      eq({'mouse_on', 'mouse_off'}, evs)
+    end)
     command("set mouse&")
     screen:expect(function()
-      eq({'mouse_on','mouse_off', 'mouse_on'}, evs)
+      eq({'mouse_on', 'mouse_off', 'mouse_on'}, evs)
     end)
     screen:detach()
-    eq({'mouse_on','mouse_off', 'mouse_on'}, evs)
+    eq({'mouse_on', 'mouse_off', 'mouse_on'}, evs)
     screen:attach()
     screen:expect(function()
-      eq({'mouse_on','mouse_off','mouse_on', 'mouse_on'}, evs)
+      eq({'mouse_on', 'mouse_off', 'mouse_on', 'mouse_on'}, evs)
     end)
   end)
 
@@ -129,6 +137,12 @@ describe('UI receives option updates', function()
 
     command("set mousefocus")
     expected.mousefocus = true
+    screen:expect(function()
+      eq(expected, screen.options)
+    end)
+
+    command("set nomousehide")
+    expected.mousehide = false
     screen:expect(function()
       eq(expected, screen.options)
     end)
@@ -198,22 +212,6 @@ describe('UI can set terminal option', function()
     -- by default we implicitly "--cmd 'set bg=light'" which ruins everything
     clear{args_rm={'--cmd'}}
     screen = Screen.new(20,5)
-  end)
-
-  it('term_background', function()
-    eq('dark', eval '&background')
-
-    screen:attach {term_background='light'}
-    eq('light', eval '&background')
-  end)
-
-  it("term_background but not if 'background' already set by user", function()
-    eq('dark', eval '&background')
-    command 'set background=dark'
-
-    screen:attach {term_background='light'}
-
-    eq('dark', eval '&background')
   end)
 
   it('term_name', function()

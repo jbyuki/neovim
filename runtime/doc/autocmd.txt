@@ -118,7 +118,7 @@ manually.  Mostly the screen will not scroll up, thus there is no hit-enter
 prompt.  When one command outputs two messages this can happen anyway.
 
 ==============================================================================
-3. Removing autocommands				*autocmd-remove*
+3. Removing autocommands			*autocmd!* *autocmd-remove*
 
 :au[tocmd]! [group] {event} {aupat} [++once] [++nested] {cmd}
 			Remove all autocommands associated with {event} and
@@ -293,7 +293,7 @@ BufReadPre			When starting to edit a new buffer, before
 				reading the file into the buffer.  Not used
 				if the file doesn't exist.
 							*BufUnload*
-BufUnload			Before unloading a buffer, when the text in 
+BufUnload			Before unloading a buffer, when the text in
 				the buffer is going to be freed.
 				After BufWritePost.
 				Before BufDelete.
@@ -590,7 +590,7 @@ FileChangedShell		When Vim notices that the modification time of
 				Triggered for each changed file, after:
 				- executing a shell command
 				- |:checktime|
-				- |FocusGained| 
+				- |FocusGained|
 
 				Not used when 'autoread' is set and the buffer
 				was not changed.  If a FileChangedShell
@@ -778,11 +778,10 @@ OptionSet			After setting an option (except during
 				This does not set |<abuf>|, you could use
 				|bufnr()|.
 
-				Note that when setting a |global-local| string
-				option with |:set|, then |v:option_old| is the
-				old global value. However, for all other kinds
-				of options (local string options, global-local
-				number options, ...) it is the old local
+				Note that when setting a |global-local| option
+				with |:set|, then |v:option_old| is the old
+				global value. However, for all options that
+				are not global-local it is the old local
 				value.
 
 				OptionSet is not triggered on startup and for
@@ -862,6 +861,27 @@ RecordingLeave			When a macro stops recording.
 				Sets these |v:event| keys:
 				    regcontents
 				    regname
+							*SafeState*
+SafeState			When nothing is pending, going to wait for the
+				user to type a character.
+				This will not be triggered when:
+				- an operator is pending
+				- a register was entered with "r
+				- halfway executing a command
+				- executing a mapping
+				- there is typeahead
+				- Insert mode completion is active
+				- Command line completion is active
+				You can use `mode()` to find out what state
+				Vim is in.  That may be:
+				- VIsual mode
+				- Normal mode
+				- Insert mode
+				- Command-line mode
+				Depending on what you want to do, you may also
+				check more with `state()`, e.g. whether the
+				screen was scrolled for messages.
+
 							*SessionLoadPost*
 SessionLoadPost			After loading the session file created using
 				the |:mksession| command.
@@ -967,12 +987,25 @@ TermClose			When a |terminal| job ends.
 				Sets these |v:event| keys:
 				    status
 							*TermResponse*
-TermResponse			After the response to t_RV is received from
-				the terminal.  The value of |v:termresponse|
-				can be used to do things depending on the
-				terminal version.  May be triggered halfway
-				through another event (file I/O, a shell
-				command, or anything else that takes time).
+TermResponse			When Nvim receives an OSC or DCS response from
+				the terminal.  Sets |v:termresponse|. When used
+				from Lua, the response string is included in
+				the "data" field of the autocommand callback.
+				May be triggered halfway through another event
+				(file I/O, a shell command, or anything else
+				that takes time). Example: >lua
+
+				-- Query the terminal palette for the RGB value of color 1
+				-- (red) using OSC 4
+				vim.api.nvim_create_autocmd('TermResponse', {
+				  once = true,
+				  callback = function(args)
+				    local resp = args.data
+				    local r, g, b = resp:match("\027%]4;1;rgb:(%w+)/(%w+)/(%w+)")
+				  end,
+				})
+				io.stdout:write("\027]4;1;?\027\\")
+<
 							*TextChanged*
 TextChanged			After a change was made to the text in the
 				current buffer in Normal mode.  That is after

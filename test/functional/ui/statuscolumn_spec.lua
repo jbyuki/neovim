@@ -9,6 +9,7 @@ local exec_lua = helpers.exec_lua
 local feed = helpers.feed
 local meths = helpers.meths
 local pcall_err = helpers.pcall_err
+local assert_alive = helpers.assert_alive
 
 local mousemodels = { "extend", "popup", "popup_setpos" }
 
@@ -22,7 +23,7 @@ describe('statuscolumn', function()
   end)
 
   it("fails with invalid 'statuscolumn'", function()
-    command([[set stc=%{v:relnum?v:relnum:(v:lnum==5?invalid:v:lnum)}\ ]])
+    command([[set stc=%{v:relnum?v:relnum:(v:lnum==5?'truncate':v:lnum)}%{!v:relnum&&v:lnum==5?invalid:''}\ ]])
     screen:expect([[
       4  aaaaa                                             |
       3  aaaaa                                             |
@@ -42,25 +43,36 @@ describe('statuscolumn', function()
     command('norm 5G')
     eq('Vim(redraw):E121: Undefined variable: invalid', pcall_err(command, 'redraw!'))
     eq('', eval('&statuscolumn'))
+    screen:expect([[
+       4 aaaaa                                             |
+       5 ^aaaaa                                             |
+       6 aaaaa                                             |
+       7 aaaaa                                             |
+       8 aaaaa                                             |
+       9 aaaaa                                             |
+      10 aaaaa                                             |
+      11 aaaaa                                             |
+      12 aaaaa                                             |
+      13 aaaaa                                             |
+      14 aaaaa                                             |
+      15 aaaaa                                             |
+      16 aaaaa                                             |
+                                                           |
+    ]])
   end)
 
   it("widens with irregular 'statuscolumn' width", function()
-    command([[set stc=%{v:relnum?v:relnum:(v:lnum==5?'bbbbb':v:lnum)}]])
-    command('norm 5G | redraw!')
+    screen:try_resize(screen._width, 4)
+    command([=[
+      set stc=%{v:relnum?v:relnum:(v:lnum==5?'bbbbb':v:lnum)}
+      let ns = nvim_create_namespace('')
+      call nvim_buf_set_extmark(0, ns, 3, 0, {'virt_text':[['virt_text']]})
+      norm 5G | redraw!
+    ]=])
     screen:expect([[
-      1    aaaaa                                           |
+      1    aaaaa virt_text                                 |
       bbbbba^eaaa                                           |
       1    aaaaa                                           |
-      2    aaaaa                                           |
-      3    aaaaa                                           |
-      4    aaaaa                                           |
-      5    aaaaa                                           |
-      6    aaaaa                                           |
-      7    aaaaa                                           |
-      8    aaaaa                                           |
-      9    aaaaa                                           |
-      10   aaaaa                                           |
-      11   aaaaa                                           |
                                                            |
     ]])
   end)
@@ -356,6 +368,65 @@ describe('statuscolumn', function()
       {2: }{1:  │}{2:                  }{1: }aaaaaaaaaaaaaaaaaaaa          |
                                                            |
     ]])
+    -- Also test fold and sign column when 'cpoptions' includes "n"
+    command('set cpoptions+=n')
+    feed('Hgjg0')
+    screen:expect([[
+      {2: }{4: 0│}{1:>>}{2:                }{4: }{5:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {2:                   }{5:^aaaaaaaaaaaaaaaaaaaa              }|
+      {2: }{1: 3│}{0:>!}{2:                }{1: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {2:                   }aaaaaaaaaaaaaaaaaaaa              |
+      {2: }{1: 2│>>}{0:>!}{1:>>}{0:>!}{1:>>}{0:>!}{1:>>}{0:>!}{1:>> }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {2:                   }aaaaaaaaaaaaaaaaaaaa              |
+      {2: }{1: 1│}{2:                  }{1: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {2:                   }aaaaaaaaaaaaaaaaaaaa              |
+      {2:+}{1: 4│}{2:                  }{1: }{3:+--  1 line: aaaaaaaaaaaaaaaaa}|
+      {2: }{1: 1│}{2:                  }{1: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {2:                   }aaaaaaaaaaaaaaaaaaaa              |
+      {2: }{1: 2│}{2:                  }{1: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {2:                   }aaaaaaaaaaaaaaaaaaaa              |
+                                                           |
+    ]])
+    command('set breakindent')
+    command('sign unplace 2')
+    feed('J2gjg0')
+    screen:expect([[
+      {2: }{4: 0│}{1:>>}{2:                }{4: }{5:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {2:                   }    {5:aaaaaaaaaaaaaaaaaaaa aaaaaaaaa}|
+      {2:                   }    {5:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {2:                   }    {5:^aaaaaaaaaaa                   }|
+      {2: }{1: 1│>>}{0:>!}{1:>>}{0:>!}{1:>>}{0:>!}{1:>>}{0:>!}{1:>> }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {2:                   }    aaaaaaaaaaaaaaaaaaaa          |
+      {2: }{1: 2│}{2:                  }{1: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {2:                   }    aaaaaaaaaaaaaaaaaaaa          |
+      {2:+}{1: 3│}{2:                  }{1: }{3:+--  1 line: aaaaaaaaaaaaaaaaa}|
+      {2: }{1: 4│}{2:                  }{1: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {2:                   }    aaaaaaaaaaaaaaaaaaaa          |
+      {2: }{1: 5│}{2:                  }{1: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {2:                   }    aaaaaaaaaaaaaaaaaaaa          |
+                                                           |
+    ]])
+    command('set nobreakindent')
+    feed('$g0')
+    screen:expect([[
+      {2: }{4: 0│}{1:>>}{2:                }{4: }{5:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {2:                   }{5:aaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaa}|
+      {2:                   }{5:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {2:                   }{5:^aaa                               }|
+      {2: }{1: 1│>>}{0:>!}{1:>>}{0:>!}{1:>>}{0:>!}{1:>>}{0:>!}{1:>> }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {2:                   }aaaaaaaaaaaaaaaaaaaa              |
+      {2: }{1: 2│}{2:                  }{1: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {2:                   }aaaaaaaaaaaaaaaaaaaa              |
+      {2:+}{1: 3│}{2:                  }{1: }{3:+--  1 line: aaaaaaaaaaaaaaaaa}|
+      {2: }{1: 4│}{2:                  }{1: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {2:                   }aaaaaaaaaaaaaaaaaaaa              |
+      {2: }{1: 5│}{2:                  }{1: }aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {2:                   }aaaaaaaaaaaaaaaaaaaa              |
+                                                           |
+    ]])
+    command('silent undo')
+    feed('8gg')
+    command('set cpoptions-=n')
     -- Status column is re-evaluated for virt_lines, buffer line, and wrapped line
     exec_lua([[
       vim.api.nvim_buf_set_extmark(0, ns, 5, 0, {
@@ -370,7 +441,7 @@ describe('statuscolumn', function()
       {1:buffer  0 5}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       {1:wrapped 1 5}aaaaaaaa                                  |
       {1:virtual-2 5}virt_line                                 |
-      {1:virtual-2 5}virt_line above                           |
+      {1:virtual-1 5}virt_line above                           |
       {1:buffer  0 6}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       {1:wrapped 1 6}aaaaaaaa                                  |
       {1:buffer  0 7}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
@@ -384,21 +455,19 @@ describe('statuscolumn', function()
     exec_lua([[
       vim.api.nvim_buf_set_extmark(0, ns, 15, 0, { virt_lines = {{{"END", ""}}} })
     ]])
-    feed('Gzz')
+    feed('GkJzz')
     screen:expect([[
+      {1:buffer  0 12}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {1:wrapped 1 12}aaaaaaaaa                                |
       {1:buffer  0 13}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       {1:wrapped 1 13}aaaaaaaaa                                |
       {1:buffer  0 14}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       {1:wrapped 1 14}aaaaaaaaa                                |
-      {1:buffer  0 15}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      {1:wrapped 1 15}aaaaaaaaa                                |
-      {4:buffer  0 16}{5:^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
-      {4:wrapped 1 16}{5:aaaaaaaaa                                }|
-      {1:virtual-1 16}END                                      |
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
+      {4:buffer  0 15}{5:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {4:wrapped 1 15}{5:aaaaaaaaa^ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {4:wrapped 2 15}{5:aaaaaaaaaaaaaaaaaaa                      }|
+      {1:virtual-1 15}END                                      |
+      {0:~                                                    }|*3
                                                            |
     ]])
     -- Also test virt_lines when 'cpoptions' includes "n"
@@ -408,18 +477,18 @@ describe('statuscolumn', function()
       vim.api.nvim_buf_set_extmark(0, ns, 14, 0, { virt_lines = {{{"virt_line2", ""}}} })
     ]])
     screen:expect([[
+      {1:buffer  0 12}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      aaaaaaaaa                                            |
       {1:buffer  0 13}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       aaaaaaaaa                                            |
       {1:buffer  0 14}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
       aaaaaaaaa                                            |
-      {1:buffer  0 15}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaa                                            |
-      {1:virtual-2 15}virt_line1                               |
+      {4:buffer  0 15}{5:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {5:aaaaaaaaa^ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {5:aaaaaaa                                              }|
+      {1:virtual-3 15}virt_line1                               |
       {1:virtual-2 15}virt_line2                               |
-      {1:buffer  0 16}{5:^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
-      {5:aaaaaaaaa                                            }|
-      {1:virtual-1 16}END                                      |
-      {0:~                                                    }|
+      {1:virtual-1 15}END                                      |
       {0:~                                                    }|
                                                            |
     ]])
@@ -473,6 +542,24 @@ describe('statuscolumn', function()
         eq('0 3 r 7', eval("g:testvar"))
         meths.input_mouse('right', 'press', '', 0, 3, 0)
         eq('0 4 r 7', eval("g:testvar"))
+
+        command('rightbelow vsplit')
+        meths.input_mouse('left', 'press', '', 0, 0, 27)
+        eq('0 1 l 4', eval("g:testvar"))
+        meths.input_mouse('right', 'press', '', 0, 3, 27)
+        eq('0 1 r 7', eval("g:testvar"))
+        command('setlocal rightleft')
+        meths.input_mouse('left', 'press', '', 0, 0, 52)
+        eq('0 1 l 4', eval("g:testvar"))
+        meths.input_mouse('right', 'press', '', 0, 3, 52)
+        eq('0 1 r 7', eval("g:testvar"))
+        command('wincmd H')
+        meths.input_mouse('left', 'press', '', 0, 0, 25)
+        eq('0 1 l 4', eval("g:testvar"))
+        meths.input_mouse('right', 'press', '', 0, 3, 25)
+        eq('0 1 r 7', eval("g:testvar"))
+        command('close')
+
         command('set laststatus=2 winbar=%f')
         command('let g:testvar = ""')
         -- Check that winbar click doesn't register as statuscolumn click
@@ -489,19 +576,9 @@ describe('statuscolumn', function()
       it('clicks and highlights work with control characters', function()
         meths.set_option_value('statuscolumn', '\t%#NonText#\1%0@MyClickFunc@\t\1%T\t%##\1', {})
         screen:expect{grid=[[
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
+          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |*4
           {1:^I}{0:^A^I^A^I}{1:^A}^aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
-          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |
+          {1:^I}{0:^A^I^A^I}{1:^A}aaaaa                                    |*8
                                                                |
         ]], attr_ids={
           [0] = {foreground = Screen.colors.Blue, bold = true};  -- NonText
@@ -516,11 +593,52 @@ describe('statuscolumn', function()
         meths.input_mouse('left', 'press', '', 0, 7, 7)
         eq('0 1 l 11', eval("g:testvar"))
       end)
+
+      it('popupmenu callback does not drag mouse on close', function()
+        screen:try_resize(screen._width, 2)
+        screen:set_default_attr_ids({
+          [0] = {foreground = Screen.colors.Brown},
+          [1] = {background = Screen.colors.Plum1},
+        })
+        meths.set_option_value('statuscolumn', '%0@MyClickFunc@%l%T', {})
+        exec([[
+          function! MyClickFunc(minwid, clicks, button, mods)
+            let g:testvar = printf("%d %d %s %d", a:minwid, a:clicks, a:button, getmousepos().line)
+            menu PopupStc.Echo <cmd>echo g:testvar<CR>
+            popup PopupStc
+          endfunction
+        ]])
+        -- clicking an item does not drag mouse
+        meths.input_mouse('left', 'press', '', 0, 0, 0)
+        screen:expect([[
+          {0:8 }^aaaaa                                              |
+           {1: Echo }                                              |
+        ]])
+        meths.input_mouse('left', 'press', '', 0, 1, 5)
+        meths.input_mouse('left', 'release', '', 0, 1, 5)
+        screen:expect([[
+          {0:8 }^aaaaa                                              |
+          0 1 l 8                                              |
+        ]])
+        command('echo')
+        -- clicking outside to close the menu does not drag mouse
+        meths.input_mouse('left', 'press', '', 0, 0, 0)
+        screen:expect([[
+          {0:8 }^aaaaa                                              |
+           {1: Echo }                                              |
+        ]])
+        meths.input_mouse('left', 'press', '', 0, 0, 10)
+        meths.input_mouse('left', 'release', '', 0, 0, 10)
+        screen:expect([[
+          {0:8 }^aaaaa                                              |
+                                                               |
+        ]])
+      end)
     end)
   end
 
-  it('click labels do not leak memory', function()
-    command([[
+  it('click labels do not leak memory #21878', function()
+    exec([[
       set laststatus=2
       setlocal statuscolumn=%0@MyClickFunc@abcd%T
       4vsplit
@@ -530,6 +648,18 @@ describe('statuscolumn', function()
       only
       redraw
     ]])
+  end)
+
+  it('click labels do not crash when initial width is 0 #24428', function()
+    exec([[
+      set nonumber
+      bwipe!
+      setlocal statuscolumn=abcd
+      redraw
+      setlocal statuscolumn=%0@MyClickFunc@abcd%T
+      redraw
+    ]])
+    assert_alive()
   end)
 
   it('works with foldcolumn', function()
@@ -576,8 +706,7 @@ describe('statuscolumn', function()
       ---------8 aaaaa                                     |
       virt                                                 |
       ---------9 aaaaa                                     |
-      ~                                                    |
-      ~                                                    |
+      ~                                                    |*2
                                                            |
     ]])
   end)
@@ -592,11 +721,7 @@ describe('statuscolumn', function()
       [No Name] [+]                                        |
       :1set stc=%^l                                         |
       :2                                                   |
-      ~                                                    |
-      ~                                                    |
-      ~                                                    |
-      ~                                                    |
-      ~                                                    |
+      ~                                                    |*5
       [Command Line]                                       |
       :                                                    |
     ]])
@@ -623,9 +748,7 @@ describe('statuscolumn', function()
     screen:expect([[
       aaaaa                                                |
       ^aaaaa                                                |
-      aaaaa                                                |
-      aaaaa                                                |
-      aaaaa                                                |
+      aaaaa                                                |*3
                                                            |
     ]])
     -- width correctly estimated with "w_nrwidth_line_count" when setting 'nu'
@@ -656,6 +779,8 @@ describe('statuscolumn', function()
         end
         return vim.v.lnum .. '%=' .. sign
       end
+      vim.o.number = true
+      vim.o.numberwidth = 2
       vim.o.statuscolumn = "%!v:lua.StatusCol()"
     ]])
     command('sign place 1 line=2 name=sign')

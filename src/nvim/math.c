@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // uncrustify:off
 #include <math.h>
 // uncrustify:on
@@ -10,16 +7,16 @@
 #include "nvim/math.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
-# include "math.c.generated.h"  // IWYU pragma: export
+# include "math.c.generated.h"
 #endif
 
 int xfpclassify(double d)
+  FUNC_ATTR_CONST
 {
   uint64_t m;
-  int e;
 
   memcpy(&m, &d, sizeof(m));
-  e = 0x7ff & (m >> 52);
+  int e = 0x7ff & (m >> 52);
   m = 0xfffffffffffffULL & m;
 
   switch (e) {
@@ -33,11 +30,39 @@ int xfpclassify(double d)
 }
 
 int xisinf(double d)
+  FUNC_ATTR_CONST
 {
   return FP_INFINITE == xfpclassify(d);
 }
 
 int xisnan(double d)
+  FUNC_ATTR_CONST
 {
   return FP_NAN == xfpclassify(d);
+}
+
+/// Count trailing zeroes at the end of bit field.
+int xctz(uint64_t x)
+{
+  // If x == 0, that means all bits are zeroes.
+  if (x == 0) {
+    return 8 * sizeof(x);
+  }
+
+  // Use compiler builtin if possible.
+#if defined(__clang__) || (defined(__GNUC__) && (__GNUC__ >= 4))
+  return __builtin_ctzll(x);
+#else
+  int count = 0;
+  // Set x's trailing zeroes to ones and zero the rest.
+  x = (x ^ (x - 1)) >> 1;
+
+  // Increment count until there are just zero bits remaining.
+  while (x) {
+    count++;
+    x >>= 1;
+  }
+
+  return count;
+#endif
 }

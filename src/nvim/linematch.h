@@ -1,10 +1,9 @@
-#ifndef NVIM_LINEMATCH_H
-#define NVIM_LINEMATCH_H
+#pragma once
 
-#include <stddef.h>
+#include <stddef.h>  // IWYU pragma: keep
+
+#include "nvim/pos_defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "linematch.h.generated.h"
 #endif
-
-#endif  // NVIM_LINEMATCH_H

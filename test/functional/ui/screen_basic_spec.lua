@@ -4,14 +4,19 @@ local spawn, set_session, clear = helpers.spawn, helpers.set_session, helpers.cl
 local feed, command = helpers.feed, helpers.command
 local insert = helpers.insert
 local eq = helpers.eq
-local eval = helpers.eval
 local funcs, meths = helpers.funcs, helpers.meths
 
 describe('screen', function()
   local screen
-  local nvim_argv = {helpers.nvim_prog, '-u', 'NONE', '-i', 'NONE', '-N',
-                     '--cmd', 'set shortmess+=I background=light noswapfile belloff= noshowcmd noruler',
-                     '--embed'}
+  local nvim_argv = {
+    helpers.nvim_prog,
+    '-u', 'NONE',
+    '-i', 'NONE',
+    '-n',
+    '--cmd', 'set shortmess+=I background=light noswapfile belloff= noshowcmd noruler',
+    '--cmd', 'colorscheme vim',
+    '--embed',
+  }
 
   before_each(function()
     local screen_nvim = spawn(nvim_argv)
@@ -25,19 +30,9 @@ describe('screen', function()
   end)
 
   it('default initial screen', function()
-      screen:expect([[
+    screen:expect([[
       ^                                                     |
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
+      {0:~                                                    }|*11
       {1:[No Name]                                            }|
                                                            |
     ]])
@@ -62,34 +57,6 @@ local function screen_tests(linegrid)
       [7] = {bold = true, foreground = Screen.colors.SeaGreen},
       [8] = {foreground = Screen.colors.White, background = Screen.colors.Red},
     } )
-  end)
-
-  describe(':suspend', function()
-    it('is forwarded to the UI', function()
-      local function check()
-        eq(true, screen.suspended)
-      end
-
-      command('let g:ev = []')
-      command('autocmd VimResume  * :call add(g:ev, "r")')
-      command('autocmd VimSuspend * :call add(g:ev, "s")')
-
-      eq(false, screen.suspended)
-      command('suspend')
-      eq({ 's', 'r' }, eval('g:ev'))
-
-      screen:expect(check)
-      screen.suspended = false
-
-      feed('<c-z>')
-      eq({ 's', 'r', 's', 'r' }, eval('g:ev'))
-
-      screen:expect(check)
-      screen.suspended = false
-
-      command('suspend')
-      eq({ 's', 'r', 's', 'r', 's', 'r' }, eval('g:ev'))
-    end)
   end)
 
   describe('bell/visual bell', function()
@@ -148,17 +115,7 @@ local function screen_tests(linegrid)
       command('set laststatus=2')
       screen:expect([[
         ^                                                     |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*11
         {1:[No Name]                                            }|
                                                              |
       ]])
@@ -166,17 +123,7 @@ local function screen_tests(linegrid)
       feed('<c-l>')
       screen:expect{grid=[[
         ^                                                     |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*11
         {1:[No Name]                                            }|
                                                              |
       ]], reset=true}
@@ -184,17 +131,10 @@ local function screen_tests(linegrid)
       command('split')
       screen:expect([[
         ^                                                     |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*5
         {1:[No Name]                                            }|
                                                              |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*4
         {3:[No Name]                                            }|
                                                              |
       ]])
@@ -202,17 +142,10 @@ local function screen_tests(linegrid)
       feed('<c-l>')
       screen:expect{grid=[[
         ^                                                     |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*5
         {1:[No Name]                                            }|
                                                              |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*4
         {3:[No Name]                                            }|
                                                              |
       ]], reset=true}
@@ -225,17 +158,10 @@ local function screen_tests(linegrid)
         command('sp')
         screen:expect([[
           ^                                                     |
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
+          {0:~                                                    }|*5
           {1:[No Name]                                            }|
                                                                |
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
+          {0:~                                                    }|*4
           {3:[No Name]                                            }|
                                                                |
         ]])
@@ -246,17 +172,10 @@ local function screen_tests(linegrid)
         command('resize 8')
         screen:expect([[
           ^                                                     |
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
+          {0:~                                                    }|*7
           {1:[No Name]                                            }|
                                                                |
-          {0:~                                                    }|
-          {0:~                                                    }|
+          {0:~                                                    }|*2
           {3:[No Name]                                            }|
                                                                |
         ]])
@@ -268,34 +187,20 @@ local function screen_tests(linegrid)
         command('vsp')
         screen:expect([[
           ^                    │                │               |
-          {0:~                   }│{0:~               }│{0:~              }|
-          {0:~                   }│{0:~               }│{0:~              }|
-          {0:~                   }│{0:~               }│{0:~              }|
-          {0:~                   }│{0:~               }│{0:~              }|
-          {0:~                   }│{0:~               }│{0:~              }|
+          {0:~                   }│{0:~               }│{0:~              }|*5
           {1:[No Name]            }{3:[No Name]        [No Name]      }|
                                                                |
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
+          {0:~                                                    }|*4
           {3:[No Name]                                            }|
                                                                |
         ]])
         insert('hello')
         screen:expect([[
           hell^o               │hello           │hello          |
-          {0:~                   }│{0:~               }│{0:~              }|
-          {0:~                   }│{0:~               }│{0:~              }|
-          {0:~                   }│{0:~               }│{0:~              }|
-          {0:~                   }│{0:~               }│{0:~              }|
-          {0:~                   }│{0:~               }│{0:~              }|
+          {0:~                   }│{0:~               }│{0:~              }|*5
           {1:[No Name] [+]        }{3:[No Name] [+]    [No Name] [+]  }|
           hello                                                |
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
-          {0:~                                                    }|
+          {0:~                                                    }|*4
           {3:[No Name] [+]                                        }|
                                                                |
         ]])
@@ -311,17 +216,10 @@ local function screen_tests(linegrid)
       insert('hello')
       screen:expect([[
         hell^o               │hello           │hello          |
-        {0:~                   }│{0:~               }│{0:~              }|
-        {0:~                   }│{0:~               }│{0:~              }|
-        {0:~                   }│{0:~               }│{0:~              }|
-        {0:~                   }│{0:~               }│{0:~              }|
-        {0:~                   }│{0:~               }│{0:~              }|
+        {0:~                   }│{0:~               }│{0:~              }|*5
         {1:[No Name] [+]        }{3:[No Name] [+]    [No Name] [+]  }|
         hello                                                |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*4
         {3:[No Name] [+]                                        }|
                                                              |
       ]])
@@ -331,33 +229,17 @@ local function screen_tests(linegrid)
       screen:expect([[
         {4: }{5:4}{4:+ [No Name] }{2: + [No Name] }{3:                         }{4:X}|
         hell^o2                                               |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*11
                                                              |
       ]])
       command('tabprevious')
       screen:expect([[
         {2: }{6:4}{2:+ [No Name] }{4: + [No Name] }{3:                         }{4:X}|
         hell^o               │hello           │hello          |
-        {0:~                   }│{0:~               }│{0:~              }|
-        {0:~                   }│{0:~               }│{0:~              }|
-        {0:~                   }│{0:~               }│{0:~              }|
-        {0:~                   }│{0:~               }│{0:~              }|
-        {0:~                   }│{0:~               }│{0:~              }|
+        {0:~                   }│{0:~               }│{0:~              }|*5
         {1:[No Name] [+]        }{3:[No Name] [+]    [No Name] [+]  }|
         hello                                                |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*3
         {3:[No Name] [+]                                        }|
                                                              |
       ]])
@@ -368,34 +250,14 @@ local function screen_tests(linegrid)
       screen:expect([[
         {4: [No Name] }{2: [No Name] }{3:                              }{4:X}|
         ^                                                     |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*11
                                                              |
       ]])
 
       feed(':echo "'..string.rep('x\\n', 11)..'"<cr>')
       screen:expect([[
         {1:                                                     }|
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
+        x                                                    |*11
                                                              |
         {7:Press ENTER or type command to continue}^              |
       ]])
@@ -404,34 +266,13 @@ local function screen_tests(linegrid)
       screen:expect([[
         {4: [No Name] }{2: [No Name] }{3:                              }{4:X}|
         ^                                                     |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*11
                                                              |
       ]])
 
       feed(':echo "'..string.rep('x\\n', 12)..'"<cr>')
       screen:expect([[
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
-        x                                                    |
+        x                                                    |*12
                                                              |
         {7:Press ENTER or type command to continue}^              |
       ]])
@@ -440,17 +281,7 @@ local function screen_tests(linegrid)
       screen:expect([[
         {4: [No Name] }{2: [No Name] }{3:                              }{4:X}|
         ^                                                     |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*11
                                                              |
       ]])
 
@@ -462,17 +293,7 @@ local function screen_tests(linegrid)
       command('vsplit')
       screen:expect([[
         ^foo                       │foo                       |
-        foo                       │foo                       |
-        foo                       │foo                       |
-        foo                       │foo                       |
-        foo                       │foo                       |
-        foo                       │foo                       |
-        foo                       │foo                       |
-        foo                       │foo                       |
-        foo                       │foo                       |
-        foo                       │foo                       |
-        foo                       │foo                       |
-        foo                       │foo                       |
+        foo                       │foo                       |*11
         {1:[No Name] [+]              }{3:[No Name] [+]             }|
                                                              |
       ]])
@@ -480,17 +301,8 @@ local function screen_tests(linegrid)
       feed('<PageDown>')
       screen:expect([[
         ^foo                       │foo                       |
-        foo                       │foo                       |
-        foo                       │foo                       |
-        foo                       │foo                       |
-        bar                       │foo                       |
-        bar                       │foo                       |
-        bar                       │foo                       |
-        bar                       │foo                       |
-        bar                       │foo                       |
-        bar                       │foo                       |
-        bar                       │foo                       |
-        bar                       │foo                       |
+        foo                       │foo                       |*3
+        bar                       │foo                       |*8
         {1:[No Name] [+]              }{3:[No Name] [+]             }|
                                                              |
       ]])
@@ -498,17 +310,8 @@ local function screen_tests(linegrid)
       screen:expect([[
         {4: }{5:2}{4:+ [No Name] }{2: + [No Name] }{3:                         }{4:X}|
         ^foo                                                  |
-        foo                                                  |
-        foo                                                  |
-        foo                                                  |
-        bar                                                  |
-        bar                                                  |
-        bar                                                  |
-        bar                                                  |
-        bar                                                  |
-        bar                                                  |
-        bar                                                  |
-        bar                                                  |
+        foo                                                  |*3
+        bar                                                  |*8
                                                              |
       ]])
     end)
@@ -520,17 +323,7 @@ local function screen_tests(linegrid)
       screen:expect([[
         {2: + [No Name] }{4: [No Name] }{3:                            }{4:X}|
         hell^o                                                |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*11
                                                              |
       ]])
 
@@ -538,17 +331,7 @@ local function screen_tests(linegrid)
       screen:expect([[
         {4: + [No Name] }{2: [No Name] }{3:                            }{4:X}|
         ^                                                     |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*11
                                                              |
       ]])
     end)
@@ -561,16 +344,7 @@ local function screen_tests(linegrid)
         line 1                                               |
         line 2                                               |
         ^                                                     |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*10
         {2:-- INSERT --}                                         |
       ]])
     end)
@@ -586,17 +360,7 @@ local function screen_tests(linegrid)
       screen:expect([[
         0123^456                                              |
         789                                                  |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*11
                                            1,5           All |
       ]])
     end)
@@ -607,18 +371,7 @@ local function screen_tests(linegrid)
       feed(':ls')
       screen:expect([[
                                                              |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*12
         :ls^                                                  |
       ]])
     end)
@@ -627,15 +380,7 @@ local function screen_tests(linegrid)
       feed(':ls<cr>')
       screen:expect([[
                                                              |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*9
         {1:                                                     }|
         :ls                                                  |
           1 %a   "[No Name]"                    line 1       |
@@ -812,9 +557,7 @@ local function screen_tests(linegrid)
       feed('iresize')
       screen:expect([[
         resize^                   |
-        {0:~                        }|
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*3
         {2:-- INSERT --}             |
       ]])
     end)
@@ -824,7 +567,7 @@ local function screen_tests(linegrid)
       screen:try_resize(1, 1)
       screen:expect([[
         resize^      |
-        {2:-- INSERT -} |
+        {2:-- INSERT --}|
       ]])
 
       feed('<esc>:ls')
@@ -844,17 +587,14 @@ local function screen_tests(linegrid)
       screen:expect([[
         {2: + [No Name] }{3:            }|
         resiz^e                   |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       screen:try_resize(30, 6)
       screen:expect([[
         {2: + [No Name] }{3:                 }|
         resiz^e                        |
-        {0:~                             }|
-        {0:~                             }|
-        {0:~                             }|
+        {0:~                             }|*3
                                       |
       ]])
       eq(29, meths.get_var('echospace'))
@@ -863,15 +603,7 @@ local function screen_tests(linegrid)
     it('messages from the same Ex command as resize are visible #22225', function()
       feed(':set columns=20 | call<CR>')
       screen:expect([[
-                            |
-                            |
-                            |
-                            |
-                            |
-                            |
-                            |
-                            |
-                            |
+                            |*9
         {1:                    }|
         {8:E471: Argument requi}|
         {8:red}                 |
@@ -881,53 +613,25 @@ local function screen_tests(linegrid)
       feed('<CR>')
       screen:expect([[
         ^                    |
-        {0:~                   }|
-        {0:~                   }|
-        {0:~                   }|
-        {0:~                   }|
-        {0:~                   }|
-        {0:~                   }|
-        {0:~                   }|
-        {0:~                   }|
-        {0:~                   }|
-        {0:~                   }|
-        {0:~                   }|
-        {0:~                   }|
+        {0:~                   }|*12
                             |
       ]])
       feed(':set columns=0<CR>')
       screen:expect([[
-                    |
-                    |
-                    |
-                    |
-                    |
-        {1:            }|
-        {8:E594: Need a}|
-        {8:t least 12 c}|
-        {8:olumns: colu}|
-        {8:mns=0}       |
-        {7:Press ENTER }|
-        {7:or type comm}|
-        {7:and to conti}|
-        {7:nue}^         |
+                            |
+        {0:~                   }|*7
+        {1:                    }|
+        {8:E594: Need at least }|
+        {8:12 columns: columns=}|
+        {8:0}                   |
+        {7:Press ENTER or type }|
+        {7:command to continue}^ |
       ]])
       feed('<CR>')
       screen:expect([[
-        ^            |
-        {0:~           }|
-        {0:~           }|
-        {0:~           }|
-        {0:~           }|
-        {0:~           }|
-        {0:~           }|
-        {0:~           }|
-        {0:~           }|
-        {0:~           }|
-        {0:~           }|
-        {0:~           }|
-        {0:~           }|
-                    |
+        ^                    |
+        {0:~                   }|*12
+                            |
       ]])
     end)
   end)
@@ -938,15 +642,7 @@ local function screen_tests(linegrid)
       feed(':ls<CR>')
       screen:expect([[
                                                              |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*9
         {1:                                                     }|
         :ls                                                  |
           1 %a   "[No Name]"                    line 1       |
@@ -955,18 +651,7 @@ local function screen_tests(linegrid)
       feed('<F1>')
       screen:expect([[
         ^                                                     |
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
-        {0:~                                                    }|
+        {0:~                                                    }|*12
         TEST                                                 |
       ]])
     end)
@@ -979,35 +664,13 @@ local function screen_tests(linegrid)
     feed('ifooj')
     screen:expect([[
       foo^j                                                 |
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
+      {0:~                                                    }|*12
       {2:-- INSERT --}                                         |
     ]])
     feed('k')
     screen:expect([[
       fo^o                                                  |
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
-      {0:~                                                    }|
+      {0:~                                                    }|*12
                                                            |
     ]])
   end)
@@ -1026,9 +689,15 @@ describe('Screen default colors', function()
   local function startup(light, termcolors)
     local extra = (light and ' background=light') or ''
 
-    local nvim_argv = {helpers.nvim_prog, '-u', 'NONE', '-i', 'NONE', '-N',
-                       '--cmd', 'set shortmess+=I noswapfile belloff= noshowcmd noruler'..extra,
-                       '--embed'}
+    local nvim_argv = {
+      helpers.nvim_prog,
+      '-u', 'NONE',
+      '-i', 'NONE',
+      '-N',
+      '--cmd', 'set shortmess+=I noswapfile belloff= noshowcmd noruler'..extra,
+      '--cmd', 'colorscheme vim',
+      '--embed',
+    }
     local screen_nvim = spawn(nvim_argv)
     set_session(screen_nvim)
     screen = Screen.new()
@@ -1046,7 +715,7 @@ describe('Screen default colors', function()
   it('can be set to light', function()
     startup(true, false)
     screen:expect{condition=function()
-      eq({rgb_fg=Screen.colors.White, rgb_bg=0, rgb_sp=Screen.colors.Red,
+      eq({rgb_bg=Screen.colors.White, rgb_fg=0, rgb_sp=Screen.colors.Red,
           cterm_bg=0, cterm_fg=0}, screen.default_colors)
     end}
   end)

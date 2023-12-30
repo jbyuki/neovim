@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /// change.c: functions related to changing text
 
 #include <assert.h>
@@ -8,11 +5,10 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "nvim/ascii.h"
-#include "nvim/assert.h"
+#include "nvim/ascii_defs.h"
+#include "nvim/assert_defs.h"
 #include "nvim/autocmd.h"
 #include "nvim/buffer.h"
-#include "nvim/buffer_defs.h"
 #include "nvim/buffer_updates.h"
 #include "nvim/change.h"
 #include "nvim/charset.h"
@@ -26,12 +22,11 @@
 #include "nvim/fold.h"
 #include "nvim/gettext.h"
 #include "nvim/globals.h"
-#include "nvim/grid_defs.h"
-#include "nvim/highlight_defs.h"
+#include "nvim/highlight.h"
 #include "nvim/indent.h"
 #include "nvim/indent_c.h"
 #include "nvim/insexpand.h"
-#include "nvim/macros.h"
+#include "nvim/macros_defs.h"
 #include "nvim/mark.h"
 #include "nvim/mbyte.h"
 #include "nvim/memline.h"
@@ -39,17 +34,19 @@
 #include "nvim/message.h"
 #include "nvim/move.h"
 #include "nvim/option.h"
+#include "nvim/option_vars.h"
 #include "nvim/os/time.h"
 #include "nvim/plines.h"
-#include "nvim/pos.h"
+#include "nvim/pos_defs.h"
 #include "nvim/search.h"
 #include "nvim/spell.h"
 #include "nvim/state.h"
 #include "nvim/strings.h"
 #include "nvim/textformat.h"
+#include "nvim/types_defs.h"
 #include "nvim/ui.h"
 #include "nvim/undo.h"
-#include "nvim/vim.h"
+#include "nvim/vim_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "change.c.generated.h"
@@ -91,7 +88,7 @@ void change_warning(buf_T *buf, int col)
     (void)msg_end();
     if (msg_silent == 0 && !silent_mode && ui_active()) {
       ui_flush();
-      os_delay(1002L, true);  // give the user time to think about it
+      os_delay(1002, true);  // give the user time to think about it
     }
     buf->b_did_warn = true;
     redraw_cmdline = false;  // don't redraw and erase the message
@@ -101,28 +98,28 @@ void change_warning(buf_T *buf, int col)
   }
 }
 
-/// Call this function when something in the current buffer is changed.
+/// Call this function when something in a buffer is changed.
 ///
 /// Most often called through changed_bytes() and changed_lines(), which also
 /// mark the area of the display to be redrawn.
 ///
 /// Careful: may trigger autocommands that reload the buffer.
-void changed(void)
+void changed(buf_T *buf)
 {
-  if (!curbuf->b_changed) {
+  if (!buf->b_changed) {
     int save_msg_scroll = msg_scroll;
 
     // Give a warning about changing a read-only file.  This may also
     // check-out the file, thus change "curbuf"!
-    change_warning(curbuf, 0);
+    change_warning(buf, 0);
 
     // Create a swap file if that is wanted.
     // Don't do this for "nofile" and "nowrite" buffer types.
-    if (curbuf->b_may_swap && !bt_dontwrite(curbuf)) {
+    if (buf->b_may_swap && !bt_dontwrite(buf)) {
       bool save_need_wait_return = need_wait_return;
 
       need_wait_return = false;
-      ml_open_file(curbuf);
+      ml_open_file(buf);
 
       // The ml_open_file() can cause an ATTENTION message.
       // Wait two seconds, to make sure the user reads this unexpected
@@ -130,16 +127,16 @@ void changed(void)
       // and don't let the emsg() set msg_scroll.
       if (need_wait_return && emsg_silent == 0 && !in_assert_fails) {
         ui_flush();
-        os_delay(2002L, true);
+        os_delay(2002, true);
         wait_return(true);
         msg_scroll = save_msg_scroll;
       } else {
         need_wait_return = save_need_wait_return;
       }
     }
-    changed_internal();
+    changed_internal(buf);
   }
-  buf_inc_changedtick(curbuf);
+  buf_inc_changedtick(buf);
 
   // If a pattern is highlighted, the position may now be invalid.
   highlight_match = false;
@@ -147,12 +144,12 @@ void changed(void)
 
 /// Internal part of changed(), no user interaction.
 /// Also used for recovery.
-void changed_internal(void)
+void changed_internal(buf_T *buf)
 {
-  curbuf->b_changed = true;
-  curbuf->b_changed_invalid = true;
-  ml_setflags(curbuf);
-  redraw_buf_status_later(curbuf);
+  buf->b_changed = true;
+  buf->b_changed_invalid = true;
+  ml_setflags(buf);
+  redraw_buf_status_later(buf);
   redraw_tabline = true;
   need_maketitle = true;  // set window title later
 }
@@ -160,13 +157,15 @@ void changed_internal(void)
 /// Common code for when a change was made.
 /// See changed_lines() for the arguments.
 /// Careful: may trigger autocommands that reload the buffer.
-static void changed_common(linenr_T lnum, colnr_T col, linenr_T lnume, linenr_T xtra)
+static void changed_common(buf_T *buf, linenr_T lnum, colnr_T col, linenr_T lnume, linenr_T xtra)
 {
   // mark the buffer as modified
-  changed();
+  changed(buf);
 
-  if (curwin->w_p_diff && diff_internal()) {
-    curtab->tp_diff_update = true;
+  FOR_ALL_WINDOWS_IN_TAB(win, curtab) {
+    if (win->w_buffer == buf && win->w_p_diff && diff_internal()) {
+      curtab->tp_diff_update = true;
+    }
   }
 
   // set the '. mark
@@ -174,22 +173,25 @@ static void changed_common(linenr_T lnum, colnr_T col, linenr_T lnume, linenr_T 
     fmarkv_T view = INIT_FMARKV;
     // Set the markview only if lnum is visible, as changes might be done
     // outside of the current window view.
-    if (lnum >= curwin->w_topline && lnum <= curwin->w_botline) {
-      view = mark_view_make(curwin->w_topline, curwin->w_cursor);
+
+    if (curwin->w_buffer == buf) {
+      if (lnum >= curwin->w_topline && lnum <= curwin->w_botline) {
+        view = mark_view_make(curwin->w_topline, curwin->w_cursor);
+      }
     }
-    RESET_FMARK(&curbuf->b_last_change, ((pos_T) { lnum, col, 0 }), curbuf->handle, view);
+    RESET_FMARK(&buf->b_last_change, ((pos_T) { lnum, col, 0 }), buf->handle, view);
 
     // Create a new entry if a new undo-able change was started or we
     // don't have an entry yet.
-    if (curbuf->b_new_change || curbuf->b_changelistlen == 0) {
+    if (buf->b_new_change || buf->b_changelistlen == 0) {
       int add;
-      if (curbuf->b_changelistlen == 0) {
+      if (buf->b_changelistlen == 0) {
         add = true;
       } else {
         // Don't create a new entry when the line number is the same
         // as the last one and the column is not too far away.  Avoids
         // creating many entries for typing "xxxxx".
-        pos_T *p = &curbuf->b_changelist[curbuf->b_changelistlen - 1].mark;
+        pos_T *p = &buf->b_changelist[buf->b_changelistlen - 1].mark;
         if (p->lnum != lnum) {
           add = true;
         } else {
@@ -204,17 +206,17 @@ static void changed_common(linenr_T lnum, colnr_T col, linenr_T lnume, linenr_T 
         // This is the first of a new sequence of undo-able changes
         // and it's at some distance of the last change.  Use a new
         // position in the changelist.
-        curbuf->b_new_change = false;
+        buf->b_new_change = false;
 
-        if (curbuf->b_changelistlen == JUMPLISTSIZE) {
+        if (buf->b_changelistlen == JUMPLISTSIZE) {
           // changelist is full: remove oldest entry
-          curbuf->b_changelistlen = JUMPLISTSIZE - 1;
-          memmove(curbuf->b_changelist, curbuf->b_changelist + 1,
-                  sizeof(curbuf->b_changelist[0]) * (JUMPLISTSIZE - 1));
+          buf->b_changelistlen = JUMPLISTSIZE - 1;
+          memmove(buf->b_changelist, buf->b_changelist + 1,
+                  sizeof(buf->b_changelist[0]) * (JUMPLISTSIZE - 1));
           FOR_ALL_TAB_WINDOWS(tp, wp) {
             // Correct position in changelist for other windows on
             // this buffer.
-            if (wp->w_buffer == curbuf && wp->w_changelistidx > 0) {
+            if (wp->w_buffer == buf && wp->w_changelistidx > 0) {
               wp->w_changelistidx--;
             }
           }
@@ -222,27 +224,29 @@ static void changed_common(linenr_T lnum, colnr_T col, linenr_T lnume, linenr_T 
         FOR_ALL_TAB_WINDOWS(tp, wp) {
           // For other windows, if the position in the changelist is
           // at the end it stays at the end.
-          if (wp->w_buffer == curbuf
-              && wp->w_changelistidx == curbuf->b_changelistlen) {
+          if (wp->w_buffer == buf
+              && wp->w_changelistidx == buf->b_changelistlen) {
             wp->w_changelistidx++;
           }
         }
-        curbuf->b_changelistlen++;
+        buf->b_changelistlen++;
       }
     }
-    curbuf->b_changelist[curbuf->b_changelistlen - 1] =
-      curbuf->b_last_change;
+    buf->b_changelist[buf->b_changelistlen - 1] =
+      buf->b_last_change;
     // The current window is always after the last change, so that "g,"
     // takes you back to it.
-    curwin->w_changelistidx = curbuf->b_changelistlen;
+    if (curwin->w_buffer == buf) {
+      curwin->w_changelistidx = buf->b_changelistlen;
+    }
   }
 
-  if (VIsual_active) {
+  if (curwin->w_buffer == buf && VIsual_active) {
     check_visual_pos();
   }
 
   FOR_ALL_TAB_WINDOWS(tp, wp) {
-    if (wp->w_buffer == curbuf) {
+    if (wp->w_buffer == buf) {
       // Mark this window to be redrawn later.
       if (wp->w_redr_type < UPD_VALID) {
         wp->w_redr_type = UPD_VALID;
@@ -257,9 +261,9 @@ static void changed_common(linenr_T lnum, colnr_T col, linenr_T lnume, linenr_T 
           && (last < wp->w_topline
               || (wp->w_topline >= lnum
                   && wp->w_topline < lnume
-                  && win_linetabsize(wp, wp->w_topline, ml_get(wp->w_topline), (colnr_T)MAXCOL)
-                  <= (unsigned)(wp->w_skipcol + sms_marker_overlap(wp, win_col_off(wp)
-                                                                   - win_col_off2(wp)))))) {
+                  && win_linetabsize(wp, wp->w_topline, ml_get(wp->w_topline), MAXCOL)
+                  <= (wp->w_skipcol
+                      + sms_marker_overlap(wp, win_col_off(wp) - win_col_off2(wp)))))) {
         wp->w_skipcol = 0;
       }
 
@@ -295,7 +299,7 @@ static void changed_common(linenr_T lnum, colnr_T col, linenr_T lnume, linenr_T 
       if (wp->w_cursor.lnum > lnum) {
         changed_line_abv_curs_win(wp);
       } else if (wp->w_cursor.lnum == lnum && wp->w_cursor.col >= col) {
-        changed_cline_bef_curs_win(wp);
+        changed_cline_bef_curs(wp);
       }
       if (wp->w_botline >= lnum) {
         // Assume that botline doesn't change (inserted lines make
@@ -312,7 +316,12 @@ static void changed_common(linenr_T lnum, colnr_T col, linenr_T lnume, linenr_T 
           if (wp->w_lines[i].wl_lnum >= lnum) {
             // Do not change wl_lnum at index zero, it is used to
             // compare with w_topline.  Invalidate it instead.
-            if (wp->w_lines[i].wl_lnum < lnume || i == 0) {
+            // If the buffer has virt_lines, invalidate the line
+            // after the changed lines as the virt_lines for a
+            // changed line may become invalid.
+            if (i == 0 || wp->w_lines[i].wl_lnum < lnume
+                || (wp->w_lines[i].wl_lnum == lnume
+                    && wp->w_buffer->b_virt_line_blocks > 0)) {
               // line included in change
               wp->w_lines[i].wl_valid = false;
             } else if (xtra != 0) {
@@ -361,9 +370,10 @@ static void changed_common(linenr_T lnum, colnr_T col, linenr_T lnume, linenr_T 
   }
 
   // when the cursor line is changed always trigger CursorMoved
-  if (lnum <= curwin->w_cursor.lnum
+  if (last_cursormoved_win == curwin && curwin->w_buffer == buf
+      && lnum <= curwin->w_cursor.lnum
       && lnume + (xtra < 0 ? -xtra : xtra) > curwin->w_cursor.lnum) {
-    curwin->w_last_cursormoved.lnum = 0;
+    last_cursormoved.lnum = 0;
   }
 }
 
@@ -393,7 +403,7 @@ static void changedOneline(buf_T *buf, linenr_T lnum)
 void changed_bytes(linenr_T lnum, colnr_T col)
 {
   changedOneline(curbuf, lnum);
-  changed_common(lnum, col, lnum + 1, 0);
+  changed_common(curbuf, lnum, col, lnum + 1, 0);
   // When text has been changed at the end of the line, possibly the start of
   // the next line may have SpellCap that should be removed or it needs to be
   // displayed.  Schedule the next line for redrawing just in case.
@@ -437,14 +447,14 @@ void inserted_bytes(linenr_T lnum, colnr_T start_col, int old_col, int new_col)
 /// Takes care of marking the buffer to be redrawn and sets the changed flag.
 void appended_lines(linenr_T lnum, linenr_T count)
 {
-  changed_lines(lnum + 1, 0, lnum + 1, count, true);
+  changed_lines(curbuf, lnum + 1, 0, lnum + 1, count, true);
 }
 
 /// Like appended_lines(), but adjust marks first.
-void appended_lines_mark(linenr_T lnum, long count)
+void appended_lines_mark(linenr_T lnum, int count)
 {
-  mark_adjust(lnum + 1, (linenr_T)MAXLNUM, (linenr_T)count, 0L, kExtmarkUndo);
-  changed_lines(lnum + 1, 0, lnum + 1, (linenr_T)count, true);
+  mark_adjust(lnum + 1, (linenr_T)MAXLNUM, (linenr_T)count, 0, kExtmarkUndo);
+  changed_lines(curbuf, lnum + 1, 0, lnum + 1, (linenr_T)count, true);
 }
 
 /// Deleted "count" lines at line "lnum" in the current buffer.
@@ -452,13 +462,13 @@ void appended_lines_mark(linenr_T lnum, long count)
 /// Takes care of marking the buffer to be redrawn and sets the changed flag.
 void deleted_lines(linenr_T lnum, linenr_T count)
 {
-  changed_lines(lnum, 0, lnum + count, -count, true);
+  changed_lines(curbuf, lnum, 0, lnum + count, -count, true);
 }
 
 /// Like deleted_lines(), but adjust marks first.
 /// Make sure the cursor is on a valid line before calling, a GUI callback may
 /// be triggered to display the cursor.
-void deleted_lines_mark(linenr_T lnum, long count)
+void deleted_lines_mark(linenr_T lnum, int count)
 {
   bool made_empty = (count > 0) && curbuf->b_ml.ml_flags & ML_EMPTY;
 
@@ -466,7 +476,7 @@ void deleted_lines_mark(linenr_T lnum, long count)
   // if we deleted the entire buffer, we need to implicitly add a new empty line
   extmark_adjust(curbuf, lnum, (linenr_T)(lnum + count - 1), MAXLNUM,
                  -(linenr_T)count + (made_empty ? 1 : 0), kExtmarkUndo);
-  changed_lines(lnum, 0, lnum + (linenr_T)count, (linenr_T)(-count), true);
+  changed_lines(curbuf, lnum, 0, lnum + (linenr_T)count, (linenr_T)(-count), true);
 }
 
 /// Marks the area to be redrawn after a change.
@@ -476,7 +486,7 @@ void deleted_lines_mark(linenr_T lnum, long count)
 /// @param lnum first line with change
 /// @param lnume line below last changed line
 /// @param xtra number of extra lines (negative when deleting)
-void changed_lines_buf(buf_T *buf, linenr_T lnum, linenr_T lnume, linenr_T xtra)
+void buf_redraw_changed_lines_later(buf_T *buf, linenr_T lnum, linenr_T lnume, linenr_T xtra)
 {
   if (buf->b_mod_set) {
     // find the maximum area that must be redisplayed
@@ -503,7 +513,7 @@ void changed_lines_buf(buf_T *buf, linenr_T lnum, linenr_T lnume, linenr_T xtra)
   }
 }
 
-/// Changed lines for the current buffer.
+/// Changed lines for a buffer.
 /// Must be called AFTER the change and after mark_adjust().
 /// - mark the buffer changed by calling changed()
 /// - mark the windows on this buffer to be redisplayed
@@ -521,11 +531,12 @@ void changed_lines_buf(buf_T *buf, linenr_T lnum, linenr_T lnume, linenr_T xtra)
 /// @param do_buf_event  some callers like undo/redo call changed_lines() and
 /// then increment changedtick *again*. This flag allows these callers to send
 /// the nvim_buf_lines_event events after they're done modifying changedtick.
-void changed_lines(linenr_T lnum, colnr_T col, linenr_T lnume, linenr_T xtra, bool do_buf_event)
+void changed_lines(buf_T *buf, linenr_T lnum, colnr_T col, linenr_T lnume, linenr_T xtra,
+                   bool do_buf_event)
 {
-  changed_lines_buf(curbuf, lnum, lnume, xtra);
+  buf_redraw_changed_lines_later(buf, lnum, lnume, xtra);
 
-  if (xtra == 0 && curwin->w_p_diff && !diff_internal()) {
+  if (xtra == 0 && curwin->w_p_diff && curwin->w_buffer == buf && !diff_internal()) {
     // When the number of lines doesn't change then mark_adjust() isn't
     // called and other diff buffers still need to be marked for
     // displaying.
@@ -536,19 +547,19 @@ void changed_lines(linenr_T lnum, colnr_T col, linenr_T lnume, linenr_T xtra, bo
         redraw_later(wp, UPD_VALID);
         wlnum = diff_lnum_win(lnum, wp);
         if (wlnum > 0) {
-          changed_lines_buf(wp->w_buffer, wlnum,
-                            lnume - lnum + wlnum, 0L);
+          buf_redraw_changed_lines_later(wp->w_buffer, wlnum,
+                                         lnume - lnum + wlnum, 0);
         }
       }
     }
   }
 
-  changed_common(lnum, col, lnume, xtra);
+  changed_common(buf, lnum, col, lnume, xtra);
 
   if (do_buf_event) {
     int64_t num_added = (int64_t)(lnume + xtra - lnum);
     int64_t num_removed = lnume - lnum;
-    buf_updates_send_changes(curbuf, lnum, num_added, num_removed);
+    buf_updates_send_changes(buf, lnum, num_added, num_removed);
   }
 }
 
@@ -608,7 +619,7 @@ bool file_ff_differs(buf_T *buf, bool ignore_empty)
   if (ignore_empty
       && (buf->b_flags & BF_NEW)
       && buf->b_ml.ml_line_count == 1
-      && *ml_get_buf(buf, (linenr_T)1, false) == NUL) {
+      && *ml_get_buf(buf, 1) == NUL) {
     return false;
   }
   if (buf->b_start_ffc != *buf->b_p_ff) {
@@ -653,7 +664,7 @@ void ins_bytes_len(char *p, size_t len)
 /// convert bytes to a character.
 void ins_char(int c)
 {
-  char buf[MB_MAXBYTES + 1];
+  char buf[MB_MAXCHAR + 1];
   size_t n = (size_t)utf_char2bytes(c, buf);
 
   // When "c" is 0x100, 0x200, etc. we don't want to insert a NUL byte.
@@ -808,15 +819,15 @@ int del_char(bool fixpos)
   if (*get_cursor_pos_ptr() == NUL) {
     return FAIL;
   }
-  return del_chars(1L, fixpos);
+  return del_chars(1, fixpos);
 }
 
 /// Like del_bytes(), but delete characters instead of bytes.
-int del_chars(long count, int fixpos)
+int del_chars(int count, int fixpos)
 {
   int bytes = 0;
   char *p = get_cursor_pos_ptr();
-  for (long i = 0; i < count && *p != NUL; i++) {
+  for (int i = 0; i < count && *p != NUL; i++) {
     int l = utfc_ptr2len(p);
     bytes += l;
     p += l;
@@ -857,12 +868,9 @@ int del_bytes(colnr_T count, bool fixpos_arg, bool use_delcombine)
 
   // If 'delcombine' is set and deleting (less than) one character, only
   // delete the last combining character.
-  if (p_deco && use_delcombine
-      && utfc_ptr2len(oldp + col) >= count) {
-    int cc[MAX_MCO];
-
-    (void)utfc_ptr2char(oldp + col, cc);
-    if (cc[0] != NUL) {
+  if (p_deco && use_delcombine && utfc_ptr2len(oldp + col) >= count) {
+    char *p0 = oldp + col;
+    if (utf_composinglike(p0, p0 + utf_ptr2len(p0))) {
       // Find the last composing char, there can be several.
       int n = col;
       do {
@@ -1118,7 +1126,7 @@ int open_line(int dir, int flags, int second_line_indent, bool *did_do_comment)
     *p_extra = NUL;
   }
 
-  u_clearline();                // cannot do "U" command when adding lines
+  u_clearline(curbuf);  // cannot do "U" command when adding lines
   did_si = false;
   ai_col = 0;
 
@@ -1314,7 +1322,7 @@ int open_line(int dir, int flags, int second_line_indent, bool *did_do_comment)
     char *comment_end = NULL;               // where lead_end has been found
     int extra_space = false;                // append extra space
     int current_flag;
-    int require_blank = false;              // requires blank after middle
+    bool require_blank = false;             // requires blank after middle
     char *p2;
 
     // If the comment leader has the start, middle or end flag, it may not
@@ -1684,14 +1692,13 @@ int open_line(int dir, int flags, int second_line_indent, bool *did_do_comment)
   // concatenate leader and p_extra, if there is a leader
   if (lead_len > 0) {
     if (flags & OPENLINE_COM_LIST && second_line_indent > 0) {
-      int i;
       int padding = second_line_indent
                     - (newindent + (int)strlen(leader));
 
       // Here whitespace is inserted after the comment char.
       // Below, set_indent(newindent, SIN_INSERT) will insert the
       // whitespace needed before the comment char.
-      for (i = 0; i < padding; i++) {
+      for (int i = 0; i < padding; i++) {
         STRCAT(leader, " ");
         less_cols--;
         newcol++;
@@ -1711,12 +1718,12 @@ int open_line(int dir, int flags, int second_line_indent, bool *did_do_comment)
     curwin->w_cursor.lnum--;
   }
   if ((State & VREPLACE_FLAG) == 0 || old_cursor.lnum >= orig_line_count) {
-    if (ml_append(curwin->w_cursor.lnum, p_extra, (colnr_T)0, false) == FAIL) {
+    if (ml_append(curwin->w_cursor.lnum, p_extra, 0, false) == FAIL) {
       goto theend;
     }
     // Postpone calling changed_lines(), because it would mess up folding
     // with markers.
-    mark_adjust(curwin->w_cursor.lnum + 1, (linenr_T)MAXLNUM, 1L, 0L, kExtmarkNOOP);
+    mark_adjust(curwin->w_cursor.lnum + 1, (linenr_T)MAXLNUM, 1, 0, kExtmarkNOOP);
     did_append = true;
   } else {
     // In MODE_VREPLACE state we are starting to replace the next line.
@@ -1806,15 +1813,15 @@ int open_line(int dir, int flags, int second_line_indent, bool *did_do_comment)
 
       saved_line = NULL;
       if (did_append) {
-        changed_lines(curwin->w_cursor.lnum, curwin->w_cursor.col,
-                      curwin->w_cursor.lnum + 1, 1L, true);
+        changed_lines(curbuf, curwin->w_cursor.lnum, curwin->w_cursor.col,
+                      curwin->w_cursor.lnum + 1, 1, true);
         did_append = false;
 
         // Move marks after the line break to the new line.
         if (flags & OPENLINE_MARKFIX) {
           mark_col_adjust(curwin->w_cursor.lnum,
                           curwin->w_cursor.col + less_cols_off,
-                          1L, (long)-less_cols, 0);
+                          1, -less_cols, 0);
         }
         // Always move extmarks - Here we move only the line where the
         // cursor is, the previous mark_adjust takes care of the lines after
@@ -1832,11 +1839,11 @@ int open_line(int dir, int flags, int second_line_indent, bool *did_do_comment)
     curwin->w_cursor.lnum = old_cursor.lnum + 1;
   }
   if (did_append) {
-    changed_lines(curwin->w_cursor.lnum, 0, curwin->w_cursor.lnum, 1L, true);
     // bail out and just get the final length of the line we just manipulated
     bcount_t extra = (bcount_t)strlen(ml_get(curwin->w_cursor.lnum));
     extmark_splice(curbuf, (int)curwin->w_cursor.lnum - 1, 0,
                    0, 0, 0, 1, 0, 1 + extra, kExtmarkUndo);
+    changed_lines(curbuf, curwin->w_cursor.lnum, 0, curwin->w_cursor.lnum, 1, true);
   }
   curbuf_splice_pending--;
 
@@ -1926,9 +1933,9 @@ void truncate_line(int fixpos)
 
 /// Delete "nlines" lines at the cursor.
 /// Saves the lines for undo first if "undo" is true.
-void del_lines(long nlines, bool undo)
+void del_lines(linenr_T nlines, bool undo)
 {
-  long n;
+  int n;
   linenr_T first = curwin->w_cursor.lnum;
 
   if (nlines <= 0) {
@@ -1957,7 +1964,7 @@ void del_lines(long nlines, bool undo)
   // Correct the cursor position before calling deleted_lines_mark(), it may
   // trigger a callback to display the cursor.
   curwin->w_cursor.col = 0;
-  check_cursor_lnum();
+  check_cursor_lnum(curwin);
 
   // adjust marks, mark the buffer as changed and prepare for displaying
   deleted_lines_mark(first, n);
@@ -1972,12 +1979,10 @@ void del_lines(long nlines, bool undo)
 int get_leader_len(char *line, char **flags, bool backward, bool include_space)
 {
   int j;
-  int got_com = false;
+  bool got_com = false;
   char part_buf[COM_MAX_LEN];         // buffer for one option part
   char *string;                  // pointer to comment string
-  char *list;
   int middle_match_len = 0;
-  char *prev_list;
   char *saved_flags = NULL;
 
   int result = 0;
@@ -1989,14 +1994,14 @@ int get_leader_len(char *line, char **flags, bool backward, bool include_space)
   // Repeat to match several nested comment strings.
   while (line[i] != NUL) {
     // scan through the 'comments' option for a match
-    int found_one = false;
-    for (list = curbuf->b_p_com; *list;) {
+    bool found_one = false;
+    for (char *list = curbuf->b_p_com; *list;) {
       // Get one option part into part_buf[].  Advance "list" to next
       // one.  Put "string" at start of string.
       if (!got_com && flags != NULL) {
         *flags = list;              // remember where flags started
       }
-      prev_list = list;
+      char *prev_list = list;
       (void)copy_option_part(&list, part_buf, COM_MAX_LEN, ",");
       string = vim_strchr(part_buf, ':');
       if (string == NULL) {         // missing ':', ignore this part
@@ -2116,24 +2121,22 @@ int get_last_leader_offset(char *line, char **flags)
   int result = -1;
   int j;
   int lower_check_bound = 0;
-  char *string;
   char *com_leader;
   char *com_flags;
-  char *list;
   char part_buf[COM_MAX_LEN];         // buffer for one option part
 
   // Repeat to match several nested comment strings.
   int i = (int)strlen(line);
   while (--i >= lower_check_bound) {
     // scan through the 'comments' option for a match
-    int found_one = false;
-    for (list = curbuf->b_p_com; *list;) {
+    bool found_one = false;
+    for (char *list = curbuf->b_p_com; *list;) {
       char *flags_save = list;
 
       // Get one option part into part_buf[].  Advance list to next one.
       // put string at start of string.
       (void)copy_option_part(&list, part_buf, COM_MAX_LEN, ",");
-      string = vim_strchr(part_buf, ':');
+      char *string = vim_strchr(part_buf, ':');
       if (string == NULL) {  // If everything is fine, this cannot actually
                              // happen.
         continue;
@@ -2192,7 +2195,6 @@ int get_last_leader_offset(char *line, char **flags)
 
     if (found_one) {
       char part_buf2[COM_MAX_LEN];            // buffer for one option part
-      int len1, len2, off;
 
       result = i;
       // If this comment nests, continue searching.
@@ -2210,28 +2212,28 @@ int get_last_leader_offset(char *line, char **flags)
       while (ascii_iswhite(*com_leader)) {
         com_leader++;
       }
-      len1 = (int)strlen(com_leader);
+      int len1 = (int)strlen(com_leader);
 
-      for (list = curbuf->b_p_com; *list;) {
+      for (char *list = curbuf->b_p_com; *list;) {
         char *flags_save = list;
 
         (void)copy_option_part(&list, part_buf2, COM_MAX_LEN, ",");
         if (flags_save == com_flags) {
           continue;
         }
-        string = vim_strchr(part_buf2, ':');
+        char *string = vim_strchr(part_buf2, ':');
         string++;
         while (ascii_iswhite(*string)) {
           string++;
         }
-        len2 = (int)strlen(string);
+        int len2 = (int)strlen(string);
         if (len2 == 0) {
           continue;
         }
 
         // Now we have to verify whether string ends with a substring
         // beginning the com_leader.
-        for (off = (len2 > i ? i : len2); off > 0 && off + len1 > len2;) {
+        for (int off = (len2 > i ? i : len2); off > 0 && off + len1 > len2;) {
           off--;
           if (!strncmp(string + off, com_leader, (size_t)(len2 - off))) {
             if (i - off < lower_check_bound) {

@@ -6,6 +6,7 @@ local exec = helpers.exec
 local feed = helpers.feed
 local meths = helpers.meths
 local nvim_dir = helpers.nvim_dir
+local assert_alive = helpers.assert_alive
 
 before_each(clear)
 
@@ -33,18 +34,12 @@ describe('messages', function()
     feed('u')
     screen:expect({grid = [[
                                                                                  |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*4
       {3:W10: Warning: Changing a readonly file}^                                     |
     ]], timeout = 500})
     screen:expect([[
       ^                                                                           |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*4
       Already at oldest change                                                   |
     ]])
   end)
@@ -73,12 +68,7 @@ describe('messages', function()
       ^one                                                         |
       NoSuchFile                                                  |
       three                                                       |
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
+      {0:~                                                           }|*6
       from DebugSilent normal                                     |
     ]])
 
@@ -88,12 +78,7 @@ describe('messages', function()
       ^one                                                         |
       NoSuchFile                                                  |
       three                                                       |
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
+      {0:~                                                           }|*6
       from DebugSilent visual                                     |
     ]])
 
@@ -104,11 +89,7 @@ describe('messages', function()
       one                                                         |
       NoSuchFil^e                                                  |
       three                                                       |
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
-      {0:~                                                           }|
+      {0:~                                                           }|*5
       from DebugSilent visual                                     |
       {1:E447: Can't find file "NoSuchFile" in path}                  |
     ]])
@@ -477,15 +458,8 @@ describe('messages', function()
       command('mode')  -- FIXME: bottom is invalid after scrolling
       screen:expect([[
         ^                                                            |
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
-        {0:~                                                           }|
-                                                                    |
-                                                                    |
+        {0:~                                                           }|*7
+                                                                    |*2
       ]])
       feed([[:4 verbose echo system('foo')<CR>]])
       screen:expect([[
@@ -554,14 +528,7 @@ describe('messages', function()
       feed('q')
       screen:expect([[
         ^                                        |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*8
                                                 |
       ]])
     end)
@@ -590,18 +557,14 @@ describe('messages', function()
       feed('i')
       screen:expect([[
         ^                                        |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
         {3:                                        }|
         {2:-- INSERT --}                            |
       ]])
       feed('<C-C>')
       screen:expect([[
         ^                                        |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
         {3:                                        }|
                                                 |
       ]])
@@ -616,18 +579,14 @@ describe('messages', function()
       feed('i')
       screen:expect([[
         ^                                        |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
         {3:[No Name]                               }|
         {2:-- INSERT --}                            |
       ]])
       feed('<Esc>')
       screen:expect([[
         ^                                        |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*3
         {3:[No Name]                               }|
                                                 |
       ]])
@@ -638,19 +597,13 @@ describe('messages', function()
       feed('i<C-O>')
       screen:expect([[
         ^                                        |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*4
         {2:-- (insert) --}                          |
       ]])
       feed('<C-C>')
       screen:expect([[
         ^                                        |
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
-        {1:~                                       }|
+        {1:~                                       }|*4
                                                 |
       ]])
     end)
@@ -672,18 +625,14 @@ describe('messages', function()
     screen:expect([[
       1                                                                          |
       2                                                                          |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:Backwards range given, OK to swap (y/n)?}^                                   |
     ]])
     feed('n')
     screen:expect([[
       ^1                                                                          |
       2                                                                          |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:Backwards range given, OK to swap (y/n)?}n                                  |
     ]])
 
@@ -691,18 +640,14 @@ describe('messages', function()
     screen:expect([[
       1                                                                          |
       2                                                                          |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:Backwards range given, OK to swap (y/n)?}^                                   |
     ]])
     feed('<Esc>')
     screen:expect([[
       ^1                                                                          |
       2                                                                          |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:Backwards range given, OK to swap (y/n)?}n                                  |
     ]])
 
@@ -710,20 +655,52 @@ describe('messages', function()
     screen:expect([[
       1                                                                          |
       2                                                                          |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:Backwards range given, OK to swap (y/n)?}^                                   |
     ]])
     feed('y')
     screen:expect([[
       y1                                                                         |
       ^y2                                                                         |
-      {0:~                                                                          }|
-      {0:~                                                                          }|
-      {0:~                                                                          }|
+      {0:~                                                                          }|*3
       {1:Backwards range given, OK to swap (y/n)?}y                                  |
     ]])
+  end)
+
+  -- oldtest: Test_fileinfo_tabpage_cmdheight()
+  it("fileinfo works when 'cmdheight' has just decreased", function()
+    screen = Screen.new(40, 6)
+    screen:set_default_attr_ids({
+      [0] = {bold = true, foreground = Screen.colors.Blue};  -- NonText
+      [1] = {bold = true};  -- TabLineSel
+      [2] = {underline = true, background = Screen.colors.LightGrey};  -- TabLine
+      [3] = {reverse = true};  -- TabLineFill
+    })
+    screen:attach()
+
+    exec([[
+      set shortmess-=o
+      set shortmess-=O
+      set shortmess-=F
+      tabnew
+      set cmdheight=2
+    ]])
+    command('mode')  -- FIXME: bottom is invalid after scrolling
+    screen:expect([[
+      {2: [No Name] }{1: [No Name] }{3:                 }{2:X}|
+      ^                                        |
+      {0:~                                       }|*2
+                                              |*2
+    ]])
+
+    feed(':tabprev | edit Xfileinfo.txt<CR>')
+    screen:expect([[
+      {1: Xfileinfo.txt }{2: [No Name] }{3:             }{2:X}|
+      ^                                        |
+      {0:~                                       }|*3
+      "Xfileinfo.txt" [New]                   |
+    ]])
+    assert_alive()
   end)
 
   -- oldtest: Test_fileinfo_after_echo()
@@ -733,6 +710,7 @@ describe('messages', function()
       [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
     })
     screen:attach()
+
     exec([[
       set shortmess-=F
 
@@ -746,14 +724,12 @@ describe('messages', function()
 
       autocmd CursorHold * buf b.txt | w | echo "'b' written"
     ]])
+
     command('set updatetime=50')
     feed('0$')
     screen:expect([[
       ^hi                                      |
-      {0:~                                       }|
-      {0:~                                       }|
-      {0:~                                       }|
-      {0:~                                       }|
+      {0:~                                       }|*4
       'b' written                             |
     ]])
     os.remove('b.txt')

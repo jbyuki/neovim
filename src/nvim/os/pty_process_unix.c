@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // Some of the code came from pangoterm and libuv
 
 #include <assert.h>
@@ -37,9 +34,8 @@
 #include "nvim/eval/typval.h"
 #include "nvim/event/loop.h"
 #include "nvim/event/process.h"
-#include "nvim/event/stream.h"
 #include "nvim/log.h"
-#include "nvim/os/os.h"
+#include "nvim/os/fs.h"
 #include "nvim/os/os_defs.h"
 #include "nvim/os/pty_process.h"
 #include "nvim/os/pty_process_unix.h"
@@ -285,7 +281,7 @@ static void init_child(PtyProcess *ptyproc)
     return;
   }
 
-  char *prog = ptyproc->process.argv[0];
+  const char *prog = process_get_exepath(proc);
 
   assert(proc->env);
   environ = tv_dict_to_env(proc->env);
@@ -335,21 +331,21 @@ static void init_termios(struct termios *termios) FUNC_ATTR_NONNULL_ALL
   termios->c_lflag |= ECHOKE;
 #endif
 
-  termios->c_cc[VINTR]    = 0x1f & 'C';
-  termios->c_cc[VQUIT]    = 0x1f & '\\';
-  termios->c_cc[VERASE]   = 0x7f;
-  termios->c_cc[VKILL]    = 0x1f & 'U';
-  termios->c_cc[VEOF]     = 0x1f & 'D';
-  termios->c_cc[VEOL]     = _POSIX_VDISABLE;
-  termios->c_cc[VEOL2]    = _POSIX_VDISABLE;
-  termios->c_cc[VSTART]   = 0x1f & 'Q';
-  termios->c_cc[VSTOP]    = 0x1f & 'S';
-  termios->c_cc[VSUSP]    = 0x1f & 'Z';
+  termios->c_cc[VINTR] = 0x1f & 'C';
+  termios->c_cc[VQUIT] = 0x1f & '\\';
+  termios->c_cc[VERASE] = 0x7f;
+  termios->c_cc[VKILL] = 0x1f & 'U';
+  termios->c_cc[VEOF] = 0x1f & 'D';
+  termios->c_cc[VEOL] = _POSIX_VDISABLE;
+  termios->c_cc[VEOL2] = _POSIX_VDISABLE;
+  termios->c_cc[VSTART] = 0x1f & 'Q';
+  termios->c_cc[VSTOP] = 0x1f & 'S';
+  termios->c_cc[VSUSP] = 0x1f & 'Z';
   termios->c_cc[VREPRINT] = 0x1f & 'R';
-  termios->c_cc[VWERASE]  = 0x1f & 'W';
-  termios->c_cc[VLNEXT]   = 0x1f & 'V';
-  termios->c_cc[VMIN]     = 1;
-  termios->c_cc[VTIME]    = 0;
+  termios->c_cc[VWERASE] = 0x1f & 'W';
+  termios->c_cc[VLNEXT] = 0x1f & 'V';
+  termios->c_cc[VMIN] = 1;
+  termios->c_cc[VTIME] = 0;
 }
 
 static int set_duplicating_descriptor(int fd, uv_pipe_t *pipe)

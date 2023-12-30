@@ -100,6 +100,30 @@ func CheckLinux()
   endif
 endfunc
 
+" Command to check for not running on a BSD system.
+command CheckNotBSD call CheckNotBSD()
+func CheckNotBSD()
+  if has('bsd')
+    throw 'Skipped: does not work on BSD'
+  endif
+endfunc
+
+" Command to check for not running on a MacOS
+command CheckNotMac call CheckNotMac()
+func CheckNotMac()
+  if has('mac')
+    throw 'Skipped: does not work on MacOS'
+  endif
+endfunc
+
+" Command to check for not running on a MacOS M1 system.
+command CheckNotMacM1 call CheckNotMacM1()
+func CheckNotMacM1()
+  if has('mac') && system('uname -a') =~ '\<arm64\>'
+    throw 'Skipped: does not work on MacOS M1'
+  endif
+endfunc
+
 " Command to check that making screendumps is supported.
 " Caller must source screendump.vim
 command CheckScreendump call CheckScreendump()
@@ -168,7 +192,7 @@ endfunc
 " Command to check for not running under ASAN
 command CheckNotAsan call CheckNotAsan()
 func CheckNotAsan()
-  if execute('version') =~# '-fsanitize=[a-z,]*\<address\>'
+  if execute('verbose version') =~# '-fsanitize=[a-z,]*\<address\>'
     throw 'Skipped: does not work with ASAN'
   endif
 endfunc

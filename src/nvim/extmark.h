@@ -1,38 +1,18 @@
-#ifndef NVIM_EXTMARK_H
-#define NVIM_EXTMARK_H
+#pragma once
 
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
 
 #include "klib/kvec.h"
-#include "nvim/buffer_defs.h"
-#include "nvim/decoration.h"
-#include "nvim/extmark_defs.h"
-#include "nvim/macros.h"
-#include "nvim/marktree.h"
-#include "nvim/pos.h"
-#include "nvim/types.h"
+#include "nvim/extmark_defs.h"  // IWYU pragma: export
+#include "nvim/macros_defs.h"
+#include "nvim/marktree_defs.h"
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"  // IWYU pragma: keep
 
-EXTERN int extmark_splice_pending INIT(= 0);
+EXTERN int curbuf_splice_pending INIT( = 0);
 
-typedef struct {
-  uint64_t ns_id;
-  uint64_t mark_id;
-  int row;
-  colnr_T col;
-  int end_row;
-  colnr_T end_col;
-  bool right_gravity;
-  bool end_right_gravity;
-  bool ephemeral;
-  Decoration decor;  // TODO(bfredl): CHONKY
-} ExtmarkInfo;
-
-typedef kvec_t(ExtmarkInfo) ExtmarkInfoArray;
-
-// TODO(bfredl): good enough name for now.
-typedef ptrdiff_t bcount_t;
+typedef kvec_t(MTPair) ExtmarkInfoArray;
 
 // delete the columns between mincol and endcol
 typedef struct {
@@ -67,6 +47,7 @@ typedef struct {
   colnr_T old_col;
   int row;
   colnr_T col;
+  bool invalidated;
 } ExtmarkSavePos;
 
 typedef enum {
@@ -77,12 +58,15 @@ typedef enum {
   kExtmarkClear,
 } UndoObjectType;
 
+// TODO(bfredl): if possible unify these with marktree flags,
+// so it is possible to filter extmarks directly on top-level flags
 typedef enum {
   kExtmarkNone = 0x1,
   kExtmarkSign = 0x2,
-  kExtmarkVirtText = 0x4,
-  kExtmarkVirtLines = 0x8,
-  kExtmarkHighlight = 0x10,
+  kExtmarkSignHL = 0x4,
+  kExtmarkVirtText = 0x8,
+  kExtmarkVirtLines = 0x10,
+  kExtmarkHighlight = 0x20,
 } ExtmarkType;
 
 // TODO(bfredl): reduce the number of undo action types
@@ -98,5 +82,3 @@ struct undo_object {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "extmark.h.generated.h"
 #endif
-
-#endif  // NVIM_EXTMARK_H

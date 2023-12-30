@@ -1,14 +1,11 @@
-#ifndef NVIM_CHARSET_H
-#define NVIM_CHARSET_H
+#pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
-#include "nvim/buffer_defs.h"
-#include "nvim/eval/typval_defs.h"
-#include "nvim/option_defs.h"
-#include "nvim/pos.h"
-#include "nvim/strings.h"
-#include "nvim/types.h"
+#include "nvim/func_attr.h"
+#include "nvim/option_vars.h"
+#include "nvim/strings.h"  // IWYU pragma: keep
 
 /// Return the folded-case equivalent of the given character
 ///
@@ -56,4 +53,3 @@ static inline bool vim_isbreak(int c)
 {
   return breakat_flags[(uint8_t)c];
 }
-#endif  // NVIM_CHARSET_H

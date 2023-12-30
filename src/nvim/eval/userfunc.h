@@ -1,22 +1,19 @@
-#ifndef NVIM_EVAL_USERFUNC_H
-#define NVIM_EVAL_USERFUNC_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "nvim/eval.h"
+#include "nvim/cmdexpand_defs.h"  // IWYU pragma: keep
 #include "nvim/eval/typval_defs.h"
-#include "nvim/ex_cmds_defs.h"
-#include "nvim/garray.h"
-#include "nvim/hashtab.h"
-#include "nvim/pos.h"
-#include "nvim/types.h"
-
-struct funccal_entry;
+#include "nvim/eval_defs.h"  // IWYU pragma: keep
+#include "nvim/ex_cmds_defs.h"  // IWYU pragma: keep
+#include "nvim/hashtab_defs.h"  // IWYU pragma: keep
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"  // IWYU pragma: keep
 
 // From user function to hashitem and back.
 #define UF2HIKEY(fp) ((fp)->uf_name)
-#define HIKEY2UF(p)  ((ufunc_T *)(p - offsetof(ufunc_T, uf_name)))
+#define HIKEY2UF(p)  ((ufunc_T *)((p) - offsetof(ufunc_T, uf_name)))
 #define HI2UF(hi)    HIKEY2UF((hi)->hi_key)
 
 // flags used in uf_flags
@@ -96,4 +93,3 @@ typedef struct {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "eval/userfunc.h.generated.h"
 #endif
-#endif  // NVIM_EVAL_USERFUNC_H

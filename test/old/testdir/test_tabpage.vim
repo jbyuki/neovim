@@ -4,6 +4,8 @@ source screendump.vim
 source check.vim
 
 function Test_tabpage()
+  CheckFeature quickfix
+
   bw!
   " Simple test for opening and closing a tab page
   tabnew
@@ -273,6 +275,8 @@ function Test_tabpage_with_autocmd_tab_drop()
 endfunction
 
 function Test_tabpage_with_tab_modifier()
+  CheckFeature quickfix
+
   for n in range(4)
     tabedit
   endfor
@@ -897,6 +901,25 @@ func Test_tabpage_last_line()
   tabNext
   call assert_equal('a', getline('.'))
 
+  bwipe!
+  bwipe!
+endfunc
+
+" this was causing an endless loop
+func Test_tabpage_drop_tabmove()
+  augroup TestTabpageTabmove
+    au!
+    autocmd! TabEnter * :if tabpagenr() > 1 | tabmove - | endif
+  augroup end
+  $tab drop XTab_99.log
+  $tab drop XTab_98.log
+  $tab drop XTab_97.log
+
+  autocmd! TestTabpageTabmove
+  augroup! TestTabpageTabmove
+
+  " clean up
+  bwipe!
   bwipe!
   bwipe!
 endfunc

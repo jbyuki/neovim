@@ -132,7 +132,7 @@ DOCUMENTATION						*dev-doc*
   optimize for the reader's time and energy: be "precise yet concise".
     - Prefer the active voice: "Foo does X", not "X is done by Foo".
     - "The words you choose are an essential part of the user experience."
-      https://developer.apple.com/design/human-interface-guidelines/foundations/writing/
+      https://developer.apple.com/design/human-interface-guidelines/writing
     - "...without being overly colloquial or frivolous."
       https://developers.google.com/style/tone
 - Write docstrings (as opposed to inline comments) with present tense ("Gets"),
@@ -192,7 +192,7 @@ Docstring format:
   `@note`, `@param`, `@returns`
 - Limited markdown is supported.
   - List-items start with `-` (useful to nest or "indent")
-- Use `<pre>` for code samples.
+- Use ``` for code samples.
   Code samples can be annotated as `vim` or `lua`
 
 Example: the help for |nvim_open_win()| is generated from a docstring defined
@@ -202,10 +202,16 @@ in src/nvim/api/win_config.c like this: >
     /// ...
     ///
     /// Example (Lua): window-relative float
-    /// <pre>lua
-    ///     vim.api.nvim_open_win(0, false,
-    ///       {relative='win', row=3, col=3, width=12, height=3})
-    /// </pre>
+    ///
+    /// ```lua
+    /// vim.api.nvim_open_win(0, false, {
+    ///   relative='win',
+    ///   row=3,
+    ///   col=3,
+    ///   width=12,
+    ///   height=3,
+    /// })
+    /// ```
     ///
     /// @param buffer Buffer to display
     /// @param enter  Enter the window
@@ -226,13 +232,13 @@ Lua documentation lives in the source code, as docstrings on the function
 definitions.  The |lua-vim| :help is generated from the docstrings.
 
 Docstring format:
-- Lines in the main description start with `---`
-- Special tokens start with `---@` followed by the token name:
-  `---@see`, `---@param`, `---@returns`
+- Use LuaCATS annotations: https://luals.github.io/wiki/annotations/
 - Limited markdown is supported.
   - List-items start with `-` (useful to nest or "indent")
-- Use `<pre>` for code samples.
+- Use ``` for code samples.
   Code samples can be annotated as `vim` or `lua`
+- Use `@nodoc` to prevent documentation generation.
+- Files which has `@meta` are only used for typing and documentation.
 
 Example: the help for |vim.paste()| is generated from a docstring decorating
 vim.paste in runtime/lua/vim/_editor.lua like this: >
@@ -241,18 +247,19 @@ vim.paste in runtime/lua/vim/_editor.lua like this: >
     --- (such as the |TUI|) pastes text into the editor.
     ---
     --- Example: To remove ANSI color codes when pasting:
-    --- <pre>lua
+    ---
+    --- ```lua
     --- vim.paste = (function()
     ---   local overridden = vim.paste
     ---   ...
     --- end)()
-    --- </pre>
+    --- ```
     ---
-    ---@see |paste|
+    --- @see |paste|
     ---
-    ---@param lines  ...
-    ---@param phase  ...
-    ---@returns false if client should cancel the paste.
+    --- @param lines  ...
+    --- @param phase  ...
+    --- @returns false if client should cancel the paste.
 
 
 LUA STDLIB DESIGN GUIDELINES				*dev-lua*
@@ -281,7 +288,13 @@ Interface conventions ~
 - When accepting a buffer id, etc., 0 means "current buffer", nil means "all
   buffers".  Likewise for window id, tabpage id, etc.
   - Examples: |vim.lsp.codelens.clear()| |vim.diagnostic.enable()|
-
+- Any function signature that accepts a callback function should define the
+  callback as the LAST parameter, if possible. This improves readability of
+  calls by placing the less "noisy" arguments near the start. >
+    GOOD:
+    filter(table, opts, function() … end)
+    BAD:
+    filter(function() … end, table, opts)
 
 API DESIGN GUIDELINES					*dev-api*
 
@@ -301,6 +314,12 @@ See also |dev-naming|.
   a buffer number.
 - Avoid functions that depend on cursor position, current buffer, etc. Instead
   the function should take a position parameter, buffer parameter, etc.
+
+Where things go ~
+
+- API (libnvim/RPC): exposes low-level internals, or fundamental things (such
+  as `nvim_exec_lua()`) needed by clients or C consumers.
+- Lua stdlib = high-level functionality that builds on top of the API.
 
 NAMING GUIDELINES                                       *dev-naming*
 

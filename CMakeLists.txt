@@ -4,7 +4,7 @@
 #   pitfalls: https://izzys.casa/2019/02/everything-you-never-wanted-to-know-about-cmake/
 
 # Version should match the tested CMAKE_URL in .github/workflows/build.yml.
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.13)
 
 # Can be removed once minimum version is at least 3.15
 if(POLICY CMP0092)
@@ -13,9 +13,6 @@ endif()
 
 project(nvim C)
 
-if(POLICY CMP0075)
-  cmake_policy(SET CMP0075 NEW)
-endif()
 if(POLICY CMP0135)
   cmake_policy(SET CMP0135 NEW)
 endif()
@@ -31,6 +28,7 @@ include(FindPackageHandleStandardArgs)
 include(GNUInstallDirs)
 
 include(Deps)
+include(Find)
 include(InstallHelpers)
 include(PreventInTreeBuilds)
 include(Util)
@@ -47,6 +45,10 @@ endif()
 
 if(NOT CI_BUILD)
   set(CMAKE_INSTALL_MESSAGE NEVER)
+endif()
+
+if(${CMAKE_VERSION} VERSION_LESS 3.20)
+  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 endif()
 
 # Prefer our bundled versions of dependencies.
@@ -111,6 +113,7 @@ if (MINGW)
 else()
   option(ENABLE_LTO "enable link time optimization" ON)
 endif()
+option(ENABLE_LIBINTL "enable libintl" ON)
 
 message(STATUS "CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}")
 
@@ -130,9 +133,9 @@ set(NVIM_VERSION_PATCH 0)
 set(NVIM_VERSION_PRERELEASE "-dev") # for package maintainers
 
 # API level
-set(NVIM_API_LEVEL 11)        # Bump this after any API change.
+set(NVIM_API_LEVEL 12)        # Bump this after any API change.
 set(NVIM_API_LEVEL_COMPAT 0)  # Adjust this after a _breaking_ API change.
-set(NVIM_API_PRERELEASE false)
+set(NVIM_API_PRERELEASE true)
 
 # Build-type: RelWithDebInfo
 # /Og means something different in MSVC
@@ -156,12 +159,6 @@ if((ENABLE_ASAN_UBSAN AND ENABLE_MSAN)
   message(FATAL_ERROR "Sanitizers cannot be enabled simultaneously")
 endif()
 
-if(ENABLE_ASAN_UBSAN OR ENABLE_MSAN OR ENABLE_TSAN)
-  if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_C_COMPILER_ID MATCHES "GNU")
-    message(FATAL_ERROR "Sanitizers are only supported for Clang and GCC")
-  endif()
-endif()
-
 # Place targets in bin/ or lib/ for all build configurations
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -173,23 +170,13 @@ foreach(CFGNAME ${CMAKE_CONFIGURATION_TYPES})
   set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${CFGNAME} ${CMAKE_BINARY_DIR}/lib)
 endforeach()
 
-if(NOT LUA_PRG)
-  foreach(CURRENT_LUA_PRG luajit lua5.1 lua5.2 lua)
-    unset(_CHECK_LUA_PRG CACHE)
-    find_program(_CHECK_LUA_PRG ${CURRENT_LUA_PRG})
-
-    if(_CHECK_LUA_PRG)
-      set(LUA_PRG "${_CHECK_LUA_PRG}" CACHE FILEPATH "Path to a program.")
-      break()
-    endif()
-  endforeach()
-  unset(_CHECK_LUA_PRG CACHE)
+if(NOT PREFER_LUA)
+  find_program(LUA_PRG NAMES luajit)
 endif()
-
+find_program(LUA_PRG NAMES lua5.1 lua5.2 lua)
 if(NOT LUA_PRG)
   message(FATAL_ERROR "Failed to find a Lua 5.1-compatible interpreter")
 endif()
-
 message(STATUS "Using Lua interpreter: ${LUA_PRG}")
 
 # Some of the code generation still relies on stable table ordering in order to
@@ -200,11 +187,9 @@ message(STATUS "Using Lua interpreter: ${LUA_PRG}")
 if(NOT LUA_GEN_PRG)
   set(LUA_GEN_PRG "${LUA_PRG}" CACHE FILEPATH "Path to the lua used for code generation.")
 endif()
-
 message(STATUS "Using Lua interpreter for code generation: ${LUA_GEN_PRG}")
 
 option(COMPILE_LUA "Pre-compile Lua sources into bytecode (for sources that are included in the binary)" ON)
-
 if(COMPILE_LUA AND NOT WIN32)
   if(PREFER_LUA)
     foreach(CURRENT_LUAC_PRG luac5.1 luac)
@@ -221,14 +206,11 @@ if(COMPILE_LUA AND NOT WIN32)
     endif()
   endif()
 endif()
-
 if(LUAC_PRG)
   message(STATUS "Using Lua compiler: ${LUAC_PRG}")
 endif()
 
-#
 # Lint
-#
 option(CI_LINT "Abort if lint programs not found" OFF)
 if(CI_LINT)
   set(LINT_REQUIRED "REQUIRED")
@@ -238,21 +220,19 @@ find_program(STYLUA_PRG stylua ${LINT_REQUIRED})
 
 add_glob_target(
   TARGET lintlua-luacheck
-  COMMAND ${DEPS_BIN_DIR}/luacheck
-  FLAGS -q
+  COMMAND $<TARGET_FILE:nvim>
+  FLAGS -ll ${PROJECT_SOURCE_DIR}/test/lua_runner.lua ${CMAKE_BINARY_DIR}/usr luacheck -q
   GLOB_DIRS runtime/ scripts/ src/ test/
   GLOB_PAT *.lua
   TOUCH_STRATEGY SINGLE)
-add_dependencies(lintlua-luacheck luacheck)
+add_dependencies(lintlua-luacheck lua-dev-deps)
 
 add_glob_target(
   TARGET lintlua-stylua
   COMMAND ${STYLUA_PRG}
-  FLAGS --color=always --check
-  GLOB_DIRS runtime/
+  FLAGS --color=always --check --respect-ignores
+  GLOB_DIRS runtime/ scripts/ src/ test/unit/
   GLOB_PAT *.lua
-  EXCLUDE
-    /runtime/lua/vim/re.lua
   TOUCH_STRATEGY SINGLE)
 
 add_custom_target(lintlua)
@@ -264,8 +244,6 @@ add_glob_target(
   FLAGS -x -a
   GLOB_DIRS scripts
   GLOB_PAT *.sh
-  EXCLUDE
-    scripts/pvscheck.sh
   TOUCH_STRATEGY SINGLE)
 
 add_custom_target(lintcommit
@@ -273,17 +251,15 @@ add_custom_target(lintcommit
 add_dependencies(lintcommit nvim)
 
 add_custom_target(lint)
-add_dependencies(lint clang-tidy lintc lintlua lintsh lintcommit)
+add_dependencies(lint lintc lintlua lintsh lintcommit)
 
-#
 # Format
-#
-add_custom_target(formatlua
-  COMMAND ${CMAKE_COMMAND}
-    -D FORMAT_PRG=${STYLUA_PRG}
-    -D LANG=lua
-    -P ${PROJECT_SOURCE_DIR}/cmake/Format.cmake
-  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+add_glob_target(
+  TARGET formatlua
+  COMMAND ${STYLUA_PRG}
+  FLAGS --respect-ignores
+  GLOB_DIRS runtime/ scripts/ src/ test/unit/
+  GLOB_PAT *.lua)
 
 add_custom_target(format)
 add_dependencies(format formatc formatlua)
@@ -305,12 +281,26 @@ if(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
 ExternalProject_Add(uncrustify
-  URL https://github.com/uncrustify/uncrustify/archive/uncrustify-0.77.1.tar.gz
-  URL_HASH SHA256=414bbc9f7860eb18a53074f9af14ed04638a633b2216a73f2629291300d37c1b
-  DOWNLOAD_NO_PROGRESS TRUE
+  URL https://github.com/uncrustify/uncrustify/archive/uncrustify-0.78.1.tar.gz
+  URL_HASH SHA256=ecaf4c0adca14c36dfffa30bc28e69865115ecd602c90eb16a8cddccb41caad2
   DOWNLOAD_DIR ${DEPS_DOWNLOAD_DIR}/uncrustify
   CMAKE_ARGS ${DEPS_CMAKE_ARGS}
   CMAKE_CACHE_ARGS ${DEPS_CMAKE_CACHE_ARGS}
-  EXCLUDE_FROM_ALL TRUE)
+  EXCLUDE_FROM_ALL TRUE
+  ${EXTERNALPROJECT_OPTIONS})
 
-include(BuildLuarocks)
+option(USE_BUNDLED_BUSTED "Use bundled busted" ON)
+if(USE_BUNDLED_BUSTED)
+  ExternalProject_Add(lua-dev-deps
+    URL https://github.com/neovim/deps/raw/5a1f71cceb24990a0b15fd9a472a5f549f019248/opt/lua-dev-deps.tar.gz
+    URL_HASH SHA256=27db2495f5eddc7fc191701ec9b291486853530c6125609d3197d03481e8d5a2
+    DOWNLOAD_DIR ${DEPS_DOWNLOAD_DIR}/lua-dev-deps
+    SOURCE_DIR ${DEPS_SHARE_DIR}
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ""
+    INSTALL_COMMAND ""
+    EXCLUDE_FROM_ALL TRUE
+    ${EXTERNALPROJECT_OPTIONS})
+else()
+  add_custom_target(lua-dev-deps)
+endif()

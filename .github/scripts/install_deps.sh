@@ -1,15 +1,9 @@
 #!/bin/bash
 
-SUDO="sudo"
-
 while (($# > 0)); do
   case $1 in
   --test) # install test dependencies
     TEST=1
-    shift
-    ;;
-  --container) # don't use sudo
-    SUDO=""
     shift
     ;;
   esac
@@ -17,10 +11,26 @@ done
 
 os=$(uname -s)
 if [[ $os == Linux ]]; then
-  $SUDO apt-get update
-  $SUDO apt-get install -y build-essential cmake curl gettext ninja-build unzip
+  sudo apt-get update
+  sudo apt-get install -y build-essential cmake curl gettext ninja-build
+
+  if [[ $CC == clang ]]; then
+    DEFAULT_CLANG_VERSION=$(echo |  clang -dM -E - | grep __clang_major | awk '{print $3}')
+    CLANG_VERSION=17
+    if ((DEFAULT_CLANG_VERSION >= CLANG_VERSION)); then
+      echo "Default clang version is $DEFAULT_CLANG_VERSION, which equal or larger than wanted version $CLANG_VERSION. Aborting!"
+      exit 1
+    fi
+
+    wget https://apt.llvm.org/llvm.sh
+    chmod +x llvm.sh
+    sudo ./llvm.sh $CLANG_VERSION
+    sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-$CLANG_VERSION 100
+    sudo update-alternatives --set clang /usr/bin/clang-$CLANG_VERSION
+  fi
+
   if [[ -n $TEST ]]; then
-    $SUDO apt-get install -y locales-all cpanminus
+    sudo apt-get install -y locales-all cpanminus attr libattr1-dev gdb
   fi
 elif [[ $os == Darwin ]]; then
   brew update --quiet

@@ -1,19 +1,16 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // input.c: high level functions for prompting the user or input
 // like yes/no or number prompts.
 
+#include <limits.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 
-#include "nvim/ascii.h"
-#include "nvim/event/multiqueue.h"
-#include "nvim/func_attr.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/getchar.h"
 #include "nvim/gettext.h"
 #include "nvim/globals.h"
-#include "nvim/highlight_defs.h"
+#include "nvim/highlight.h"
 #include "nvim/input.h"
 #include "nvim/keycodes.h"
 #include "nvim/mbyte.h"
@@ -21,9 +18,8 @@
 #include "nvim/message.h"
 #include "nvim/mouse.h"
 #include "nvim/os/input.h"
-#include "nvim/types.h"
+#include "nvim/state_defs.h"
 #include "nvim/ui.h"
-#include "nvim/vim.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "input.c.generated.h"  // IWYU pragma: export
@@ -56,7 +52,7 @@ int ask_yesno(const char *const str, const bool direct)
   int r = ' ';
   while (r != 'y' && r != 'n') {
     // same highlighting as for wait_return()
-    smsg_attr(HL_ATTR(HLF_R), "%s (y/n)?", str);
+    smsg(HL_ATTR(HLF_R), "%s (y/n)?", str);
     if (direct) {
       r = get_keystroke(NULL);
     } else {
@@ -112,7 +108,7 @@ int get_keystroke(MultiQueue *events)
 
     // First time: blocking wait.  Second time: wait up to 100ms for a
     // terminal code to complete.
-    n = os_inchar(buf + len, maxlen, len == 0 ? -1L : 100L, 0, events);
+    n = os_inchar(buf + len, maxlen, len == 0 ? -1 : 100, 0, events);
     if (n > 0) {
       // Replace zero and K_SPECIAL by a special key code.
       n = fix_input_buffer(buf + len, n);
@@ -183,6 +179,9 @@ int get_number(int colon, int *mouse_used)
     ui_cursor_goto(msg_row, msg_col);
     int c = safe_vgetc();
     if (ascii_isdigit(c)) {
+      if (n > INT_MAX / 10) {
+        return 0;
+      }
       n = n * 10 + c - '0';
       msg_putchar(c);
       typed++;
@@ -222,10 +221,6 @@ int get_number(int colon, int *mouse_used)
 /// the line number.
 int prompt_for_number(int *mouse_used)
 {
-  int i;
-  int save_cmdline_row;
-  int save_State;
-
   // When using ":silent" assume that <CR> was entered.
   if (mouse_used != NULL) {
     msg_puts(_("Type number and <Enter> or click with the mouse "
@@ -236,14 +231,14 @@ int prompt_for_number(int *mouse_used)
 
   // Set the state such that text can be selected/copied/pasted and we still
   // get mouse events.
-  save_cmdline_row = cmdline_row;
+  int save_cmdline_row = cmdline_row;
   cmdline_row = 0;
-  save_State = State;
+  int save_State = State;
   State = MODE_ASKMORE;  // prevents a screen update when using a timer
   // May show different mouse shape.
   setmouse();
 
-  i = get_number(true, mouse_used);
+  int i = get_number(true, mouse_used);
   if (KeyTyped) {
     // don't call wait_return() now
     if (msg_row > 0) {

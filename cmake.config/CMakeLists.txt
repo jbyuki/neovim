@@ -4,6 +4,7 @@ include(CheckFunctionExists)
 include(CheckIncludeFiles)
 include(CheckCSourceRuns)
 include(CheckCSourceCompiles)
+include(TestBigEndian)
 
 check_c_source_compiles("
 #include <execinfo.h>
@@ -40,6 +41,9 @@ check_include_files(sys/utsname.h HAVE_SYS_UTSNAME_H)
 check_include_files(termios.h HAVE_TERMIOS_H)
 check_include_files(sys/uio.h HAVE_SYS_UIO_H)
 check_include_files(sys/sdt.h HAVE_SYS_SDT_H)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  check_include_files(sys/xattr.h HAVE_XATTR)
+endif()
 
 # Functions
 check_function_exists(fseeko HAVE_FSEEKO)
@@ -127,42 +131,52 @@ endif()
 if("${HAVE_BE64TOH_MACROS}" OR "${HAVE_BE64TOH_FUNC}")
   set(HAVE_BE64TOH 1)
 endif()
-if (NOT "${HAVE_BE64TOH}")
-  if (NOT "${CMAKE_CROSSCOMPILING}")
-    # It is safe to make ORDER_BIG_ENDIAN not defined if
-    # - HAVE_BE64TOH is true. In this case be64toh will be used unconditionally in
-    #   any case and ORDER_BIG_ENDIAN will not be examined.
-    # - CMAKE_CROSSCOMPILING *and* HAVE_BE64TOH are both false. In this case
-    #   be64toh function which uses cycle and arithmetic operations is used which
-    #   will work regardless of endianness. Function is sub-optimal though.
-    check_c_source_runs("
-      ${SI}
-      ${MS}
-        char *s = (char *) &i;
-        return (
-          s[0] == 0x01
-          && s[1] == 0x02
-          && s[2] == 0x03
-          && s[3] == 0x04
-          && s[4] == 0x05
-          && s[5] == 0x06
-          && s[6] == 0x07
-          && s[7] == 0x08) ? 0 : 1;
-      ${ME}"
-      ORDER_BIG_ENDIAN)
-  endif()
-endif()
+
+test_big_endian(ORDER_BIG_ENDIAN)
 
 configure_file (
   "${PROJECT_SOURCE_DIR}/cmake.config/config.h.in"
   "${PROJECT_BINARY_DIR}/cmake.config/auto/config.h"
   )
 
-if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.15)
-  configure_file(versiondef.h.in auto/versiondef.h.gen)
-else()
-  configure_file(versiondef_old.h.in auto/versiondef.h.gen)
-endif()
+set(VERSION_STRING "${CMAKE_C_COMPILER} ${CMAKE_C_FLAGS} ")
+
+foreach(BUILD_TYPE Debug Release RelWithDebInfo MinSizeRel)
+  string(TOUPPER ${BUILD_TYPE} BUILD_TYPE_UPPER)
+  set(GEN_CONFIG "$<CONFIG:${BUILD_TYPE}>")
+
+  set(GEN_RHS "${CMAKE_C_FLAGS_${BUILD_TYPE_UPPER}} ")
+  string(APPEND VERSION_STRING "$<${GEN_CONFIG}:${GEN_RHS}>")
+
+  set(GEN_RHS "$<$<BOOL:$<TARGET_PROPERTY:nvim,INTERPROCEDURAL_OPTIMIZATION_${BUILD_TYPE_UPPER}>>:${CMAKE_C_COMPILE_OPTIONS_IPO}>")
+  string(APPEND VERSION_STRING "$<${GEN_CONFIG}:${GEN_RHS}>")
+endforeach()
+
+string(APPEND VERSION_STRING " ")
+
+function(append_target_expression)
+  cmake_parse_arguments(ARG
+    ""
+    "PREFIX;PROPERTY"
+    ""
+    ${ARGN})
+
+  set(TARGET_EXPRESSION "$<TARGET_PROPERTY:nvim,${ARG_PROPERTY}>")
+  if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.15)
+    set(TARGET_EXPRESSION "$<REMOVE_DUPLICATES:${TARGET_EXPRESSION}>")
+  endif()
+  set(TARGET_EXPRESSION "${ARG_PREFIX}$<JOIN:${TARGET_EXPRESSION}, ${ARG_PREFIX}>")
+
+  set(VERSION_STRING "${VERSION_STRING} ${TARGET_EXPRESSION} " PARENT_SCOPE)
+endfunction()
+append_target_expression(PROPERTY COMPILE_OPTIONS)
+append_target_expression(PROPERTY LINK_OPTIONS)
+append_target_expression(PREFIX "-D" PROPERTY COMPILE_DEFINITIONS)
+append_target_expression(PREFIX "-I" PROPERTY INCLUDE_DIRECTORIES)
+string(REPLACE ";" " " VERSION_STRING "${VERSION_STRING}") # Remove ; from LINK_FLAGS/LINK_OPTIONS
+string(REPLACE "  " " " VERSION_STRING "${VERSION_STRING}") # Remove duplicate whitespace
+
+configure_file(versiondef.h.in auto/versiondef.h.gen)
 
 file(GENERATE
   OUTPUT "${PROJECT_BINARY_DIR}/cmake.config/auto/versiondef-$<CONFIG>.h"

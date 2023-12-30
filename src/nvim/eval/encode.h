@@ -1,16 +1,11 @@
-#ifndef NVIM_EVAL_ENCODE_H
-#define NVIM_EVAL_ENCODE_H
+#pragma once
 
-#include <msgpack.h>
 #include <msgpack/pack.h>
-#include <stddef.h>
 #include <string.h>
 
-#include "nvim/eval.h"
 #include "nvim/eval/typval.h"
-#include "nvim/eval/typval_defs.h"
-#include "nvim/garray.h"
-#include "nvim/vim.h"
+#include "nvim/func_attr.h"
+#include "nvim/garray_defs.h"
 
 /// Convert Vimscript value to msgpack string
 ///
@@ -38,9 +33,11 @@ typedef struct {
   size_t li_length;  ///< Length of the string inside the read item.
 } ListReaderState;
 
+static inline ListReaderState encode_init_lrstate(const list_T *list)
+  REAL_FATTR_NONNULL_ALL;
+
 /// Initialize ListReaderState structure
 static inline ListReaderState encode_init_lrstate(const list_T *const list)
-  FUNC_ATTR_NONNULL_ALL
 {
   return (ListReaderState) {
     .list = list,
@@ -74,4 +71,3 @@ extern const char *const encode_special_var_names[];
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "eval/encode.h.generated.h"
 #endif
-#endif  // NVIM_EVAL_ENCODE_H

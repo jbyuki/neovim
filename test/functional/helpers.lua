@@ -18,8 +18,7 @@ local sleep = global_helpers.sleep
 local tbl_contains = global_helpers.tbl_contains
 local fail = global_helpers.fail
 
-local module = {
-}
+local module = {}
 
 local start_dir = luv.cwd()
 local runtime_set = 'set runtimepath^=./build/lib/nvim/'
@@ -29,7 +28,7 @@ module.nvim_prog = (
 )
 -- Default settings for the test session.
 module.nvim_set = (
-  'set shortmess+=IS background=light noswapfile noautoindent startofline'
+  'set shortmess+=IS background=light termguicolors noswapfile noautoindent startofline'
   ..' laststatus=1 undodir=. directory=. viewdir=. backupdir=.'
   ..' belloff= wildoptions-=pum joinspaces noshowcmd noruler nomore redrawdebug=invalid')
 module.nvim_argv = {
@@ -37,8 +36,13 @@ module.nvim_argv = {
   -- XXX: find treesitter parsers.
   '--cmd', runtime_set,
   '--cmd', module.nvim_set,
-  '--cmd', 'mapclear',
-  '--cmd', 'mapclear!',
+  -- Remove default mappings.
+  '--cmd', 'mapclear | mapclear!',
+  -- Make screentest work after changing to the new default color scheme
+  -- Source 'vim' color scheme without side effects
+  -- TODO: rewrite tests
+  '--cmd', 'lua dofile("runtime/colors/vim.lua")',
+  '--cmd', 'unlet g:colors_name',
   '--embed'}
 
 -- Directory containing nvim.
@@ -82,6 +86,13 @@ if prepend_argv then
 end
 
 local session, loop_running, last_error, method_error
+
+if not is_os('win') then
+  local sigpipe_handler = luv.new_signal()
+  luv.signal_start(sigpipe_handler, "sigpipe", function()
+    print("warning: got SIGPIPE signal. Likely related to a crash in nvim")
+  end)
+end
 
 function module.get_session()
   return session
@@ -427,7 +438,7 @@ function module.connect(file_or_address)
   return Session.new(stream)
 end
 
--- Starts a new global Nvim session.
+-- Starts (and returns) a new global Nvim session.
 --
 -- Parameters are interpreted as startup args, OR a map with these keys:
 --    args:       List: Args appended to the default `nvim_argv` set.
@@ -441,6 +452,7 @@ end
 --    clear{args={'-e'}, args_rm={'-i'}, env={TERM=term}}
 function module.clear(...)
   module.set_session(module.spawn_argv(false, ...))
+  return module.get_session()
 end
 
 -- same params as clear, but does returns the session instead
@@ -827,6 +839,8 @@ function module.exec_capture(code)
   return module.meths.exec2(code, { output = true }).output
 end
 
+--- @param code string
+--- @return any
 function module.exec_lua(code, ...)
   return module.meths.exec_lua(code, {...})
 end
@@ -850,12 +864,20 @@ function module.testprg(name)
   return ('%s/%s%s'):format(module.nvim_dir, name, ext)
 end
 
+function module.is_asan()
+  local version = module.eval('execute("verbose version")')
+  return version:match('-fsanitize=[a-z,]*address')
+end
+
 -- Returns a valid, platform-independent Nvim listen address.
 -- Useful for communicating with child instances.
 function module.new_pipename()
   -- HACK: Start a server temporarily, get the name, then stop it.
   local pipename = module.eval('serverstart()')
   module.funcs.serverstop(pipename)
+  -- Remove the pipe so that trying to connect to it without a server listening
+  -- will be an error instead of a hang.
+  os.remove(pipename)
   return pipename
 end
 
@@ -922,7 +944,7 @@ function module.add_builddir_to_rtp()
   module.command(string.format([[set rtp+=%s/runtime]], module.test_build_dir))
 end
 
--- Kill process with given pid
+-- Kill (reap) a process by PID.
 function module.os_kill(pid)
   return os.execute((is_os('win')
     and 'taskkill /f /t /pid '..pid..' > nul'
@@ -936,8 +958,10 @@ function module.mkdir_p(path)
     or 'mkdir -p '..path))
 end
 
+--- @class test.functional.helpers: test.helpers
 module = global_helpers.tbl_extend('error', module, global_helpers)
 
+--- @return test.functional.helpers
 return function(after_each)
   if after_each then
     after_each(function()

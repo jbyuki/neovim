@@ -434,11 +434,18 @@ describe('API: get highlight', function()
   before_each(clear)
 
   it('validation', function()
-    eq(
-      'Invalid highlight name: expected String, got Integer',
-      pcall_err(meths.get_hl, 0, { name = 177 })
-    )
+    eq("Invalid 'name': expected String, got Integer",
+       pcall_err(meths.get_hl, 0, { name = 177 }))
     eq('Highlight id out of bounds', pcall_err(meths.get_hl, 0, { name = 'Test set hl' }))
+  end)
+
+  it('nvim_get_hl with create flag', function()
+    eq({}, nvim("get_hl", 0, {name = 'Foo', create = false}))
+    eq(0, funcs.hlexists('Foo'))
+    meths.get_hl(0, {name = 'Bar', create = true})
+    eq(1, funcs.hlexists('Bar'))
+    meths.get_hl(0, {name = 'FooBar'})
+    eq(1, funcs.hlexists('FooBar'))
   end)
 
   it('can get all highlights in current namespace', function()
@@ -534,7 +541,7 @@ describe('API: get highlight', function()
     eq('Highlight id out of bounds', pcall_err(meths.get_hl, 0, { id = 0 }))
 
     eq(
-      'Invalid highlight id: expected Integer, got String',
+      "Invalid 'id': expected Integer, got String",
       pcall_err(meths.get_hl, 0, { id = 'Test_set_hl' })
     )
 
@@ -554,7 +561,7 @@ describe('API: get highlight', function()
   end)
 
   it('can correctly detect links', function()
-    command('hi String guifg=#a6e3a1')
+    command('hi String guifg=#a6e3a1 ctermfg=NONE')
     command('hi link @string string')
     command('hi link @string.cpp @string')
     eq({ fg = 10937249 }, meths.get_hl(0, { name = 'String' }))
@@ -600,5 +607,49 @@ describe('API: get highlight', function()
   it('should return default flag', function()
     meths.set_hl(0, 'Tried', { fg = "#00ff00", default = true })
     eq({ fg = tonumber('00ff00', 16), default = true }, meths.get_hl(0, { name = 'Tried' }))
+  end)
+
+  it('should not output empty gui and cterm #23474', function()
+    meths.set_hl(0, 'Foo', {default = true})
+    meths.set_hl(0, 'Bar', { default = true, fg = '#ffffff' })
+    meths.set_hl(0, 'FooBar', { default = true, fg = '#ffffff', cterm = {bold = true} })
+    meths.set_hl(0, 'FooBarA', { default = true, fg = '#ffffff', cterm = {bold = true,italic = true}})
+
+    eq('Foo            xxx cleared',
+      exec_capture('highlight Foo'))
+    eq({default = true}, meths.get_hl(0, {name = 'Foo'}))
+    eq('Bar            xxx guifg=#ffffff',
+      exec_capture('highlight Bar'))
+    eq('FooBar         xxx cterm=bold guifg=#ffffff',
+      exec_capture('highlight FooBar'))
+    eq('FooBarA        xxx cterm=bold,italic guifg=#ffffff',
+      exec_capture('highlight FooBarA'))
+  end)
+
+  it('can override exist highlight group by force #20323', function()
+    local white = tonumber('ffffff', 16)
+    local green = tonumber('00ff00', 16)
+    meths.set_hl(0, 'Foo', { fg=white })
+    meths.set_hl(0, 'Foo', { fg=green, force = true })
+    eq({ fg = green },meths.get_hl(0, {name = 'Foo'}))
+    meths.set_hl(0, 'Bar', {link = 'Comment', default = true})
+    meths.set_hl(0, 'Bar', {link = 'Foo',default = true, force = true})
+    eq({link ='Foo', default = true}, meths.get_hl(0, {name = 'Bar'}))
+  end)
+end)
+
+describe('API: set/get highlight namespace', function()
+  it('set/get highlight namespace', function()
+    eq(0, meths.get_hl_ns({}))
+    local ns = meths.create_namespace('')
+    meths.set_hl_ns(ns)
+    eq(ns, meths.get_hl_ns({}))
+  end)
+
+  it('set/get window highlight namespace', function()
+    eq(-1, meths.get_hl_ns({winid = 0}))
+    local ns = meths.create_namespace('')
+    meths.win_set_hl_ns(0, ns)
+    eq(ns, meths.get_hl_ns({winid = 0}))
   end)
 end)

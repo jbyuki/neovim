@@ -1,4 +1,4 @@
-name: Coverity
+name: coverity
 on:
   schedule:
     - cron: '10 0 * * *'  # Run every day at 00:10
@@ -8,10 +8,8 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Install dependencies
-        run: ./.github/scripts/install_deps.sh
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
 
       - name: Download Coverity
         run: |

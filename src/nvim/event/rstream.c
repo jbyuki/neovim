@@ -1,20 +1,18 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <uv.h>
 
-#include "nvim/event/loop.h"
+#include "nvim/event/multiqueue.h"
 #include "nvim/event/rstream.h"
 #include "nvim/event/stream.h"
 #include "nvim/log.h"
-#include "nvim/macros.h"
+#include "nvim/macros_defs.h"
 #include "nvim/main.h"
 #include "nvim/os/os_defs.h"
 #include "nvim/rbuffer.h"
+#include "nvim/types_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "event/rstream.c.generated.h"
@@ -202,10 +200,6 @@ static void invoke_read_cb(Stream *stream, size_t count, bool eof)
   // Don't let the stream be closed before the event is processed.
   stream->pending_reqs++;
 
-  CREATE_EVENT(stream->events,
-               read_event,
-               3,
-               stream,
-               (void *)(uintptr_t *)count,
-               (void *)(uintptr_t)eof);
+  CREATE_EVENT(stream->events, read_event,
+               stream, (void *)(uintptr_t *)count, (void *)(uintptr_t)eof);
 }

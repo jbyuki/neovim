@@ -109,7 +109,7 @@ describe('API/extmarks', function()
     eq("Invalid 'virt_text_pos': 'foo'", pcall_err(set_extmark, ns, marks[2], 0, 0, { virt_text_pos = 'foo' }))
     eq("Invalid 'hl_mode': expected String, got Integer", pcall_err(set_extmark, ns, marks[2], 0, 0, { hl_mode = 0 }))
     eq("Invalid 'hl_mode': 'foo'", pcall_err(set_extmark, ns, marks[2], 0, 0, { hl_mode = 'foo' }))
-    eq("Invalid 'id': expected positive Integer", pcall_err(set_extmark, ns, {}, 0, 0, { end_col = 1, end_row = 1 }))
+    eq("Invalid 'id': expected Integer, got Array", pcall_err(set_extmark, ns, {}, 0, 0, { end_col = 1, end_row = 1 }))
     eq("Invalid mark position: expected 2 Integer items", pcall_err(get_extmarks, ns, {}, {-1, -1}))
     eq("Invalid mark position: expected mark id Integer or 2-item Array", pcall_err(get_extmarks, ns, true, {-1, -1}))
     -- No memory leak with virt_text, virt_lines, sign_text
@@ -206,6 +206,23 @@ describe('API/extmarks', function()
     feed('<c-r>')
     eq({}, get_extmarks(ns, {0, 0}, {-1, -1}))
     eq({}, get_extmarks(ns2, {0, 0}, {-1, -1}))
+  end)
+
+  it('can undo with extmarks (#25147)', function()
+    feed('itest<esc>')
+    set_extmark(ns, 1, 0, 0)
+    set_extmark(ns, 2, 1, 0)
+    eq({ { 1, 0, 0 }, { 2, 1, 0 } }, get_extmarks(ns, {0, 0}, {-1, -1}))
+    feed('dd')
+    eq({ { 1, 1, 0 }, { 2, 1, 0 } }, get_extmarks(ns, {0, 0}, {-1, -1}))
+    curbufmeths.clear_namespace(ns, 0, -1)
+    eq({}, get_extmarks(ns, {0, 0}, {-1, -1}))
+    set_extmark(ns, 1, 0, 0, { right_gravity = false })
+    set_extmark(ns, 2, 1, 0, { right_gravity = false })
+    eq({ { 1, 0, 0 }, { 2, 1, 0 } }, get_extmarks(ns, {0, 0}, {-1, -1}))
+    feed('u')
+    eq({ { 1, 0, 0 }, { 2, 1, 0 } }, get_extmarks(ns, {0, 0}, {-1, -1}))
+    curbufmeths.clear_namespace(ns, 0, -1)
   end)
 
   it('querying for information and ranges', function()
@@ -418,14 +435,7 @@ describe('API/extmarks', function()
     -- This shouldn't seg fault
     screen:expect([[
       12345^ 1        |
-      ~              |
-      ~              |
-      ~              |
-      ~              |
-      ~              |
-      ~              |
-      ~              |
-      ~              |
+      ~              |*8
                      |
     ]])
   end)
@@ -478,14 +488,7 @@ describe('API/extmarks', function()
     insert('abc')
     screen:expect([[
       ab^c12345       |
-      ~              |
-      ~              |
-      ~              |
-      ~              |
-      ~              |
-      ~              |
-      ~              |
-      ~              |
+      ~              |*8
                      |
     ]])
     local rv = get_extmark_by_id(ns, marks[1])
@@ -753,7 +756,14 @@ describe('API/extmarks', function()
       })
     end)
 
-    -- TODO(bfredl): add more tests!
+    it('can get overlapping extmarks', function()
+      set_extmark(ns, 1, 0, 0, {end_row = 5, end_col=0})
+      set_extmark(ns, 2, 2, 5, {end_row = 2, end_col=30})
+      set_extmark(ns, 3, 0, 5, {end_row = 2, end_col=10})
+      set_extmark(ns, 4, 0, 0, {end_row = 1, end_col=0})
+      eq({{ 2, 2, 5 }}, get_extmarks(ns, {2, 0}, {2, -1}, { overlap=false }))
+      eq({{ 1, 0, 0 }, { 3, 0, 5}, {2, 2, 5}}, get_extmarks(ns, {2, 0}, {2, -1}, { overlap=true }))
+    end)
   end)
 
   it('replace works', function()
@@ -1500,16 +1510,19 @@ describe('API/extmarks', function()
       sign_hl_group = "Statement",
       sign_text = ">>",
       spell = true,
-      virt_lines = { { { "lines", "Statement" } }},
+      virt_lines = {
+        { { "lines", "Macro" }, { "???" } },
+        { { "stack", { "Type", "Search" } }, { "!!!" } },
+      },
       virt_lines_above = true,
       virt_lines_leftcol = true,
-      virt_text = { { "text", "Statement" } },
+      virt_text = { { "text", "Macro" }, { "???" }, { "stack", { "Type", "Search" } } },
       virt_text_hide = true,
       virt_text_pos = "right_align",
     })
     set_extmark(ns, marks[2], 0, 0, {
       priority = 0,
-      virt_text = { { "text", "Statement" } },
+      virt_text = { { "", "Macro" }, { "", { "Type", "Search" } }, { "" } },
       virt_text_win_col = 1,
     })
     eq({0, 0, {
@@ -1529,10 +1542,14 @@ describe('API/extmarks', function()
       sign_hl_group = "Statement",
       sign_text = ">>",
       spell = true,
-      virt_lines = { { { "lines", "Statement" } }},
+      virt_lines = {
+        { { "lines", "Macro" }, { "???" } },
+        { { "stack", { "Type", "Search" } }, { "!!!" } },
+      },
       virt_lines_above = true,
       virt_lines_leftcol = true,
-      virt_text = { { "text", "Statement" } },
+      virt_text = { { "text", "Macro" }, { "???" }, { "stack", { "Type", "Search" } } },
+      virt_text_repeat_linebreak = false,
       virt_text_hide = true,
       virt_text_pos = "right_align",
     } }, get_extmark_by_id(ns, marks[1], { details = true }))
@@ -1540,7 +1557,8 @@ describe('API/extmarks', function()
       ns_id = 1,
       right_gravity = true,
       priority = 0,
-      virt_text = { { "text", "Statement" } },
+      virt_text = { { "", "Macro" }, { "", { "Type", "Search" } }, { "" } },
+      virt_text_repeat_linebreak = false,
       virt_text_hide = false,
       virt_text_pos = "win_col",
       virt_text_win_col = 1,
@@ -1549,8 +1567,26 @@ describe('API/extmarks', function()
     eq({0, 0, {
       ns_id = 1,
       cursorline_hl_group = "Statement",
+      priority = 4096,
       right_gravity = true,
     } }, get_extmark_by_id(ns, marks[3], { details = true }))
+    curbufmeths.clear_namespace(ns, 0, -1)
+    -- legacy sign mark includes sign name
+    command('sign define sign1 text=s1 texthl=Title linehl=LineNR numhl=Normal culhl=CursorLine')
+    command('sign place 1 name=sign1 line=1')
+    eq({ {1, 0, 0, {
+      cursorline_hl_group = 'CursorLine',
+      invalidate = true,
+      line_hl_group = 'LineNr',
+      ns_id = 0,
+      number_hl_group = 'Normal',
+      priority = 10,
+      right_gravity = true,
+      sign_hl_group = 'Title',
+      sign_name = 'sign1',
+      sign_text = 's1',
+      undo_restore = false
+    } } }, get_extmarks(-1, 0, -1, { details = true }))
   end)
 
   it('can get marks from anonymous namespaces', function()
@@ -1569,11 +1605,66 @@ describe('API/extmarks', function()
     set_extmark(ns, 3, 0, 0, { sign_text = '>>' })
     set_extmark(ns, 4, 0, 0, { virt_text = {{'text', 'Normal'}}})
     set_extmark(ns, 5, 0, 0, { virt_lines = {{{ 'line', 'Normal' }}}})
-    eq(5, #get_extmarks(-1, 0, -1, { details = true }))
+    eq(5, #get_extmarks(-1, 0, -1, {}))
     eq({{ 2, 0, 0 }}, get_extmarks(-1, 0, -1, { type = 'highlight' }))
     eq({{ 3, 0, 0 }}, get_extmarks(-1, 0, -1, { type = 'sign' }))
     eq({{ 4, 0, 0 }}, get_extmarks(-1, 0, -1, { type = 'virt_text' }))
     eq({{ 5, 0, 0 }}, get_extmarks(-1, 0, -1, { type = 'virt_lines' }))
+  end)
+
+  it("invalidated marks are deleted", function()
+    screen = Screen.new(40, 6)
+    screen:attach()
+    feed('dd6iaaa bbb ccc<CR><ESC>gg')
+    meths.set_option_value('signcolumn', 'auto:2', {})
+    set_extmark(ns, 1, 0, 0, { invalidate = true, sign_text = 'S1', end_row = 1 })
+    set_extmark(ns, 2, 1, 0, { invalidate = true, sign_text = 'S2', end_row = 2 })
+    -- mark with invalidate is removed
+    command('d2')
+    screen:expect([[
+      S2^aaa bbb ccc                           |
+        aaa bbb ccc                           |*3
+                                              |*2
+    ]])
+    -- mark is restored with undo_restore == true
+    command('silent undo')
+    screen:expect([[
+      S1  ^aaa bbb ccc                         |
+      S1S2aaa bbb ccc                         |
+      S2  aaa bbb ccc                         |
+          aaa bbb ccc                         |*2
+                                              |
+    ]])
+    -- mark is deleted with undo_restore == false
+    set_extmark(ns, 1, 0, 0, { invalidate = true, undo_restore = false, sign_text = 'S1' })
+    set_extmark(ns, 2, 1, 0, { invalidate = true, undo_restore = false, sign_text = 'S2' })
+    command('1d 2')
+    eq(0, #get_extmarks(-1, 0, -1, {}))
+    -- mark is not removed when deleting bytes before the range
+    set_extmark(ns, 3, 0, 4, { invalidate = true, undo_restore = false,
+                               hl_group = 'Error', end_col = 7 })
+    feed('dw')
+    eq(3, get_extmark_by_id(ns, 3, { details = true })[3].end_col)
+    -- mark is not removed when deleting bytes at the start of the range
+    feed('x')
+    eq(2, get_extmark_by_id(ns, 3, { details = true })[3].end_col)
+    -- mark is not removed when deleting bytes from the end of the range
+    feed('lx')
+    eq(1, get_extmark_by_id(ns, 3, { details = true})[3].end_col)
+    -- mark is not removed when deleting bytes beyond end of the range
+    feed('x')
+    eq(1, get_extmark_by_id(ns, 3, { details = true})[3].end_col)
+    -- mark is removed when all bytes in the range are deleted
+    feed('hx')
+    eq({}, get_extmark_by_id(ns, 3, {}))
+    -- multiline mark is not removed when start of its range is deleted
+    set_extmark(ns, 4, 1, 4, { undo_restore = false, invalidate = true,
+                               hl_group = 'Error', end_col = 7, end_row = 3 })
+    feed('ddDdd')
+    eq({0, 0}, get_extmark_by_id(ns, 4, {}))
+    -- multiline mark is removed when entirety of its range is deleted
+    feed('vj2ed')
+    eq({}, get_extmark_by_id(ns, 4, {}))
   end)
 end)
 
@@ -1718,7 +1809,7 @@ describe('API/win_extmark', function()
       extmarks = {
         [2] = {
           -- positioned at the end of the 2nd line
-          { {id = 1000}, 1, 1, 1, 16 },
+          { {id = 1000}, ns, marks[1], 1, 16 },
         }
       },
     })
@@ -1727,6 +1818,7 @@ describe('API/win_extmark', function()
   it('sends multiple ui-watched marks to ui', function()
     screen = Screen.new(20, 4)
     screen:attach()
+    feed('15A!<Esc>')
     -- should send all of these
     set_extmark(ns, marks[1], 1, 0, { ui_watched = true, virt_text_pos = "overlay" })
     set_extmark(ns, marks[2], 1, 2, { ui_watched = true, virt_text_pos = "overlay" })
@@ -1736,25 +1828,34 @@ describe('API/win_extmark', function()
     screen:expect({
       grid = [[
       non ui-watched line |
-      ui-watched lin^e     |
-      ~                   |
+      ui-watched line!!!!!|
+      !!!!!!!!!^!          |
                           |
     ]],
       extmarks = {
         [2] = {
-          -- earlier notifications
-          { {id = 1000}, 1, 1, 1, 0 },
-          { {id = 1000}, 1, 1, 1, 0 }, { {id = 1000}, 1, 2, 1, 2 },
-          { {id = 1000}, 1, 1, 1, 0 }, { {id = 1000}, 1, 2, 1, 2 }, { {id = 1000}, 1, 3, 1, 4 },
-          { {id = 1000}, 1, 1, 1, 0 }, { {id = 1000}, 1, 2, 1, 2 }, { {id = 1000}, 1, 3, 1, 4 }, { {id = 1000}, 1, 4, 1, 6 },
+          -- notification from 1st call
+          { {id = 1000}, ns, marks[1], 1, 0 },
+          -- notifications from 2nd call
+          { {id = 1000}, ns, marks[1], 1, 0 },
+          { {id = 1000}, ns, marks[2], 1, 2 },
+          -- notifications from 3rd call
+          { {id = 1000}, ns, marks[1], 1, 0 },
+          { {id = 1000}, ns, marks[2], 1, 2 },
+          { {id = 1000}, ns, marks[3], 1, 4 },
+          -- notifications from 4th call
+          { {id = 1000}, ns, marks[1], 1, 0 },
+          { {id = 1000}, ns, marks[2], 1, 2 },
+          { {id = 1000}, ns, marks[3], 1, 4 },
+          { {id = 1000}, ns, marks[4], 1, 6 },
           -- final
           --   overlay
-          { {id = 1000}, 1, 1, 1, 0 },
-          { {id = 1000}, 1, 2, 1, 2 },
-          { {id = 1000}, 1, 3, 1, 4 },
-          { {id = 1000}, 1, 4, 1, 6 },
+          { {id = 1000}, ns, marks[1], 1, 0 },
+          { {id = 1000}, ns, marks[2], 1, 2 },
+          { {id = 1000}, ns, marks[3], 1, 4 },
+          { {id = 1000}, ns, marks[4], 1, 6 },
           --   eol
-          { {id = 1000}, 1, 5, 1, 16 },
+          { {id = 1000}, ns, marks[5], 2, 11 },
         }
       },
     })
@@ -1779,9 +1880,9 @@ describe('API/win_extmark', function()
       extmarks = {
         [2] = {
           -- positioned at the end of the 2nd line
-          { {id = 1000}, 1, 1, 1, 16 },
+          { {id = 1000}, ns, marks[1], 1, 16 },
           -- updated and wrapped to 3rd line
-          { {id = 1000}, 1, 1, 2, 2 },
+          { {id = 1000}, ns, marks[1], 2, 2 },
         }
       }
     })
@@ -1796,9 +1897,9 @@ describe('API/win_extmark', function()
       extmarks = {
         [2] = {
           -- positioned at the end of the 2nd line
-          { {id = 1000}, 1, 1, 1, 16 },
+          { {id = 1000}, ns, marks[1], 1, 16 },
           -- updated and wrapped to 3rd line
-          { {id = 1000}, 1, 1, 2, 2 },
+          { {id = 1000}, ns, marks[1], 2, 2 },
           -- scrolled up one line, should be handled by grid scroll
         }
       }
@@ -1816,12 +1917,9 @@ describe('API/win_extmark', function()
     screen:expect({
       grid = [[
         ## grid 1
-          [4:--------------------]|
-          [4:--------------------]|
-          [4:--------------------]|
+          [4:--------------------]|*3
           [No Name] [+]       |
-          [2:--------------------]|
-          [2:--------------------]|
+          [2:--------------------]|*2
           [No Name] [+]       |
           [3:--------------------]|
         ## grid 2
@@ -1837,13 +1935,13 @@ describe('API/win_extmark', function()
       extmarks = {
         [2] = {
           -- positioned at the end of the 2nd line
-          { {id = 1000}, 1, 1, 1, 16 },
+          { {id = 1000}, ns, marks[1], 1, 16 },
           -- updated after split
-          { {id = 1000}, 1, 1, 1, 16 },
+          { {id = 1000}, ns, marks[1], 1, 16 },
         },
         [4] = {
           -- only after split
-          { {id = 1001}, 1, 1, 1, 16 },
+          { {id = 1001}, ns, marks[1], 1, 16 },
         }
       }
     })
@@ -1852,12 +1950,9 @@ describe('API/win_extmark', function()
     screen:expect({
       grid = [[
         ## grid 1
-          [4:--------------------]|
-          [4:--------------------]|
-          [4:--------------------]|
+          [4:--------------------]|*3
           [No Name] [+]       |
-          [2:--------------------]|
-          [2:--------------------]|
+          [2:--------------------]|*2
           [No Name] [+]       |
           [3:--------------------]|
         ## grid 2
@@ -1873,14 +1968,14 @@ describe('API/win_extmark', function()
       extmarks = {
         [2] = {
           -- positioned at the end of the 2nd line
-          { {id = 1000}, 1, 1, 1, 16 },
+          { {id = 1000}, ns, marks[1], 1, 16 },
           -- updated after split
-          { {id = 1000}, 1, 1, 1, 16 },
+          { {id = 1000}, ns, marks[1], 1, 16 },
         },
         [4] = {
-          { {id = 1001}, 1, 1, 1, 16 },
+          { {id = 1001}, ns, marks[1], 1, 16 },
           -- updated
-          { {id = 1001}, 1, 1, 2, 2 },
+          { {id = 1001}, ns, marks[1], 2, 2 },
         }
       }
     })

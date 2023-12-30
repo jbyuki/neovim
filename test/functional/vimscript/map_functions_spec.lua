@@ -26,9 +26,12 @@ describe('maparg()', function()
       rhs='bar',
       expr=0,
       sid=0,
+      scriptversion=1,
       buffer=0,
       nowait=0,
       mode='n',
+      mode_bits=0x01,
+      abbr=0,
       noremap=1,
       lnum=0,
     }
@@ -155,10 +158,13 @@ describe('maparg()', function()
         buffer = 0,
         expr = 0,
         mode = 'n',
+        mode_bits = 0x01,
+        abbr = 0,
         noremap = 1,
         nowait = 0,
-        script=0,
+        script = 0,
         sid = 0,
+        scriptversion = 1,
         silent = 0,
         lnum = 0,
       }
@@ -173,6 +179,16 @@ end)
 
 describe('mapset()', function()
   before_each(clear)
+
+  it('can restore mapping with backslash in lhs', function()
+    meths.set_keymap('n', '\\ab', 'a', {})
+    eq('\nn  \\ab           a', exec_capture("nmap \\ab"))
+    local mapargs = funcs.maparg('\\ab', 'n', false, true)
+    meths.set_keymap('n', '\\ab', 'b', {})
+    eq('\nn  \\ab           b', exec_capture("nmap \\ab"))
+    funcs.mapset('n', false, mapargs)
+    eq('\nn  \\ab           a', exec_capture("nmap \\ab"))
+  end)
 
   it('can restore mapping description from the dict returned by maparg()', function()
     meths.set_keymap('n', 'lhs', 'rhs', {desc = 'map description'})

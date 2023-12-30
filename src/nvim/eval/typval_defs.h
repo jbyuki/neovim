@@ -1,21 +1,22 @@
-#ifndef NVIM_EVAL_TYPVAL_DEFS_H
-#define NVIM_EVAL_TYPVAL_DEFS_H
+#pragma once
 
 #include <inttypes.h>
 #include <limits.h>
 
-#include "nvim/garray.h"
-#include "nvim/hashtab.h"
+#include "nvim/garray_defs.h"
+#include "nvim/hashtab_defs.h"
 #include "nvim/lib/queue.h"
-#include "nvim/pos.h"
-#include "nvim/types.h"
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"
 
 /// Type used for Vimscript VAR_NUMBER values
 typedef int64_t varnumber_T;
 typedef uint64_t uvarnumber_T;
 
-/// Refcount for dict or list that should not be freed
-enum { DO_NOT_FREE_CNT = (INT_MAX / 2), };
+enum {
+  /// Refcount for dict or list that should not be freed
+  DO_NOT_FREE_CNT = (INT_MAX / 2),
+};
 
 /// Additional values for tv_list_alloc() len argument
 enum ListLenSpecials {
@@ -114,6 +115,19 @@ typedef enum {
   VAR_PARTIAL,      ///< Partial, .v_partial is used.
   VAR_BLOB,         ///< Blob, .v_blob is used.
 } VarType;
+
+/// Type values for type().
+enum {
+  VAR_TYPE_NUMBER  = 0,
+  VAR_TYPE_STRING  = 1,
+  VAR_TYPE_FUNC    = 2,
+  VAR_TYPE_LIST    = 3,
+  VAR_TYPE_DICT    = 4,
+  VAR_TYPE_FLOAT   = 5,
+  VAR_TYPE_BOOL    = 6,
+  VAR_TYPE_SPECIAL = 7,
+  VAR_TYPE_BLOB    = 10,
+};
 
 /// Structure that holds an internal variable value
 typedef struct {
@@ -273,12 +287,15 @@ typedef struct {
   linenr_T sc_lnum;  ///< line number
 } sctx_T;
 
-/// Maximum number of function arguments
-enum { MAX_FUNC_ARGS = 20, };
-/// Short variable name length
-enum { VAR_SHORT_LEN = 20, };
-/// Number of fixed variables used for arguments
-enum { FIXVAR_CNT = 12, };
+/// Stores an identifier of a script or channel that last set an option.
+typedef struct {
+  sctx_T script_ctx;       /// script context where the option was last set
+  uint64_t channel_id;     /// Only used when script_id is SID_API_CLIENT.
+} LastSet;
+
+enum { MAX_FUNC_ARGS = 20, };  ///< Maximum number of function arguments
+enum { VAR_SHORT_LEN = 20, };  ///< Short variable name length
+enum { FIXVAR_CNT = 12, };     ///< Number of fixed variables used for arguments
 
 /// Structure to hold info for a function that is currently being executed.
 typedef struct funccall_S funccall_T;
@@ -366,13 +383,3 @@ typedef struct list_stack_S {
   list_T *list;
   struct list_stack_S *prev;
 } list_stack_T;
-
-/// Structure representing one list item, used for sort array.
-typedef struct {
-  listitem_T *item;  ///< Sorted list item.
-  int idx;  ///< Sorted list item index.
-} ListSortItem;
-
-typedef int (*ListSorter)(const void *, const void *);
-
-#endif  // NVIM_EVAL_TYPVAL_DEFS_H

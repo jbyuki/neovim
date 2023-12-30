@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <inttypes.h>
 #include <msgpack/object.h>
@@ -10,7 +7,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <uv.h>
 
 #include "klib/kvec.h"
 #include "nvim/api/private/defs.h"
@@ -20,13 +16,14 @@
 #include "nvim/channel.h"
 #include "nvim/event/defs.h"
 #include "nvim/event/loop.h"
+#include "nvim/event/multiqueue.h"
 #include "nvim/event/process.h"
 #include "nvim/event/rstream.h"
-#include "nvim/event/stream.h"
 #include "nvim/event/wstream.h"
+#include "nvim/globals.h"
 #include "nvim/log.h"
 #include "nvim/main.h"
-#include "nvim/map.h"
+#include "nvim/map_defs.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
 #include "nvim/msgpack_rpc/channel.h"
@@ -35,7 +32,7 @@
 #include "nvim/msgpack_rpc/unpacker.h"
 #include "nvim/os/input.h"
 #include "nvim/rbuffer.h"
-#include "nvim/types.h"
+#include "nvim/types_defs.h"
 #include "nvim/ui.h"
 #include "nvim/ui_client.h"
 
@@ -207,8 +204,14 @@ Object rpc_send_call(uint64_t id, const char *method_name, Array args, ArenaMem 
   // Push the frame
   ChannelCallFrame frame = { request_id, false, false, NIL, NULL };
   kv_push(rpc->call_stack, &frame);
-  LOOP_PROCESS_EVENTS_UNTIL(&main_loop, channel->events, -1, frame.returned);
+  LOOP_PROCESS_EVENTS_UNTIL(&main_loop, channel->events, -1, frame.returned || rpc->closed);
   (void)kv_pop(rpc->call_stack);
+
+  if (rpc->closed) {
+    api_set_error(err, kErrorTypeException, "Invalid channel: %" PRIu64, id);
+    channel_decref(channel);
+    return NIL;
+  }
 
   if (frame.errored) {
     if (frame.result.type == kObjectTypeString) {
@@ -306,6 +309,17 @@ end:
   channel_decref(channel);
 }
 
+static ChannelCallFrame *find_call_frame(RpcState *rpc, uint32_t request_id)
+{
+  for (size_t i = 0; i < kv_size(rpc->call_stack); i++) {
+    ChannelCallFrame *frame = kv_Z(rpc->call_stack, i);
+    if (frame->request_id == request_id) {
+      return frame;
+    }
+  }
+  return NULL;
+}
+
 static void parse_msgpack(Channel *channel)
 {
   Unpacker *p = channel->rpc.unpacker;
@@ -321,14 +335,17 @@ static void parse_msgpack(Channel *channel)
       }
       arena_mem_free(arena_finish(&p->arena));
     } else if (p->type == kMessageTypeResponse) {
-      ChannelCallFrame *frame = kv_last(channel->rpc.call_stack);
-      if (p->request_id != frame->request_id) {
+      ChannelCallFrame *frame = channel->rpc.client_type == kClientTypeMsgpackRpc
+                                ? find_call_frame(&channel->rpc, p->request_id)
+                                : kv_last(channel->rpc.call_stack);
+      if (frame == NULL || p->request_id != frame->request_id) {
         char buf[256];
         snprintf(buf, sizeof(buf),
-                 "ch %" PRIu64 " returned a response with an unknown request "
-                 "id. Ensure the client is properly synchronized",
-                 channel->id);
+                 "ch %" PRIu64 " (type=%" PRIu32 ") returned a response with an unknown request "
+                 "id %" PRIu32 ". Ensure the client is properly synchronized",
+                 channel->id, (unsigned)channel->rpc.client_type, p->request_id);
         chan_close_with_error(channel, buf, LOGLVL_ERR);
+        return;
       }
       frame->returned = true;
       frame->errored = (p->error.type != kObjectTypeNil);
@@ -387,7 +404,7 @@ static void handle_request(Channel *channel, Unpacker *p, Array args)
 
     if (is_get_mode && !input_blocking()) {
       // Defer the event to a special queue used by os/input.c. #6247
-      multiqueue_put(ch_before_blocking_events, request_event, 1, evdata);
+      multiqueue_put(ch_before_blocking_events, request_event, evdata);
     } else {
       // Invoke immediately.
       request_event((void **)&evdata);
@@ -395,12 +412,11 @@ static void handle_request(Channel *channel, Unpacker *p, Array args)
   } else {
     bool is_resize = p->handler.fn == handle_nvim_ui_try_resize;
     if (is_resize) {
-      Event ev = event_create_oneshot(event_create(request_event, 1, evdata),
-                                      2);
+      Event ev = event_create_oneshot(event_create(request_event, evdata), 2);
       multiqueue_put_event(channel->events, ev);
       multiqueue_put_event(resize_events, ev);
     } else {
-      multiqueue_put(channel->events, request_event, 1, evdata);
+      multiqueue_put(channel->events, request_event, evdata);
       DLOG("RPC: scheduled %.*s", (int)p->method_name_len, p->handler.name);
     }
   }
@@ -467,7 +483,7 @@ static bool channel_write(Channel *channel, WBuffer *buffer)
 
   if (channel->streamtype == kChannelStreamInternal) {
     channel_incref(channel);
-    CREATE_EVENT(channel->events, internal_read_event, 2, channel, buffer);
+    CREATE_EVENT(channel->events, internal_read_event, channel, buffer);
     success = true;
   } else {
     Stream *in = channel_instream(channel);
@@ -551,7 +567,7 @@ static void broadcast_event(const char *name, Array args)
   kvec_t(Channel *) subscribed = KV_INITIAL_VALUE;
   Channel *channel;
 
-  pmap_foreach_value(&channels, channel, {
+  map_foreach_value(&channels, channel, {
     if (channel->is_rpc
         && set_has(cstr_t, channel->rpc.subscribed_events, name)) {
       kv_push(subscribed, channel);
@@ -691,6 +707,25 @@ void rpc_set_client_info(uint64_t id, Dictionary info)
 
   api_free_dictionary(chan->rpc.info);
   chan->rpc.info = info;
+
+  // Parse "type" on "info" and set "client_type"
+  const char *type = get_client_info(chan, "type");
+  if (type == NULL || strequal(type, "remote")) {
+    chan->rpc.client_type = kClientTypeRemote;
+  } else if (strequal(type, "msgpack-rpc")) {
+    chan->rpc.client_type = kClientTypeMsgpackRpc;
+  } else if (strequal(type, "ui")) {
+    chan->rpc.client_type = kClientTypeUi;
+  } else if (strequal(type, "embedder")) {
+    chan->rpc.client_type = kClientTypeEmbedder;
+  } else if (strequal(type, "host")) {
+    chan->rpc.client_type = kClientTypeHost;
+  } else if (strequal(type, "plugin")) {
+    chan->rpc.client_type = kClientTypePlugin;
+  } else {
+    chan->rpc.client_type = kClientTypeUnknown;
+  }
+
   channel_info_changed(chan, false);
 }
 
@@ -699,14 +734,15 @@ Dictionary rpc_client_info(Channel *chan)
   return copy_dictionary(chan->rpc.info, NULL);
 }
 
-const char *rpc_client_name(Channel *chan)
+const char *get_client_info(Channel *chan, const char *key)
+  FUNC_ATTR_NONNULL_ALL
 {
   if (!chan->is_rpc) {
     return NULL;
   }
   Dictionary info = chan->rpc.info;
   for (size_t i = 0; i < info.size; i++) {
-    if (strequal("name", info.items[i].key.data)
+    if (strequal(key, info.items[i].key.data)
         && info.items[i].value.type == kObjectTypeString) {
       return info.items[i].value.data.string.data;
     }
@@ -715,6 +751,7 @@ const char *rpc_client_name(Channel *chan)
   return NULL;
 }
 
+#ifdef EXITFREE
 void rpc_free_all_mem(void)
 {
   cstr_t key;
@@ -722,4 +759,8 @@ void rpc_free_all_mem(void)
     xfree((void *)key);
   });
   set_destroy(cstr_t, &event_strings);
+
+  msgpack_sbuffer_destroy(&out_buffer);
+  multiqueue_free(ch_before_blocking_events);
 }
+#endif

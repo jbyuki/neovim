@@ -1,12 +1,10 @@
-#ifndef NVIM_INSEXPAND_H
-#define NVIM_INSEXPAND_H
+#pragma once
 
-#include <stdbool.h>
-
-#include "nvim/macros.h"
-#include "nvim/vim.h"
+#include "nvim/option_defs.h"  // IWYU pragma: keep
+#include "nvim/pos_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"  // IWYU pragma: keep
+#include "nvim/vim_defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "insexpand.h.generated.h"
 #endif
-#endif  // NVIM_INSEXPAND_H

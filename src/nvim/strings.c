@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <inttypes.h>
 #include <math.h>
@@ -12,8 +9,8 @@
 #include <string.h>
 
 #include "auto/config.h"
-#include "nvim/ascii.h"
-#include "nvim/assert.h"
+#include "nvim/ascii_defs.h"
+#include "nvim/assert_defs.h"
 #include "nvim/charset.h"
 #include "nvim/eval/encode.h"
 #include "nvim/eval/typval.h"
@@ -21,7 +18,8 @@
 #include "nvim/ex_docmd.h"
 #include "nvim/garray.h"
 #include "nvim/gettext.h"
-#include "nvim/macros.h"
+#include "nvim/globals.h"
+#include "nvim/macros_defs.h"
 #include "nvim/math.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
@@ -29,8 +27,42 @@
 #include "nvim/option.h"
 #include "nvim/plines.h"
 #include "nvim/strings.h"
-#include "nvim/types.h"
-#include "nvim/vim.h"
+#include "nvim/types_defs.h"
+#include "nvim/vim_defs.h"
+
+#ifdef INCLUDE_GENERATED_DECLARATIONS
+# include "strings.c.generated.h"
+#endif
+
+static const char e_cannot_mix_positional_and_non_positional_str[]
+  = N_("E1500: Cannot mix positional and non-positional arguments: %s");
+static const char e_fmt_arg_nr_unused_str[]
+  = N_("E1501: format argument %d unused in $-style format: %s");
+static const char e_positional_num_field_spec_reused_str_str[]
+  = N_("E1502: Positional argument %d used as field width reused as different type: %s/%s");
+static const char e_positional_nr_out_of_bounds_str[]
+  = N_("E1503: Positional argument %d out of bounds: %s");
+static const char e_positional_arg_num_type_inconsistent_str_str[]
+  = N_("E1504: Positional argument %d type used inconsistently: %s/%s");
+static const char e_invalid_format_specifier_str[]
+  = N_("E1505: Invalid format specifier: %s");
+static const char e_aptypes_is_null_nr_str[]
+  = "E1507: Internal error: ap_types or ap_types[idx] is NULL: %d: %s";
+
+static const char typename_unknown[] = N_("unknown");
+static const char typename_int[] = N_("int");
+static const char typename_longint[] = N_("long int");
+static const char typename_longlongint[] = N_("long long int");
+static const char typename_signedsizet[] = N_("signed size_t");
+static const char typename_unsignedint[] = N_("unsigned int");
+static const char typename_unsignedlongint[] = N_("unsigned long int");
+static const char typename_unsignedlonglongint[] = N_("unsigned long long int");
+static const char typename_sizet[] = N_("size_t");
+static const char typename_pointer[] = N_("pointer");
+static const char typename_percent[] = N_("percent");
+static const char typename_char[] = N_("char");
+static const char typename_string[] = N_("string");
+static const char typename_float[] = N_("float");
 
 /// Copy up to `len` bytes of `string` into newly allocated memory and
 /// terminate with a NUL. The allocated memory always has size `len + 1`, even
@@ -352,18 +384,6 @@ void del_trailing_spaces(char *ptr)
   }
 }
 
-#if !defined(HAVE_STRNLEN)
-size_t xstrnlen(const char *s, size_t n)
-  FUNC_ATTR_NONNULL_ALL FUNC_ATTR_PURE
-{
-  const char *end = memchr(s, '\0', n);
-  if (end == NULL) {
-    return n;
-  }
-  return (size_t)(end - s);
-}
-#endif
-
 #if (!defined(HAVE_STRCASECMP) && !defined(HAVE_STRICMP))
 // Compare two strings, ignoring case, using current locale.
 // Doesn't work for multi-byte characters.
@@ -413,6 +433,13 @@ int vim_strnicmp(const char *s1, const char *s2, size_t len)
 }
 #endif
 
+/// Case-insensitive `strequal`.
+bool striequal(const char *a, const char *b)
+  FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT
+{
+  return (a == NULL && b == NULL) || (a && b && STRICMP(a, b) == 0);
+}
+
 /// strchr() version which handles multibyte strings
 ///
 /// @param[in]  string  String to search in.
@@ -438,9 +465,6 @@ char *vim_strchr(const char *const string, const int c)
 
 // Sort an array of strings.
 
-#ifdef INCLUDE_GENERATED_DECLARATIONS
-# include "strings.c.generated.h"
-#endif
 static int sort_compare(const void *s1, const void *s2)
   FUNC_ATTR_NONNULL_ALL
 {
@@ -457,10 +481,8 @@ void sort_strings(char **files, int count)
 bool has_non_ascii(const char *s)
   FUNC_ATTR_PURE
 {
-  const char *p;
-
   if (s != NULL) {
-    for (p = s; *p != NUL; p++) {
+    for (const char *p = s; *p != NUL; p++) {
       if ((uint8_t)(*p) >= 128) {
         return true;
       }
@@ -572,7 +594,7 @@ static const void *tv_ptr(const typval_T *const tvs, int *const idxp)
   FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT
 {
 #define OFF(attr) offsetof(union typval_vval_union, attr)
-  STATIC_ASSERT(OFF(v_string) == OFF(v_list)  // -V568
+  STATIC_ASSERT(OFF(v_string) == OFF(v_list)
                 && OFF(v_string) == OFF(v_dict)
                 && OFF(v_string) == OFF(v_partial)
                 && sizeof(tvs[0].vval.v_string) == sizeof(tvs[0].vval.v_list)
@@ -717,6 +739,580 @@ int vim_vsnprintf(char *str, size_t str_m, const char *fmt, va_list ap)
   return vim_vsnprintf_typval(str, str_m, fmt, ap, NULL);
 }
 
+enum {
+  TYPE_UNKNOWN = -1,
+  TYPE_INT,
+  TYPE_LONGINT,
+  TYPE_LONGLONGINT,
+  TYPE_SIGNEDSIZET,
+  TYPE_UNSIGNEDINT,
+  TYPE_UNSIGNEDLONGINT,
+  TYPE_UNSIGNEDLONGLONGINT,
+  TYPE_SIZET,
+  TYPE_POINTER,
+  TYPE_PERCENT,
+  TYPE_CHAR,
+  TYPE_STRING,
+  TYPE_FLOAT,
+};
+
+/// Types that can be used in a format string
+static int format_typeof(const char *type)
+  FUNC_ATTR_NONNULL_ALL
+{
+  // allowed values: \0, h, l, L
+  char length_modifier = '\0';
+
+  // current conversion specifier character
+  char fmt_spec = '\0';
+
+  // parse 'h', 'l', 'll' and 'z' length modifiers
+  if (*type == 'h' || *type == 'l' || *type == 'z') {
+    length_modifier = *type;
+    type++;
+    if (length_modifier == 'l' && *type == 'l') {
+      // double l = long long
+      length_modifier = 'L';
+      type++;
+    }
+  }
+  fmt_spec = *type;
+
+  // common synonyms:
+  switch (fmt_spec) {
+  case 'i':
+    fmt_spec = 'd'; break;
+  case '*':
+    fmt_spec = 'd'; length_modifier = 'h'; break;
+  case 'D':
+    fmt_spec = 'd'; length_modifier = 'l'; break;
+  case 'U':
+    fmt_spec = 'u'; length_modifier = 'l'; break;
+  case 'O':
+    fmt_spec = 'o'; length_modifier = 'l'; break;
+  default:
+    break;
+  }
+
+  // get parameter value, do initial processing
+  switch (fmt_spec) {
+  // '%' and 'c' behave similar to 's' regarding flags and field
+  // widths
+  case '%':
+    return TYPE_PERCENT;
+
+  case 'c':
+    return TYPE_CHAR;
+
+  case 's':
+  case 'S':
+    return TYPE_STRING;
+
+  case 'd':
+  case 'u':
+  case 'b':
+  case 'B':
+  case 'o':
+  case 'x':
+  case 'X':
+  case 'p':
+    // NOTE: the u, b, o, x, X and p conversion specifiers
+    // imply the value is unsigned;  d implies a signed
+    // value
+
+    // 0 if numeric argument is zero (or if pointer is
+    // NULL for 'p'), +1 if greater than zero (or nonzero
+    // for unsigned arguments), -1 if negative (unsigned
+    // argument is never negative)
+
+    if (fmt_spec == 'p') {
+      return TYPE_POINTER;
+    } else if (fmt_spec == 'b' || fmt_spec == 'B') {
+      return TYPE_UNSIGNEDLONGLONGINT;
+    } else if (fmt_spec == 'd') {
+      // signed
+      switch (length_modifier) {
+      case '\0':
+      case 'h':
+        // char and short arguments are passed as int.
+        return TYPE_INT;
+      case 'l':
+        return TYPE_LONGINT;
+      case 'L':
+        return TYPE_LONGLONGINT;
+      case 'z':
+        return TYPE_SIGNEDSIZET;
+      }
+    } else {
+      // unsigned
+      switch (length_modifier) {
+      case '\0':
+      case 'h':
+        return TYPE_UNSIGNEDINT;
+      case 'l':
+        return TYPE_UNSIGNEDLONGINT;
+      case 'L':
+        return TYPE_UNSIGNEDLONGLONGINT;
+      case 'z':
+        return TYPE_SIZET;
+      }
+    }
+    break;
+
+  case 'f':
+  case 'F':
+  case 'e':
+  case 'E':
+  case 'g':
+  case 'G':
+    return TYPE_FLOAT;
+  }
+
+  return TYPE_UNKNOWN;
+}
+
+static char *format_typename(const char *type)
+  FUNC_ATTR_NONNULL_ALL
+{
+  switch (format_typeof(type)) {
+  case TYPE_INT:
+    return _(typename_int);
+  case TYPE_LONGINT:
+    return _(typename_longint);
+  case TYPE_LONGLONGINT:
+    return _(typename_longlongint);
+  case TYPE_UNSIGNEDINT:
+    return _(typename_unsignedint);
+  case TYPE_SIGNEDSIZET:
+    return _(typename_signedsizet);
+  case TYPE_UNSIGNEDLONGINT:
+    return _(typename_unsignedlongint);
+  case TYPE_UNSIGNEDLONGLONGINT:
+    return _(typename_unsignedlonglongint);
+  case TYPE_SIZET:
+    return _(typename_sizet);
+  case TYPE_POINTER:
+    return _(typename_pointer);
+  case TYPE_PERCENT:
+    return _(typename_percent);
+  case TYPE_CHAR:
+    return _(typename_char);
+  case TYPE_STRING:
+    return _(typename_string);
+  case TYPE_FLOAT:
+    return _(typename_float);
+  }
+
+  return _(typename_unknown);
+}
+
+static int adjust_types(const char ***ap_types, int arg, int *num_posarg, const char *type)
+  FUNC_ATTR_NONNULL_ALL
+{
+  if (*ap_types == NULL || *num_posarg < arg) {
+    const char **new_types = *ap_types == NULL
+                             ? xcalloc(sizeof(const char *), (size_t)arg)
+                             : xrealloc(*ap_types, (size_t)arg * sizeof(const char *));
+
+    for (int idx = *num_posarg; idx < arg; idx++) {
+      new_types[idx] = NULL;
+    }
+
+    *ap_types = new_types;
+    *num_posarg = arg;
+  }
+
+  if ((*ap_types)[arg - 1] != NULL) {
+    if ((*ap_types)[arg - 1][0] == '*' || type[0] == '*') {
+      const char *pt = type;
+      if (pt[0] == '*') {
+        pt = (*ap_types)[arg - 1];
+      }
+
+      if (pt[0] != '*') {
+        switch (pt[0]) {
+        case 'd':
+        case 'i':
+          break;
+        default:
+          semsg(_(e_positional_num_field_spec_reused_str_str), arg,
+                format_typename((*ap_types)[arg - 1]), format_typename(type));
+          return FAIL;
+        }
+      }
+    } else {
+      if (format_typeof(type) != format_typeof((*ap_types)[arg - 1])) {
+        semsg(_(e_positional_arg_num_type_inconsistent_str_str), arg,
+              format_typename(type), format_typename((*ap_types)[arg - 1]));
+        return FAIL;
+      }
+    }
+  }
+
+  (*ap_types)[arg - 1] = type;
+
+  return OK;
+}
+
+static int parse_fmt_types(const char ***ap_types, int *num_posarg, const char *fmt, typval_T *tvs)
+  FUNC_ATTR_NONNULL_ARG(1, 2)
+{
+  const char *p = fmt;
+  const char *arg = NULL;
+
+  int any_pos = 0;
+  int any_arg = 0;
+
+#define CHECK_POS_ARG \
+  do { \
+    if (any_pos && any_arg) { \
+      semsg(_(e_cannot_mix_positional_and_non_positional_str), fmt); \
+      goto error; \
+    } \
+  } while (0);
+
+  if (p == NULL) {
+    return OK;
+  }
+
+  while (*p != NUL) {
+    if (*p != '%') {
+      char *q = strchr(p + 1, '%');
+      size_t n = (q == NULL) ? strlen(p) : (size_t)(q - p);
+
+      p += n;
+    } else {
+      // allowed values: \0, h, l, L
+      char length_modifier = '\0';
+
+      // variable for positional arg
+      int pos_arg = -1;
+
+      p++;  // skip '%'
+
+      // First check to see if we find a positional
+      // argument specifier
+      const char *ptype = p;
+
+      while (ascii_isdigit(*ptype)) {
+        ptype++;
+      }
+
+      if (*ptype == '$') {
+        if (*p == '0') {
+          // 0 flag at the wrong place
+          semsg(_(e_invalid_format_specifier_str), fmt);
+          goto error;
+        }
+
+        // Positional argument
+        unsigned uj = (unsigned)(*p++ - '0');
+
+        while (ascii_isdigit((int)(*p))) {
+          uj = 10 * uj + (unsigned)(*p++ - '0');
+        }
+        pos_arg = (int)uj;
+
+        any_pos = 1;
+        CHECK_POS_ARG;
+
+        p++;
+      }
+
+      // parse flags
+      while (*p == '0' || *p == '-' || *p == '+' || *p == ' '
+             || *p == '#' || *p == '\'') {
+        switch (*p) {
+        case '0':
+          break;
+        case '-':
+          break;
+        case '+':
+          break;
+        case ' ':  // If both the ' ' and '+' flags appear, the ' '
+                   // flag should be ignored
+          break;
+        case '#':
+          break;
+        case '\'':
+          break;
+        }
+        p++;
+      }
+      // If the '0' and '-' flags both appear, the '0' flag should be
+      // ignored.
+
+      // parse field width
+      if (*(arg = p) == '*') {
+        p++;
+
+        if (ascii_isdigit((int)(*p))) {
+          // Positional argument field width
+          unsigned uj = (unsigned)(*p++ - '0');
+
+          while (ascii_isdigit((int)(*p))) {
+            uj = 10 * uj + (unsigned)(*p++ - '0');
+          }
+
+          if (*p != '$') {
+            semsg(_(e_invalid_format_specifier_str), fmt);
+            goto error;
+          } else {
+            p++;
+            any_pos = 1;
+            CHECK_POS_ARG;
+
+            if (adjust_types(ap_types, (int)uj, num_posarg, arg) == FAIL) {
+              goto error;
+            }
+          }
+        } else {
+          any_arg = 1;
+          CHECK_POS_ARG;
+        }
+      } else if (ascii_isdigit((int)(*p))) {
+        // size_t could be wider than unsigned int; make sure we treat
+        // argument like common implementations do
+        unsigned uj = (unsigned)(*p++ - '0');
+
+        while (ascii_isdigit((int)(*p))) {
+          uj = 10 * uj + (unsigned)(*p++ - '0');
+        }
+
+        if (*p == '$') {
+          semsg(_(e_invalid_format_specifier_str), fmt);
+          goto error;
+        }
+      }
+
+      // parse precision
+      if (*p == '.') {
+        p++;
+
+        if (*(arg = p) == '*') {
+          p++;
+
+          if (ascii_isdigit((int)(*p))) {
+            // Parse precision
+            unsigned uj = (unsigned)(*p++ - '0');
+
+            while (ascii_isdigit((int)(*p))) {
+              uj = 10 * uj + (unsigned)(*p++ - '0');
+            }
+
+            if (*p == '$') {
+              any_pos = 1;
+              CHECK_POS_ARG;
+
+              p++;
+
+              if (adjust_types(ap_types, (int)uj, num_posarg, arg) == FAIL) {
+                goto error;
+              }
+            } else {
+              semsg(_(e_invalid_format_specifier_str), fmt);
+              goto error;
+            }
+          } else {
+            any_arg = 1;
+            CHECK_POS_ARG;
+          }
+        } else if (ascii_isdigit((int)(*p))) {
+          // size_t could be wider than unsigned int; make sure we
+          // treat argument like common implementations do
+          unsigned uj = (unsigned)(*p++ - '0');
+
+          while (ascii_isdigit((int)(*p))) {
+            uj = 10 * uj + (unsigned)(*p++ - '0');
+          }
+
+          if (*p == '$') {
+            semsg(_(e_invalid_format_specifier_str), fmt);
+            goto error;
+          }
+        }
+      }
+
+      if (pos_arg != -1) {
+        any_pos = 1;
+        CHECK_POS_ARG;
+
+        ptype = p;
+      }
+
+      // parse 'h', 'l', 'll' and 'z' length modifiers
+      if (*p == 'h' || *p == 'l' || *p == 'z') {
+        length_modifier = *p;
+        p++;
+        if (length_modifier == 'l' && *p == 'l') {
+          // double l = long long
+          // length_modifier = 'L';
+          p++;
+        }
+      }
+
+      switch (*p) {
+      // Check for known format specifiers. % is special!
+      case 'i':
+      case '*':
+      case 'd':
+      case 'u':
+      case 'o':
+      case 'D':
+      case 'U':
+      case 'O':
+      case 'x':
+      case 'X':
+      case 'b':
+      case 'B':
+      case 'c':
+      case 's':
+      case 'S':
+      case 'p':
+      case 'f':
+      case 'F':
+      case 'e':
+      case 'E':
+      case 'g':
+      case 'G':
+        if (pos_arg != -1) {
+          if (adjust_types(ap_types, pos_arg, num_posarg, ptype) == FAIL) {
+            goto error;
+          }
+        } else {
+          any_arg = 1;
+          CHECK_POS_ARG;
+        }
+        break;
+
+      default:
+        if (pos_arg != -1) {
+          semsg(_(e_cannot_mix_positional_and_non_positional_str), fmt);
+          goto error;
+        }
+      }
+
+      if (*p != NUL) {
+        p++;     // step over the just processed conversion specifier
+      }
+    }
+  }
+
+  for (int arg_idx = 0; arg_idx < *num_posarg; arg_idx++) {
+    if ((*ap_types)[arg_idx] == NULL) {
+      semsg(_(e_fmt_arg_nr_unused_str), arg_idx + 1, fmt);
+      goto error;
+    }
+
+    if (tvs != NULL && tvs[arg_idx].v_type == VAR_UNKNOWN) {
+      semsg(_(e_positional_nr_out_of_bounds_str), arg_idx + 1, fmt);
+      goto error;
+    }
+  }
+
+  return OK;
+
+error:
+  xfree(*ap_types);
+  *ap_types = NULL;
+  *num_posarg = 0;
+  return FAIL;
+}
+
+static void skip_to_arg(const char **ap_types, va_list ap_start, va_list *ap, int *arg_idx,
+                        int *arg_cur, const char *fmt)
+  FUNC_ATTR_NONNULL_ARG(3, 4, 5)
+{
+  int arg_min = 0;
+
+  if (*arg_cur + 1 == *arg_idx) {
+    (*arg_cur)++;
+    (*arg_idx)++;
+    return;
+  }
+
+  if (*arg_cur >= *arg_idx) {
+    // Reset ap to ap_start and skip arg_idx - 1 types
+    va_end(*ap);
+    va_copy(*ap, ap_start);
+  } else {
+    // Skip over any we should skip
+    arg_min = *arg_cur;
+  }
+
+  for (*arg_cur = arg_min; *arg_cur < *arg_idx - 1; (*arg_cur)++) {
+    if (ap_types == NULL || ap_types[*arg_cur] == NULL) {
+      siemsg(e_aptypes_is_null_nr_str, fmt, *arg_cur);
+      return;
+    }
+
+    const char *p = ap_types[*arg_cur];
+
+    int fmt_type = format_typeof(p);
+
+    // get parameter value, do initial processing
+    switch (fmt_type) {
+    case TYPE_PERCENT:
+    case TYPE_UNKNOWN:
+      break;
+
+    case TYPE_CHAR:
+      va_arg(*ap, int);
+      break;
+
+    case TYPE_STRING:
+      va_arg(*ap, const char *);
+      break;
+
+    case TYPE_POINTER:
+      va_arg(*ap, void *);
+      break;
+
+    case TYPE_INT:
+      va_arg(*ap, int);
+      break;
+
+    case TYPE_LONGINT:
+      va_arg(*ap, long);
+      break;
+
+    case TYPE_LONGLONGINT:
+      va_arg(*ap, long long);  // NOLINT(runtime/int)
+      break;
+
+    case TYPE_SIGNEDSIZET:  // implementation-defined, usually ptrdiff_t
+      va_arg(*ap, ptrdiff_t);
+      break;
+
+    case TYPE_UNSIGNEDINT:
+      va_arg(*ap, unsigned);
+      break;
+
+    case TYPE_UNSIGNEDLONGINT:
+      va_arg(*ap, unsigned long);
+      break;
+
+    case TYPE_UNSIGNEDLONGLONGINT:
+      va_arg(*ap, unsigned long long);  // NOLINT(runtime/int)
+      break;
+
+    case TYPE_SIZET:
+      va_arg(*ap, size_t);
+      break;
+
+    case TYPE_FLOAT:
+      va_arg(*ap, double);
+      break;
+    }
+  }
+
+  // Because we know that after we return from this call,
+  // a va_arg() call is made, we can pre-emptively
+  // increment the current argument index.
+  (*arg_cur)++;
+  (*arg_idx)++;
+}
+
 /// Write formatted value to the string
 ///
 /// @param[out]  str  String to write to.
@@ -728,12 +1324,23 @@ int vim_vsnprintf(char *str, size_t str_m, const char *fmt, va_list ap)
 ///
 /// @return Number of bytes excluding NUL byte that would be written to the
 ///         string if str_m was greater or equal to the return value.
-int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, typval_T *const tvs)
+int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap_start,
+                         typval_T *const tvs)
 {
   size_t str_l = 0;
   bool str_avail = str_l < str_m;
   const char *p = fmt;
+  int arg_cur = 0;
+  int num_posarg = 0;
   int arg_idx = 1;
+  va_list ap;
+  const char **ap_types = NULL;
+
+  if (parse_fmt_types(&ap_types, &num_posarg, fmt, tvs) == FAIL) {
+    return 0;
+  }
+
+  va_copy(ap, ap_start);
 
   if (!p) {
     p = "";
@@ -751,9 +1358,13 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
       assert(n <= SIZE_MAX - str_l);
       str_l += n;
     } else {
-      size_t min_field_width = 0, precision = 0;
-      int zero_padding = 0, precision_specified = 0, justify_left = 0;
-      int alternate_form = 0, force_sign = 0;
+      size_t min_field_width = 0;
+      size_t precision = 0;
+      int zero_padding = 0;
+      int precision_specified = 0;
+      int justify_left = 0;
+      int alternate_form = 0;
+      int force_sign = 0;
 
       // if both ' ' and '+' flags appear, ' ' flag should be ignored
       int space_for_positive = 1;
@@ -789,7 +1400,30 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
       // buffer for 's' and 'S' specs
       char *tofree = NULL;
 
+      // variable for positional arg
+      int pos_arg = -1;
+
       p++;  // skip '%'
+
+      // First check to see if we find a positional
+      // argument specifier
+      const char *ptype = p;
+
+      while (ascii_isdigit(*ptype)) {
+        ptype++;
+      }
+
+      if (*ptype == '$') {
+        // Positional argument
+        unsigned uj = (unsigned)(*p++ - '0');
+
+        while (ascii_isdigit((int)(*p))) {
+          uj = 10 * uj + (unsigned)(*p++ - '0');
+        }
+        pos_arg = (int)uj;
+
+        p++;
+      }
 
       // parse flags
       while (true) {
@@ -817,7 +1451,25 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
       // parse field width
       if (*p == '*') {
         p++;
-        const int j = tvs ? (int)tv_nr(tvs, &arg_idx) : va_arg(ap, int);
+
+        if (ascii_isdigit((int)(*p))) {
+          // Positional argument field width
+          unsigned uj = (unsigned)(*p++ - '0');
+
+          while (ascii_isdigit((int)(*p))) {
+            uj = 10 * uj + (unsigned)(*p++ - '0');
+          }
+          arg_idx = (int)uj;
+
+          p++;
+        }
+
+        const int j = (tvs
+                       ? (int)tv_nr(tvs, &arg_idx)
+                       : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                      &arg_cur, fmt),
+                          va_arg(ap, int)));
+
         if (j >= 0) {
           min_field_width = (size_t)j;
         } else {
@@ -839,16 +1491,8 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
       if (*p == '.') {
         p++;
         precision_specified = 1;
-        if (*p == '*') {
-          const int j = tvs ? (int)tv_nr(tvs, &arg_idx) : va_arg(ap, int);
-          p++;
-          if (j >= 0) {
-            precision = (size_t)j;
-          } else {
-            precision_specified = 0;
-            precision = 0;
-          }
-        } else if (ascii_isdigit((int)(*p))) {
+
+        if (ascii_isdigit((int)(*p))) {
           // size_t could be wider than unsigned int; make sure we
           // treat argument like common implementations do
           unsigned uj = (unsigned)(*p++ - '0');
@@ -857,6 +1501,33 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
             uj = 10 * uj + (unsigned)(*p++ - '0');
           }
           precision = uj;
+        } else if (*p == '*') {
+          p++;
+
+          if (ascii_isdigit((int)(*p))) {
+            // positional argument
+            unsigned uj = (unsigned)(*p++ - '0');
+
+            while (ascii_isdigit((int)(*p))) {
+              uj = 10 * uj + (unsigned)(*p++ - '0');
+            }
+            arg_idx = (int)uj;
+
+            p++;
+          }
+
+          const int j = (tvs
+                         ? (int)tv_nr(tvs, &arg_idx)
+                         : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                        &arg_cur, fmt),
+                            va_arg(ap, int)));
+
+          if (j >= 0) {
+            precision = (size_t)j;
+          } else {
+            precision_specified = 0;
+            precision = 0;
+          }
         }
       }
 
@@ -864,8 +1535,9 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
       if (*p == 'h' || *p == 'l' || *p == 'z') {
         length_modifier = *p;
         p++;
-        if (length_modifier == 'l' && *p == 'l') {  // ll, encoded as 2
-          length_modifier = '2';
+        if (length_modifier == 'l' && *p == 'l') {
+          // double l = long long
+          length_modifier = 'L';
           p++;
         }
       }
@@ -895,8 +1567,12 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
       case 'x':
       case 'X':
         if (tvs && length_modifier == '\0') {
-          length_modifier = '2';
+          length_modifier = 'L';
         }
+      }
+
+      if (pos_arg != -1) {
+        arg_idx = pos_arg;
       }
 
       // get parameter value, do initial processing
@@ -913,7 +1589,12 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
           break;
 
         case 'c': {
-          const int j = tvs ? (int)tv_nr(tvs, &arg_idx) : va_arg(ap, int);
+          const int j = (tvs
+                         ? (int)tv_nr(tvs, &arg_idx)
+                         : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                        &arg_cur, fmt),
+                            va_arg(ap, int)));
+
           // standard demands unsigned char
           uchar_arg = (unsigned char)j;
           str_arg = (char *)&uchar_arg;
@@ -922,8 +1603,12 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
 
         case 's':
         case 'S':
-          str_arg = tvs ? tv_str(tvs, &arg_idx, &tofree)
-                        : va_arg(ap, const char *);
+          str_arg = (tvs
+                     ? tv_str(tvs, &arg_idx, &tofree)
+                     : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                    &arg_cur, fmt),
+                        va_arg(ap, const char *)));
+
           if (!str_arg) {
             str_arg = "[NULL]";
             str_arg_l = 6;
@@ -990,7 +1675,12 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
         const void *ptr_arg = NULL;
 
         if (fmt_spec == 'p') {
-          ptr_arg = tvs ? tv_ptr(tvs, &arg_idx) : va_arg(ap, void *);
+          ptr_arg = (tvs
+                     ? tv_ptr(tvs, &arg_idx)
+                     : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                    &arg_cur, fmt),
+                        va_arg(ap, void *)));
+
           if (ptr_arg) {
             arg_sign = 1;
           }
@@ -998,23 +1688,41 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
           // signed
           switch (length_modifier) {
           case '\0':
-            arg = (int)(tvs ? tv_nr(tvs, &arg_idx) : va_arg(ap, int));
+            arg = (tvs
+                   ? (int)tv_nr(tvs, &arg_idx)
+                   : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                  &arg_cur, fmt),
+                      va_arg(ap, int)));
             break;
           case 'h':
             // char and short arguments are passed as int16_t
-            arg = (int16_t)(tvs ? tv_nr(tvs, &arg_idx) : va_arg(ap, int));
+            arg = (int16_t)
+                  (tvs
+                   ? (int)tv_nr(tvs, &arg_idx)
+                   : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                  &arg_cur, fmt),
+                      va_arg(ap, int)));
             break;
           case 'l':
-            arg = (tvs ? (long)tv_nr(tvs, &arg_idx) : va_arg(ap, long));
+            arg = (tvs
+                   ? (long)tv_nr(tvs, &arg_idx)
+                   : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                  &arg_cur, fmt),
+                      va_arg(ap, long)));
             break;
-          case '2':
-            arg = (
-                   tvs
-                    ? (long long)tv_nr(tvs, &arg_idx)  // NOLINT (runtime/int)
-                    : va_arg(ap, long long));  // NOLINT (runtime/int)
+          case 'L':
+            arg = (tvs
+                   ? (long long)tv_nr(tvs, &arg_idx)  // NOLINT(runtime/int)
+                   : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                  &arg_cur, fmt),
+                      va_arg(ap, long long)));  // NOLINT(runtime/int)
             break;
-          case 'z':
-            arg = (tvs ? (ptrdiff_t)tv_nr(tvs, &arg_idx) : va_arg(ap, ptrdiff_t));
+          case 'z':  // implementation-defined, usually ptrdiff_t
+            arg = (tvs
+                   ? (ptrdiff_t)tv_nr(tvs, &arg_idx)
+                   : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                  &arg_cur, fmt),
+                      va_arg(ap, ptrdiff_t)));
             break;
           }
           if (arg > 0) {
@@ -1026,23 +1734,40 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
           // unsigned
           switch (length_modifier) {
           case '\0':
-            uarg = (unsigned)(tvs ? tv_nr(tvs, &arg_idx) : va_arg(ap, unsigned));
+            uarg = (tvs
+                    ? (unsigned)tv_nr(tvs, &arg_idx)
+                    : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                   &arg_cur, fmt),
+                       va_arg(ap, unsigned)));
             break;
           case 'h':
-            uarg = (uint16_t)(tvs ? tv_nr(tvs, &arg_idx) : va_arg(ap, unsigned));
+            uarg = (uint16_t)
+                   (tvs
+                    ? (unsigned)tv_nr(tvs, &arg_idx)
+                    : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                   &arg_cur, fmt),
+                       va_arg(ap, unsigned)));
             break;
           case 'l':
-            uarg = (tvs ? (unsigned long)tv_nr(tvs, &arg_idx) : va_arg(ap, unsigned long));
+            uarg = (tvs
+                    ? (unsigned long)tv_nr(tvs, &arg_idx)
+                    : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                   &arg_cur, fmt),
+                       va_arg(ap, unsigned long)));
             break;
-          case '2':
-            uarg = (uintmax_t)(unsigned long long)(  // NOLINT (runtime/int)
-                                                     tvs
-                    ? ((unsigned long long)  // NOLINT (runtime/int)
-                       tv_nr(tvs, &arg_idx))
-                    : va_arg(ap, unsigned long long));  // NOLINT (runtime/int)
+          case 'L':
+            uarg = (tvs
+                    ? (unsigned long long)tv_nr(tvs, &arg_idx)  // NOLINT(runtime/int)
+                    : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                   &arg_cur, fmt),
+                       va_arg(ap, unsigned long long)));  // NOLINT(runtime/int)
             break;
           case 'z':
-            uarg = (tvs ? (size_t)tv_nr(tvs, &arg_idx) : va_arg(ap, size_t));
+            uarg = (tvs
+                    ? (size_t)tv_nr(tvs, &arg_idx)
+                    : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                   &arg_cur, fmt),
+                       va_arg(ap, size_t)));
             break;
           }
           arg_sign = (uarg != 0);
@@ -1175,9 +1900,14 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
       case 'G': {
         // floating point
         char format[40];
-        int remove_trailing_zeroes = false;
+        bool remove_trailing_zeroes = false;
 
-        double f = tvs ? tv_float(tvs, &arg_idx) : va_arg(ap, double);
+        double f = (tvs
+                    ? tv_float(tvs, &arg_idx)
+                    : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                   &arg_cur, fmt),
+                       va_arg(ap, double)));
+
         double abs_f = f < 0 ? -f : f;
 
         if (fmt_spec == 'g' || fmt_spec == 'G') {
@@ -1232,7 +1962,6 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
           assert(str_arg_l < sizeof(tmp));
 
           if (remove_trailing_zeroes) {
-            int i;
             char *tp;
 
             // using %g or %G: remove superfluous zeroes
@@ -1247,7 +1976,7 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
                   STRMOVE(tp + 1, tp + 2);
                   str_arg_l--;
                 }
-                i = (tp[1] == '-') ? 2 : 1;
+                int i = (tp[1] == '-') ? 2 : 1;
                 while (tp[i] == '0') {
                   // change "1.0e07" to "1.0e7"
                   STRMOVE(tp + i, tp + i + 1);
@@ -1395,9 +2124,13 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap, t
     str[str_l <= str_m - 1 ? str_l : str_m - 1] = '\0';
   }
 
-  if (tvs && tvs[arg_idx - 1].v_type != VAR_UNKNOWN) {
+  if (tvs != NULL
+      && tvs[num_posarg != 0 ? num_posarg : arg_idx - 1].v_type != VAR_UNKNOWN) {
     emsg(_("E767: Too many arguments to printf()"));
   }
+
+  xfree(ap_types);
+  va_end(ap);
 
   // return the number of characters formatted (excluding trailing nul
   // character); that is, the number of characters that would have been
@@ -1439,20 +2172,17 @@ int kv_do_printf(StringBuilder *str, const char *fmt, ...)
 ///
 /// @return  the allocated string.
 char *reverse_text(char *s)
-  FUNC_ATTR_NONNULL_RET
+  FUNC_ATTR_NONNULL_ALL FUNC_ATTR_NONNULL_RET
 {
-  // Reverse the pattern.
   size_t len = strlen(s);
   char *rev = xmalloc(len + 1);
-  size_t rev_i = len;
-  for (size_t s_i = 0; s_i < len; s_i++) {
+  for (size_t s_i = 0, rev_i = len; s_i < len; s_i++) {
     const int mb_len = utfc_ptr2len(s + s_i);
     rev_i -= (size_t)mb_len;
     memmove(rev + rev_i, s + s_i, (size_t)mb_len);
     s_i += (size_t)mb_len - 1;
   }
   rev[len] = NUL;
-
   return rev;
 }
 
@@ -1910,7 +2640,7 @@ void f_strcharpart(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
   }
 
   rettv->v_type = VAR_STRING;
-  rettv->vval.v_string = xstrndup(p + nbyte, (size_t)len);
+  rettv->vval.v_string = xmemdupz(p + nbyte, (size_t)len);
 }
 
 /// "strpart()" function
@@ -2190,6 +2920,10 @@ void f_trim(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 
   if (argvars[1].v_type == VAR_STRING) {
     mask = tv_get_string_buf_chk(&argvars[1], buf2);
+    if (*mask == NUL) {
+      mask = NULL;
+    }
+
     if (argvars[2].v_type != VAR_UNKNOWN) {
       bool error = false;
       // leading or trailing characters to trim
@@ -2204,11 +2938,10 @@ void f_trim(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     }
   }
 
-  int c1;
   if (dir == 0 || dir == 1) {
     // Trim leading characters
     while (*head != NUL) {
-      c1 = utf_ptr2char(head);
+      int c1 = utf_ptr2char(head);
       if (mask == NULL) {
         if (c1 > ' ' && c1 != 0xa0) {
           break;
@@ -2233,7 +2966,7 @@ void f_trim(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     for (; tail > head; tail = prev) {
       prev = tail;
       MB_PTR_BACK(head, prev);
-      c1 = utf_ptr2char(prev);
+      int c1 = utf_ptr2char(prev);
       if (mask == NULL) {
         if (c1 > ' ' && c1 != 0xa0) {
           break;

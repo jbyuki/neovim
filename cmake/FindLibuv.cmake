@@ -1,5 +1,5 @@
-find_path(LIBUV_INCLUDE_DIR uv.h)
-find_library(LIBUV_LIBRARY NAMES uv_a uv)
+find_path2(LIBUV_INCLUDE_DIR uv.h)
+find_library2(LIBUV_LIBRARY NAMES uv_a uv libuv)
 
 set(LIBUV_LIBRARIES ${LIBUV_LIBRARY})
 
@@ -41,10 +41,12 @@ endif()
 if(WIN32)
   # check_library_exists() does not work for Win32 API calls in X86 due to name
   # mangling calling conventions
-  list(APPEND LIBUV_LIBRARIES iphlpapi)
-  list(APPEND LIBUV_LIBRARIES psapi)
-  list(APPEND LIBUV_LIBRARIES userenv)
-  list(APPEND LIBUV_LIBRARIES ws2_32)
+  list(APPEND LIBUV_LIBRARIES
+    iphlpapi
+    psapi
+    userenv
+    ws2_32
+    dbghelp)
 endif()
 
 find_package(Threads)
@@ -59,3 +61,7 @@ find_package_handle_standard_args(Libuv DEFAULT_MSG
                                   LIBUV_LIBRARY LIBUV_INCLUDE_DIR)
 
 mark_as_advanced(LIBUV_INCLUDE_DIR LIBUV_LIBRARY)
+
+add_library(libuv INTERFACE)
+target_include_directories(libuv SYSTEM BEFORE INTERFACE ${LIBUV_INCLUDE_DIR})
+target_link_libraries(libuv INTERFACE ${LIBUV_LIBRARIES})

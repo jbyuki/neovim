@@ -1,17 +1,15 @@
-#ifndef NVIM_DRAWLINE_H
-#define NVIM_DRAWLINE_H
+#pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "klib/kvec.h"
-#include "nvim/decoration_provider.h"
-#include "nvim/fold.h"
-#include "nvim/macros.h"
-#include "nvim/types.h"
+#include "nvim/fold_defs.h"  // IWYU pragma: keep
+#include "nvim/macros_defs.h"
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"
 
-// Maximum columns for terminal highlight attributes
-#define TERM_ATTRS_MAX 1024
+enum { TERM_ATTRS_MAX = 1024, };  ///< Maximum columns for terminal highlight attributes
 
 typedef struct {
   NS ns_id;
@@ -19,11 +17,11 @@ typedef struct {
   int win_row;
   int win_col;
 } WinExtmark;
-EXTERN kvec_t(WinExtmark) win_extmark_arr INIT(= KV_INITIAL_VALUE);
+EXTERN kvec_t(WinExtmark) win_extmark_arr INIT( = KV_INITIAL_VALUE);
 
-EXTERN bool conceal_cursor_used INIT(= false);
+EXTERN bool conceal_cursor_used INIT( = false);
 
-// Spell checking variables passed from win_update() to win_line().
+/// Spell checking variables passed from win_update() to win_line().
 typedef struct {
   bool spv_has_spell;         ///< drawn window has spell checking
   bool spv_unchanged;         ///< not updating for changed text
@@ -37,4 +35,3 @@ typedef struct {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "drawline.h.generated.h"
 #endif
-#endif  // NVIM_DRAWLINE_H

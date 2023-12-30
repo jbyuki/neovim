@@ -44,5 +44,9 @@ globals = {
 exclude_files = {
   'test/functional/fixtures/lua/syntax_error.lua',
   'runtime/lua/vim/treesitter/_meta.lua',
+  'runtime/lua/vim/_meta/vimfn.lua',
+  'runtime/lua/vim/_meta/api.lua',
   'runtime/lua/vim/re.lua',
+  'runtime/lua/coxpcall.lua',
+  'src/nvim/eval.lua',
 }

@@ -69,27 +69,60 @@ remove existing features, or refactor parts of the code that would change
 user's workflow. In these cases, a deprecation policy is needed to properly
 inform users of the change.
 
-In general, when a feature is slated to be removed it should:
+When a (non-experimental) feature is slated to be removed it should:
 
-1. Be marked deprecated in the _next_ release
-  - This includes a note in the release notes (include a "Deprecation Warning"
-    section just below "Breaking Changes")
-  - Lua features can use `vim.deprecate()`
-  - Features implemented in Vimscript or in C will need bespoke implementations
-    to communicate to users that the feature is deprecated
-2. Be removed in a release following the release in which it was marked
-   deprecated
+1. Be _soft_ deprecated in the _next_ release
+  - Use of the deprecated feature will still work.
+  - This means deprecating via documentation and annotation (`@deprecated`) only.
+  - Include a note in `news.txt` under `DEPRECATIONS`.
+  - For Lua features, use `vim.deprecate()`. The specified version is the
+    current minor version + 2. For example, if the current version is
+    `v0.10.0-dev-1957+gd676746c33` then use `0.12`.
+  - For Vimscript features, use `v:lua.vim.deprecate()`. Use the same version
+    as described for Lua features.
+2. Be _hard_ deprecated in a following a release in which it was soft deprecated.
+  - Use of the deprecated feature will still work but should issue a warning.
+  - Features implemented in C will need bespoke implementations to communicate
+    to users that the feature is deprecated.
+3. Be removed in a release following the release in which it was hard deprecated
   - Usually this will be the next release, but it may be a later release if a
     longer deprecation cycle is desired
+  - If possible, keep the feature as a stub (e.g. function API) and issue an error
+    when it is accessed.
+
+Example:
+
+```
+                Deprecation                            Removal
+                     ┆                 ┆                 ┆
+                     ┆      Soft       ┆      Hard       ┆
+                     ┆   Deprecation   ┆   Deprecation   ┆
+                     ┆     Period      ┆     Period      ┆
+         ────────────────────────────────────────────────────────────
+Version:            0.10              0.11              0.12
+         ────────────────────────────────────────────────────────────
+         Old code         Old code          Old code
+                             +                 +
+                          New code          New code         New code
+```
 
 Feature removals which may benefit from community input or further discussion
 should also have a tracking issue (which should be linked to in the release
 notes).
 
+Exceptions to this policy may be made (for experimental subsystems or when
+there is broad consensus among maintainers). The rationale for the exception
+should be stated explicitly and publicly.
+
 Third-party dependencies
 ------------------------
 
-These "bundled" dependencies can be updated by bumping their versions in `cmake.deps/CMakeLists.txt`.
+For some dependencies we maintain temporary "forks", which are simply private
+branches with a few extra patches, while we wait for the upstream project to
+merge the patches. This is done instead of maintaining the patches as (fragile)
+CMake `PATCH_COMMAND` steps.
+
+These "bundled" dependencies can be updated by bumping their versions in `cmake.deps/deps.txt`.
 Some can be auto-bumped by `scripts/bump_deps.lua`.
 
 * [LuaJIT](https://github.com/LuaJIT/LuaJIT)
@@ -98,14 +131,14 @@ Some can be auto-bumped by `scripts/bump_deps.lua`.
     * When bumping, also sync [our bundled documentation](https://github.com/neovim/neovim/blob/master/runtime/doc/luvref.txt) with [the upstream documentation](https://github.com/luvit/luv/blob/master/docs.md).
 * [gettext](https://ftp.gnu.org/pub/gnu/gettext/)
 * [libiconv](https://ftp.gnu.org/pub/gnu/libiconv)
-* [libtermkey](https://github.com/neovim/libtermkey)
 * [libuv](https://github.com/libuv/libuv)
 * [libvterm](http://www.leonerd.org.uk/code/libvterm/)
+  * Downloading from the original source is unreliable, so we use our [mirror](https://github.com/neovim/libvterm) instead.
 * [lua-compat](https://github.com/keplerproject/lua-compat-5.3)
-* [msys2](https://github.com/msys2/MINGW-packages) (for mingw Windows build)
-    * Changes to mingw can [break our mingw build](https://github.com/msys2/MINGW-packages/issues/9946).
 * [tree-sitter](https://github.com/tree-sitter/tree-sitter)
 * [unibilium](https://github.com/neovim/unibilium)
+  * The original project [was abandoned](https://github.com/neovim/neovim/issues/10302), so the [neovim/unibilium](https://github.com/neovim/unibilium) fork is considered "upstream" and is maintained on the `master` branch.
+* [treesitter parsers](https://github.com/neovim/neovim/blob/7e97c773e3ba78fcddbb2a0b9b0d572c8210c83e/cmake.deps/deps.txt#L47-L62)
 
 ### Vendored dependencies
 
@@ -119,45 +152,75 @@ These dependencies are "vendored" (inlined), we must update the sources manually
 * `runtime/lua/vim/inspect.lua`: [inspect.lua](https://github.com/kikito/inspect.lua)
 * `src/nvim/tui/terminfo_defs.h`: terminfo definitions
     * Run `scripts/update_terminfo.sh` to update these definitions.
-* `runtime/lua/vim/lsp/types/protocol.lua`: LSP specification
-    * Run `scripts/lsp_types.lua` to update.
+* `runtime/lua/vim/lsp/_meta/protocol.lua`: LSP specification
+    * Run `scripts/gen_lsp.lua` to update.
+* `runtime/lua/vim/_meta/lpeg.lua`: LPeg definitions.
+    * Refer to [`LuaCATS/lpeg`](https://github.com/LuaCATS/lpeg) for updates.
+* `runtime/lua/vim/re.lua`: LPeg regex module.
+    * Vendored from LPeg. Needs to be updated when LPeg is updated.
 * `src/bit.c`: only for PUC lua: port of `require'bit'` from luajit https://bitop.luajit.org/
-* [treesitter parsers](https://github.com/neovim/neovim/blob/fcc24e43e0b5f9d801a01ff2b8f78ce8c16dd551/cmake.deps/CMakeLists.txt#L197-L210)
+* `runtime/lua/coxpcall.lua`: coxpcall (only needed for PUC lua, builtin to luajit)
+* `src/termkey`: [libtermkey](https://github.com/neovim/libtermkey)
 
-### Forks
+Non-technical dependencies
+--------------------------
 
-We may maintain forks, if we are waiting on upstream changes: https://github.com/neovim/neovim/wiki/Deps
+* GitHub users:
+    * https://github.com/marvim
+    * https://github.com/nvim-winget
+* Domain names (held in https://namecheap.com):
+    * neovim.org
+    * neovim.io
+    * packspec.org
+    * pkgjson.org
+* DNS for the above domains is managed in https://cloudflare.com (not the domain registrar)
 
-CI
---------------
 
-### General
+Refactoring
+-----------
 
-As our CI is primarily dependent on GitHub Actions at the moment, then so will
-our CI strategy be. The following guidelines have worked well for us so far:
+### Frozen legacy modules
 
-* Never use a macOS runner if an Ubuntu or a Windows runner can be used
-  instead. This is because macOS runners have a [tighter restrictions on the
-  number of concurrent jobs](https://docs.github.com/en/actions/learn-github-actions/usage-limits-billing-and-administration#usage-limits).
+Refactoring Vim structurally and aesthetically is an important goal of Neovim.
+But there are some modules that should not be changed significantly, because
+they are maintained Vim, at present. Until someone takes "ownership" of these
+modules, the cost of any significant changes (including style or structural
+changes that re-arrange the code) to these modules outweighs the benefit. The
+modules are:
 
-### Runner versions
+- `regexp.c`
+- `indent_c.c`
 
-* For special-purpose jobs where the runner version doesn't really matter,
-  prefer `-latest` tags so we don't need to manually bump the versions. An
-  example of a special-purpose workflow is `labeler.yml`.
+Automation (CI)
+---------------
 
-* For our testing jobs, which are in `test.yml` and `build.yml`, prefer to use
-  the latest stable (i.e. non-beta) version explicitly. Avoid using the
-  `-latest` tags here as it makes it difficult to determine from an unrelated
-  PR if a failure is due to the PR itself or due to GitHub bumping the
-  `-latest` tag without our knowledge. There's also a high risk that automatic
-  bumping the CI versions will fail due to manual work being required from
-  experience.
+### Backup
 
-* For our release job, which is `release.yml`, prefer to use the oldest stable
-  (i.e. non-deprecated) versions available. The reason is that we're trying to
-  produce images that work in the broadest number of environments, and
-  therefore want to use older releases.
+Discussions from issues and PRs are backed up here:
+https://github.com/neovim/neovim-backup
+
+### Development guidelines
+
+* CI and automation jobs are primarily driven by GitHub Actions.
+* Avoid macOS if an Ubuntu or a Windows runner can be used instead. This is
+  because macOS runners have [tighter restrictions on the number of concurrent
+  jobs](https://docs.github.com/en/actions/learn-github-actions/usage-limits-billing-and-administration#usage-limits).
+
+* Runner versions:
+    * For special-purpose jobs where the runner version doesn't really matter,
+      prefer `-latest` tags so we don't need to manually bump the versions. An
+      example of a special-purpose workflow is `labeler.yml`.
+    * For our testing jobs, which are in `test.yml` and `build.yml`, prefer to
+      use the latest stable (i.e. non-beta) version explicitly. Avoid using the
+      `-latest` tags here as it makes it difficult to determine from an
+      unrelated PR if a failure is due to the PR itself or due to GitHub bumping
+      the `-latest` tag without our knowledge. There's also a high risk that
+      automatically bumping the CI versions will fail due to manual work being
+      required from experience.
+    * For our release job, which is `release.yml`, prefer to use the oldest
+      stable (i.e. non-deprecated) versions available. The reason is that we're
+      trying to produce images that work in the broadest number of environments,
+      and therefore want to use older releases.
 
 See also
 --------

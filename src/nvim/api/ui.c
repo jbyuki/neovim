@@ -1,10 +1,8 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <inttypes.h>
 #include <msgpack/pack.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,22 +14,23 @@
 #include "nvim/api/ui.h"
 #include "nvim/autocmd.h"
 #include "nvim/channel.h"
+#include "nvim/eval.h"
 #include "nvim/event/loop.h"
+#include "nvim/event/multiqueue.h"
 #include "nvim/event/wstream.h"
 #include "nvim/globals.h"
 #include "nvim/grid.h"
 #include "nvim/highlight.h"
+#include "nvim/macros_defs.h"
 #include "nvim/main.h"
-#include "nvim/map.h"
+#include "nvim/map_defs.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
 #include "nvim/msgpack_rpc/channel.h"
-#include "nvim/msgpack_rpc/channel_defs.h"
 #include "nvim/msgpack_rpc/helpers.h"
 #include "nvim/option.h"
-#include "nvim/types.h"
+#include "nvim/types_defs.h"
 #include "nvim/ui.h"
-#include "nvim/vim.h"
 
 #define BUF_POS(data) ((size_t)((data)->buf_wptr - (data)->buf))
 
@@ -73,6 +72,11 @@ static void mpack_uint(char **buf, uint32_t val)
   }
 }
 
+static void mpack_bool(char **buf, bool val)
+{
+  mpack_w(buf, 0xc2 | (val ? 1 : 0));
+}
+
 static void mpack_array(char **buf, uint32_t len)
 {
   if (len < 0x10) {
@@ -103,35 +107,55 @@ static void mpack_str(char **buf, const char *str)
   *buf += len;
 }
 
+static void remote_ui_destroy(UI *ui)
+  FUNC_ATTR_NONNULL_ALL
+{
+  UIData *data = ui->data;
+  kv_destroy(data->call_buf);
+  XFREE_CLEAR(ui->term_name);
+  xfree(ui);
+}
+
 void remote_ui_disconnect(uint64_t channel_id)
 {
   UI *ui = pmap_get(uint64_t)(&connected_uis, channel_id);
   if (!ui) {
     return;
   }
-  UIData *data = ui->data;
-  kv_destroy(data->call_buf);
   pmap_del(uint64_t)(&connected_uis, channel_id, NULL);
   ui_detach_impl(ui, channel_id);
-
-  // Destroy `ui`.
-  XFREE_CLEAR(ui->term_name);
-  XFREE_CLEAR(ui->term_background);
-  xfree(ui);
+  remote_ui_destroy(ui);
 }
 
-/// Wait until ui has connected on stdio channel.
-void remote_ui_wait_for_attach(void)
+#ifdef EXITFREE
+void remote_ui_free_all_mem(void)
 {
-  Channel *channel = find_channel(CHAN_STDIO);
-  if (!channel) {
-    // this function should only be called in --embed mode, stdio channel
-    // can be assumed.
-    abort();
-  }
+  UI *ui;
+  map_foreach_value(&connected_uis, ui, {
+    remote_ui_destroy(ui);
+  });
+  map_destroy(uint64_t, &connected_uis);
+}
+#endif
 
-  LOOP_PROCESS_EVENTS_UNTIL(&main_loop, channel->events, -1,
-                            pmap_has(uint64_t)(&connected_uis, CHAN_STDIO));
+/// Wait until ui has connected on stdio channel if only_stdio
+/// is true, otherwise any channel.
+void remote_ui_wait_for_attach(bool only_stdio)
+{
+  if (only_stdio) {
+    Channel *channel = find_channel(CHAN_STDIO);
+    if (!channel) {
+      // this function should only be called in --embed mode, stdio channel
+      // can be assumed.
+      abort();
+    }
+
+    LOOP_PROCESS_EVENTS_UNTIL(&main_loop, channel->events, -1,
+                              map_has(uint64_t, &connected_uis, CHAN_STDIO));
+  } else {
+    LOOP_PROCESS_EVENTS_UNTIL(&main_loop, main_loop.events, -1,
+                              ui_active());
+  }
 }
 
 /// Activates UI events on the channel.
@@ -153,7 +177,7 @@ void nvim_ui_attach(uint64_t channel_id, Integer width, Integer height, Dictiona
                     Error *err)
   FUNC_API_SINCE(1) FUNC_API_REMOTE_ONLY
 {
-  if (pmap_has(uint64_t)(&connected_uis, channel_id)) {
+  if (map_has(uint64_t, &connected_uis, channel_id)) {
     api_set_error(err, kErrorTypeException,
                   "UI already attached to channel: %" PRId64, channel_id);
     return;
@@ -210,6 +234,8 @@ void nvim_ui_attach(uint64_t channel_id, Integer width, Integer height, Dictiona
 
   pmap_put(uint64_t)(&connected_uis, channel_id, ui);
   ui_attach_impl(ui, channel_id);
+
+  may_trigger_vim_suspend_resume(false);
 }
 
 /// @deprecated
@@ -226,10 +252,14 @@ void ui_attach(uint64_t channel_id, Integer width, Integer height, Boolean enabl
 void nvim_ui_set_focus(uint64_t channel_id, Boolean gained, Error *error)
   FUNC_API_SINCE(11) FUNC_API_REMOTE_ONLY
 {
-  if (!pmap_has(uint64_t)(&connected_uis, channel_id)) {
+  if (!map_has(uint64_t, &connected_uis, channel_id)) {
     api_set_error(error, kErrorTypeException,
                   "UI not attached to channel: %" PRId64, channel_id);
     return;
+  }
+
+  if (gained) {
+    may_trigger_vim_suspend_resume(false);
   }
 
   do_autocmd_focusgained((bool)gained);
@@ -244,7 +274,7 @@ void nvim_ui_set_focus(uint64_t channel_id, Boolean gained, Error *error)
 void nvim_ui_detach(uint64_t channel_id, Error *err)
   FUNC_API_SINCE(1) FUNC_API_REMOTE_ONLY
 {
-  if (!pmap_has(uint64_t)(&connected_uis, channel_id)) {
+  if (!map_has(uint64_t, &connected_uis, channel_id)) {
     api_set_error(err, kErrorTypeException,
                   "UI not attached to channel: %" PRId64, channel_id);
     return;
@@ -260,7 +290,7 @@ void remote_ui_stop(UI *ui)
 void nvim_ui_try_resize(uint64_t channel_id, Integer width, Integer height, Error *err)
   FUNC_API_SINCE(1) FUNC_API_REMOTE_ONLY
 {
-  if (!pmap_has(uint64_t)(&connected_uis, channel_id)) {
+  if (!map_has(uint64_t, &connected_uis, channel_id)) {
     api_set_error(err, kErrorTypeException,
                   "UI not attached to channel: %" PRId64, channel_id);
     return;
@@ -281,7 +311,7 @@ void nvim_ui_try_resize(uint64_t channel_id, Integer width, Integer height, Erro
 void nvim_ui_set_option(uint64_t channel_id, String name, Object value, Error *error)
   FUNC_API_SINCE(1) FUNC_API_REMOTE_ONLY
 {
-  if (!pmap_has(uint64_t)(&connected_uis, channel_id)) {
+  if (!map_has(uint64_t, &connected_uis, channel_id)) {
     api_set_error(error, kErrorTypeException,
                   "UI not attached to channel: %" PRId64, channel_id);
     return;
@@ -329,15 +359,6 @@ static void ui_set_option(UI *ui, bool init, String name, Object value, Error *e
     });
     t_colors = (int)value.data.integer;
     ui->term_colors = (int)value.data.integer;
-    return;
-  }
-
-  if (strequal(name.data, "term_background")) {
-    VALIDATE_T("term_background", kObjectTypeString, value.type, {
-      return;
-    });
-    set_tty_background(value.data.string.data);
-    ui->term_background = string_to_cstr(value.data.string);
     return;
   }
 
@@ -415,7 +436,7 @@ void nvim_ui_try_resize_grid(uint64_t channel_id, Integer grid, Integer width, I
                              Error *err)
   FUNC_API_SINCE(6) FUNC_API_REMOTE_ONLY
 {
-  if (!pmap_has(uint64_t)(&connected_uis, channel_id)) {
+  if (!map_has(uint64_t, &connected_uis, channel_id)) {
     api_set_error(err, kErrorTypeException,
                   "UI not attached to channel: %" PRId64, channel_id);
     return;
@@ -437,7 +458,7 @@ void nvim_ui_try_resize_grid(uint64_t channel_id, Integer grid, Integer width, I
 void nvim_ui_pum_set_height(uint64_t channel_id, Integer height, Error *err)
   FUNC_API_SINCE(6) FUNC_API_REMOTE_ONLY
 {
-  if (!pmap_has(uint64_t)(&connected_uis, channel_id)) {
+  if (!map_has(uint64_t, &connected_uis, channel_id)) {
     api_set_error(err, kErrorTypeException,
                   "UI not attached to channel: %" PRId64, channel_id);
     return;
@@ -478,7 +499,7 @@ void nvim_ui_pum_set_bounds(uint64_t channel_id, Float width, Float height, Floa
                             Error *err)
   FUNC_API_SINCE(7) FUNC_API_REMOTE_ONLY
 {
-  if (!pmap_has(uint64_t)(&connected_uis, channel_id)) {
+  if (!map_has(uint64_t, &connected_uis, channel_id)) {
     api_set_error(err, kErrorTypeException,
                   "UI not attached to channel: %" PRId64, channel_id);
     return;
@@ -504,6 +525,33 @@ void nvim_ui_pum_set_bounds(uint64_t channel_id, Float width, Float height, Floa
   ui->pum_width = (double)width;
   ui->pum_height = (double)height;
   ui->pum_pos = true;
+}
+
+/// Tells Nvim when a terminal event has occurred
+///
+/// The following terminal events are supported:
+///
+///   - "termresponse": The terminal sent an OSC or DCS response sequence to
+///                     Nvim. The payload is the received response. Sets
+///                     |v:termresponse| and fires |TermResponse|.
+///
+/// @param channel_id
+/// @param event Event name
+/// @param payload Event payload
+/// @param[out] err Error details, if any.
+void nvim_ui_term_event(uint64_t channel_id, String event, Object value, Error *err)
+  FUNC_API_SINCE(12) FUNC_API_REMOTE_ONLY
+{
+  if (strequal("termresponse", event.data)) {
+    if (value.type != kObjectTypeString) {
+      api_set_error(err, kErrorTypeValidation, "termresponse must be a string");
+      return;
+    }
+
+    const String termresponse = value.data.string;
+    set_vim_var_string(VV_TERMRESPONSE, termresponse.data, (ptrdiff_t)termresponse.size);
+    apply_autocmds_group(EVENT_TERMRESPONSE, NULL, NULL, false, AUGROUP_ALL, NULL, NULL, &value);
+  }
 }
 
 static void flush_event(UIData *data)
@@ -809,7 +857,7 @@ void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startcol, Int
     data->ncalls++;
 
     char **buf = &data->buf_wptr;
-    mpack_array(buf, 4);
+    mpack_array(buf, 5);
     mpack_uint(buf, (uint32_t)grid);
     mpack_uint(buf, (uint32_t)row);
     mpack_uint(buf, (uint32_t)startcol);
@@ -819,21 +867,24 @@ void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startcol, Int
     size_t ncells = (size_t)(endcol - startcol);
     int last_hl = -1;
     uint32_t nelem = 0;
+    bool was_space = false;
     for (size_t i = 0; i < ncells; i++) {
       repeat++;
-      if (i == ncells - 1 || attrs[i] != attrs[i + 1]
-          || strcmp(chunk[i], chunk[i + 1]) != 0) {
-        if (UI_BUF_SIZE - BUF_POS(data) < 2 * (1 + 2 + sizeof(schar_T) + 5 + 5)) {
+      if (i == ncells - 1 || attrs[i] != attrs[i + 1] || chunk[i] != chunk[i + 1]) {
+        if (UI_BUF_SIZE - BUF_POS(data) < 2 * (1 + 2 + sizeof(schar_T) + 5 + 5) + 1) {
           // close to overflowing the redraw buffer. finish this event,
           // flush, and start a new "grid_line" event at the current position.
           // For simplicity leave place for the final "clear" element
           // as well, hence the factor of 2 in the check.
           mpack_w2(&lenpos, nelem);
+
+          // We only ever set the wrap field on the final "grid_line" event for the line.
+          mpack_bool(buf, false);
           remote_ui_flush_buf(ui);
 
           prepare_call(ui, "grid_line");
           data->ncalls++;
-          mpack_array(buf, 4);
+          mpack_array(buf, 5);
           mpack_uint(buf, (uint32_t)grid);
           mpack_uint(buf, (uint32_t)row);
           mpack_uint(buf, (uint32_t)startcol + (uint32_t)i - repeat + 1);
@@ -844,7 +895,9 @@ void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startcol, Int
         uint32_t csize = (repeat > 1) ? 3 : ((attrs[i] != last_hl) ? 2 : 1);
         nelem++;
         mpack_array(buf, csize);
-        mpack_str(buf, chunk[i]);
+        char sc_buf[MAX_SCHAR_SIZE];
+        schar_get(sc_buf, chunk[i]);
+        mpack_str(buf, sc_buf);
         if (csize >= 2) {
           mpack_uint(buf, (uint32_t)attrs[i]);
           if (csize >= 3) {
@@ -854,9 +907,12 @@ void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startcol, Int
         data->ncells_pending += MIN(repeat, 2);
         last_hl = attrs[i];
         repeat = 0;
+        was_space = chunk[i] == schar_from_ascii(' ');
       }
     }
-    if (endcol < clearcol) {
+    // If the last chunk was all spaces, add a clearing chunk even if there are
+    // no more cells to clear, so there is no ambiguity about what to clear.
+    if (endcol < clearcol || was_space) {
       nelem++;
       data->ncells_pending += 1;
       mpack_array(buf, 3);
@@ -865,17 +921,20 @@ void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startcol, Int
       mpack_uint(buf, (uint32_t)(clearcol - endcol));
     }
     mpack_w2(&lenpos, nelem);
+    mpack_bool(buf, flags & kLineFlagWrap);
 
     if (data->ncells_pending > 500) {
-      // pass of cells to UI to let it start processing them
+      // pass off cells to UI to let it start processing them
       remote_ui_flush_buf(ui);
     }
   } else {
     for (int i = 0; i < endcol - startcol; i++) {
       remote_ui_cursor_goto(ui, row, startcol + i);
       remote_ui_highlight_set(ui, attrs[i]);
-      remote_ui_put(ui, chunk[i]);
-      if (utf_ambiguous_width(utf_ptr2char((char *)chunk[i]))) {
+      char sc_buf[MAX_SCHAR_SIZE];
+      schar_get(sc_buf, chunk[i]);
+      remote_ui_put(ui, sc_buf);
+      if (utf_ambiguous_width(utf_ptr2char(sc_buf))) {
         data->client_col = -1;  // force cursor update
       }
     }

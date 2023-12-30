@@ -1,15 +1,12 @@
-#ifndef NVIM_VIML_PARSER_EXPRESSIONS_H
-#define NVIM_VIML_PARSER_EXPRESSIONS_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #include "nvim/eval/typval_defs.h"
-#include "nvim/types.h"
+#include "nvim/types_defs.h"
 #include "nvim/viml/parser/parser.h"
-
-struct expr_ast_node;
 
 // Defines whether to ignore case:
 //    ==   kCCStrategyUseOption
@@ -387,5 +384,3 @@ extern const char *const expr_asgn_type_tab[];
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "viml/parser/expressions.h.generated.h"
 #endif
-
-#endif  // NVIM_VIML_PARSER_EXPRESSIONS_H

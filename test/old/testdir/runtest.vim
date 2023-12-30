@@ -84,7 +84,9 @@ source setup.vim
 set nocp viminfo+=nviminfo
 
 " Use utf-8 by default, instead of whatever the system default happens to be.
-" Individual tests can overrule this at the top of the file.
+" Individual tests can overrule this at the top of the file and use
+" g:orig_encoding if needed.
+let g:orig_encoding = &encoding
 set encoding=utf-8
 
 " REDIR_TEST_TO_NULL has a very permissive SwapExists autocommand which is for
@@ -94,6 +96,9 @@ let s:test_script_fname = expand('%')
 au! SwapExists * call HandleSwapExists()
 func HandleSwapExists()
   if exists('g:ignoreSwapExists')
+    if type(g:ignoreSwapExists) == v:t_string
+      let v:swapchoice = g:ignoreSwapExists
+    endif
     return
   endif
   " Ignore finding a swap file for the test script (the user might be
@@ -115,6 +120,8 @@ lang mess C
 
 " Nvim: append runtime from build dir, which contains the generated doc/tags.
 let &runtimepath ..= ',' .. expand($BUILD_DIR) .. '/runtime/'
+" Nvim: append libdir from build dir, which contains the bundled TS parsers.
+let &runtimepath ..= ',' .. expand($BUILD_DIR) .. '/lib/nvim/'
 
 let s:t_bold = &t_md
 let s:t_normal = &t_me
@@ -174,7 +181,7 @@ endfunc
 for name in s:GetSwapFileList()
   call delete(name)
 endfor
-unlet name
+unlet! name
 
 
 " Invoked when a test takes too much time.
@@ -228,6 +235,8 @@ func RunTheTest(test)
     endtry
   endif
 
+  let skipped = v:false
+
   au VimLeavePre * call EarlyExit(g:testfunc)
   if a:test =~ 'Test_nocatch_'
     " Function handles errors itself.  This avoids skipping commands after the
@@ -237,6 +246,7 @@ func RunTheTest(test)
     if g:skipped_reason != ''
       call add(s:messages, '    Skipped')
       call add(s:skipped, 'SKIPPED ' . a:test . ': ' . g:skipped_reason)
+      let skipped = v:true
     endif
   else
     try
@@ -244,6 +254,7 @@ func RunTheTest(test)
     catch /^\cskipped/
       call add(s:messages, '    Skipped')
       call add(s:skipped, 'SKIPPED ' . a:test . ': ' . substitute(v:exception, '^\S*\s\+', '',  ''))
+      let skipped = v:true
     catch
       call add(v:errors, 'Caught exception in ' . a:test . ': ' . v:exception . ' @ ' . v:throwpoint)
     endtry
@@ -339,15 +350,35 @@ func RunTheTest(test)
     endif
   endwhile
 
-  " Check if the test has left any swap files behind.  Delete them before
-  " running tests again, they might interfere.
-  let swapfiles = s:GetSwapFileList()
-  if len(swapfiles) > 0
-    call add(s:messages, "Found swap files: " .. string(swapfiles))
-    for name in swapfiles
-      call delete(name)
-    endfor
+  if !skipped
+    " Check if the test has left any swap files behind.  Delete them before
+    " running tests again, they might interfere.
+    let swapfiles = s:GetSwapFileList()
+    if len(swapfiles) > 0
+      call add(s:messages, "Found swap files: " .. string(swapfiles))
+      for name in swapfiles
+        call delete(name)
+      endfor
+    endif
   endif
+endfunc
+
+function Delete_Xtest_Files()
+  for file in glob('X*', v:false, v:true)
+    if file ==? 'XfakeHOME'
+      " Clean up files created by setup.vim
+      call delete('XfakeHOME', 'rf')
+      continue
+    endif
+    " call add(v:errors, file .. " exists when it shouldn't, trying to delete it!")
+    call delete(file)
+    if !empty(glob(file, v:false, v:true))
+      " call add(v:errors, file .. " still exists after trying to delete it!")
+      if has('unix')
+        call system('rm -rf  ' .. file)
+      endif
+    endif
+  endfor
 endfunc
 
 func AfterTheTest(func_name)
@@ -378,12 +409,10 @@ endfunc
 " This function can be called by a test if it wants to abort testing.
 func FinishTesting()
   call AfterTheTest('')
+  call Delete_Xtest_Files()
 
   " Don't write viminfo on exit.
   set viminfo=
-
-  " Clean up files created by setup.vim
-  call delete('XfakeHOME', 'rf')
 
   if s:fail == 0 && s:fail_expected == 0
     " Success, create the .res file so that make knows it's done.
@@ -470,33 +499,6 @@ else
   endtry
 endif
 
-" Names of flaky tests.
-let s:flaky_tests = [
-      \ 'Test_autocmd_SafeState()',
-      \ 'Test_cursorhold_insert()',
-      \ 'Test_exit_callback_interval()',
-      \ 'Test_map_timeout_with_timer_interrupt()',
-      \ 'Test_out_cb()',
-      \ 'Test_popup_and_window_resize()',
-      \ 'Test_quoteplus()',
-      \ 'Test_quotestar()',
-      \ 'Test_reltime()',
-      \ 'Test_state()',
-      \ 'Test_term_mouse_double_click_to_create_tab()',
-      \ 'Test_term_mouse_multiple_clicks_to_visually_select()',
-      \ 'Test_terminal_composing_unicode()',
-      \ 'Test_terminal_redir_file()',
-      \ 'Test_terminal_tmap()',
-      \ 'Test_timer_oneshot()',
-      \ 'Test_timer_paused()',
-      \ 'Test_timer_repeat_many()',
-      \ 'Test_timer_repeat_three()',
-      \ 'Test_timer_stop_all_in_callback()',
-      \ 'Test_timer_stop_in_callback()',
-      \ 'Test_timer_with_partial_callback()',
-      \ 'Test_termwinscroll()',
-      \ ]
-
 " Delete the .res file, it may change behavior for completion
 call delete(fnamemodify(g:testname, ':r') .. '.res')
 
@@ -546,8 +548,7 @@ for g:testfunc in sort(s:tests)
   " - it fails five times (with a different message)
   if len(v:errors) > 0
         \ && $TEST_NO_RETRY == ''
-        \ && (index(s:flaky_tests, g:testfunc) >= 0
-        \      || g:test_is_flaky)
+        \ && g:test_is_flaky
     while 1
       call add(s:messages, 'Found errors in ' .. g:testfunc .. ':')
       call extend(s:messages, v:errors)

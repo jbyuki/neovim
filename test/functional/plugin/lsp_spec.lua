@@ -82,7 +82,7 @@ describe('LSP', function()
   describe('server_name specified', function()
     it('start_client(), stop_client()', function()
       retry(nil, 4000, function()
-        eq(1, exec_lua('return #lsp.get_active_clients()'))
+        eq(1, exec_lua('return #lsp.get_clients()'))
       end)
       eq(2, exec_lua([[
         TEST_CLIENT2 = test__start_client()
@@ -93,20 +93,20 @@ describe('LSP', function()
         return TEST_CLIENT3
       ]]))
       retry(nil, 4000, function()
-        eq(3, exec_lua('return #lsp.get_active_clients()'))
+        eq(3, exec_lua('return #lsp.get_clients()'))
       end)
 
       eq(false, exec_lua('return lsp.get_client_by_id(TEST_CLIENT1) == nil'))
       eq(false, exec_lua('return lsp.get_client_by_id(TEST_CLIENT1).is_stopped()'))
       exec_lua('return lsp.get_client_by_id(TEST_CLIENT1).stop()')
       retry(nil, 4000, function()
-        eq(2, exec_lua('return #lsp.get_active_clients()'))
+        eq(2, exec_lua('return #lsp.get_clients()'))
       end)
       eq(true, exec_lua('return lsp.get_client_by_id(TEST_CLIENT1) == nil'))
 
       exec_lua('lsp.stop_client({TEST_CLIENT2, TEST_CLIENT3})')
       retry(nil, 4000, function()
-        eq(0, exec_lua('return #lsp.get_active_clients()'))
+        eq(0, exec_lua('return #lsp.get_clients()'))
       end)
     end)
 
@@ -116,12 +116,12 @@ describe('LSP', function()
         TEST_CLIENT3 = test__start_client()
       ]])
       retry(nil, 4000, function()
-        eq(3, exec_lua('return #lsp.get_active_clients()'))
+        eq(3, exec_lua('return #lsp.get_clients()'))
       end)
       -- Stop all clients.
-      exec_lua('lsp.stop_client(lsp.get_active_clients())')
+      exec_lua('lsp.stop_client(lsp.get_clients())')
       retry(nil, 4000, function()
-        eq(0, exec_lua('return #lsp.get_active_clients()'))
+        eq(0, exec_lua('return #lsp.get_clients()'))
       end)
     end)
   end)
@@ -151,7 +151,7 @@ describe('LSP', function()
   describe('basic_init test', function()
     after_each(function()
       stop()
-      exec_lua("lsp.stop_client(lsp.get_active_clients(), true)")
+      exec_lua("lsp.stop_client(lsp.get_clients(), true)")
       exec_lua("vim.api.nvim_exec_autocmds('VimLeavePre', { modeline = false })")
     end)
 
@@ -365,6 +365,14 @@ describe('LSP', function()
             eq('v:lua.vim.lsp.tagfunc', get_buf_option("tagfunc"))
             eq('v:lua.vim.lsp.omnifunc', get_buf_option("omnifunc"))
             eq('v:lua.vim.lsp.formatexpr()', get_buf_option("formatexpr"))
+            eq('', get_buf_option("keywordprg"))
+            eq(true, exec_lua[[
+              local keymap
+              vim.api.nvim_buf_call(BUFFER, function()
+                keymap = vim.fn.maparg("K", "n", false, true)
+              end)
+              return keymap.callback == vim.lsp.buf.hover
+            ]])
             client.stop()
           end
         end;
@@ -372,6 +380,13 @@ describe('LSP', function()
           eq('', get_buf_option("tagfunc"))
           eq('', get_buf_option("omnifunc"))
           eq('', get_buf_option("formatexpr"))
+          eq('', exec_lua[[
+            local keymap
+            vim.api.nvim_buf_call(BUFFER, function()
+              keymap = vim.fn.maparg("K", "n", false, false)
+            end)
+            return keymap
+          ]])
         end;
       }
     end)
@@ -1229,6 +1244,67 @@ describe('LSP', function()
       }
     end)
 
+    it('should send correct range for inlay hints with noeol', function()
+      local expected_handlers = {
+        {NIL, {}, {method="shutdown", client_id=1}};
+        {NIL, {}, {method="finish", client_id=1}};
+        {NIL, {}, {
+          method="textDocument/inlayHint",
+          params = {
+            textDocument = {
+              uri = 'file://',
+            },
+            range = {
+              start = { line = 0, character = 0 },
+              ['end'] = { line = 1, character = 3 },
+            }
+          },
+          bufnr=2,
+          client_id=1,
+        }};
+        {NIL, {}, {method="start", client_id=1}};
+      }
+      local client
+      test_rpc_server {
+        test_name = "inlay_hint";
+        on_setup = function()
+          exec_lua [[
+            BUFFER = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_buf_set_lines(BUFFER, 0, -1, false, {
+              "testing";
+              "123";
+            })
+            vim.bo[BUFFER].eol = false
+          ]]
+        end;
+        on_init = function(_client)
+          client = _client
+          eq(true, client.supports_method('textDocument/inlayHint'))
+          exec_lua [[
+            assert(lsp.buf_attach_client(BUFFER, TEST_RPC_CLIENT_ID))
+          ]]
+        end;
+        on_exit = function(code, signal)
+          eq(0, code, "exit code")
+          eq(0, signal, "exit signal")
+        end;
+        on_handler = function(err, result, ctx)
+          if ctx.method == 'start' then
+            exec_lua [[
+              vim.lsp.inlay_hint.enable(BUFFER)
+            ]]
+          end
+          if ctx.method == 'textDocument/inlayHint' then
+            client.notify('finish')
+          end
+          eq(table.remove(expected_handlers), {err, result, ctx}, "expected handler")
+          if ctx.method == 'finish' then
+            client.stop()
+          end
+        end;
+      }
+    end)
+
     it('should check the body and didChange incremental', function()
       local expected_handlers = {
         {NIL, {}, {method="shutdown", client_id=1}};
@@ -1772,7 +1848,7 @@ describe('LSP', function()
         eq({
           'First line of text';
         }, buf_lines(1))
-        eq({ 1, 6 }, funcs.nvim_win_get_cursor(0))
+        eq({ 1, 17 }, funcs.nvim_win_get_cursor(0))
       end)
 
       it('fix the cursor row', function()
@@ -2205,53 +2281,6 @@ describe('LSP', function()
     end)
   end)
 
-  describe('completion_list_to_complete_items', function()
-    -- Completion option precedence:
-    -- textEdit.newText > insertText > label
-    -- https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_completion
-    it('should choose right completion option', function ()
-      local prefix = 'foo'
-      local completion_list = {
-        -- resolves into label
-        { label = 'foobar', sortText = 'a', documentation = 'documentation' },
-        { label = 'foobar', sortText = 'b', documentation = { value = 'documentation' }, textEdit = {} },
-        -- resolves into insertText
-        { label='foocar', sortText="c", insertText='foobar' },
-        { label='foocar', sortText="d", insertText='foobar', textEdit={} },
-        -- resolves into textEdit.newText
-        { label='foocar', sortText="e", insertText='foodar', textEdit={newText='foobar'} },
-        { label='foocar', sortText="f", textEdit={newText='foobar'} },
-        -- real-world snippet text
-        { label='foocar', sortText="g", insertText='foodar', insertTextFormat=2, textEdit={newText='foobar(${1:place holder}, ${2:more ...holder{\\}})'} },
-        { label='foocar', sortText="h", insertText='foodar(${1:var1} typ1, ${2:var2} *typ2) {$0\\}', insertTextFormat=2, textEdit={} },
-        -- nested snippet tokens
-        { label='foocar', sortText="i", insertText='foodar(${1:var1 ${2|typ2,typ3|} ${3:tail}}) {$0\\}', insertTextFormat=2, textEdit={} },
-        -- braced tabstop
-        { label='foocar', sortText="j", insertText='foodar()${0}', insertTextFormat=2, textEdit={} },
-        -- plain text
-        { label='foocar', sortText="k", insertText='foodar(${1:var1})', insertTextFormat=1, textEdit={} },
-      }
-      local completion_list_items = {items=completion_list}
-      local expected = {
-        { abbr = 'foobar', dup = 1, empty = 1, icase = 1, info = 'documentation', kind = 'Unknown', menu = '', word = 'foobar', user_data = { nvim = { lsp = { completion_item = { label = 'foobar', sortText="a",  documentation = 'documentation' } } } } },
-        { abbr = 'foobar', dup = 1, empty = 1, icase = 1, info = 'documentation', kind = 'Unknown', menu = '', word = 'foobar', user_data = { nvim = { lsp = { completion_item = { label='foobar', sortText="b", textEdit={},documentation = { value = 'documentation' } } } }  } },
-        { abbr = 'foocar', dup = 1, empty = 1, icase = 1, kind = 'Unknown', menu = '', word = 'foobar', user_data = { nvim = { lsp = { completion_item = { label='foocar', sortText="c", insertText='foobar' } } } } },
-        { abbr = 'foocar', dup = 1, empty = 1, icase = 1, kind = 'Unknown', menu = '', word = 'foobar', user_data = { nvim = { lsp = { completion_item = { label='foocar', sortText="d", insertText='foobar', textEdit={} } } } } },
-        { abbr = 'foocar', dup = 1, empty = 1, icase = 1, kind = 'Unknown', menu = '', word = 'foobar', user_data = { nvim = { lsp = { completion_item = { label='foocar', sortText="e", insertText='foodar', textEdit={newText='foobar'} } } } } },
-        { abbr = 'foocar', dup = 1, empty = 1, icase = 1, kind = 'Unknown', menu = '', word = 'foobar', user_data = { nvim = { lsp = { completion_item = { label='foocar', sortText="f", textEdit={newText='foobar'} } } } } },
-        { abbr = 'foocar', dup = 1, empty = 1, icase = 1, kind = 'Unknown', menu = '', word = 'foobar(place holder, more ...holder{})', user_data = { nvim = { lsp = { completion_item = { label='foocar', sortText="g", insertText='foodar', insertTextFormat=2, textEdit={newText='foobar(${1:place holder}, ${2:more ...holder{\\}})'} } } } } },
-        { abbr = 'foocar', dup = 1, empty = 1, icase = 1, kind = 'Unknown', menu = '', word = 'foodar(var1 typ1, var2 *typ2) {}', user_data = { nvim = { lsp = { completion_item = { label='foocar', sortText="h", insertText='foodar(${1:var1} typ1, ${2:var2} *typ2) {$0\\}', insertTextFormat=2, textEdit={} } } } } },
-        { abbr = 'foocar', dup = 1, empty = 1, icase = 1, kind = 'Unknown', menu = '', word = 'foodar(var1 typ2 tail) {}', user_data = { nvim = { lsp = { completion_item = { label='foocar', sortText="i", insertText='foodar(${1:var1 ${2|typ2,typ3|} ${3:tail}}) {$0\\}', insertTextFormat=2, textEdit={} } } } } },
-        { abbr = 'foocar', dup = 1, empty = 1, icase = 1, kind = 'Unknown', menu = '', word = 'foodar()', user_data = { nvim = { lsp = { completion_item = { label='foocar', sortText="j", insertText='foodar()${0}', insertTextFormat=2, textEdit={} } } } } },
-        { abbr = 'foocar', dup = 1, empty = 1, icase = 1, kind = 'Unknown', menu = '', word = 'foodar(${1:var1})', user_data = { nvim = { lsp = { completion_item = { label='foocar', sortText="k", insertText='foodar(${1:var1})', insertTextFormat=1, textEdit={} } } } } },
-      }
-
-      eq(expected, exec_lua([[return vim.lsp.util.text_document_completion_list_to_complete_items(...)]], completion_list, prefix))
-      eq(expected, exec_lua([[return vim.lsp.util.text_document_completion_list_to_complete_items(...)]], completion_list_items, prefix))
-      eq({}, exec_lua([[return vim.lsp.util.text_document_completion_list_to_complete_items(...)]], {}, prefix))
-    end)
-  end)
-
   describe('lsp.util.rename', function()
     local pathsep = helpers.get_pathsep()
 
@@ -2372,7 +2401,14 @@ describe('LSP', function()
           filename = '/fake/uri',
           lnum = 1,
           col = 3,
-          text = 'testing'
+          text = 'testing',
+          user_data = {
+            uri = 'file:///fake/uri',
+            range = {
+              start = { line = 0, character = 2 },
+              ['end'] = { line = 0, character = 3 },
+            }
+          }
         },
       }
       local actual = exec_lua [[
@@ -2398,7 +2434,18 @@ describe('LSP', function()
           filename = '/fake/uri',
           lnum = 1,
           col = 3,
-          text = 'testing'
+          text = 'testing',
+          user_data = {
+            targetUri = "file:///fake/uri",
+            targetRange = {
+              start = { line = 0, character = 2 },
+              ['end'] = { line = 0, character = 3 },
+            },
+            targetSelectionRange = {
+              start = { line = 0, character = 2 },
+              ['end'] = { line = 0, character = 3 },
+            }
+          }
         },
       }
       local actual = exec_lua [[
@@ -2672,18 +2719,6 @@ describe('LSP', function()
           }
           return vim.lsp.util.symbols_to_items(sym_info, nil)
         ]])
-    end)
-  end)
-
-  describe('lsp.util._get_completion_item_kind_name', function()
-    it('returns the name specified by protocol', function()
-      eq("Text", exec_lua("return vim.lsp.util._get_completion_item_kind_name(1)"))
-      eq("TypeParameter", exec_lua("return vim.lsp.util._get_completion_item_kind_name(25)"))
-    end)
-    it('returns the name not specified by protocol', function()
-      eq("Unknown", exec_lua("return vim.lsp.util._get_completion_item_kind_name(nil)"))
-      eq("Unknown", exec_lua("return vim.lsp.util._get_completion_item_kind_name(vim.NIL)"))
-      eq("Unknown", exec_lua("return vim.lsp.util._get_completion_item_kind_name(1000)"))
     end)
   end)
 
@@ -2975,6 +3010,18 @@ describe('LSP', function()
     it('calculates size correctly with wrapping', function()
       eq({15,5}, exec_lua[[ return {vim.lsp.util._make_floating_popup_size(contents,{width = 15, wrap_at = 14})} ]])
     end)
+
+    it('handles NUL bytes in text', function()
+      exec_lua([[ contents = {
+        '\000\001\002\003\004\005\006\007\008\009',
+        '\010\011\012\013\014\015\016\017\018\019',
+        '\020\021\022\023\024\025\026\027\028\029',
+      } ]])
+      command('set list listchars=')
+      eq({20,3}, exec_lua[[ return {vim.lsp.util._make_floating_popup_size(contents)} ]])
+      command('set display+=uhex')
+      eq({40,3}, exec_lua[[ return {vim.lsp.util._make_floating_popup_size(contents)} ]])
+    end)
   end)
 
   describe('lsp.util.trim.trim_empty_lines', function()
@@ -2991,7 +3038,7 @@ describe('LSP', function()
           activeSignature = -1,
           signatures = {
             {
-              documentation = "",
+              documentation = "some doc",
               label = "TestEntity.TestEntity()",
               parameters = {}
             },
@@ -2999,7 +3046,7 @@ describe('LSP', function()
         }
         return vim.lsp.util.convert_signature_help_to_markdown_lines(signature_help, 'cs', {','})
       ]]
-      local expected = {'```cs', 'TestEntity.TestEntity()', '```', ''}
+      local expected = {'```cs', 'TestEntity.TestEntity()', '```', 'some doc'}
       eq(expected, result)
     end)
   end)
@@ -3388,6 +3435,50 @@ describe('LSP', function()
           end
         end
       }
+    end)
+    it("Fallback to command execution on resolve error", function()
+      clear()
+      exec_lua(create_server_definition)
+      local result = exec_lua([[
+        local server = _create_server({
+          capabilities = {
+            executeCommandProvider = {
+              commands = {"command:1"},
+            },
+            codeActionProvider = {
+              resolveProvider = true
+            }
+          },
+          handlers = {
+            ["textDocument/codeAction"] = function()
+              return {
+                {
+                  title = "Code Action 1",
+                  command = {
+                    title = "Command 1",
+                    command = "command:1",
+                  }
+                }
+              }
+            end,
+            ["codeAction/resolve"] = function()
+              return nil, "resolve failed"
+            end,
+          }
+        })
+
+        local client_id = vim.lsp.start({
+          name = "dummy",
+          cmd = server.cmd,
+        })
+
+        vim.lsp.buf.code_action({ apply = true })
+        vim.lsp.stop_client(client_id)
+        return server.messages
+      ]])
+      eq("codeAction/resolve", result[4].method)
+      eq("workspace/executeCommand", result[5].method)
+      eq("command:1", result[5].params.command)
     end)
   end)
   describe('vim.lsp.commands', function()
@@ -3845,12 +3936,15 @@ describe('LSP', function()
 
   describe('#dynamic vim.lsp._dynamic', function()
     it('supports dynamic registration', function()
+      ---@type string
       local root_dir = helpers.tmpname()
       os.remove(root_dir)
       mkdir(root_dir)
       local tmpfile = root_dir .. '/dynamic.foo'
       local file = io.open(tmpfile, 'w')
-      file:close()
+      if file then
+        file:close()
+      end
 
       exec_lua(create_server_definition)
       local result = exec_lua([[
@@ -3861,6 +3955,9 @@ describe('LSP', function()
           name = 'dynamic-test',
           cmd = server.cmd,
           root_dir = root_dir,
+          get_language_id = function()
+            return "dummy-lang"
+          end,
           capabilities = {
             textDocument = {
               formatting = {
@@ -3894,6 +3991,13 @@ describe('LSP', function()
             {
               id = 'range-formatting',
               method = 'textDocument/rangeFormatting',
+              registerOptions = {
+              documentSelector = {
+                  {
+                    language = "dummy-lang"
+                  },
+                }
+              }
             },
           },
         }, { client_id = client_id })
@@ -3911,7 +4015,11 @@ describe('LSP', function()
         local function check(method, fname)
           local bufnr = fname and vim.fn.bufadd(fname) or nil
           local client = vim.lsp.get_client_by_id(client_id)
-          result[#result + 1] = {method = method, fname = fname, supported = client.supports_method(method, {bufnr = bufnr})}
+          result[#result + 1] = {
+            method = method,
+            fname = fname,
+            supported = client.supports_method(method, {bufnr = bufnr})
+          }
         end
 
 
@@ -3935,6 +4043,7 @@ describe('LSP', function()
 
   describe('vim.lsp._watchfiles', function()
     it('sends notifications when files change', function()
+      skip(is_os('bsd'), "bsd only reports rename on folders if file inside change")
       local root_dir = helpers.tmpname()
       os.remove(root_dir)
       mkdir(root_dir)
@@ -4387,58 +4496,79 @@ describe('LSP', function()
 
     it("ignores registrations by servers when the client doesn't advertise support", function()
       exec_lua(create_server_definition)
-      local result = exec_lua([[
-        local server = _create_server()
-        local client_id = vim.lsp.start({
-          name = 'watchfiles-test',
-          cmd = server.cmd,
-          root_dir = 'some_dir',
-          capabilities = {
-            workspace = {
-              didChangeWatchedFiles = {
-                dynamicRegistration = false,
-              },
-            },
-          },
-        })
-
-        local watching = false
+      exec_lua([[
+        server = _create_server()
         require('vim.lsp._watchfiles')._watchfunc = function(_, _, callback)
           -- Since the registration is ignored, this should not execute and `watching` should stay false
           watching = true
           return function() end
         end
+      ]])
 
-        vim.lsp.handlers['client/registerCapability'](nil, {
-          registrations = {
-            {
-              id = 'watchfiles-test-kind',
-              method = 'workspace/didChangeWatchedFiles',
-              registerOptions = {
-                watchers = {
-                  {
-                    globPattern = '**/*',
+      local function check_registered(capabilities)
+        return exec_lua([[
+          watching = false
+          local client_id = vim.lsp.start({
+            name = 'watchfiles-test',
+            cmd = server.cmd,
+            root_dir = 'some_dir',
+            capabilities = ...,
+          }, {
+            reuse_client = function() return false end,
+          })
+
+          vim.lsp.handlers['client/registerCapability'](nil, {
+            registrations = {
+              {
+                id = 'watchfiles-test-kind',
+                method = 'workspace/didChangeWatchedFiles',
+                registerOptions = {
+                  watchers = {
+                    {
+                      globPattern = '**/*',
+                    },
                   },
                 },
               },
             },
-          },
-        }, { client_id = client_id })
+          }, { client_id = client_id })
 
-        -- Ensure no errors occur when unregistering something that was never really registered.
-        vim.lsp.handlers['client/unregisterCapability'](nil, {
-          unregisterations = {
-            {
-              id = 'watchfiles-test-kind',
-              method = 'workspace/didChangeWatchedFiles',
+          -- Ensure no errors occur when unregistering something that was never really registered.
+          vim.lsp.handlers['client/unregisterCapability'](nil, {
+            unregisterations = {
+              {
+                id = 'watchfiles-test-kind',
+                method = 'workspace/didChangeWatchedFiles',
+              },
+            },
+          }, { client_id = client_id })
+
+          vim.lsp.stop_client(client_id, true)
+          return watching
+        ]], capabilities)
+      end
+
+      eq(true, check_registered(nil))  -- start{_client}() defaults to make_client_capabilities().
+      eq(false, check_registered(vim.empty_dict()))
+      eq(false, check_registered({
+          workspace = {
+            ignoreMe = true,
+          },
+        }))
+      eq(false, check_registered({
+          workspace = {
+            didChangeWatchedFiles = {
+              dynamicRegistration = false,
             },
           },
-        }, { client_id = client_id })
-
-        return watching
-      ]])
-
-      eq(false, result)
+        }))
+      eq(true, check_registered({
+          workspace = {
+            didChangeWatchedFiles = {
+              dynamicRegistration = true,
+            },
+          },
+        }))
     end)
   end)
 end)

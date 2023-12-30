@@ -1,41 +1,38 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // usercmd.c: User defined command support
 
 #include <assert.h>
 #include <inttypes.h>
+#include <lauxlib.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "auto/config.h"
-#include "lauxlib.h"
-#include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/charset.h"
+#include "nvim/cmdexpand_defs.h"
 #include "nvim/eval.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/garray.h"
 #include "nvim/gettext.h"
 #include "nvim/globals.h"
-#include "nvim/highlight_defs.h"
+#include "nvim/highlight.h"
 #include "nvim/keycodes.h"
 #include "nvim/lua/executor.h"
-#include "nvim/macros.h"
+#include "nvim/macros_defs.h"
 #include "nvim/mapping.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
 #include "nvim/menu.h"
 #include "nvim/message.h"
-#include "nvim/option_defs.h"
+#include "nvim/option_vars.h"
 #include "nvim/os/input.h"
 #include "nvim/runtime.h"
 #include "nvim/strings.h"
 #include "nvim/usercmd.h"
-#include "nvim/vim.h"
+#include "nvim/vim_defs.h"
 #include "nvim/window.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -130,23 +127,21 @@ static struct {
 char *find_ucmd(exarg_T *eap, char *p, int *full, expand_T *xp, int *complp)
 {
   int len = (int)(p - eap->cmd);
-  int j, k, matchlen = 0;
-  ucmd_T *uc;
+  int matchlen = 0;
   bool found = false;
   bool possible = false;
-  char *cp, *np;             // Point into typed cmd and test name
-  garray_T *gap;
   bool amb_local = false;            // Found ambiguous buffer-local command,
                                      // only full match global is accepted.
 
   // Look for buffer-local user commands first, then global ones.
-  gap = &prevwin_curwin()->w_buffer->b_ucmds;
+  garray_T *gap = &prevwin_curwin()->w_buffer->b_ucmds;
   while (true) {
+    int j;
     for (j = 0; j < gap->ga_len; j++) {
-      uc = USER_CMD_GA(gap, j);
-      cp = eap->cmd;
-      np = uc->uc_name;
-      k = 0;
+      ucmd_T *uc = USER_CMD_GA(gap, j);
+      char *cp = eap->cmd;
+      char *np = uc->uc_name;
+      int k = 0;
       while (k < len && *np != NUL && *cp++ == *np++) {
         k++;
       }
@@ -425,6 +420,13 @@ char *get_user_cmd_complete(expand_T *xp, int idx)
 
 int cmdcomplete_str_to_type(const char *complete_str)
 {
+  if (strncmp(complete_str, "custom,", 7) == 0) {
+    return EXPAND_USER_DEFINED;
+  }
+  if (strncmp(complete_str, "customlist,", 11) == 0) {
+    return EXPAND_USER_LIST;
+  }
+
   for (int i = 0; i < (int)(ARRAY_SIZE(command_complete)); i++) {
     char *cmd_compl = get_command_complete(i);
     if (cmd_compl == NULL) {
@@ -440,17 +442,15 @@ int cmdcomplete_str_to_type(const char *complete_str)
 
 static void uc_list(char *name, size_t name_len)
 {
-  int i, j;
   bool found = false;
-  ucmd_T *cmd;
-  uint32_t a;
 
   // In cmdwin, the alternative buffer should be used.
   const garray_T *gap = &prevwin_curwin()->w_buffer->b_ucmds;
   while (true) {
+    int i;
     for (i = 0; i < gap->ga_len; i++) {
-      cmd = USER_CMD_GA(gap, i);
-      a = cmd->uc_argt;
+      ucmd_T *cmd = USER_CMD_GA(gap, i);
+      uint32_t a = cmd->uc_argt;
 
       // Skip commands which don't match the requested prefix and
       // commands filtered out.
@@ -492,7 +492,7 @@ static void uc_list(char *name, size_t name_len)
         msg_putchar(' ');
       }
 
-      msg_outtrans_attr(cmd->uc_name, HL_ATTR(HLF_D));
+      msg_outtrans(cmd->uc_name, HL_ATTR(HLF_D));
       len = strlen(cmd->uc_name) + 4;
 
       do {
@@ -552,7 +552,7 @@ static void uc_list(char *name, size_t name_len)
       } while ((int64_t)len < 8 - over);
 
       // Address Type
-      for (j = 0; addr_type_complete[j].expand != ADDR_NONE; j++) {
+      for (int j = 0; addr_type_complete[j].expand != ADDR_NONE; j++) {
         if (addr_type_complete[j].expand != ADDR_LINES
             && addr_type_complete[j].expand == cmd->uc_addr_type) {
           int rc = snprintf(IObuff + len, IOSIZE - len, "%s", addr_type_complete[j].shortname);
@@ -579,7 +579,7 @@ static void uc_list(char *name, size_t name_len)
       } while ((int64_t)len < 25 - over);
 
       IObuff[len] = '\0';
-      msg_outtrans(IObuff);
+      msg_outtrans(IObuff, 0);
 
       if (cmd->uc_luaref != LUA_NOREF) {
         char *fn = nlua_funcref_str(cmd->uc_luaref);
@@ -608,7 +608,7 @@ static void uc_list(char *name, size_t name_len)
   }
 
   if (!found) {
-    msg(_("No user-defined commands found"));
+    msg(_("No user-defined commands found"), 0);
   }
 }
 
@@ -616,11 +616,11 @@ static void uc_list(char *name, size_t name_len)
 int parse_addr_type_arg(char *value, int vallen, cmd_addr_T *addr_type_arg)
   FUNC_ATTR_NONNULL_ALL
 {
-  int i, a, b;
+  int i;
 
   for (i = 0; addr_type_complete[i].expand != ADDR_NONE; i++) {
-    a = (int)strlen(addr_type_complete[i].name) == vallen;
-    b = strncmp(value, addr_type_complete[i].name, (size_t)vallen) == 0;
+    int a = (int)strlen(addr_type_complete[i].name) == vallen;
+    int b = strncmp(value, addr_type_complete[i].name, (size_t)vallen) == 0;
     if (a && b) {
       *addr_type_arg = addr_type_complete[i].expand;
       break;
@@ -650,11 +650,10 @@ int parse_compl_arg(const char *value, int vallen, int *complp, uint32_t *argt, 
 {
   const char *arg = NULL;
   size_t arglen = 0;
-  int i;
   int valend = vallen;
 
   // Look for any argument part - which is the part after any ','
-  for (i = 0; i < vallen; i++) {
+  for (int i = 0; i < vallen; i++) {
     if (value[i] == ',') {
       arg = (char *)&value[i + 1];
       arglen = (size_t)(vallen - i - 1);
@@ -663,6 +662,7 @@ int parse_compl_arg(const char *value, int vallen, int *complp, uint32_t *argt, 
     }
   }
 
+  int i;
   for (i = 0; i < (int)ARRAY_SIZE(command_complete); i++) {
     if (get_command_complete(i) == NULL) {
       continue;
@@ -702,12 +702,10 @@ int parse_compl_arg(const char *value, int vallen, int *complp, uint32_t *argt, 
   return OK;
 }
 
-static int uc_scan_attr(char *attr, size_t len, uint32_t *argt, long *def, int *flags, int *complp,
+static int uc_scan_attr(char *attr, size_t len, uint32_t *argt, int *def, int *flags, int *complp,
                         char **compl_arg, cmd_addr_T *addr_type_arg)
   FUNC_ATTR_NONNULL_ALL
 {
-  char *p;
-
   if (len == 0) {
     emsg(_("E175: No attribute specified"));
     return FAIL;
@@ -725,13 +723,12 @@ static int uc_scan_attr(char *attr, size_t len, uint32_t *argt, long *def, int *
   } else if (STRNICMP(attr, "bar", len) == 0) {
     *argt |= EX_TRLBAR;
   } else {
-    int i;
     char *val = NULL;
     size_t vallen = 0;
     size_t attrlen = len;
 
     // Look for the attribute name - which is the part before any '='
-    for (i = 0; i < (int)len; i++) {
+    for (int i = 0; i < (int)len; i++) {
       if (attr[i] == '=') {
         val = &attr[i + 1];
         vallen = len - (size_t)i - 1;
@@ -765,14 +762,14 @@ wrong_nargs:
       if (vallen == 1 && *val == '%') {
         *argt |= EX_DFLALL;
       } else if (val != NULL) {
-        p = val;
+        char *p = val;
         if (*def >= 0) {
 two_count:
           emsg(_("E177: Count cannot be specified twice"));
           return FAIL;
         }
 
-        *def = getdigits_long(&p, true, 0);
+        *def = getdigits_int(&p, true, 0);
         *argt |= EX_ZEROR;
 
         if (p != val + vallen || vallen == 0) {
@@ -793,12 +790,12 @@ invalid_count:
       }
 
       if (val != NULL) {
-        p = val;
+        char *p = val;
         if (*def >= 0) {
           goto two_count;
         }
 
-        *def = getdigits_long(&p, true, 0);
+        *def = getdigits_int(&p, true, 0);
 
         if (p != val + vallen) {
           goto invalid_count;
@@ -871,12 +868,11 @@ int uc_add_command(char *name, size_t name_len, const char *rep, uint32_t argt, 
   FUNC_ATTR_NONNULL_ARG(1, 3)
 {
   ucmd_T *cmd = NULL;
-  int i;
   int cmp = 1;
   char *rep_buf = NULL;
   garray_T *gap;
 
-  replace_termcodes(rep, strlen(rep), &rep_buf, 0, NULL, CPO_TO_CPO_FLAGS);
+  replace_termcodes(rep, strlen(rep), &rep_buf, 0, 0, NULL, p_cpo);
   if (rep_buf == NULL) {
     // Can't replace termcodes - try using the string as is
     rep_buf = xstrdup(rep);
@@ -892,12 +888,12 @@ int uc_add_command(char *name, size_t name_len, const char *rep, uint32_t argt, 
     gap = &ucmds;
   }
 
+  int i;
+
   // Search for the command in the already defined commands.
   for (i = 0; i < gap->ga_len; i++) {
-    size_t len;
-
     cmd = USER_CMD_GA(gap, i);
-    len = strlen(cmd->uc_name);
+    size_t len = strlen(cmd->uc_name);
     cmp = strncmp(name, cmd->uc_name, name_len);
     if (cmp == 0) {
       if (name_len < len) {
@@ -973,19 +969,16 @@ fail:
 /// ":command ..."
 void ex_command(exarg_T *eap)
 {
-  char *name;
   char *end;
-  char *p;
   uint32_t argt = 0;
-  long def = -1;
+  int def = -1;
   int flags = 0;
   int context = EXPAND_NOTHING;
   char *compl_arg = NULL;
   cmd_addr_T addr_type_arg = ADDR_NONE;
   int has_attr = (eap->arg[0] == '-');
-  size_t name_len;
 
-  p = eap->arg;
+  char *p = eap->arg;
 
   // Check for attributes
   while (*p == '-') {
@@ -999,13 +992,13 @@ void ex_command(exarg_T *eap)
   }
 
   // Get the name (if any) and skip to the following argument.
-  name = p;
+  char *name = p;
   end = uc_validate_name(name);
   if (!end) {
     emsg(_("E182: Invalid command name"));
     goto theend;
   }
-  name_len = (size_t)(end - name);
+  size_t name_len = (size_t)(end - name);
 
   // If there is nothing after the name, and no attributes were specified,
   // we are listing commands
@@ -1058,7 +1051,6 @@ void ex_delcommand(exarg_T *eap)
   int i = 0;
   ucmd_T *cmd = NULL;
   int res = -1;
-  garray_T *gap;
   const char *arg = eap->arg;
   bool buffer_only = false;
 
@@ -1067,7 +1059,7 @@ void ex_delcommand(exarg_T *eap)
     arg = skipwhite(arg + 7);
   }
 
-  gap = &curbuf->b_ucmds;
+  garray_T *gap = &curbuf->b_ucmds;
   while (true) {
     for (i = 0; i < gap->ga_len; i++) {
       cmd = USER_CMD_GA(gap, i);
@@ -1143,17 +1135,13 @@ bool uc_split_args_iter(const char *arg, size_t arglen, size_t *end, char *buf, 
 }
 
 /// split and quote args for <f-args>
-static char *uc_split_args(char *arg, char **args, const size_t *arglens, size_t argc, size_t *lenp)
+static char *uc_split_args(const char *arg, char **args, const size_t *arglens, size_t argc,
+                           size_t *lenp)
 {
-  char *buf;
-  char *p;
-  char *q;
-  int len;
-
   // Precalculate length
-  len = 2;   // Initial and final quotes
+  int len = 2;   // Initial and final quotes
   if (args == NULL) {
-    p = arg;
+    const char *p = arg;
 
     while (*p) {
       if (p[0] == '\\' && p[1] == '\\') {
@@ -1180,7 +1168,7 @@ static char *uc_split_args(char *arg, char **args, const size_t *arglens, size_t
     }
   } else {
     for (size_t i = 0; i < argc; i++) {
-      p = args[i];
+      const char *p = args[i];
       const char *arg_end = args[i] + arglens[i];
 
       while (p < arg_end) {
@@ -1201,13 +1189,13 @@ static char *uc_split_args(char *arg, char **args, const size_t *arglens, size_t
     }
   }
 
-  buf = xmalloc((size_t)len + 1);
+  char *buf = xmalloc((size_t)len + 1);
 
-  q = buf;
+  char *q = buf;
   *q++ = '"';
 
   if (args == NULL) {
-    p = arg;
+    const char *p = arg;
     while (*p) {
       if (p[0] == '\\' && p[1] == '\\') {
         *q++ = '\\';
@@ -1229,12 +1217,12 @@ static char *uc_split_args(char *arg, char **args, const size_t *arglens, size_t
         *q++ = ' ';
         *q++ = '"';
       } else {
-        mb_copy_char((const char **)&p, &q);
+        mb_copy_char(&p, &q);
       }
     }
   } else {
     for (size_t i = 0; i < argc; i++) {
-      p = args[i];
+      const char *p = args[i];
       const char *arg_end = args[i] + arglens[i];
 
       while (p < arg_end) {
@@ -1242,7 +1230,7 @@ static char *uc_split_args(char *arg, char **args, const size_t *arglens, size_t
           *q++ = '\\';
           *q++ = *p++;
         } else {
-          mb_copy_char((const char **)&p, &q);
+          mb_copy_char(&p, &q);
         }
       }
       if (i != argc - 1) {
@@ -1543,10 +1531,13 @@ static size_t uc_check_code(char *code, size_t len, char *buf, ucmd_T *cmd, exar
   case ct_RANGE:
   case ct_COUNT: {
     char num_buf[20];
-    int64_t num = (type == ct_LINE1) ? eap->line1 :
-                  (type == ct_LINE2) ? eap->line2 :
-                  (type == ct_RANGE) ? eap->addr_count :
-                  (eap->addr_count > 0) ? eap->line2 : cmd->uc_def;
+    int64_t num = type == ct_LINE1
+                  ? eap->line1
+                  : (type == ct_LINE2
+                     ? eap->line2
+                     : (type == ct_RANGE
+                        ? eap->addr_count
+                        : (eap->addr_count > 0 ? eap->line2 : cmd->uc_def)));
     size_t num_len;
 
     snprintf(num_buf, sizeof(num_buf), "%" PRId64, num);
@@ -1614,14 +1605,7 @@ static size_t uc_check_code(char *code, size_t len, char *buf, ucmd_T *cmd, exar
 
 int do_ucmd(exarg_T *eap, bool preview)
 {
-  char *buf;
-  char *p;
-  char *q;
-
-  char *start;
   char *end = NULL;
-  char *ksp;
-  size_t len, totlen;
 
   size_t split_len = 0;
   char *split_buf = NULL;
@@ -1646,18 +1630,19 @@ int do_ucmd(exarg_T *eap, bool preview)
   // Replace <> in the command by the arguments.
   // First round: "buf" is NULL, compute length, allocate "buf".
   // Second round: copy result into "buf".
-  buf = NULL;
+  char *buf = NULL;
   while (true) {
-    p = cmd->uc_rep;        // source
-    q = buf;                // destination
-    totlen = 0;
+    char *p = cmd->uc_rep;        // source
+    char *q = buf;                // destination
+    size_t totlen = 0;
 
     while (true) {
-      start = vim_strchr(p, '<');
+      char *start = vim_strchr(p, '<');
       if (start != NULL) {
         end = vim_strchr(start + 1, '>');
       }
       if (buf != NULL) {
+        char *ksp;
         for (ksp = p; *ksp != NUL && (uint8_t)(*ksp) != K_SPECIAL; ksp++) {}
         if ((uint8_t)(*ksp) == K_SPECIAL
             && (start == NULL || ksp < start || end == NULL)
@@ -1665,7 +1650,7 @@ int do_ucmd(exarg_T *eap, bool preview)
           // K_SPECIAL has been put in the buffer as K_SPECIAL
           // KS_SPECIAL KE_FILLER, like for mappings, but
           // do_cmdline() doesn't handle that, so convert it back.
-          len = (size_t)(ksp - p);
+          size_t len = (size_t)(ksp - p);
           if (len > 0) {
             memmove(q, p, len);
             q += len;
@@ -1685,7 +1670,7 @@ int do_ucmd(exarg_T *eap, bool preview)
       end++;
 
       // Take everything up to the '<'
-      len = (size_t)(start - p);
+      size_t len = (size_t)(start - p);
       if (buf == NULL) {
         totlen += len;
       } else {

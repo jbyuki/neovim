@@ -148,9 +148,19 @@ q			Stops recording.
 							*@@* *E748*
 @@			Repeat the previous @{0-9a-z":*} [count] times.
 
+							*v_@-default*
+{Visual}@{0-9a-z".=*+}	In Visual mode, execute the contents of the register
+{Visual}@@		but for each selected line.
+			See |visual-repeat|, |default-mappings|.
+
 							*Q*
 Q			Repeat the last recorded register [count] times.
 			See |reg_recorded()|.
+
+							*v_Q-default*
+{Visual}Q		In Visual mode, repeat the last recorded register for
+			each selected line.
+			See |visual-repeat|, |default-mappings|.
 
 							*:@*
 :[addr]@{0-9a-z".=*+}	Execute the contents of register {0-9a-z".=*+} as an Ex
@@ -225,11 +235,15 @@ For writing a Vim script, see chapter 41 of the user manual |usr_41.txt|.
 
 			When {file} contains wildcards it is expanded to all
 			matching files.  Example: >
-				:runtime! plugin/**/*.vim
-<			This is what Vim uses to load the plugin files when
+				:runtime! plugin/**/*.{vim,lua}
+<			This is what Nvim uses to load the plugin files when
 			starting up.  This similar command: >
-				:runtime plugin/**/*.vim
+				:runtime plugin/**/*.{vim,lua}
 <			would source the first file only.
+
+			For each {file} pattern, if two `.vim` and `.lua` file
+			names match and differ only in extension, the `.vim`
+			file is sourced first.
 
 			When 'verbose' is one or higher, there is a message
 			when no file could be found.

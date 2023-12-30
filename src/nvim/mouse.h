@@ -1,12 +1,9 @@
-#ifndef NVIM_MOUSE_H
-#define NVIM_MOUSE_H
+#pragma once
 
-#include <stdbool.h>
-
-#include "nvim/buffer_defs.h"
-#include "nvim/normal.h"
-#include "nvim/vim.h"
-#include "nvim/window.h"
+#include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
+#include "nvim/normal_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"  // IWYU pragma: keep
+#include "nvim/vim_defs.h"  // IWYU pragma: keep
 
 /// jump_to_mouse() returns one of first five these values, possibly with
 /// some of the other five added.
@@ -56,5 +53,3 @@ enum {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "mouse.h.generated.h"
 #endif
-
-#endif  // NVIM_MOUSE_H

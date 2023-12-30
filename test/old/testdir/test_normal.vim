@@ -347,7 +347,7 @@ func Test_normal06_formatprg()
   CheckNotMSWindows
 
   " uses sed to number non-empty lines
-  call writefile(['#!/bin/sh', 'sed ''/./=''|sed ''/./{', 'N', 's/\n/    /', '}'''], 'Xsed_format.sh')
+  call writefile(['#!/bin/sh', 'sed ''/./=''|sed ''/./{', 'N', 's/\n/    /', '}'''], 'Xsed_format.sh', 'D')
   call system('chmod +x ./Xsed_format.sh')
   let text = ['a', '', 'c', '', ' ', 'd', 'e']
   let expected = ['1    a', '', '3    c', '', '5     ', '6    d', '7    e']
@@ -378,11 +378,10 @@ func Test_normal06_formatprg()
   " clean up
   set formatprg=
   setlocal formatprg=
-  call delete('Xsed_format.sh')
 endfunc
 
 func Test_normal07_internalfmt()
-  " basic test for internal formmatter to textwidth of 12
+  " basic test for internal formatter to textwidth of 12
   let list=range(1,11)
   call map(list, 'v:val."    "')
   10new
@@ -1807,30 +1806,21 @@ func Test_normal22_zet()
   " Test for ZZ
   " let shell = &shell
   " let &shell = 'sh'
-
-  " Remove any stale test files from previous run.
-  for file in ['Xfile_Test_normal22_zet']
-    call delete(file)
-  endfor
-
-  call writefile(['1', '2'], 'Xfile_Test_normal22_zet')
+  call writefile(['1', '2'], 'Xn22file', 'D')
   let args = ' -N -i NONE --noplugins -X --headless'
-  call system(GetVimCommand() .. args .. ' -c "%d" -c ":norm! ZZ" Xfile_Test_normal22_zet')
-  let a = readfile('Xfile_Test_normal22_zet')
+  call system(GetVimCommand() .. args .. ' -c "%d" -c ":norm! ZZ" Xn22file')
+  let a = readfile('Xn22file')
   call assert_equal([], a)
   " Test for ZQ
-  call writefile(['1', '2'], 'Xfile_Test_normal22_zet')
-  call system(GetVimCommand() . args . ' -c "%d" -c ":norm! ZQ" Xfile_Test_normal22_zet')
-  let a = readfile('Xfile_Test_normal22_zet')
+  call writefile(['1', '2'], 'Xn22file')
+  call system(GetVimCommand() . args . ' -c "%d" -c ":norm! ZQ" Xn22file')
+  let a = readfile('Xn22file')
   call assert_equal(['1', '2'], a)
 
   " Unsupported Z command
   call assert_beeps('normal! ZW')
 
-  " Nvim: This sometimes hangs the TSAN build.
-  " for file in ['Xfile_Test_normal22_zet']
-  "   call delete(file)
-  " endfor
+  " clean up
   " let &shell = shell
 endfunc
 
@@ -1933,6 +1923,8 @@ func Test_normal24_rot13()
 endfunc
 
 func Test_normal25_tag()
+  CheckFeature quickfix
+
   " Testing for CTRL-] g CTRL-] g]
   " CTRL-W g] CTRL-W CTRL-] CTRL-W g CTRL-]
   h
@@ -2597,7 +2589,7 @@ func Test_normal33_g_cmd2()
   exe "norm! G0\<c-v>4k4ly"
   exe "norm! gvood"
   call assert_equal(['', 'abfgh', 'abfgh', 'abfgh', 'fgh', 'fgh', 'fgh', 'fgh', 'fgh'], getline(1,'$'))
-  " gv cannot be used  in operator pending mode
+  " gv cannot be used in operator pending mode
   call assert_beeps('normal! cgv')
   " gv should beep without a previously selected visual area
   new
@@ -4009,6 +4001,189 @@ func Test_normal_j_below_botline()
   call VerifyScreenDump(buf, 'Test_normal_j_below_botline', {})
 
   call StopVimInTerminal(buf)
+endfunc
+
+" Test for r (replace) command with CTRL_V and CTRL_Q
+func Test_normal_r_ctrl_v_cmd()
+  new
+  call append(0, 'This is a simple test: abcd')
+  exe "norm! 1gg$r\<C-V>\<C-V>"
+  call assert_equal(['This is a simple test: abc', ''], getline(1,'$'))
+  exe "norm! 1gg$hr\<C-Q>\<C-Q>"
+  call assert_equal(['This is a simple test: ab', ''], getline(1,'$'))
+  exe "norm! 1gg$2hr\<C-V>x7e"
+  call assert_equal(['This is a simple test: a~', ''], getline(1,'$'))
+  exe "norm! 1gg$3hr\<C-Q>x7e"
+  call assert_equal(['This is a simple test: ~~', ''], getline(1,'$'))
+
+  if &encoding == 'utf-8'
+    exe "norm! 1gg$4hr\<C-V>u20ac"
+    call assert_equal(['This is a simple test:€~~', ''], getline(1,'$'))
+    exe "norm! 1gg$5hr\<C-Q>u20ac"
+    call assert_equal(['This is a simple test€€~~', ''], getline(1,'$'))
+    exe "norm! 1gg0R\<C-V>xff WAS  \<esc>"
+    call assert_equal(['ÿ WAS   a simple test€€~~', ''], getline(1,'$'))
+    exe "norm! 1gg0elR\<C-Q>xffNOT\<esc>"
+    call assert_equal(['ÿ WASÿNOT simple test€€~~', ''], getline(1,'$'))
+  endif
+
+  call setline(1, 'This is a simple test: abcd')
+  exe "norm! 1gg$gr\<C-V>\<C-V>"
+  call assert_equal(['This is a simple test: abc', ''], getline(1,'$'))
+  exe "norm! 1gg$hgr\<C-Q>\<C-Q>"
+  call assert_equal(['This is a simple test: ab ', ''], getline(1,'$'))
+  exe "norm! 1gg$2hgr\<C-V>x7e"
+  call assert_equal(['This is a simple test: a~ ', ''], getline(1,'$'))
+  exe "norm! 1gg$3hgr\<C-Q>x7e"
+  call assert_equal(['This is a simple test: ~~ ', ''], getline(1,'$'))
+
+  " clean up
+  bw!
+endfunc
+
+" Test clicking on a TAB or an unprintable character in Normal mode
+func Test_normal_click_on_ctrl_char()
+  let save_mouse = &mouse
+  set mouse=a
+  new
+
+  call setline(1, "a\<Tab>b\<C-K>c")
+  redraw
+  call Ntest_setmouse(1, 1)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 1, 0, 1], getcurpos())
+  call Ntest_setmouse(1, 2)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 2, 0, 2], getcurpos())
+  call Ntest_setmouse(1, 3)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 2, 0, 3], getcurpos())
+  call Ntest_setmouse(1, 7)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 2, 0, 7], getcurpos())
+  call Ntest_setmouse(1, 8)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 2, 0, 8], getcurpos())
+  call Ntest_setmouse(1, 9)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 3, 0, 9], getcurpos())
+  call Ntest_setmouse(1, 10)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 4, 0, 10], getcurpos())
+  call Ntest_setmouse(1, 11)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 4, 0, 11], getcurpos())
+  call Ntest_setmouse(1, 12)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 5, 0, 12], getcurpos())
+  call Ntest_setmouse(1, 13)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 5, 0, 13], getcurpos())
+
+  bwipe!
+  let &mouse = save_mouse
+endfunc
+
+" Test clicking on a double-width character in Normal mode
+func Test_normal_click_on_double_width_char()
+  let save_mouse = &mouse
+  set mouse=a
+  new
+
+  call setline(1, "口口")
+  redraw
+  call Ntest_setmouse(1, 1)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 1, 0, 1], getcurpos())
+  call Ntest_setmouse(1, 2)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 1, 0, 2], getcurpos())
+  call Ntest_setmouse(1, 3)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 4, 0, 3], getcurpos())
+  call Ntest_setmouse(1, 4)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 1, 4, 0, 4], getcurpos())
+
+  bwipe!
+  let &mouse = save_mouse
+endfunc
+
+func Test_normal_click_on_empty_line()
+  let save_mouse = &mouse
+  set mouse=a
+  botright new
+  call setline(1, ['', '', ''])
+  let row = win_screenpos(0)[0] + 2
+  20vsplit
+  redraw
+
+  call Ntest_setmouse(row, 1)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 3, 1, 0, 1], getcurpos())
+  call Ntest_setmouse(row, 2)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 3, 1, 0, 2], getcurpos())
+  call Ntest_setmouse(row, 10)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 3, 1, 0, 10], getcurpos())
+
+  call Ntest_setmouse(row, 21 + 1)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 3, 1, 0, 1], getcurpos())
+  call Ntest_setmouse(row, 21 + 2)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 3, 1, 0, 2], getcurpos())
+  call Ntest_setmouse(row, 21 + 10)
+  call feedkeys("\<LeftMouse>", 'xt')
+  call assert_equal([0, 3, 1, 0, 10], getcurpos())
+
+  bwipe!
+  let &mouse = save_mouse
+endfunc
+
+func Test_normal33_g_cmd_nonblank()
+  " Test that g<End> goes to the last non-blank char and g$ to the last
+  " visible column
+  20vnew
+  setlocal nowrap nonumber signcolumn=no
+  call setline(1, ['fooo   fooo         fooo   fooo         fooo   fooo         fooo   fooo        '])
+  exe "normal 0g\<End>"
+  call assert_equal(11, col('.'))
+  normal 0g$
+  call assert_equal(20, col('.'))
+  exe "normal 0g\<kEnd>"
+  call assert_equal(11, col('.'))
+  setlocal wrap
+  exe "normal 0g\<End>"
+  call assert_equal(11, col('.'))
+  normal 0g$
+  call assert_equal(20, col('.'))
+  exe "normal 0g\<kEnd>"
+  call assert_equal(11, col('.'))
+  bw!
+endfunc
+
+func Test_normal34_zet_large()
+  " shouldn't cause overflow
+  norm! z9765405999999999999
+endfunc
+
+" Test for { and } paragraph movements in a single line
+func Test_brace_single_line()
+  let text =<< trim [DATA]
+    foobar one two three
+  [DATA]
+
+  new
+  call setline(1, text)
+  1
+  norm! 0}
+
+  call assert_equal([0, 1, 20, 0], getpos('.'))
+  norm! {
+  call assert_equal([0, 1, 1, 0], getpos('.'))
+  bw!
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

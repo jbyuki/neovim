@@ -3,6 +3,7 @@ local Screen = require('test.functional.ui.screen')
 local clear, feed, meths = helpers.clear, helpers.feed, helpers.meths
 local insert, feed_command = helpers.insert, helpers.feed_command
 local eq, funcs = helpers.eq, helpers.funcs
+local poke_eventloop = helpers.poke_eventloop
 local command = helpers.command
 local exec = helpers.exec
 
@@ -32,6 +33,7 @@ describe('ui/mouse/input', function()
       [5] = {bold = true, reverse = true},
       [6] = {foreground = Screen.colors.Grey100, background = Screen.colors.Red},
       [7] = {bold = true, foreground = Screen.colors.SeaGreen4},
+      [8] = {foreground = Screen.colors.Brown},
     })
     command("set mousemodel=extend")
     feed('itesting<cr>mouse<cr>support and selection<esc>')
@@ -149,24 +151,21 @@ describe('ui/mouse/input', function()
       screen:expect([[
         {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       feed('<LeftMouse><4,0>')
       screen:expect([[
         {sel: + foo }{tab: + bar }{fill:          }{tab:X}|
         this is fo^o              |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       feed('<LeftDrag><14,0>')
       screen:expect([[
         {tab: + bar }{sel: + foo }{fill:          }{tab:X}|
         this is fo^o              |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
     end)
@@ -179,24 +178,21 @@ describe('ui/mouse/input', function()
       screen:expect([[
         {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       feed('<LeftMouse><11,0>')
       screen:expect{grid=[[
         {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]], unchanged=true}
       feed('<LeftDrag><6,0>')
       screen:expect([[
         {sel: + bar }{tab: + foo }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
     end)
@@ -209,24 +205,21 @@ describe('ui/mouse/input', function()
       screen:expect([[
         {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       feed('<LeftMouse><4,0>')
       screen:expect([[
         {sel: + foo }{tab: + bar }{fill:          }{tab:X}|
         this is fo^o              |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       feed('<LeftDrag><7,0>')
       screen:expect([[
         {tab: + bar }{sel: + foo }{fill:          }{tab:X}|
         this is fo^o              |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
     end)
@@ -239,32 +232,28 @@ describe('ui/mouse/input', function()
       screen:expect([[
         {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       feed('<LeftMouse><4,0>')
       screen:expect([[
         {sel: + foo }{tab: + bar }{fill:          }{tab:X}|
         this is fo^o              |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       feed('<LeftDrag><4,1>')
       screen:expect{grid=[[
         {sel: + foo }{tab: + bar }{fill:          }{tab:X}|
         this is fo^o              |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]], unchanged=true}
       feed('<LeftDrag><14,1>')
       screen:expect([[
         {tab: + bar }{sel: + foo }{fill:          }{tab:X}|
         this is fo^o              |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
     end)
@@ -277,32 +266,28 @@ describe('ui/mouse/input', function()
       screen:expect([[
         {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       feed('<LeftMouse><11,0>')
       screen:expect{grid=[[
         {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]], unchanged=true}
       feed('<LeftDrag><11,1>')
       screen:expect{grid=[[
         {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]], unchanged=true}
       feed('<LeftDrag><6,1>')
       screen:expect([[
         {sel: + bar }{tab: + foo }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
     end)
@@ -315,32 +300,28 @@ describe('ui/mouse/input', function()
       screen:expect([[
         {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       feed('<LeftMouse><4,0>')
       screen:expect([[
         {sel: + foo }{tab: + bar }{fill:          }{tab:X}|
         this is fo^o              |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       feed('<LeftDrag><4,1>')
       screen:expect{grid=[[
         {sel: + foo }{tab: + bar }{fill:          }{tab:X}|
         this is fo^o              |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]], unchanged=true}
       feed('<LeftDrag><7,1>')
       screen:expect([[
         {tab: + bar }{sel: + foo }{fill:          }{tab:X}|
         this is fo^o              |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
     end)
@@ -364,16 +345,14 @@ describe('ui/mouse/input', function()
       screen:expect([[
         {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       feed('<LeftMouse><4,0>')
       screen:expect([[
         {sel: + foo }{tab: + bar }{fill:          }{tab:X}|
         this is fo^o              |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
     end)
@@ -387,16 +366,13 @@ describe('ui/mouse/input', function()
       screen:expect([[
         {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       feed('<LeftMouse><24,0>')
       screen:expect([[
         this is fo^o              |
-        {0:~                        }|
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*3
                                  |
       ]])
     end)
@@ -410,16 +386,14 @@ describe('ui/mouse/input', function()
       screen:expect([[
         {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
         this is ba^r{0:$}             |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
       feed('<2-LeftMouse><4,0>')
       screen:expect([[
         {sel:  Name] }{tab: + foo  + bar }{fill:  }{tab:X}|
         {0:^$}                        |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
     end)
@@ -572,16 +546,14 @@ describe('ui/mouse/input', function()
     screen:expect([[
       {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
       ^this is bar{0:$}             |
-      {0:~                        }|
-      {0:~                        }|
+      {0:~                        }|*2
       :tabprevious             |
     ]])
     feed('<LeftDrag><4,1>')
     screen:expect([[
       {tab: + foo }{sel: + bar }{fill:          }{tab:X}|
       {vis:this}^ is bar{0:$}             |
-      {0:~                        }|
-      {0:~                        }|
+      {0:~                        }|*2
       {sel:-- VISUAL --}             |
     ]])
   end)
@@ -599,15 +571,11 @@ describe('ui/mouse/input', function()
       testing                   │testing                   |
       mouse                     │mouse                     |
       support and selection     │support and selection     |
-      {0:~                         }│{0:~                         }|
-      {0:~                         }│{0:~                         }|
+      {0:~                         }│{0:~                         }|*2
       {0:~                         }│{4:[No Name] [+]             }|
       {0:~                         }│foo{0:$}                      |
       {0:~                         }│ba^r{0:$}                      |
-      {0:~                         }│{0:~                         }|
-      {0:~                         }│{0:~                         }|
-      {0:~                         }│{0:~                         }|
-      {0:~                         }│{0:~                         }|
+      {0:~                         }│{0:~                         }|*4
       {4:[No Name] [+]              }{5:[No Name] [+]             }|
                                                            |
     ]]}
@@ -617,15 +585,11 @@ describe('ui/mouse/input', function()
       testing                   │testing                   |
       mouse                     │mouse                     |
       support and selection     │support and selection     |
-      {0:~                         }│{0:~                         }|
-      {0:~                         }│{0:~                         }|
+      {0:~                         }│{0:~                         }|*2
       {0:~                         }│{4:[No Name] [+]             }|
       {0:~                         }│^foo{0:$}                      |
       {0:~                         }│bar{0:$}                      |
-      {0:~                         }│{0:~                         }|
-      {0:~                         }│{0:~                         }|
-      {0:~                         }│{0:~                         }|
-      {0:~                         }│{0:~                         }|
+      {0:~                         }│{0:~                         }|*4
       {4:[No Name] [+]              }{5:[No Name] [+]             }|
                                                            |
     ]]}
@@ -635,15 +599,11 @@ describe('ui/mouse/input', function()
       testing                   │testing                   |
       mouse                     │mouse                     |
       support and selection     │support and selection     |
-      {0:~                         }│{0:~                         }|
-      {0:~                         }│{0:~                         }|
+      {0:~                         }│{0:~                         }|*2
       {0:~                         }│{4:[No Name] [+]             }|
       {0:~                         }│{1:foo}{3:$}                      |
       {0:~                         }│{1:bar}{0:^$}                      |
-      {0:~                         }│{0:~                         }|
-      {0:~                         }│{0:~                         }|
-      {0:~                         }│{0:~                         }|
-      {0:~                         }│{0:~                         }|
+      {0:~                         }│{0:~                         }|*4
       {4:[No Name] [+]              }{5:[No Name] [+]             }|
       {2:-- VISUAL --}                                         |
     ]]}
@@ -798,6 +758,84 @@ describe('ui/mouse/input', function()
     feed('<cr>')
   end)
 
+  it('x1 and x2 can be triggered by api', function()
+    meths.set_var('x1_pressed', 0)
+    meths.set_var('x1_released', 0)
+    meths.set_var('x2_pressed', 0)
+    meths.set_var('x2_released', 0)
+    command('nnoremap <X1Mouse> <Cmd>let g:x1_pressed += 1<CR>')
+    command('nnoremap <X1Release> <Cmd>let g:x1_released += 1<CR>')
+    command('nnoremap <X2Mouse> <Cmd>let g:x2_pressed += 1<CR>')
+    command('nnoremap <X2Release> <Cmd>let g:x2_released += 1<CR>')
+    meths.input_mouse('x1', 'press', '', 0, 0, 0)
+    meths.input_mouse('x1', 'release', '', 0, 0, 0)
+    meths.input_mouse('x2', 'press', '', 0, 0, 0)
+    meths.input_mouse('x2', 'release', '', 0, 0, 0)
+    eq(1, meths.get_var('x1_pressed'), 'x1 pressed once')
+    eq(1, meths.get_var('x1_released'), 'x1 released once')
+    eq(1, meths.get_var('x2_pressed'), 'x2 pressed once')
+    eq(1, meths.get_var('x2_released'), 'x2 released once')
+  end)
+
+  it('dragging vertical separator', function()
+    screen:try_resize(45, 5)
+    command('setlocal nowrap')
+    local oldwin = meths.get_current_win().id
+    command('rightbelow vnew')
+    screen:expect([[
+      testing               │{0:^$}                     |
+      mouse                 │{0:~                     }|
+      support and selection │{0:~                     }|
+      {4:[No Name] [+]          }{5:[No Name]             }|
+                                                   |
+    ]])
+    meths.input_mouse('left', 'press', '', 0, 0, 22)
+    poke_eventloop()
+    meths.input_mouse('left', 'drag', '', 0, 1, 12)
+    screen:expect([[
+      testing     │{0:^$}                               |
+      mouse       │{0:~                               }|
+      support and │{0:~                               }|
+      {4:< Name] [+]  }{5:[No Name]                       }|
+                                                   |
+    ]])
+    meths.input_mouse('left', 'drag', '', 0, 2, 2)
+    screen:expect([[
+      te│{0:^$}                                         |
+      mo│{0:~                                         }|
+      su│{0:~                                         }|
+      {4:<  }{5:[No Name]                                 }|
+                                                   |
+    ]])
+    meths.input_mouse('left', 'release', '', 0, 2, 2)
+    meths.set_option_value('statuscolumn', 'foobar', { win = oldwin })
+    screen:expect([[
+      {8:fo}│{0:^$}                                         |
+      {8:fo}│{0:~                                         }|*2
+      {4:<  }{5:[No Name]                                 }|
+                                                   |
+    ]])
+    meths.input_mouse('left', 'press', '', 0, 0, 2)
+    poke_eventloop()
+    meths.input_mouse('left', 'drag', '', 0, 1, 12)
+    screen:expect([[
+      {8:foobar}testin│{0:^$}                               |
+      {8:foobar}mouse │{0:~                               }|
+      {8:foobar}suppor│{0:~                               }|
+      {4:< Name] [+]  }{5:[No Name]                       }|
+                                                   |
+    ]])
+    meths.input_mouse('left', 'drag', '', 0, 2, 22)
+    screen:expect([[
+      {8:foobar}testing         │{0:^$}                     |
+      {8:foobar}mouse           │{0:~                     }|
+      {8:foobar}support and sele│{0:~                     }|
+      {4:[No Name] [+]          }{5:[No Name]             }|
+                                                   |
+    ]])
+    meths.input_mouse('left', 'release', '', 0, 2, 22)
+  end)
+
   local function wheel(use_api)
     feed('ggdG')
     insert([[
@@ -909,8 +947,7 @@ describe('ui/mouse/input', function()
 
     feed("a <esc>20Ab<esc>")
     screen:expect([[
-                               |
-                               |
+                               |*2
       bbbbbbbbbbbbbbb^b         |
       {0:~                        }|
                                |
@@ -918,8 +955,7 @@ describe('ui/mouse/input', function()
 
     feed("<ScrollWheelLeft><0,0>")
     screen:expect([[
-                               |
-                               |
+                               |*2
       n bbbbbbbbbbbbbbbbbbb^b   |
       {0:~                        }|
                                |
@@ -941,8 +977,7 @@ describe('ui/mouse/input', function()
 
     feed("a <esc>20Ab<esc>")
     screen:expect([[
-                               |
-                               |
+                               |*2
       bbbbbbbbbbbbbbb^b         |
       {0:~                        }|
                                |
@@ -950,8 +985,7 @@ describe('ui/mouse/input', function()
 
     meths.input_mouse('wheel', 'left', '', 0, 0, 27)
     screen:expect([[
-                               |
-                               |
+                               |*2
       n bbbbbbbbbbbbbbbbbbb^b   |
       {0:~                        }|
                                |
@@ -1011,37 +1045,7 @@ describe('ui/mouse/input', function()
     ]])
   end)
 
-  describe('on concealed text', function()
-    -- Helpful for reading the test expectations:
-    -- :match Error /\^/
-
-    before_each(function()
-      screen:try_resize(25, 7)
-      screen:set_default_attr_ids({
-        [0] = {bold=true, foreground=Screen.colors.Blue},
-        c = { foreground = Screen.colors.LightGrey, background = Screen.colors.DarkGray },
-        sm = {bold = true},
-      })
-      feed('ggdG')
-
-      feed_command('set concealcursor=ni')
-      feed_command('set nowrap')
-      feed_command('set shiftwidth=2 tabstop=4 list')
-      feed_command('setl listchars=tab:>-')
-      feed_command('syntax match NonText "\\*" conceal')
-      feed_command('syntax match NonText "cats" conceal cchar=X')
-      feed_command('syntax match NonText "x" conceal cchar=>')
-
-      -- First column is there to retain the tabs.
-      insert([[
-      |Section				*t1*
-      |			  *t2* *t3* *t4*
-      |x 私は猫が大好き	*cats* ✨🐈✨
-      ]])
-
-      feed('gg<c-v>Gxgg')
-    end)
-
+  local function test_mouse_click_conceal()
     it('(level 1) click on non-wrapped lines', function()
       feed_command('let &conceallevel=1', 'echo')
 
@@ -1051,8 +1055,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  {c: }t2{c: } {c: }t3{c: } {c: }|
         {c:>} 私は猫が大好き{0:>---}{c: X } {0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1062,8 +1065,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  {c: }t2{c: } {c: }t3{c: } {c: }|
         {c:>} 私は猫が大好き{0:>---}{c: X } {0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1073,8 +1075,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  {c: }t2{c: } {c: }t3{c: } {c: }|
         {c:>} 私は猫が大好き{0:>---}{c: X } {0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1084,8 +1085,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  {c: }t2{c: } {c: }t^3{c: } {c: }|
         {c:>} 私は猫が大好き{0:>---}{c: X } {0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1095,8 +1095,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  {c: }t2{c: } {c: }t3{c: } {c: }|
         {c:^>} 私は猫が大好き{0:>---}{c: X } {0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1106,8 +1105,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  {c: }t2{c: } {c: }t3{c: } {c: }|
         {c:>} 私は^猫が大好き{0:>---}{c: X } {0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1117,8 +1115,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  {c: }t2{c: } {c: }t3{c: } {c: }|
         {c:>} 私は猫が大好き{0:>---}{c: ^X } {0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1134,8 +1131,7 @@ describe('ui/mouse/input', function()
         t4{c: }                      |
         {c:>} 私は猫が大好き{0:>---}{c: X}   |
         {c: } ✨🐈✨                 |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><0,2>')
@@ -1145,8 +1141,7 @@ describe('ui/mouse/input', function()
         ^t4{c: }                      |
         {c:>} 私は猫が大好き{0:>---}{c: X}   |
         {c: } ✨🐈✨                 |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><8,3>')
@@ -1156,8 +1151,7 @@ describe('ui/mouse/input', function()
         t4{c: }                      |
         {c:>} 私は猫^が大好き{0:>---}{c: X}   |
         {c: } ✨🐈✨                 |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><21,3>')
@@ -1167,8 +1161,7 @@ describe('ui/mouse/input', function()
         t4{c: }                      |
         {c:>} 私は猫が大好き{0:>---}{c: ^X}   |
         {c: } ✨🐈✨                 |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><4,4>')
@@ -1178,8 +1171,7 @@ describe('ui/mouse/input', function()
         t4{c: }                      |
         {c:>} 私は猫が大好き{0:>---}{c: X}   |
         {c: } ✨^🐈✨                 |
-                                 |
-                                 |
+                                 |*2
       ]])
     end) -- level 1 - wrapped
 
@@ -1193,8 +1185,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  t2 t3 t4   |
         {c:>} 私は猫が大好き{0:>---}{c:X} ✨{0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1204,8 +1195,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  ^t2 t3 t4   |
         {c:>} 私は猫が大好き{0:>---}{c:X} ✨{0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1215,8 +1205,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  t2 t^3 t4   |
         {c:>} 私は猫が大好き{0:>---}{c:X} ✨{0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1226,8 +1215,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  t2 t3 t4   |
         {c:^>} 私は猫が大好き{0:>---}{c:X} ✨{0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1237,8 +1225,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  t2 t3 t4   |
         {c:>} 私は猫^が大好き{0:>---}{c:X} ✨{0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1248,8 +1235,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  t2 t3 t4   |
         {c:>} 私は猫が大好き{0:>---}{c:^X} ✨{0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
     end) -- level 2 - non wrapped
@@ -1263,8 +1249,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  t2 t3 t4   |
         {c:>} 私は猫が大好き{0:>---}{c:X} ✨{0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
         {sm:-- INSERT --}             |
       ]])
 
@@ -1274,8 +1259,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  ^t2 t3 t4   |
         {c:>} 私は猫が大好き{0:>---}{c:X} ✨{0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
         {sm:-- INSERT --}             |
       ]])
 
@@ -1285,8 +1269,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  t2 t^3 t4   |
         {c:>} 私は猫が大好き{0:>---}{c:X} ✨{0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
         {sm:-- INSERT --}             |
       ]])
 
@@ -1296,8 +1279,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  t2 t3 t4   |
         {c:^>} 私は猫が大好き{0:>---}{c:X} ✨{0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
         {sm:-- INSERT --}             |
       ]])
 
@@ -1307,8 +1289,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  t2 t3 t4   |
         {c:>} 私は猫^が大好き{0:>---}{c:X} ✨{0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
         {sm:-- INSERT --}             |
       ]])
 
@@ -1318,8 +1299,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  t2 t3 t4   |
         {c:>} 私は猫が大好き{0:>---}{c:^X} ✨{0:>}|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
         {sm:-- INSERT --}             |
       ]])
     end) -- level 2 - non wrapped (insert mode)
@@ -1334,8 +1314,7 @@ describe('ui/mouse/input', function()
         t4                       |
         {c:>} 私は猫が大好き{0:>---}{c:X}    |
          ✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><14,1>')
@@ -1345,8 +1324,7 @@ describe('ui/mouse/input', function()
         t4                       |
         {c:>} 私は猫が大好き{0:>---}{c:X}    |
          ✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><18,1>')
@@ -1356,8 +1334,7 @@ describe('ui/mouse/input', function()
         t4                       |
         {c:>} 私は猫が大好き{0:>---}{c:X}    |
          ✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       -- NOTE: The click would ideally be on the 't' in 't4', but wrapping
@@ -1373,8 +1350,7 @@ describe('ui/mouse/input', function()
         t4                       |
         {c:>} 私は猫が大好き{0:>---}{c:X}    |
          ✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><1,2>')
@@ -1384,8 +1360,7 @@ describe('ui/mouse/input', function()
         t^4                       |
         {c:>} 私は猫が大好き{0:>---}{c:X}    |
          ✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><0,3>')
@@ -1395,8 +1370,7 @@ describe('ui/mouse/input', function()
         t4                       |
         {c:^>} 私は猫が大好き{0:>---}{c:X}    |
          ✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><20,3>')
@@ -1406,8 +1380,7 @@ describe('ui/mouse/input', function()
         t4                       |
         {c:>} 私は猫が大好き{0:>---}{c:^X}    |
          ✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><1,4>')
@@ -1417,8 +1390,7 @@ describe('ui/mouse/input', function()
         t4                       |
         {c:>} 私は猫が大好き{0:>---}{c:X}    |
          ^✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><5,4>')
@@ -1428,11 +1400,9 @@ describe('ui/mouse/input', function()
         t4                       |
         {c:>} 私は猫が大好き{0:>---}{c:X}    |
          ✨🐈^✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
     end) -- level 2 - wrapped
-
 
     it('(level 3) click on non-wrapped lines', function()
       feed_command('let &conceallevel=3', 'echo')
@@ -1443,8 +1413,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  t2 t3 t4   |
         ^ 私は猫が大好き{0:>----} ✨🐈|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1454,8 +1423,7 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  t2 t3 t4   |
          ^私は猫が大好き{0:>----} ✨🐈|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
@@ -1465,19 +1433,18 @@ describe('ui/mouse/input', function()
         {0:>--->--->---}  t2 t3 t4   |
          私は猫が大好^き{0:>----} ✨🐈|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
 
       feed('<esc><LeftMouse><20,2>')
+      feed('zH')  -- FIXME: unnecessary horizontal scrolling
       screen:expect([[
         Section{0:>>--->--->---}t1   |
         {0:>--->--->---}  t2 t3 t4   |
          私は猫が大好き{0:>----}^ ✨🐈|
                                  |
-        {0:~                        }|
-        {0:~                        }|
+        {0:~                        }|*2
                                  |
       ]])
     end) -- level 3 - non wrapped
@@ -1492,8 +1459,7 @@ describe('ui/mouse/input', function()
         t4                       |
          私は猫が大好き{0:>----}     |
          ✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><18,1>')
@@ -1503,8 +1469,7 @@ describe('ui/mouse/input', function()
         t4                       |
          私は猫が大好き{0:>----}     |
          ✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><1,2>')
@@ -1514,8 +1479,7 @@ describe('ui/mouse/input', function()
         t^4                       |
          私は猫が大好き{0:>----}     |
          ✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><0,3>')
@@ -1525,8 +1489,7 @@ describe('ui/mouse/input', function()
         t4                       |
         ^ 私は猫が大好き{0:>----}     |
          ✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><20,3>')
@@ -1536,8 +1499,7 @@ describe('ui/mouse/input', function()
         t4                       |
          私は猫が大好き{0:>----}^     |
          ✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><1,4>')
@@ -1547,8 +1509,7 @@ describe('ui/mouse/input', function()
         t4                       |
          私は猫が大好き{0:>----}     |
          ^✨🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><3,4>')
@@ -1558,8 +1519,7 @@ describe('ui/mouse/input', function()
         t4                       |
          私は猫が大好き{0:>----}     |
          ✨^🐈✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
       feed('<esc><LeftMouse><5,4>')
@@ -1569,14 +1529,81 @@ describe('ui/mouse/input', function()
         t4                       |
          私は猫が大好き{0:>----}     |
          ✨🐈^✨                  |
-                                 |
-                                 |
+                                 |*2
       ]])
 
     end) -- level 3 - wrapped
+  end
+
+  describe('on concealed text', function()
+    -- Helpful for reading the test expectations:
+    -- :match Error /\^/
+
+    before_each(function()
+      screen:try_resize(25, 7)
+      screen:set_default_attr_ids({
+        [0] = { bold = true, foreground = Screen.colors.Blue },
+        c = { foreground = Screen.colors.LightGrey, background = Screen.colors.DarkGray },
+        sm = { bold = true },
+      })
+      feed('ggdG')
+
+      command([[setlocal concealcursor=ni nowrap shiftwidth=2 tabstop=4 list listchars=tab:>-]])
+      command([[highlight link X0 Normal]])
+      command([[highlight link X1 NonText]])
+      command([[highlight link X2 NonText]])
+      command([[highlight link X3 NonText]])
+
+      -- First column is there to retain the tabs.
+      insert([[
+      |Section				*t1*
+      |			  *t2* *t3* *t4*
+      |x 私は猫が大好き	*cats* ✨🐈✨
+      ]])
+
+      feed('gg<c-v>Gxgg')
+    end)
+
+    describe('(syntax)', function()
+      before_each(function()
+        command([[syntax region X0 matchgroup=X1 start=/\*/ end=/\*/ concealends contains=X2]])
+        command([[syntax match X2 /cats/ conceal cchar=X contained]])
+        command([[syntax match X3 /\n\@<=x/ conceal cchar=>]])
+      end)
+      test_mouse_click_conceal()
+    end)
+
+    describe('(matchadd())', function()
+      before_each(function()
+        funcs.matchadd('Conceal', [[\*]])
+        funcs.matchadd('Conceal', [[cats]], 10, -1, { conceal = 'X' })
+        funcs.matchadd('Conceal', [[\n\@<=x]], 10, -1, { conceal = '>' })
+      end)
+      test_mouse_click_conceal()
+    end)
+
+    describe('(extmarks)', function()
+      before_each(function()
+        local ns = meths.create_namespace('conceal')
+        meths.buf_set_extmark(0, ns, 0, 11, { end_col = 12, conceal = '' })
+        meths.buf_set_extmark(0, ns, 0, 14, { end_col = 15, conceal = '' })
+        meths.buf_set_extmark(0, ns, 1, 5, { end_col = 6, conceal = '' })
+        meths.buf_set_extmark(0, ns, 1, 8, { end_col = 9, conceal = '' })
+        meths.buf_set_extmark(0, ns, 1, 10, { end_col = 11, conceal = '' })
+        meths.buf_set_extmark(0, ns, 1, 13, { end_col = 14, conceal = '' })
+        meths.buf_set_extmark(0, ns, 1, 15, { end_col = 16, conceal = '' })
+        meths.buf_set_extmark(0, ns, 1, 18, { end_col = 19, conceal = '' })
+        meths.buf_set_extmark(0, ns, 2, 24, { end_col = 25, conceal = '' })
+        meths.buf_set_extmark(0, ns, 2, 29, { end_col = 30, conceal = '' })
+        meths.buf_set_extmark(0, ns, 2, 25, { end_col = 29, conceal = 'X' })
+        meths.buf_set_extmark(0, ns, 2, 0, { end_col = 1, conceal = '>' })
+      end)
+      test_mouse_click_conceal()
+    end)
+
   end)
 
-  it('getmousepos works correctly', function()
+  it('getmousepos() works correctly', function()
     local winwidth = meths.get_option_value('winwidth', {})
     -- Set winwidth=1 so that window sizes don't change.
     meths.set_option_value('winwidth', 1, {})
@@ -1617,6 +1644,7 @@ describe('ui/mouse/input', function()
             eq(0, mousepos.wincol)
             eq(0, mousepos.line)
             eq(0, mousepos.column)
+            eq(0, mousepos.coladd)
           end
         end
       end
@@ -1636,15 +1664,18 @@ describe('ui/mouse/input', function()
         eq(win_col + 1, mousepos.wincol)
         local line = 0
         local column = 0
+        local coladd = 0
         if win_row > 0 and win_row < opts.height + 1
             and win_col > 0 and win_col < opts.width + 1 then
           -- Because of border, win_row and win_col don't need to be
           -- incremented by 1.
           line = math.min(win_row, funcs.line('$'))
           column = math.min(win_col, #funcs.getline(line) + 1)
+          coladd = win_col - column
         end
         eq(line, mousepos.line)
         eq(column, mousepos.column)
+        eq(coladd, mousepos.coladd)
       end
     end
 
@@ -1664,14 +1695,16 @@ describe('ui/mouse/input', function()
         eq(win_col + 1, mousepos.wincol)
         local line = math.min(win_row + 1, funcs.line('$'))
         local column = math.min(win_col + 1, #funcs.getline(line) + 1)
+        local coladd = win_col + 1 - column
         eq(line, mousepos.line)
         eq(column, mousepos.column)
+        eq(coladd, mousepos.coladd)
       end
     end
 
     -- Test that mouse position values are properly set for ordinary windows.
     -- Set the float to be unfocusable instead of closing, to additionally test
-    -- that getmousepos does not consider unfocusable floats. (see discussion
+    -- that getmousepos() does not consider unfocusable floats. (see discussion
     -- in PR #14937 for details).
     opts.focusable = false
     meths.win_set_config(float, opts)
@@ -1688,8 +1721,10 @@ describe('ui/mouse/input', function()
           eq(win_col + 1, mousepos.wincol)
           local line = math.min(win_row + 1, funcs.line('$'))
           local column = math.min(win_col + 1, #funcs.getline(line) + 1)
+          local coladd = win_col + 1 - column
           eq(line, mousepos.line)
           eq(column, mousepos.column)
+          eq(coladd, mousepos.coladd)
         end
       end
     end

@@ -131,6 +131,26 @@ foobar/?
   set spell&
 endfunc
 
+func Test_spell_camelcase()
+  set spell spelloptions=camel
+  let words = [
+      \ 'UPPER',
+      \ 'lower',
+      \ 'mixedCase',
+      \ 'HTML',
+      \ 'XMLHttpRequest',
+      \ 'foo123bar',
+      \ '12345678',
+      \ 'HELLO123world',
+      \]
+
+  for word in words
+    call assert_equal(['', ''],  spellbadword(word))
+  endfor
+
+  set spell& spelloptions&
+endfunc
+
 func Test_spell_file_missing()
   let s:spell_file_missing = 0
   augroup TestSpellFileMissing
@@ -274,8 +294,7 @@ func Test_compl_with_CTRL_X_CTRL_K_using_spell()
   call assert_equal(['theater'], getline(1, '$'))
   set spelllang=en_gb
   call feedkeys("Stheat\<c-x>\<c-k>\<esc>", 'tnx')
-  " FIXME: commented out, expected theatre bug got theater. See issue #7025.
-  " call assert_equal(['theatre'], getline(1, '$'))
+  call assert_equal(['theatre'], getline(1, '$'))
 
   bwipe!
   set spell& spelllang& dictionary& ignorecase&
@@ -492,7 +511,7 @@ func Test_spellsuggest_option_expr()
   bwipe!
 endfunc
 
-" Test for 'spellsuggest' expr errrors
+" Test for 'spellsuggest' expr errors
 func Test_spellsuggest_expr_errors()
   " 'spellsuggest'
   func MySuggest()
@@ -1060,6 +1079,15 @@ func Test_spell_compatible()
 
   " clean up
   call StopVimInTerminal(buf)
+endfunc
+
+func Test_z_equal_with_large_count()
+  split
+  set spell
+  call setline(1, "ff")
+  norm 0z=337203685477580
+  set nospell
+  bwipe!
 endfunc
 
 let g:test_data_aff1 = [

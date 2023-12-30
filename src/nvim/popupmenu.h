@@ -1,12 +1,12 @@
-#ifndef NVIM_POPUPMENU_H
-#define NVIM_POPUPMENU_H
+#pragma once
 
 #include <stdbool.h>
 
+#include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
 #include "nvim/grid_defs.h"
-#include "nvim/macros.h"
-#include "nvim/types.h"
-#include "nvim/vim.h"
+#include "nvim/macros_defs.h"
+#include "nvim/menu_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"  // IWYU pragma: keep
 
 /// Used for popup menu items.
 typedef struct {
@@ -16,7 +16,7 @@ typedef struct {
   char *pum_info;          // extra info
 } pumitem_T;
 
-EXTERN ScreenGrid pum_grid INIT(= SCREEN_GRID_INIT);
+EXTERN ScreenGrid pum_grid INIT( = SCREEN_GRID_INIT);
 
 /// state for pum_ext_select_item.
 EXTERN struct {
@@ -29,4 +29,3 @@ EXTERN struct {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "popupmenu.h.generated.h"
 #endif
-#endif  // NVIM_POPUPMENU_H

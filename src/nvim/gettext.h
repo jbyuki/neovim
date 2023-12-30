@@ -1,9 +1,8 @@
-#ifndef NVIM_GETTEXT_H
-#define NVIM_GETTEXT_H
+#pragma once
 
 #ifdef HAVE_WORKING_LIBINTL
-# include <libintl.h>
-# define _(x) gettext(x)
+# include <libintl.h>  // IWYU pragma: export
+# define _(x) gettext(x)  // NOLINT(bugprone-reserved-identifier)
 // XXX do we actually need this?
 # ifdef gettext_noop
 #  define N_(x) gettext_noop(x)
@@ -17,12 +16,10 @@
 #  undef setlocale
 # endif
 #else
-# define _(x) (x)
+# define _(x) ((char *)(x))  // NOLINT(bugprone-reserved-identifier)
 # define N_(x) x
 # define NGETTEXT(x, xs, n) ((n) == 1 ? (x) : (xs))
 # define bindtextdomain(x, y)  // empty
 # define bind_textdomain_codeset(x, y)  // empty
 # define textdomain(x)  // empty
 #endif
-
-#endif  // NVIM_GETTEXT_H

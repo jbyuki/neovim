@@ -1,12 +1,9 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // eval/buffer.c: Buffer related builtin functions
 
 #include <stdbool.h>
 #include <string.h>
 
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/autocmd.h"
 #include "nvim/buffer.h"
 #include "nvim/buffer_defs.h"
@@ -18,16 +15,16 @@
 #include "nvim/eval/typval.h"
 #include "nvim/eval/typval_defs.h"
 #include "nvim/globals.h"
-#include "nvim/macros.h"
+#include "nvim/macros_defs.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
 #include "nvim/move.h"
 #include "nvim/path.h"
-#include "nvim/pos.h"
+#include "nvim/pos_defs.h"
 #include "nvim/sign.h"
-#include "nvim/types.h"
+#include "nvim/types_defs.h"
 #include "nvim/undo.h"
-#include "nvim/vim.h"
+#include "nvim/vim_defs.h"
 
 typedef struct {
   win_T *cob_curwin_save;
@@ -126,7 +123,7 @@ static void set_buffer_lines(buf_T *buf, linenr_T lnum_arg, bool append, typval_
   FUNC_ATTR_NONNULL_ARG(4, 5)
 {
   linenr_T lnum = lnum_arg + (append ? 1 : 0);
-  long added = 0;
+  int added = 0;
 
   // When using the current buffer ml_mfp will be set if needed.  Useful when
   // setline() is used on startup.  For other buffers the buffer must be
@@ -160,10 +157,7 @@ static void set_buffer_lines(buf_T *buf, linenr_T lnum_arg, bool append, typval_
   if (lines->v_type == VAR_LIST) {
     l = lines->vval.v_list;
     if (l == NULL || tv_list_len(l) == 0) {
-      // set proper return code
-      if (lnum > curbuf->b_ml.ml_line_count) {
-        rettv->vval.v_number = 1;       // FAIL
-      }
+      // not appending anything always succeeds
       goto cleanup;
     }
     li = tv_list_first(l);
@@ -304,7 +298,10 @@ void f_bufload(typval_T *argvars, typval_T *unused, EvalFuncData fptr)
   buf_T *buf = get_buf_arg(&argvars[0]);
 
   if (buf != NULL) {
-    buffer_ensure_loaded(buf);
+    if (swap_exists_action != SEA_READONLY) {
+      swap_exists_action = SEA_NONE;
+    }
+    buf_ensure_loaded(buf);
   }
 }
 
@@ -442,7 +439,7 @@ void f_deletebufline(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
   if (last > curbuf->b_ml.ml_line_count) {
     last = curbuf->b_ml.ml_line_count;
   }
-  const long count = last - first + 1;
+  const int count = last - first + 1;
 
   // When coming here from Insert mode, sync undo, so that this can be
   // undone separately from what was previously inserted.
@@ -509,7 +506,7 @@ static dict_T *get_buffer_info(buf_T *buf)
   }
   tv_dict_add_list(dict, S_LEN("windows"), windows);
 
-  if (buf->b_signlist != NULL) {
+  if (buf->b_signs) {
     // List of signs placed in this buffer
     tv_dict_add_list(dict, S_LEN("signs"), get_buffer_signs(buf));
   }
@@ -607,12 +604,12 @@ static void get_buffer_lines(buf_T *buf, linenr_T start, linenr_T end, int retli
     }
     tv_list_alloc_ret(rettv, end - start + 1);
     while (start <= end) {
-      tv_list_append_string(rettv->vval.v_list, ml_get_buf(buf, start++, false), -1);
+      tv_list_append_string(rettv->vval.v_list, ml_get_buf(buf, start++), -1);
     }
   } else {
     rettv->v_type = VAR_STRING;
     rettv->vval.v_string = ((start >= 1 && start <= buf->b_ml.ml_line_count)
-                            ? xstrdup(ml_get_buf(buf, start, false)) : NULL);
+                            ? xstrdup(ml_get_buf(buf, start)) : NULL);
   }
 }
 

@@ -1,4 +1,4 @@
-name: "news.txt check"
+name: "news.txt"
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.pull_request.draft == false
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}

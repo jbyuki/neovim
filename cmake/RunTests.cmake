@@ -32,10 +32,6 @@ if(IS_ABSOLUTE ${TEST_PATH})
   file(RELATIVE_PATH TEST_PATH "${WORKING_DIR}" "${TEST_PATH}")
 endif()
 
-if(BUSTED_OUTPUT_TYPE STREQUAL junit)
-  set(EXTRA_ARGS OUTPUT_FILE ${BUILD_DIR}/${TEST_TYPE}test-junit.xml)
-endif()
-
 set(BUSTED_ARGS $ENV{BUSTED_ARGS})
 separate_arguments(BUSTED_ARGS)
 
@@ -63,12 +59,16 @@ if(NOT DEFINED ENV{TEST_TIMEOUT} OR "$ENV{TEST_TIMEOUT}" STREQUAL "")
 endif()
 
 set(ENV{SYSTEM_NAME} ${CMAKE_HOST_SYSTEM_NAME})  # used by test/helpers.lua.
-set(ENV{DEPS_INSTALL_DIR} ${DEPS_INSTALL_DIR})  # used by test/busted_runner.lua
+
+if(NOT WIN32)
+  # Tests assume POSIX "sh" and may fail if SHELL=fish. #24941 #6172
+  set(ENV{SHELL} sh)
+endif()
 
 execute_process(
   # Note: because of "-ll" (low-level interpreter mode), some modules like
   # _editor.lua are not loaded.
-  COMMAND ${NVIM_PRG} -ll ${WORKING_DIR}/test/busted_runner.lua -v -o test.busted.outputHandlers.${BUSTED_OUTPUT_TYPE}
+  COMMAND ${NVIM_PRG} -ll ${WORKING_DIR}/test/lua_runner.lua ${DEPS_INSTALL_DIR} busted -v -o test.busted.outputHandlers.nvim
     --lazy --helper=${TEST_DIR}/${TEST_TYPE}/preload.lua
     --lpath=${BUILD_DIR}/?.lua
     --lpath=${WORKING_DIR}/runtime/lua/?.lua

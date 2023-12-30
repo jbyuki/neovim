@@ -508,6 +508,8 @@ func Test_equalalways_on_close()
 endfunc
 
 func Test_win_screenpos()
+  CheckFeature quickfix
+
   call assert_equal(1, winnr('$'))
   split
   vsplit
@@ -1803,6 +1805,33 @@ func Test_splitkeep_misc()
   %bwipeout!
   set splitbelow&
   set splitkeep&
+endfunc
+
+func Test_splitkeep_cursor()
+  CheckScreendump
+  let lines =<< trim END
+    set splitkeep=screen
+    autocmd CursorMoved * wincmd p | wincmd p
+    call setline(1, range(1, 200))
+    func CursorEqualize()
+      call cursor(100, 1)
+      wincmd =
+    endfunc
+    wincmd s
+    call CursorEqualize()
+  END
+  call writefile(lines, 'XTestSplitkeepCallback', 'D')
+  let buf = RunVimInTerminal('-S XTestSplitkeepCallback', #{rows: 8})
+
+  call VerifyScreenDump(buf, 'Test_splitkeep_cursor_1', {})
+
+  call term_sendkeys(buf, "j")
+  call VerifyScreenDump(buf, 'Test_splitkeep_cursor_2', {})
+
+  call term_sendkeys(buf, ":set scrolloff=0\<CR>G")
+  call VerifyScreenDump(buf, 'Test_splitkeep_cursor_3', {})
+
+  call StopVimInTerminal(buf)
 endfunc
 
 func Test_splitkeep_callback()

@@ -16,6 +16,7 @@ vim.api.nvim_create_user_command('Man', function(params)
 end, {
   bang = true,
   bar = true,
+  range = true,
   addr = 'other',
   nargs = '*',
   complete = function(...)
@@ -28,6 +29,7 @@ local augroup = vim.api.nvim_create_augroup('man', {})
 vim.api.nvim_create_autocmd('BufReadCmd', {
   group = augroup,
   pattern = 'man://*',
+  nested = true,
   callback = function(params)
     require('man').read_page(vim.fn.matchstr(params.match, 'man://\\zs.*'))
   end,

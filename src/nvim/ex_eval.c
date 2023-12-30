@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /// @file ex_eval.c
 ///
 /// Functions for Ex command line for the +eval feature.
@@ -11,12 +8,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/charset.h"
 #include "nvim/debugger.h"
 #include "nvim/eval.h"
 #include "nvim/eval/typval.h"
-#include "nvim/eval/typval_defs.h"
 #include "nvim/eval/userfunc.h"
 #include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_docmd.h"
@@ -26,13 +22,11 @@
 #include "nvim/globals.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
-#include "nvim/option_defs.h"
-#include "nvim/pos.h"
+#include "nvim/option_vars.h"
 #include "nvim/regexp.h"
 #include "nvim/runtime.h"
 #include "nvim/strings.h"
-#include "nvim/types.h"
-#include "nvim/vim.h"
+#include "nvim/vim_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "ex_eval.c.generated.h"
@@ -98,7 +92,7 @@ static void discard_pending_return(typval_T *p)
 // expression evaluation is done without producing any error messages, but all
 // error messages on parsing errors during the expression evaluation are given
 // (even if a try conditional is active).
-static int cause_abort = false;
+static bool cause_abort = false;
 
 /// @return  true when immediately aborting on error, or when an interrupt
 ///          occurred or an exception was thrown but not caught.
@@ -157,11 +151,10 @@ int aborted_in_try(void)
 /// When several messages appear in the same command, the first is usually the
 /// most specific one and used as the exception value.  The "severe" flag can be
 /// set to true, if a later but severer message should be used instead.
-bool cause_errthrow(const char *mesg, bool severe, bool *ignore)
+bool cause_errthrow(const char *mesg, bool multiline, bool severe, bool *ignore)
   FUNC_ATTR_NONNULL_ALL
 {
   msglist_T *elem;
-  msglist_T **plist;
 
   // Do nothing when displaying the interrupt message or reporting an
   // uncaught exception (which has already been discarded then) at the top
@@ -242,21 +235,20 @@ bool cause_errthrow(const char *mesg, bool severe, bool *ignore)
     // returned.  -  Throw only the first of several errors in a row, except
     // a severe error is following.
     if (msg_list != NULL) {
-      plist = msg_list;
+      msglist_T **plist = msg_list;
       while (*plist != NULL) {
         plist = &(*plist)->next;
       }
 
       elem = xmalloc(sizeof(msglist_T));
       elem->msg = xstrdup(mesg);
+      elem->multiline = multiline;
       elem->next = NULL;
       elem->throw_msg = NULL;
       *plist = elem;
       if (plist == msg_list || severe) {
-        char *tmsg;
-
         // Skip the extra "Vim " prefix for message "E458".
-        tmsg = elem->msg;
+        char *tmsg = elem->msg;
         if (strncmp(tmsg, "Vim E", 5) == 0
             && ascii_isdigit(tmsg[5])
             && ascii_isdigit(tmsg[6])
@@ -281,10 +273,9 @@ bool cause_errthrow(const char *mesg, bool severe, bool *ignore)
 /// Free a "msg_list" and the messages it contains.
 static void free_msglist(msglist_T *l)
 {
-  msglist_T *next;
   msglist_T *messages = l;
   while (messages != NULL) {
-    next = messages->next;
+    msglist_T *next = messages->next;
     xfree(messages->msg);
     xfree(messages->sfile);
     xfree(messages);
@@ -380,13 +371,12 @@ int do_intthrow(cstack_T *cstack)
 /// Get an exception message that is to be stored in current_exception->value.
 char *get_exception_string(void *value, except_type_T type, char *cmdname, int *should_free)
 {
-  char *ret, *mesg;
+  char *ret;
 
   if (type == ET_ERROR) {
-    char *p;
     char *val;
     *should_free = true;
-    mesg = ((msglist_T *)value)->throw_msg;
+    char *mesg = ((msglist_T *)value)->throw_msg;
     if (cmdname != NULL && *cmdname != NUL) {
       size_t cmdlen = strlen(cmdname);
       ret = xstrnsave("Vim(", 4 + cmdlen + 2 + strlen(mesg));
@@ -401,7 +391,7 @@ char *get_exception_string(void *value, except_type_T type, char *cmdname, int *
     // msg_add_fname may have been used to prefix the message with a file
     // name in quotes.  In the exception value, put the file name in
     // parentheses and move it to the end.
-    for (p = mesg;; p++) {
+    for (char *p = mesg;; p++) {
       if (*p == NUL
           || (*p == 'E'
               && ascii_isdigit(p[1])
@@ -496,7 +486,7 @@ static int throw_exception(void *value, except_type_T type, char *cmdname)
     if (debug_break_level > 0 || *p_vfile == NUL) {
       msg_scroll = true;            // always scroll up, don't overwrite
     }
-    smsg(_("Exception thrown: %s"), excp->value);
+    smsg(0, _("Exception thrown: %s"), excp->value);
     msg_puts("\n");  // don't overwrite this either
 
     if (debug_break_level > 0 || *p_vfile == NUL) {
@@ -547,7 +537,7 @@ static void discard_exception(except_T *excp, bool was_finished)
     if (debug_break_level > 0 || *p_vfile == NUL) {
       msg_scroll = true;            // always scroll up, don't overwrite
     }
-    smsg(was_finished ? _("Exception finished: %s") : _("Exception discarded: %s"), excp->value);
+    smsg(0, was_finished ? _("Exception finished: %s") : _("Exception discarded: %s"), excp->value);
     msg_puts("\n");  // don't overwrite this either
     if (debug_break_level > 0 || *p_vfile == NUL) {
       cmdline_row = msg_row;
@@ -614,7 +604,7 @@ static void catch_exception(except_T *excp)
     if (debug_break_level > 0 || *p_vfile == NUL) {
       msg_scroll = true;            // always scroll up, don't overwrite
     }
-    smsg(_("Exception caught: %s"), excp->value);
+    smsg(0, _("Exception caught: %s"), excp->value);
     msg_puts("\n");  // don't overwrite this either
 
     if (debug_break_level > 0 || *p_vfile == NUL) {
@@ -660,6 +650,40 @@ static void finish_exception(except_T *excp)
 
   // Discard the exception, but use the finish message for 'verbose'.
   discard_exception(excp, true);
+}
+
+/// Save the current exception state in "estate"
+void exception_state_save(exception_state_T *estate)
+{
+  estate->estate_current_exception = current_exception;
+  estate->estate_did_throw = did_throw;
+  estate->estate_need_rethrow = need_rethrow;
+  estate->estate_trylevel = trylevel;
+  estate->estate_did_emsg = did_emsg;
+}
+
+/// Restore the current exception state from "estate"
+void exception_state_restore(exception_state_T *estate)
+{
+  // Handle any outstanding exceptions before restoring the state
+  if (did_throw) {
+    handle_did_throw();
+  }
+  current_exception = estate->estate_current_exception;
+  did_throw = estate->estate_did_throw;
+  need_rethrow = estate->estate_need_rethrow;
+  trylevel = estate->estate_trylevel;
+  did_emsg = estate->estate_did_emsg;
+}
+
+/// Clear the current exception state
+void exception_state_clear(void)
+{
+  current_exception = NULL;
+  did_throw = false;
+  need_rethrow = false;
+  trylevel = 0;
+  did_emsg = 0;
 }
 
 // Flags specifying the message displayed by report_pending.
@@ -731,7 +755,7 @@ static void report_pending(int action, int pending, void *value)
   }
   no_wait_return++;
   msg_scroll = true;            // always scroll up, don't overwrite
-  smsg(mesg, s);
+  smsg(0, mesg, s);
   msg_puts("\n");  // don't overwrite this either
   cmdline_row = msg_row;
   no_wait_return--;
@@ -820,7 +844,7 @@ void ex_if(exarg_T *eap)
     int skip = CHECK_SKIP;
 
     bool error;
-    int result = eval_to_bool(eap->arg, &error, eap, skip);
+    bool result = eval_to_bool(eap->arg, &error, eap, skip);
 
     if (!skip && !error) {
       if (result) {
@@ -947,7 +971,7 @@ void ex_while(exarg_T *eap)
   if (cstack->cs_idx == CSTACK_LEN - 1) {
     eap->errmsg = _("E585: :while/:for nesting too deep");
   } else {
-    int result;
+    bool result;
     // The loop flag is set when we have jumped back from the matching
     // ":endwhile" or ":endfor".  When not set, need to initialise this
     // cstack entry.
@@ -1159,7 +1183,7 @@ void ex_throw(exarg_T *eap)
 /// used for rethrowing an uncaught exception.
 void do_throw(cstack_T *cstack)
 {
-  int inactivate_try = false;
+  bool inactivate_try = false;
 
   // Cleanup and deactivate up to the next surrounding try conditional that
   // is not in its finally clause.  Normally, do not deactivate the try
@@ -1343,7 +1367,7 @@ void ex_catch(exarg_T *eap)
           *end = NUL;
         }
         save_cpo = p_cpo;
-        p_cpo = empty_option;
+        p_cpo = empty_string_option;
         // Disable error messages, it will make current exception
         // invalid
         emsg_off++;
@@ -1363,7 +1387,7 @@ void ex_catch(exarg_T *eap)
 
           int prev_got_int = got_int;
           got_int = false;
-          caught = vim_regexec_nl(&regmatch, current_exception->value, (colnr_T)0);
+          caught = vim_regexec_nl(&regmatch, current_exception->value, 0);
           got_int |= prev_got_int;
           vim_regfree(regmatch.regprog);
         }
@@ -1634,8 +1658,9 @@ void ex_endtry(exarg_T *eap)
 
   if (!skip) {
     report_resume_pending(pending,
-                          (pending == CSTP_RETURN) ? rettv :
-                          (pending & CSTP_THROW) ? (void *)current_exception : NULL);
+                          (pending == CSTP_RETURN)
+                          ? rettv
+                          : (pending & CSTP_THROW) ? (void *)current_exception : NULL);
     switch (pending) {
     case CSTP_NONE:
       break;
@@ -1836,7 +1861,7 @@ void leave_cleanup(cleanup_T *csp)
 int cleanup_conditionals(cstack_T *cstack, int searched_cond, int inclusive)
 {
   int idx;
-  int stop = false;
+  bool stop = false;
 
   for (idx = cstack->cs_idx; idx >= 0; idx--) {
     if (cstack->cs_flags[idx] & CSF_TRY) {
@@ -1973,7 +1998,7 @@ void ex_endfunction(exarg_T *eap)
 }
 
 /// @return  true if the string "p" looks like a ":while" or ":for" command.
-int has_loop_cmd(char *p)
+bool has_loop_cmd(char *p)
 {
   // skip modifiers, white space and ':'
   while (true) {

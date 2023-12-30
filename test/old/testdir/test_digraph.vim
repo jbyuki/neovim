@@ -37,6 +37,9 @@ func Test_digraphs()
   call Put_Dig("=P")
   call Put_Dig("P=")
   call assert_equal(['Р']+repeat(["₽"],2)+['П'], getline(line('.')-3,line('.')))
+  " Quadruple prime
+  call Put_Dig("'4")
+  call assert_equal("⁗", getline('.'))
   " Not a digraph
   call Put_Dig("a\<bs>")
   call Put_Dig("\<bs>a")
@@ -51,7 +54,7 @@ func Test_digraphs()
   call Put_Dig("'e")
   call Put_Dig("b'") " not defined
   call assert_equal(["á", "é", "'"], getline(line('.')-2,line('.')))
-  " Cicumflex
+  " Circumflex
   call Put_Dig("a>")
   call Put_Dig(">e")
   call Put_Dig("b>") " not defined
@@ -453,9 +456,7 @@ func Test_digraphs_output()
 endfunc
 
 func Test_loadkeymap()
-  if !has('keymap')
-    return
-  endif
+  CheckFeature keymap
   new
   set keymap=czech
   set iminsert=0
@@ -495,13 +496,10 @@ endfunc
 
 " Test for error in a keymap file
 func Test_loadkeymap_error()
-  if !has('keymap')
-    return
-  endif
+  CheckFeature keymap
   call assert_fails('loadkeymap', 'E105:')
-  call writefile(['loadkeymap', 'a'], 'Xkeymap')
+  call writefile(['loadkeymap', 'a'], 'Xkeymap', 'D')
   call assert_fails('source Xkeymap', 'E791:')
-  call delete('Xkeymap')
 endfunc
 
 " Test for the characters displayed on the screen when entering a digraph

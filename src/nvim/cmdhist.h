@@ -1,9 +1,10 @@
-#ifndef NVIM_CMDHIST_H
-#define NVIM_CMDHIST_H
+#pragma once
 
+#include "nvim/cmdexpand_defs.h"  // IWYU pragma: keep
 #include "nvim/eval/typval_defs.h"
-#include "nvim/ex_cmds_defs.h"
-#include "nvim/os/time.h"
+#include "nvim/ex_cmds_defs.h"  // IWYU pragma: keep
+#include "nvim/os/time_defs.h"
+#include "nvim/types_defs.h"  // IWYU pragma: keep
 
 /// Present history tables
 typedef enum {
@@ -16,8 +17,7 @@ typedef enum {
   HIST_DEBUG,         ///< Debug commands.
 } HistoryType;
 
-/// Number of history tables
-#define HIST_COUNT      (HIST_DEBUG + 1)
+enum { HIST_COUNT = HIST_DEBUG + 1, };  ///< Number of history tables
 
 /// History entry definition
 typedef struct hist_entry {
@@ -30,4 +30,3 @@ typedef struct hist_entry {
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "cmdhist.h.generated.h"
 #endif
-#endif  // NVIM_CMDHIST_H

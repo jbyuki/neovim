@@ -1,21 +1,18 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <lauxlib.h>
 #include <lua.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "luaconf.h"
-#include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/linematch.h"
 #include "nvim/lua/converter.h"
 #include "nvim/lua/executor.h"
 #include "nvim/lua/xdiff.h"
-#include "nvim/macros.h"
+#include "nvim/macros_defs.h"
 #include "nvim/memory.h"
-#include "nvim/vim.h"
+#include "nvim/pos_defs.h"
 #include "xdiff/xdiff.h"
 
 #define COMPARED_BUFFER0 (1 << 0)
@@ -63,25 +60,26 @@ static void lua_pushhunk(lua_State *lstate, long start_a, long count_a, long sta
   lua_rawseti(lstate, -2, (signed)lua_objlen(lstate, -2) + 1);
 }
 
-static void get_linematch_results(lua_State *lstate, mmfile_t *ma, mmfile_t *mb, long start_a,
-                                  long count_a, long start_b, long count_b, bool iwhite)
+static void get_linematch_results(lua_State *lstate, mmfile_t *ma, mmfile_t *mb, int start_a,
+                                  int count_a, int start_b, int count_b, bool iwhite)
 {
   // get the pointer to char of the start of the diff to pass it to linematch algorithm
   const char *diff_begin[2] = { ma->ptr, mb->ptr };
-  int diff_length[2] = { (int)count_a, (int)count_b };
+  int diff_length[2] = { count_a, count_b };
 
-  fastforward_buf_to_lnum(&diff_begin[0], start_a + 1);
-  fastforward_buf_to_lnum(&diff_begin[1], start_b + 1);
+  fastforward_buf_to_lnum(&diff_begin[0], (linenr_T)start_a + 1);
+  fastforward_buf_to_lnum(&diff_begin[1], (linenr_T)start_b + 1);
 
   int *decisions = NULL;
   size_t decisions_length = linematch_nbuffers(diff_begin, diff_length, 2, &decisions, iwhite);
 
-  long lnuma = start_a, lnumb = start_b;
+  int lnuma = start_a;
+  int lnumb = start_b;
 
-  long hunkstarta = lnuma;
-  long hunkstartb = lnumb;
-  long hunkcounta = 0;
-  long hunkcountb = 0;
+  int hunkstarta = lnuma;
+  int hunkstartb = lnumb;
+  int hunkcounta = 0;
+  int hunkcountb = 0;
   for (size_t i = 0; i < decisions_length; i++) {
     if (i && (decisions[i - 1] != decisions[i])) {
       lua_pushhunk(lstate, hunkstarta, hunkcounta, hunkstartb, hunkcountb);
@@ -109,8 +107,8 @@ static int write_string(void *priv, mmbuffer_t *mb, int nbuf)
 {
   luaL_Buffer *buf = (luaL_Buffer *)priv;
   for (int i = 0; i < nbuf; i++) {
-    const long size = mb[i].size;
-    for (long total = 0; total < size; total += LUAL_BUFFERSIZE) {
+    const int size = mb[i].size;
+    for (int total = 0; total < size; total += LUAL_BUFFERSIZE) {
       const int tocopy = MIN((int)(size - total), LUAL_BUFFERSIZE);
       char *p = luaL_prepbuffer(buf);
       if (!p) {
@@ -124,7 +122,7 @@ static int write_string(void *priv, mmbuffer_t *mb, int nbuf)
 }
 
 // hunk_func callback used when opts.hunk_lines = true
-static int hunk_locations_cb(long start_a, long count_a, long start_b, long count_b, void *cb_data)
+static int hunk_locations_cb(int start_a, int count_a, int start_b, int count_b, void *cb_data)
 {
   hunkpriv_t *priv = (hunkpriv_t *)cb_data;
   lua_State *lstate = priv->lstate;
@@ -139,7 +137,7 @@ static int hunk_locations_cb(long start_a, long count_a, long start_b, long coun
 }
 
 // hunk_func callback used when opts.on_hunk is given
-static int call_on_hunk_cb(long start_a, long count_a, long start_b, long count_b, void *cb_data)
+static int call_on_hunk_cb(int start_a, int count_a, int start_b, int count_b, void *cb_data)
 {
   // Mimic extra offsets done by xdiff, see:
   // src/xdiff/xemit.c:284
@@ -193,11 +191,11 @@ static bool check_xdiff_opt(ObjectType actType, ObjectType expType, const char *
 {
   if (actType != expType) {
     const char *type_str =
-      expType == kObjectTypeString ? "string" :
-      expType == kObjectTypeInteger ? "integer" :
-      expType == kObjectTypeBoolean ? "boolean" :
-      expType == kObjectTypeLuaRef ? "function" :
-      "NA";
+      expType == kObjectTypeString
+      ? "string" : (expType == kObjectTypeInteger
+                    ? "integer" : (expType == kObjectTypeBoolean
+                                   ? "boolean" : (expType == kObjectTypeLuaRef
+                                                  ? "function" : "NA")));
 
     api_set_error(err, kErrorTypeValidation, "%s is not a %s", name,
                   type_str);
@@ -366,18 +364,18 @@ int nlua_xdl_diff(lua_State *lstate)
     cfg.hunk_func = call_on_hunk_cb;
     priv = (hunkpriv_t) {
       .lstate = lstate,
-      .err    = &err,
+      .err = &err,
     };
     ecb.priv = &priv;
     break;
   case kNluaXdiffModeLocations:
     cfg.hunk_func = hunk_locations_cb;
     priv = (hunkpriv_t) {
-      .lstate    = lstate,
-      .ma        = &ma,
-      .mb        = &mb,
+      .lstate = lstate,
+      .ma = &ma,
+      .mb = &mb,
       .linematch = linematch,
-      .iwhite    = (params.flags & XDF_IGNORE_WHITESPACE) > 0
+      .iwhite = (params.flags & XDF_IGNORE_WHITESPACE) > 0
     };
     ecb.priv = &priv;
     lua_createtable(lstate, 0, 0);

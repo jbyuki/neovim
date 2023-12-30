@@ -1,9 +1,15 @@
-name: "CodeQL"
+name: "codeql"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
+  cancel-in-progress: true
 
 on:
-  schedule:
-    - cron: '42 0 * * 0'
-  workflow_dispatch:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    # The branches below must be a subset of the branches above
+    branches: [ "master" ]
 jobs:
   analyze:
     name: Analyze
@@ -14,18 +20,15 @@ jobs:
       security-events: write
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
-
-    - name: Install dependencies
-      run: ./.github/scripts/install_deps.sh
+    - uses: actions/checkout@v4
+    - uses: ./.github/actions/setup
 
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v2
+      uses: github/codeql-action/init@v3
       with:
         languages: cpp
 
     - run: make
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v2
+      uses: github/codeql-action/analyze@v3

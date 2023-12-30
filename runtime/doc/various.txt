@@ -97,6 +97,15 @@ g8			Print the hex values of the bytes used in the
 			cursor is halfway through a multibyte character the
 			command won't move the cursor.
 
+							*gx*
+gx			Opens the current filepath or URL (decided by
+			|<cfile>|, 'isfname') at cursor using the system
+			default handler, by calling |vim.ui.open()|.
+
+							*v_gx*
+{Visual}gx		Opens the selected text using the system default
+			handler, by calling |vim.ui.open()|.
+
 						*:p* *:pr* *:print* *E749*
 :[range]p[rint] [flags]
 			Print [range] lines (default current line).
@@ -239,6 +248,10 @@ g8			Print the hex values of the bytes used in the
 
 			Fails if changes have been made to the current buffer,
 			unless 'hidden' is set.
+
+			If {cmd} is omitted, and the 'shell' job exits with no
+			error, the buffer is closed automatically
+			|default-autocmds|.
 
 			To enter |Terminal-mode| automatically: >
 			      autocmd TermOpen * startinsert
@@ -486,6 +499,9 @@ user command or autocommand, the script in which it was defined is reported.
 <			- When 'keywordprg' is equal to "man -s", a [count]
 			  before "K" is inserted after the "-s".  If there is
 			  no count, the "-s" is removed.
+							       *K-lsp-default*
+			- The Nvim |LSP| client sets K to show LSP "hover"
+			  feature. |lsp-defaults|
 
 							*v_K*
 {Visual}K		Like "K", but use the visually highlighted text for

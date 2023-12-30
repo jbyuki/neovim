@@ -1,10 +1,6 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <limits.h>
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,11 +9,12 @@
 #include "nvim/api/private/helpers.h"
 #include "nvim/api/private/validate.h"
 #include "nvim/api/ui.h"
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/autocmd.h"
 #include "nvim/buffer.h"
 #include "nvim/cursor_shape.h"
 #include "nvim/drawscreen.h"
+#include "nvim/event/multiqueue.h"
 #include "nvim/ex_getln.h"
 #include "nvim/gettext.h"
 #include "nvim/globals.h"
@@ -26,17 +23,24 @@
 #include "nvim/highlight_defs.h"
 #include "nvim/log.h"
 #include "nvim/lua/executor.h"
-#include "nvim/map.h"
+#include "nvim/map_defs.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
 #include "nvim/option.h"
+#include "nvim/option_vars.h"
 #include "nvim/os/time.h"
+#include "nvim/state_defs.h"
 #include "nvim/strings.h"
 #include "nvim/ui.h"
 #include "nvim/ui_client.h"
 #include "nvim/ui_compositor.h"
-#include "nvim/vim.h"
 #include "nvim/window.h"
+#include "nvim/winfloat.h"
+
+typedef struct ui_event_callback {
+  LuaRef cb;
+  bool ext_widgets[kUIGlobalCount];
+} UIEventCallback;
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "ui.c.generated.h"
@@ -60,6 +64,7 @@ bool ui_cb_ext[kUIExtCount];  ///< Internalized UI capabilities.
 
 static bool has_mouse = false;
 static int pending_has_mouse = -1;
+static bool pending_default_colors = false;
 
 static Array call_buf = ARRAY_DICT_INIT;
 
@@ -127,10 +132,12 @@ void ui_free_all_mem(void)
   kv_destroy(call_buf);
 
   UIEventCallback *event_cb;
-  pmap_foreach_value(&ui_event_cbs, event_cb, {
+  map_foreach_value(&ui_event_cbs, event_cb, {
     free_ui_event_callback(event_cb);
   })
   map_destroy(uint32_t, &ui_event_cbs);
+
+  multiqueue_free(resize_events);
 }
 #endif
 
@@ -191,7 +198,8 @@ void ui_refresh(void)
     return;
   }
 
-  int width = INT_MAX, height = INT_MAX;
+  int width = INT_MAX;
+  int height = INT_MAX;
   bool ext_widgets[kUIExtCount];
   for (UIExtension i = 0; (int)i < kUIExtCount; i++) {
     ext_widgets[i] = true;
@@ -229,7 +237,7 @@ void ui_refresh(void)
   p_lz = save_p_lz;
 
   if (ext_widgets[kUIMessages]) {
-    set_option_value("cmdheight", NUMBER_OPTVAL(0), 0);
+    set_option_value(kOptCmdheight, NUMBER_OPTVAL(0), 0);
     command_height();
   }
   ui_mode_info_set();
@@ -273,13 +281,26 @@ static void ui_refresh_event(void **argv)
 
 void ui_schedule_refresh(void)
 {
-  multiqueue_put(resize_events, ui_refresh_event, 0);
+  multiqueue_put(resize_events, ui_refresh_event, NULL);
 }
 
 void ui_default_colors_set(void)
 {
-  ui_call_default_colors_set(normal_fg, normal_bg, normal_sp,
-                             cterm_normal_fg_color, cterm_normal_bg_color);
+  // Throttle setting of default colors at startup, so it only happens once
+  // if the user sets the colorscheme in startup.
+  pending_default_colors = true;
+  if (starting == 0) {
+    ui_may_set_default_colors();
+  }
+}
+
+static void ui_may_set_default_colors(void)
+{
+  if (pending_default_colors) {
+    pending_default_colors = false;
+    ui_call_default_colors_set(normal_fg, normal_bg, normal_sp,
+                               cterm_normal_fg_color, cterm_normal_bg_color);
+  }
 }
 
 void ui_busy_start(void)
@@ -332,7 +353,17 @@ void vim_beep(unsigned val)
   // comes from.
   if (vim_strchr(p_debug, 'e') != NULL) {
     msg_source(HL_ATTR(HLF_W));
-    msg_attr(_("Beep!"), HL_ATTR(HLF_W));
+    msg(_("Beep!"), HL_ATTR(HLF_W));
+  }
+}
+
+/// Trigger UIEnter for all attached UIs.
+/// Used on startup after VimEnter.
+void do_autocmd_uienter_all(void)
+{
+  for (size_t i = 0; i < ui_count; i++) {
+    UIData *data = uis[i]->data;
+    do_autocmd_uienter(data->channel_id, true);
   }
 }
 
@@ -427,6 +458,9 @@ void ui_line(ScreenGrid *grid, int row, int startcol, int endcol, int clearcol, 
     flags |= kLineFlagInvalid;
   }
 
+  // set default colors now so that that text won't have to be repainted later
+  ui_may_set_default_colors();
+
   size_t off = grid->line_offset[row] + (size_t)startcol;
 
   ui_call_raw_line(grid->handle, row, startcol, endcol, clearcol, clearattr,
@@ -439,7 +473,7 @@ void ui_line(ScreenGrid *grid, int row, int startcol, int endcol, int clearcol, 
     ui_call_grid_cursor_goto(grid->handle, row,
                              MIN(clearcol, (int)grid->cols - 1));
     ui_call_flush();
-    uint64_t wd = (uint64_t)labs(p_wd);
+    uint64_t wd = (uint64_t)llabs(p_wd);
     os_sleep(wd);
     pending_cursor_update = true;  // restore the cursor later
   }
@@ -522,7 +556,7 @@ void ui_flush(void)
   ui_call_flush();
 
   if (p_wd && (rdb_flags & RDB_FLUSH)) {
-    os_sleep((uint64_t)labs(p_wd));
+    os_sleep((uint64_t)llabs(p_wd));
   }
 }
 
@@ -615,7 +649,10 @@ Array ui_array(void)
 
     // TUI fields. (`stdin_fd` is intentionally omitted.)
     PUT(info, "term_name", CSTR_TO_OBJ(ui->term_name));
-    PUT(info, "term_background", CSTR_TO_OBJ(ui->term_background));
+
+    // term_background is deprecated. Populate with an empty string
+    PUT(info, "term_background", CSTR_TO_OBJ(""));
+
     PUT(info, "term_colors", INTEGER_OBJ(ui->term_colors));
     PUT(info, "stdin_tty", BOOLEAN_OBJ(ui->stdin_tty));
     PUT(info, "stdout_tty", BOOLEAN_OBJ(ui->stdout_tty));
@@ -661,7 +698,7 @@ void ui_call_event(char *name, Array args)
 {
   UIEventCallback *event_cb;
   bool handled = false;
-  pmap_foreach_value(&ui_event_cbs, event_cb, {
+  map_foreach_value(&ui_event_cbs, event_cb, {
     Error err = ERROR_INIT;
     Object res = nlua_call_ref(event_cb->cb, name, args, false, &err);
     if (res.type == kObjectTypeBoolean && res.data.boolean == true) {
@@ -680,14 +717,14 @@ void ui_call_event(char *name, Array args)
   ui_log(name);
 }
 
-void ui_cb_update_ext(void)
+static void ui_cb_update_ext(void)
 {
   memset(ui_cb_ext, 0, ARRAY_SIZE(ui_cb_ext));
 
   for (size_t i = 0; i < kUIGlobalCount; i++) {
     UIEventCallback *event_cb;
 
-    pmap_foreach_value(&ui_event_cbs, event_cb, {
+    map_foreach_value(&ui_event_cbs, event_cb, {
       if (event_cb->ext_widgets[i]) {
         ui_cb_ext[i] = true;
         break;
@@ -696,7 +733,7 @@ void ui_cb_update_ext(void)
   }
 }
 
-void free_ui_event_callback(UIEventCallback *event_cb)
+static void free_ui_event_callback(UIEventCallback *event_cb)
 {
   api_free_luaref(event_cb->cb);
   xfree(event_cb);
@@ -723,7 +760,7 @@ void ui_add_cb(uint32_t ns_id, LuaRef cb, bool *ext_widgets)
 
 void ui_remove_cb(uint32_t ns_id)
 {
-  if (pmap_has(uint32_t)(&ui_event_cbs, ns_id)) {
+  if (map_has(uint32_t, &ui_event_cbs, ns_id)) {
     UIEventCallback *item = pmap_del(uint32_t)(&ui_event_cbs, ns_id, NULL);
     free_ui_event_callback(item);
   }

@@ -1,12 +1,11 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
 
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/eval/typval.h"
+#include "nvim/event/loop.h"
+#include "nvim/log.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
 #include "nvim/os/os.h"
@@ -256,9 +255,9 @@ static int build_cmd_line(char **argv, wchar_t **cmd_line, bool is_cmdexe)
   QUEUE_FOREACH(q, &args_q, {
     ArgNode *arg_node = QUEUE_DATA(q, ArgNode, node);
     xstrlcat(utf8_cmd_line, arg_node->arg, utf8_cmd_line_len);
+    QUEUE_REMOVE(q);
     xfree(arg_node->arg);
     xfree(arg_node);
-    QUEUE_REMOVE(q);
     if (!QUEUE_EMPTY(&args_q)) {
       xstrlcat(utf8_cmd_line, " ", utf8_cmd_line_len);
     }

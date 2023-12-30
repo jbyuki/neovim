@@ -24,7 +24,6 @@ describe('named marks', function()
     os.remove(file2)
   end)
 
-
   it("can be set", function()
     command("edit " .. file1)
     command("mark a")
@@ -147,6 +146,20 @@ describe('named marks', function()
     eq({2, 2}, cursor())
   end)
 
+  it("can move to them using :'", function()
+    command("args " .. file1 .. " " .. file2)
+    feed("j")
+    feed("ma")
+    feed("G")
+    command("'a")
+    eq({2, 0}, cursor())
+    feed("mA")
+    command("next")
+    command("'A")
+    eq(1, meths.get_current_buf().id)
+    eq({2, 0}, cursor())
+  end)
+
   it("errors when it can't find the buffer", function()
     command("args " .. file1 .. " " .. file2)
     feed("mA")
@@ -161,7 +174,7 @@ describe('named marks', function()
     feed('ifoo<Esc>mA')
     command('enew')
     feed('ibar<Esc>')
-    eq('Vim(print):E20: Mark not set', pcall_err(command, [['Aprint]]))
+    eq("Vim(print):E20: Mark not set: 'Aprint", pcall_err(command, [['Aprint]]))
   end)
 
   it("leave a context mark when moving with '", function()
@@ -406,9 +419,7 @@ describe('named marks view', function()
       feed("<C-w>p'a")
       screen:expect([[
                   |
-      ~           |
-      ~           |
-      ~           |
+      ~           |*3
       [No Name]   |
       6 line      |
       ^7 line      |
@@ -441,10 +452,7 @@ describe('named marks view', function()
     command('bwipe!')
     screen:expect([[
       ^            |
-      ~           |
-      ~           |
-      ~           |
-      ~           |
+      ~           |*4
                   |
     ]])
     command('rshada!')

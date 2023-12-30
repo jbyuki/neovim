@@ -99,7 +99,7 @@ describe(':terminal', function()
   end)
 
   it('nvim_get_mode() in :terminal', function()
-    command(':terminal')
+    command('terminal')
     eq({ blocking=false, mode='nt' }, nvim('get_mode'))
     feed('i')
     eq({ blocking=false, mode='t' }, nvim('get_mode'))
@@ -108,44 +108,60 @@ describe(':terminal', function()
   end)
 
   it(':stopinsert RPC request exits terminal-mode #7807', function()
-    command(':terminal')
+    command('terminal')
     feed('i[tui] insert-mode')
     eq({ blocking=false, mode='t' }, nvim('get_mode'))
     command('stopinsert')
+    feed('<Ignore>')  -- Add input to separate two RPC requests
     eq({ blocking=false, mode='nt' }, nvim('get_mode'))
   end)
 
   it(':stopinsert in normal mode doesn\'t break insert mode #9889', function()
-    command(':terminal')
+    command('terminal')
     eq({ blocking=false, mode='nt' }, nvim('get_mode'))
-    command(':stopinsert')
+    command('stopinsert')
+    feed('<Ignore>')  -- Add input to separate two RPC requests
     eq({ blocking=false, mode='nt' }, nvim('get_mode'))
     feed('a')
     eq({ blocking=false, mode='t' }, nvim('get_mode'))
   end)
+
+  it('switching to terminal buffer in Insert mode goes to Terminal mode #7164', function()
+    command('terminal')
+    command('vnew')
+    feed('i')
+    command('let g:events = []')
+    command('autocmd InsertLeave * let g:events += ["InsertLeave"]')
+    command('autocmd TermEnter * let g:events += ["TermEnter"]')
+    command('inoremap <F2> <Cmd>wincmd p<CR>')
+    eq({ blocking=false, mode='i' }, nvim('get_mode'))
+    feed('<F2>')
+    eq({ blocking=false, mode='t' }, nvim('get_mode'))
+    eq({'InsertLeave', 'TermEnter'}, eval('g:events'))
+  end)
 end)
 
-describe(':terminal (with fake shell)', function()
+local function test_terminal_with_fake_shell(backslash)
+  -- shell-test.c is a fake shell that prints its arguments and exits.
+  local shell_path = testprg('shell-test')
+  if backslash then
+    shell_path = shell_path:gsub('/', [[\]])
+  end
+
   local screen
 
   before_each(function()
     clear()
     screen = Screen.new(50, 4)
     screen:attach({rgb=false})
-    -- shell-test.c is a fake shell that prints its arguments and exits.
-    nvim('set_option_value', 'shell', testprg('shell-test'), {})
+    nvim('set_option_value', 'shell', shell_path, {})
     nvim('set_option_value', 'shellcmdflag', 'EXE', {})
+    nvim('set_option_value', 'shellxquote', '', {})
   end)
 
-  -- Invokes `:terminal {cmd}` using a fake shell (shell-test.c) which prints
-  -- the {cmd} and exits immediately .
-  local function terminal_with_fake_shell(cmd)
-    feed_command("terminal "..(cmd and cmd or ""))
-  end
-
   it('with no argument, acts like termopen()', function()
-    skip(is_os('win'))
-    terminal_with_fake_shell()
+    command('autocmd! nvim_terminal TermClose')
+    feed_command('terminal')
     retry(nil, 4 * screen.timeout, function()
     screen:expect([[
       ^ready $                                           |
@@ -158,31 +174,27 @@ describe(':terminal (with fake shell)', function()
 
   it("with no argument, and 'shell' is set to empty string", function()
     nvim('set_option_value', 'shell', '', {})
-    terminal_with_fake_shell()
+    feed_command('terminal')
     screen:expect([[
       ^                                                  |
-      ~                                                 |
-      ~                                                 |
+      ~                                                 |*2
       E91: 'shell' option is empty                      |
     ]])
   end)
 
   it("with no argument, but 'shell' has arguments, acts like termopen()", function()
-    skip(is_os('win'))
-    nvim('set_option_value', 'shell', testprg('shell-test')..' -t jeff', {})
-    terminal_with_fake_shell()
+    nvim('set_option_value', 'shell', shell_path ..' INTERACT', {})
+    feed_command('terminal')
     screen:expect([[
-      ^jeff $                                            |
-      [Process exited 0]                                |
-                                                        |
+      ^interact $                                        |
+                                                        |*2
       :terminal                                         |
     ]])
   end)
 
   it('executes a given command through the shell', function()
-    skip(is_os('win'))
     command('set shellxquote=')   -- win: avoid extra quotes
-    terminal_with_fake_shell('echo hi')
+    feed_command('terminal echo hi')
     screen:expect([[
       ^ready $ echo hi                                   |
                                                         |
@@ -192,10 +204,9 @@ describe(':terminal (with fake shell)', function()
   end)
 
   it("executes a given command through the shell, when 'shell' has arguments", function()
-    skip(is_os('win'))
-    nvim('set_option_value', 'shell', testprg('shell-test')..' -t jeff', {})
+    nvim('set_option_value', 'shell', shell_path ..' -t jeff', {})
     command('set shellxquote=')   -- win: avoid extra quotes
-    terminal_with_fake_shell('echo hi')
+    feed_command('terminal echo hi')
     screen:expect([[
       ^jeff $ echo hi                                    |
                                                         |
@@ -205,9 +216,8 @@ describe(':terminal (with fake shell)', function()
   end)
 
   it('allows quotes and slashes', function()
-    skip(is_os('win'))
     command('set shellxquote=')   -- win: avoid extra quotes
-    terminal_with_fake_shell([[echo 'hello' \ "world"]])
+    feed_command([[terminal echo 'hello' \ "world"]])
     screen:expect([[
       ^ready $ echo 'hello' \ "world"                    |
                                                         |
@@ -225,25 +235,27 @@ describe(':terminal (with fake shell)', function()
   end)
 
   it('ignores writes if the backing stream closes', function()
-      terminal_with_fake_shell()
-      feed('iiXXXXXXX')
-      poke_eventloop()
-      -- Race: Though the shell exited (and streams were closed by SIGCHLD
-      -- handler), :terminal cleanup is pending on the main-loop.
-      -- This write should be ignored (not crash, #5445).
-      feed('iiYYYYYYY')
-      assert_alive()
+    command('autocmd! nvim_terminal TermClose')
+    feed_command('terminal')
+    feed('iiXXXXXXX')
+    poke_eventloop()
+    -- Race: Though the shell exited (and streams were closed by SIGCHLD
+    -- handler), :terminal cleanup is pending on the main-loop.
+    -- This write should be ignored (not crash, #5445).
+    feed('iiYYYYYYY')
+    assert_alive()
   end)
 
   it('works with findfile()', function()
+    command('autocmd! nvim_terminal TermClose')
     feed_command('terminal')
     eq('term://', string.match(eval('bufname("%")'), "^term://"))
     eq('scripts/shadacat.py', eval('findfile("scripts/shadacat.py", ".")'))
   end)
 
   it('works with :find', function()
-    skip(is_os('win'))
-    terminal_with_fake_shell()
+    command('autocmd! nvim_terminal TermClose')
+    feed_command('terminal')
     screen:expect([[
       ^ready $                                           |
       [Process exited 0]                                |
@@ -261,9 +273,8 @@ describe(':terminal (with fake shell)', function()
   end)
 
   it('works with gf', function()
-    skip(is_os('win'))
     command('set shellxquote=')   -- win: avoid extra quotes
-    terminal_with_fake_shell([[echo "scripts/shadacat.py"]])
+    feed_command([[terminal echo "scripts/shadacat.py"]])
     retry(nil, 4 * screen.timeout, function()
     screen:expect([[
       ^ready $ echo "scripts/shadacat.py"                |
@@ -288,4 +299,13 @@ describe(':terminal (with fake shell)', function()
       terminal]])
     end
   end)
+end
+
+describe(':terminal (with fake shell)', function()
+  test_terminal_with_fake_shell(false)
+  if is_os('win') then
+    describe("when 'shell' uses backslashes", function()
+      test_terminal_with_fake_shell(true)
+    end)
+  end
 end)

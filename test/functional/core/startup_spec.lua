@@ -9,6 +9,7 @@ local ok = helpers.ok
 local eq = helpers.eq
 local matches = helpers.matches
 local eval = helpers.eval
+local exec = helpers.exec
 local exec_capture = helpers.exec_capture
 local exec_lua = helpers.exec_lua
 local feed = helpers.feed
@@ -40,6 +41,18 @@ describe('startup', function()
     ok(string.find(alter_slashes(meths.get_option_value('runtimepath', {})), funcs.stdpath('config'), 1, true) == nil)
   end)
 
+  it('prevents remote UI infinite loop', function()
+    clear()
+    local screen
+    screen = Screen.new(84, 3)
+    screen:attach()
+    funcs.termopen({ nvim_prog, '-u', 'NONE', '--server', eval('v:servername'), '--remote-ui' })
+    screen:expect([[
+      ^Cannot attach UI of :terminal child to its parent. (Unset $NVIM to skip this check) |
+                                                                                          |*2
+    ]])
+  end)
+
   it('--startuptime', function()
     local testfile = 'Xtest_startuptime'
     finally(function()
@@ -55,8 +68,17 @@ describe('startup', function()
     local screen
     screen = Screen.new(60, 7)
     screen:attach()
-    command([[let g:id = termopen('"]]..nvim_prog..
-    [[" -u NONE -i NONE --cmd "set noruler" -D')]])
+    local id = funcs.termopen({
+      nvim_prog,
+      '-u', 'NONE',
+      '-i', 'NONE',
+      '--cmd', 'set noruler',
+      '-D'
+    }, {
+      env = {
+        VIMRUNTIME = os.getenv('VIMRUNTIME'),
+      },
+    })
     screen:expect([[
       ^                                                            |
                                                                   |
@@ -66,15 +88,12 @@ describe('startup', function()
       >                                                           |
                                                                   |
     ]])
-    command([[call chansend(g:id, "cont\n")]])
+    funcs.chansend(id, 'cont\n')
     screen:expect([[
       ^                                                            |
-      ~                                                           |
-      ~                                                           |
-      ~                                                           |
+      ~                                                           |*3
       [No Name]                                                   |
-                                                                  |
-                                                                  |
+                                                                  |*2
     ]])
   end)
 end)
@@ -131,12 +150,12 @@ describe('startup', function()
     end)
 
     it('executes stdin "-"', function()
-      assert_l_out('arg0=- args=2 whoa',
+      assert_l_out('arg0=- args=2 whoa\n',
         nil,
         { 'arg1', 'arg 2' },
         '-',
         "print(('arg0=%s args=%d %s'):format(_G.arg[0], #_G.arg, 'whoa'))")
-      assert_l_out('biiig input: 1000042',
+      assert_l_out('biiig input: 1000042\n',
         nil,
         nil,
         '-',
@@ -145,11 +164,12 @@ describe('startup', function()
     end)
 
     it('does not truncate long print() message', function()
-      assert_l_out(('k'):rep(1234),
-        nil,
-        nil,
-        '-',
-        "print(('k'):rep(1234))")
+      assert_l_out(('k'):rep(1234) .. '\n', nil, nil, '-', "print(('k'):rep(1234))")
+    end)
+
+    it('does not add newline when unnecessary', function()
+      assert_l_out('', nil, nil, '-', '')
+      assert_l_out('foobar\n', nil, nil, '-', [[print('foobar\n')]])
     end)
 
     it('sets _G.arg', function()
@@ -159,7 +179,8 @@ describe('startup', function()
           nvim args: 3
           lua args: {
             [0] = "test/functional/fixtures/startup.lua"
-          }]],
+          }
+          ]],
         {},
         {}
       )
@@ -171,7 +192,8 @@ describe('startup', function()
           nvim args: 7
           lua args: { "-arg1", "--arg2", "--", "arg3",
             [0] = "test/functional/fixtures/startup.lua"
-          }]],
+          }
+          ]],
         {},
         { '-arg1', '--arg2', '--', 'arg3' }
       )
@@ -183,7 +205,8 @@ describe('startup', function()
           nvim args: 10
           lua args: { "-arg1", "arg 2", "--", "file3", "file4",
             [0] = "test/functional/fixtures/startup.lua"
-          }]],
+          }
+          ]],
         { 'file1', 'file2', },
         { '-arg1', 'arg 2', '--', 'file3', 'file4' }
       )
@@ -195,7 +218,8 @@ describe('startup', function()
           nvim args: 5
           lua args: { "-c", "set wrap?",
             [0] = "test/functional/fixtures/startup.lua"
-          }]],
+          }
+          ]],
         {},
         { '-c', 'set wrap?' }
       )
@@ -211,7 +235,8 @@ describe('startup', function()
           nvim args: 7
           lua args: { "-c", "set wrap?",
             [0] = "test/functional/fixtures/startup.lua"
-          }]],
+          }
+          ]],
         { '-c', 'set wrap?' },
         { '-c', 'set wrap?' }
       )
@@ -219,7 +244,7 @@ describe('startup', function()
     end)
 
     it('disables swapfile/shada/config/plugins', function()
-      assert_l_out('updatecount=0 shadafile=NONE loadplugins=false scripts=1',
+      assert_l_out('updatecount=0 shadafile=NONE loadplugins=false scripts=1\n',
         nil,
         nil,
         '-',
@@ -265,10 +290,17 @@ describe('startup', function()
       command([[set shellcmdflag=/s\ /c shellxquote=\"]])
     end
     -- Running in :terminal
-    command([[exe printf("terminal %s -u NONE -i NONE --cmd \"]]
-            ..nvim_set..[[\"]]
-            ..[[ -c \"echo has('ttyin') has('ttyout')\""]]
-            ..[[, shellescape(v:progpath))]])
+    funcs.termopen({
+      nvim_prog,
+      '-u', 'NONE',
+      '-i', 'NONE',
+      '--cmd', nvim_set,
+      '-c', 'echo has("ttyin") has("ttyout")',
+    }, {
+      env = {
+        VIMRUNTIME = os.getenv('VIMRUNTIME'),
+      },
+    })
     screen:expect([[
       ^                         |
       ~                        |
@@ -286,11 +318,13 @@ describe('startup', function()
       os.remove('Xtest_startup_ttyout')
     end)
     -- Running in :terminal
-    command([[exe printf("terminal %s -u NONE -i NONE --cmd \"]]
-            ..nvim_set..[[\"]]
-            ..[[ -c \"call writefile([has('ttyin'), has('ttyout')], 'Xtest_startup_ttyout')\"]]
-            ..[[ -c q | cat -v"]]  -- Output to a pipe.
-            ..[[, shellescape(v:progpath))]])
+    funcs.termopen(([["%s" -u NONE -i NONE --cmd "%s"]]
+            ..[[ -c "call writefile([has('ttyin'), has('ttyout')], 'Xtest_startup_ttyout')"]]
+            ..[[ -c q | cat -v]]):format(nvim_prog, nvim_set), {
+      env = {
+        VIMRUNTIME = os.getenv('VIMRUNTIME'),
+      },
+    })
     retry(nil, 3000, function()
       sleep(1)
       eq('1\n0\n',  -- stdin is a TTY, stdout is a pipe
@@ -307,12 +341,14 @@ describe('startup', function()
       os.remove('Xtest_startup_ttyout')
     end)
     -- Running in :terminal
-    command([[exe printf("terminal echo foo | ]]  -- Input from a pipe.
-            ..[[%s -u NONE -i NONE --cmd \"]]
-            ..nvim_set..[[\"]]
-            ..[[ -c \"call writefile([has('ttyin'), has('ttyout')], 'Xtest_startup_ttyout')\"]]
-            ..[[ -c q -- -"]]
-            ..[[, shellescape(v:progpath))]])
+    funcs.termopen(([[echo foo | ]]  -- Input from a pipe.
+            ..[["%s" -u NONE -i NONE --cmd "%s"]]
+            ..[[ -c "call writefile([has('ttyin'), has('ttyout')], 'Xtest_startup_ttyout')"]]
+            ..[[ -c q -- -]]):format(nvim_prog, nvim_set), {
+      env = {
+        VIMRUNTIME = os.getenv('VIMRUNTIME'),
+      },
+    })
     retry(nil, 3000, function()
       sleep(1)
       eq('0\n1\n',  -- stdin is a pipe, stdout is a TTY
@@ -327,11 +363,13 @@ describe('startup', function()
       command([[set shellcmdflag=/s\ /c shellxquote=\"]])
     end
     -- Running in :terminal
-    command([[exe printf("terminal echo foo | ]]  -- Input from a pipe.
-            ..[[%s -u NONE -i NONE --cmd \"]]
-            ..nvim_set..[[\"]]
-            ..[[ -c \"echo has('ttyin') has('ttyout')\""]]
-            ..[[, shellescape(v:progpath))]])
+    funcs.termopen(([[echo foo | ]]
+            .. [["%s" -u NONE -i NONE --cmd "%s"]]
+            .. [[ -c "echo has('ttyin') has('ttyout')"]]):format(nvim_prog, nvim_set), {
+      env = {
+        VIMRUNTIME = os.getenv('VIMRUNTIME'),
+      },
+    })
     screen:expect([[
       ^foo                      |
       ~                        |
@@ -433,8 +471,17 @@ describe('startup', function()
     local screen
     screen = Screen.new(60, 6)
     screen:attach()
-    command([[let g:id = termopen('"]]..nvim_prog..
-    [[" -u NONE -i NONE --cmd "set noruler" --cmd "let g:foo = g:bar"')]])
+    local id = funcs.termopen({
+      nvim_prog,
+      '-u', 'NONE',
+      '-i', 'NONE',
+      '--cmd', 'set noruler',
+      '--cmd', 'let g:foo = g:bar',
+    }, {
+      env = {
+        VIMRUNTIME = os.getenv('VIMRUNTIME'),
+      },
+    })
     screen:expect([[
       ^                                                            |
                                                                   |
@@ -443,15 +490,33 @@ describe('startup', function()
       Press ENTER or type command to continue                     |
                                                                   |
     ]])
-    command([[call chansend(g:id, "\n")]])
+    funcs.chansend(id, '\n')
     screen:expect([[
       ^                                                            |
-      ~                                                           |
-      ~                                                           |
+      ~                                                           |*2
       [No Name]                                                   |
-                                                                  |
-                                                                  |
+                                                                  |*2
     ]])
+  end)
+
+  it('-r works without --headless in PTY #23294', function()
+    exec([[
+      func Normalize(data) abort
+        " Windows: remove ^M and term escape sequences
+        return map(a:data, 'substitute(substitute(v:val, "\r", "", "g"), "\x1b\\%(\\]\\d\\+;.\\{-}\x07\\|\\[.\\{-}[\x40-\x7E]\\)", "", "g")')
+      endfunc
+      func OnOutput(id, data, event) dict
+        let g:stdout = Normalize(a:data)
+      endfunc
+      call jobstart([v:progpath, '-u', 'NONE', '-i', 'NONE', '-r'], {
+      \ 'pty': v:true,
+      \ 'stdout_buffered': v:true,
+      \ 'on_stdout': function('OnOutput'),
+      \ })
+    ]])
+    retry(nil, nil, function()
+      eq('Swap files found:', eval('g:stdout[0]'))
+    end)
   end)
 
   it('fixed hang issue with --headless (#11386)', function()
@@ -826,16 +891,17 @@ describe('user config init', function()
 
         local screen = Screen.new(50, 8)
         screen:attach()
-        funcs.termopen({nvim_prog})
+        funcs.termopen({nvim_prog}, {
+          env = {
+            VIMRUNTIME = os.getenv('VIMRUNTIME'),
+          },
+        })
         screen:expect({ any = pesc('[i]gnore, (v)iew, (d)eny, (a)llow:') })
         -- `i` to enter Terminal mode, `a` to allow
         feed('ia')
         screen:expect([[
                                                             |
-          ~                                                 |
-          ~                                                 |
-          ~                                                 |
-          ~                                                 |
+          ~                                                 |*4
           [No Name]                       0,0-1          All|
                                                             |
           -- TERMINAL --                                    |
@@ -843,10 +909,7 @@ describe('user config init', function()
         feed(':echo g:exrc_file<CR>')
         screen:expect(string.format([[
                                                             |
-          ~                                                 |
-          ~                                                 |
-          ~                                                 |
-          ~                                                 |
+          ~                                                 |*4
           [No Name]                       0,0-1          All|
           %s%s|
           -- TERMINAL --                                    |
@@ -911,27 +974,27 @@ describe('runtime:', function()
     local plugin_folder_path = table.concat({xconfig, 'nvim', 'plugin'}, pathsep)
     local plugin_file_path = table.concat({plugin_folder_path, 'plugin.lua'}, pathsep)
     mkdir_p(plugin_folder_path)
+    finally(function()
+      rmdir(plugin_folder_path)
+    end)
     write_file(plugin_file_path, [[ vim.g.lua_plugin = 1 ]])
 
     clear{ args_rm={'-u'}, env=xenv }
 
     eq(1, eval('g:lua_plugin'))
-    rmdir(plugin_folder_path)
   end)
 
   it('loads plugin/*.lua from start packages', function()
-    local plugin_path = table.concat({xconfig, 'nvim', 'pack', 'category',
-    'start', 'test_plugin'}, pathsep)
+    local plugin_path = table.concat({xconfig, 'nvim', 'pack', 'category', 'start', 'test_plugin'}, pathsep)
     local plugin_folder_path = table.concat({plugin_path, 'plugin'}, pathsep)
-    local plugin_file_path = table.concat({plugin_folder_path, 'plugin.lua'},
-    pathsep)
+    local plugin_file_path = table.concat({plugin_folder_path, 'plugin.lua'}, pathsep)
     local profiler_file = 'test_startuptime.log'
+    mkdir_p(plugin_folder_path)
     finally(function()
       os.remove(profiler_file)
       rmdir(plugin_path)
     end)
 
-    mkdir_p(plugin_folder_path)
     write_file(plugin_file_path, [[vim.g.lua_plugin = 2]])
 
     clear{ args_rm={'-u'}, args={'--startuptime', profiler_file}, env=xenv }
@@ -955,30 +1018,59 @@ describe('runtime:', function()
     local plugin_after_path = table.concat({plugin_path, 'after', 'plugin'}, pathsep)
     local plugin_file_path = table.concat({plugin_folder_path, 'plugin.lua'}, pathsep)
     local plugin_after_file_path = table.concat({plugin_after_path, 'helloo.lua'}, pathsep)
-
     mkdir_p(plugin_folder_path)
-    write_file(plugin_file_path, [[table.insert(_G.lista, "unos")]])
     mkdir_p(plugin_after_path)
+    finally(function()
+      rmdir(plugin_path)
+    end)
+
+    write_file(plugin_file_path, [[table.insert(_G.lista, "unos")]])
     write_file(plugin_after_file_path, [[table.insert(_G.lista, "dos")]])
 
     clear{ args_rm={'-u'}, args={'--cmd', 'lua _G.lista = {}'}, env=xenv }
 
     eq({'unos', 'dos'}, exec_lua "return _G.lista")
-
-    rmdir(plugin_path)
   end)
 
+  it('no crash setting &rtp in plugins with :packloadall called before #18315', function()
+    local plugin_folder_path = table.concat({xconfig, 'nvim', 'plugin'}, pathsep)
+    mkdir_p(plugin_folder_path)
+    finally(function()
+      rmdir(plugin_folder_path)
+    end)
 
-  it('loads ftdetect/*.lua', function()
+    write_file(table.concat({plugin_folder_path, 'plugin.vim'}, pathsep), [[
+      let &runtimepath = &runtimepath
+      let g:vim_plugin = 1
+    ]])
+    write_file(table.concat({plugin_folder_path, 'plugin.lua'}, pathsep), [[
+      vim.o.runtimepath = vim.o.runtimepath
+      vim.g.lua_plugin = 1
+    ]])
+
+    clear{ args_rm={'-u'}, args = {'--cmd', 'packloadall'}, env=xenv }
+
+    eq(1, eval('g:vim_plugin'))
+    eq(1, eval('g:lua_plugin'))
+  end)
+
+  it("loads ftdetect/*.{vim,lua} respecting 'rtp' order", function()
     local ftdetect_folder = table.concat({xconfig, 'nvim', 'ftdetect'}, pathsep)
-    local ftdetect_file = table.concat({ftdetect_folder , 'new-ft.lua'}, pathsep)
+    local after_ftdetect_folder = table.concat({xconfig, 'nvim', 'after', 'ftdetect'}, pathsep)
     mkdir_p(ftdetect_folder)
-    write_file(ftdetect_file , [[vim.g.lua_ftdetect = 1]])
-
-    clear{ args_rm={'-u'}, env=xenv }
-
-    eq(1, eval('g:lua_ftdetect'))
-    rmdir(ftdetect_folder)
+    mkdir_p(after_ftdetect_folder)
+    finally(function()
+      rmdir(ftdetect_folder)
+      rmdir(after_ftdetect_folder)
+    end)
+      -- A .lua file is loaded after a .vim file if they only differ in extension.
+      -- All files in after/ftdetect/ are loaded after all files in ftdetect/.
+    write_file(table.concat({ftdetect_folder, 'new-ft.vim'}, pathsep), [[let g:seq ..= 'A']])
+    write_file(table.concat({ftdetect_folder, 'new-ft.lua'}, pathsep), [[vim.g.seq = vim.g.seq .. 'B']])
+    write_file(table.concat({after_ftdetect_folder, 'new-ft.vim'}, pathsep), [[let g:seq ..= 'a']])
+    write_file(table.concat({after_ftdetect_folder, 'new-ft.lua'}, pathsep), [[vim.g.seq = vim.g.seq .. 'b']])
+    clear{ args_rm={'-u'}, args = {'--cmd', 'let g:seq = ""'}, env=xenv }
+    eq('ABab', eval('g:seq'))
   end)
 end)
 
@@ -1003,5 +1095,27 @@ describe('user session', function()
   it('loads session from the provided lua file', function()
     clear{ args={'-S', session_file }, env={ HOME=xhome }}
     eq(1, eval('g:lua_session'))
+  end)
+end)
+
+describe('inccommand on ex mode', function()
+  it('should not preview', function()
+    clear()
+    local screen
+    screen = Screen.new(60, 10)
+    screen:attach()
+    local id = funcs.termopen({ nvim_prog, '-u', 'NONE', '-c', 'set termguicolors', '-E', 'test/README.md' }, {
+      env = { VIMRUNTIME = os.getenv('VIMRUNTIME') }
+    })
+    funcs.chansend(id, '%s/N')
+    screen:expect{grid=[[
+      {1:^                                                            }|
+      {1:                                                            }|*6
+      {1:Entering Ex mode.  Type "visual" to go to Normal mode.      }|
+      {1::%s/N                                                       }|
+                                                                  |
+    ]], attr_ids={
+      [1] = {background = Screen.colors.NvimDarkGrey2, foreground = Screen.colors.NvimLightGrey2};
+    }}
   end)
 end)

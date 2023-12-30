@@ -1,5 +1,4 @@
-#ifndef NVIM_EVAL_TYPVAL_H
-#define NVIM_EVAL_TYPVAL_H
+#pragma once
 
 #include <assert.h>
 #include <stdbool.h>
@@ -7,16 +6,15 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "nvim/eval/typval_defs.h"
+#include "nvim/eval/typval_defs.h"  // IWYU pragma: export
 #include "nvim/func_attr.h"
-#include "nvim/garray.h"
 #include "nvim/gettext.h"
 #include "nvim/hashtab.h"
 #include "nvim/lib/queue.h"
-#include "nvim/macros.h"
-#include "nvim/mbyte_defs.h"
+#include "nvim/macros_defs.h"
+#include "nvim/mbyte_defs.h"  // IWYU pragma: keep
 #include "nvim/message.h"
-#include "nvim/types.h"
+#include "nvim/types_defs.h"
 
 // In a hashtab item "hi_key" points to "di_key" in a dictitem.
 // This avoids adding a pointer to the hashtab item.
@@ -86,6 +84,9 @@ static inline void tv_list_set_lock(list_T *const l, const VarLockStatus lock)
   l->lv_lock = lock;
 }
 
+static inline void tv_list_set_copyid(list_T *l, int copyid)
+  REAL_FATTR_NONNULL_ALL;
+
 /// Set list copyID
 ///
 /// Does not expect NULL list, be careful.
@@ -93,7 +94,6 @@ static inline void tv_list_set_lock(list_T *const l, const VarLockStatus lock)
 /// @param[out]  l  List to modify.
 /// @param[in]  copyid  New copyID.
 static inline void tv_list_set_copyid(list_T *const l, const int copyid)
-  FUNC_ATTR_NONNULL_ALL
 {
   l->lv_copyID = copyid;
 }
@@ -235,7 +235,7 @@ static inline long tv_dict_len(const dict_T *d)
 static inline long tv_dict_len(const dict_T *const d)
 {
   if (d == NULL) {
-    return 0L;
+    return 0;
   }
   return (long)d->dv_hashtab.ht_used;
 }
@@ -340,7 +340,7 @@ extern bool tv_in_free_unref_items;
 /// @param[in]  l  List to iterate over.
 /// @param  li  Name of the variable with current listitem_T entry.
 /// @param  code  Cycle body.
-#define _TV_LIST_ITER_MOD(modifier, l, li, code) \
+#define TV_LIST_ITER_MOD(modifier, l, li, code) \
   do { \
     modifier list_T *const l_ = (l); \
     if (l_ != NULL) { \
@@ -360,7 +360,7 @@ extern bool tv_in_free_unref_items;
 /// @param  li  Name of the variable with current listitem_T entry.
 /// @param  code  Cycle body.
 #define TV_LIST_ITER(l, li, code) \
-  _TV_LIST_ITER_MOD( , l, li, code)  // NOLINT(whitespace/parens)
+  TV_LIST_ITER_MOD( , l, li, code)  // NOLINT(whitespace/parens)
 
 /// Iterate over a list
 ///
@@ -371,7 +371,7 @@ extern bool tv_in_free_unref_items;
 /// @param  li  Name of the variable with current listitem_T entry.
 /// @param  code  Cycle body.
 #define TV_LIST_ITER_CONST(l, li, code) \
-  _TV_LIST_ITER_MOD(const, l, li, code)
+  TV_LIST_ITER_MOD(const, l, li, code)
 
 // Below macros are macros to avoid duplicating code for functionally identical
 // const and non-const function variants.
@@ -443,22 +443,20 @@ static inline bool tv_get_float_chk(const typval_T *const tv, float_T *const ret
 }
 
 static inline DictWatcher *tv_dict_watcher_node_data(QUEUE *q)
-  REAL_FATTR_NONNULL_ALL REAL_FATTR_NONNULL_RET REAL_FATTR_PURE
-  REAL_FATTR_WARN_UNUSED_RESULT REAL_FATTR_ALWAYS_INLINE
-  FUNC_ATTR_NO_SANITIZE_ADDRESS;
+  REAL_FATTR_ALWAYS_INLINE REAL_FATTR_NONNULL_ALL REAL_FATTR_NONNULL_RET
+    REAL_FATTR_NO_SANITIZE_ADDRESS REAL_FATTR_PURE REAL_FATTR_WARN_UNUSED_RESULT;
 
 /// Compute the `DictWatcher` address from a QUEUE node.
 ///
 /// This only exists for .asan-blacklist (ASAN doesn't handle QUEUE_DATA pointer
 /// arithmetic).
 static inline DictWatcher *tv_dict_watcher_node_data(QUEUE *q)
-  FUNC_ATTR_NO_SANITIZE_ADDRESS
 {
   return QUEUE_DATA(q, DictWatcher, node);
 }
 
 static inline bool tv_is_func(typval_T tv)
-  FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_ALWAYS_INLINE FUNC_ATTR_CONST;
+  REAL_FATTR_WARN_UNUSED_RESULT REAL_FATTR_ALWAYS_INLINE REAL_FATTR_CONST;
 
 /// Check whether given typval_T contains a function
 ///
@@ -485,12 +483,10 @@ static inline bool tv_is_func(const typval_T tv)
 
 #ifdef UNIT_TESTING
 // Do not use enum constants, see commit message.
-EXTERN const size_t kTVCstring INIT(= TV_CSTRING);
-EXTERN const size_t kTVTranslate INIT(= TV_TRANSLATE);
+EXTERN const size_t kTVCstring INIT( = TV_CSTRING);
+EXTERN const size_t kTVTranslate INIT( = TV_TRANSLATE);
 #endif
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "eval/typval.h.generated.h"
 #endif
-
-#endif  // NVIM_EVAL_TYPVAL_H

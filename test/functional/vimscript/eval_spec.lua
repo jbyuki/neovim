@@ -15,6 +15,7 @@ local Screen = require('test.functional.ui.screen')
 local mkdir = helpers.mkdir
 local clear = helpers.clear
 local eq = helpers.eq
+local exec = helpers.exec
 local exc_exec = helpers.exc_exec
 local exec_lua = helpers.exec_lua
 local exec_capture = helpers.exec_capture
@@ -28,6 +29,7 @@ local pcall_err = helpers.pcall_err
 local assert_alive = helpers.assert_alive
 local poke_eventloop = helpers.poke_eventloop
 local feed = helpers.feed
+local expect_exit = helpers.expect_exit
 
 describe('Up to MAX_FUNC_ARGS arguments are handled by', function()
   local max_func_args = 20  -- from eval.h
@@ -153,11 +155,6 @@ end)
 
 describe("uncaught exception", function()
   before_each(clear)
-  after_each(function()
-    os.remove('throw1.vim')
-    os.remove('throw2.vim')
-    os.remove('throw3.vim')
-  end)
 
   it('is not forgotten #13490', function()
     command('autocmd BufWinEnter * throw "i am error"')
@@ -173,9 +170,44 @@ describe("uncaught exception", function()
         let result ..= 'X'
       ]]):format(i, i))
     end
+    finally(function()
+      for i = 1, 3 do
+        os.remove('throw' .. i .. '.vim')
+      end
+    end)
+
     command('set runtimepath+=. | let result = ""')
     eq('throw1', exc_exec('try | runtime! throw*.vim | endtry'))
     eq('123', eval('result'))
+  end)
+
+  it('multiline exception remains multiline #25350', function()
+    local screen = Screen.new(80, 11)
+    screen:set_default_attr_ids({
+      [1] = {bold = true, reverse = true};  -- MsgSeparator
+      [2] = {foreground = Screen.colors.White, background = Screen.colors.Red};  -- ErrorMsg
+      [3] = {bold = true, foreground = Screen.colors.SeaGreen};  -- MoreMsg
+    })
+    screen:attach()
+    exec_lua([[
+      function _G.Oops()
+        error("oops")
+      end
+    ]])
+    feed(':try\rlua _G.Oops()\rendtry\r')
+    screen:expect{grid=[[
+      {1:                                                                                }|
+      :try                                                                            |
+      :  lua _G.Oops()                                                                |
+      :  endtry                                                                       |
+      {2:Error detected while processing :}                                               |
+      {2:E5108: Error executing lua [string "<nvim>"]:2: oops}                            |
+      {2:stack traceback:}                                                                |
+      {2:        [C]: in function 'error'}                                                |
+      {2:        [string "<nvim>"]:2: in function 'Oops'}                                 |
+      {2:        [string ":lua"]:1: in main chunk}                                        |
+      {3:Press ENTER or type command to continue}^                                         |
+    ]]}
   end)
 end)
 
@@ -281,4 +313,15 @@ it('no double-free in garbage collection #16287', function()
   command('source Xgarbagecollect.vim')
   sleep(10)
   assert_alive()
+end)
+
+it('no heap-use-after-free with EXITFREE and partial as prompt callback', function()
+  clear()
+  exec([[
+    func PromptCallback(text)
+    endfunc
+    setlocal buftype=prompt
+    call prompt_setcallback('', funcref('PromptCallback'))
+  ]])
+  expect_exit(command, 'qall!')
 end)

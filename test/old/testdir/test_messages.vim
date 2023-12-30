@@ -112,7 +112,7 @@ func Test_mode_message_at_leaving_insert_by_ctrl_c()
 
   let rows = 10
   let buf = term_start([GetVimProg(), '--clean', '-S', testfile], {'term_rows': rows})
-  call term_wait(buf, 200)
+  call TermWait(buf, 100)
   call assert_equal('run', job_status(term_getjob(buf)))
 
   call term_sendkeys(buf, "i")
@@ -140,7 +140,7 @@ func Test_mode_message_at_leaving_insert_with_esc_mapped()
 
   let rows = 10
   let buf = term_start([GetVimProg(), '--clean', '-S', testfile], {'term_rows': rows})
-  call term_wait(buf, 200)
+  call WaitForAssert({-> assert_match('0,0-1\s*All$', term_getline(buf, rows - 1))})
   call assert_equal('run', job_status(term_getjob(buf)))
 
   call term_sendkeys(buf, "i")
@@ -379,7 +379,8 @@ endfunc
 " Test verbose message before echo command
 func Test_echo_verbose_system()
   CheckRunVimInTerminal
-  CheckUnix
+  CheckUnix    " needs the "seq" command
+  CheckNotMac  " doesn't use /tmp
 
   let buf = RunVimInTerminal('', {'rows': 10})
   call term_sendkeys(buf, ":4 verbose echo system('seq 20')\<CR>")
@@ -482,6 +483,29 @@ func Test_echo_string_partial()
   function CountSpaces()
   endfunction
   call assert_equal("function('CountSpaces', [{'ccccccccccc': ['ab', 'cd'], 'aaaaaaaaaaa': v:false, 'bbbbbbbbbbbb': ''}])", string(function('CountSpaces', [#{aaaaaaaaaaa: v:false, bbbbbbbbbbbb: '', ccccccccccc: ['ab', 'cd']}])))
+endfunc
+
+" Test that fileinfo is shown properly when 'cmdheight' has just decreased
+" due to switching tabpage and 'shortmess' doesn't contain 'o' or 'O'.
+func Test_fileinfo_tabpage_cmdheight()
+  CheckRunVimInTerminal
+
+  let content =<< trim END
+    set shortmess-=o
+    set shortmess-=O
+    set shortmess-=F
+    tabnew
+    set cmdheight=2
+    tabprev
+    edit Xfileinfo.txt
+  END
+
+  call writefile(content, 'Xtest_fileinfo_tabpage_cmdheight', 'D')
+  let buf = RunVimInTerminal('-S Xtest_fileinfo_tabpage_cmdheight', #{rows: 6})
+  call WaitForAssert({-> assert_match('^"Xfileinfo.txt" \[New\]', term_getline(buf, 6))})
+
+  " clean up
+  call StopVimInTerminal(buf)
 endfunc
 
 " Message output was previously overwritten by the fileinfo display, shown

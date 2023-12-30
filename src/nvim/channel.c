@@ -1,15 +1,12 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <inttypes.h>
+#include <lauxlib.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
-#include "lauxlib.h"
+#include "klib/kvec.h"
 #include "nvim/api/private/converter.h"
-#include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/autocmd.h"
 #include "nvim/buffer_defs.h"
@@ -18,9 +15,12 @@
 #include "nvim/eval/encode.h"
 #include "nvim/eval/typval.h"
 #include "nvim/event/loop.h"
+#include "nvim/event/multiqueue.h"
 #include "nvim/event/rstream.h"
 #include "nvim/event/socket.h"
+#include "nvim/event/stream.h"
 #include "nvim/event/wstream.h"
+#include "nvim/garray.h"
 #include "nvim/gettext.h"
 #include "nvim/globals.h"
 #include "nvim/log.h"
@@ -30,10 +30,13 @@
 #include "nvim/message.h"
 #include "nvim/msgpack_rpc/channel.h"
 #include "nvim/msgpack_rpc/server.h"
+#include "nvim/os/fs.h"
 #include "nvim/os/os_defs.h"
 #include "nvim/os/shell.h"
 #include "nvim/path.h"
 #include "nvim/rbuffer.h"
+#include "nvim/terminal.h"
+#include "nvim/types_defs.h"
 
 #ifdef MSWIN
 # include "nvim/os/fs.h"
@@ -55,12 +58,24 @@ static uint64_t next_chan_id = CHAN_STDERR + 1;
 /// Teardown the module
 void channel_teardown(void)
 {
-  Channel *channel;
-
-  pmap_foreach_value(&channels, channel, {
-    channel_close(channel->id, kChannelPartAll, NULL);
+  Channel *chan;
+  map_foreach_value(&channels, chan, {
+    channel_close(chan->id, kChannelPartAll, NULL);
   });
 }
+
+#ifdef EXITFREE
+void channel_free_all_mem(void)
+{
+  Channel *chan;
+  map_foreach_value(&channels, chan, {
+    channel_destroy(chan);
+  });
+  map_destroy(uint64_t, &channels);
+
+  callback_free(&on_print);
+}
+#endif
 
 /// Closes a channel
 ///
@@ -168,9 +183,6 @@ bool channel_close(uint64_t id, ChannelPart part, const char **error)
       channel_decref(chan);
     }
     break;
-
-  default:
-    abort();
   }
 
   return true;
@@ -226,7 +238,8 @@ void channel_create_event(Channel *chan, const char *ext_source)
   typval_T tv = TV_INITIAL_VALUE;
   // TODO(bfredl): do the conversion in one step. Also would be nice
   // to pretty print top level dict in defined order
-  (void)object_to_vim(DICTIONARY_OBJ(info), &tv, NULL);
+  object_to_vim(DICTIONARY_OBJ(info), &tv, NULL);
+  assert(tv.v_type == VAR_DICT);
   char *str = encode_tv2json(&tv, NULL);
   ILOG("new channel %" PRIu64 " (%s) : %s", chan->id, source, str);
   xfree(str);
@@ -248,7 +261,7 @@ void channel_decref(Channel *chan)
 {
   if (!(--chan->refcount)) {
     // delay free, so that libuv is done with the handles
-    multiqueue_put(main_loop.events, free_channel_event, 1, chan);
+    multiqueue_put(main_loop.events, free_channel_event, chan);
   }
 }
 
@@ -264,9 +277,8 @@ void callback_reader_start(CallbackReader *reader, const char *type)
   reader->type = type;
 }
 
-static void free_channel_event(void **argv)
+static void channel_destroy(Channel *chan)
 {
-  Channel *chan = argv[0];
   if (chan->is_rpc) {
     rpc_free(chan);
   }
@@ -279,9 +291,15 @@ static void free_channel_event(void **argv)
   callback_reader_free(&chan->on_stderr);
   callback_free(&chan->on_exit);
 
-  pmap_del(uint64_t)(&channels, chan->id, NULL);
   multiqueue_free(chan->events);
   xfree(chan);
+}
+
+static void free_channel_event(void **argv)
+{
+  Channel *chan = argv[0];
+  pmap_del(uint64_t)(&channels, chan->id, NULL);
+  channel_destroy(chan);
 }
 
 static void channel_destroy_early(Channel *chan)
@@ -297,7 +315,7 @@ static void channel_destroy_early(Channel *chan)
   }
 
   // uv will keep a reference to handles until next loop tick, so delay free
-  multiqueue_put(main_loop.events, free_channel_event, 1, chan);
+  multiqueue_put(main_loop.events, free_channel_event, chan);
 }
 
 static void close_cb(Stream *stream, void *data)
@@ -309,6 +327,7 @@ static void close_cb(Stream *stream, void *data)
 ///
 /// @param[in]  argv  Arguments vector specifying the command to run,
 ///                   NULL-terminated
+/// @param[in]  exepath  The path to the executable. If NULL, use `argv[0]`.
 /// @param[in]  on_stdout  Callback to read the job's stdout
 /// @param[in]  on_stderr  Callback to read the job's stderr
 /// @param[in]  on_exit  Callback to receive the job's exit status
@@ -330,10 +349,11 @@ static void close_cb(Stream *stream, void *data)
 ///                          < 0 if the job can't start
 ///
 /// @returns [allocated] channel
-Channel *channel_job_start(char **argv, CallbackReader on_stdout, CallbackReader on_stderr,
-                           Callback on_exit, bool pty, bool rpc, bool overlapped, bool detach,
-                           ChannelStdinMode stdin_mode, const char *cwd, uint16_t pty_width,
-                           uint16_t pty_height, dict_T *env, varnumber_T *status_out)
+Channel *channel_job_start(char **argv, const char *exepath, CallbackReader on_stdout,
+                           CallbackReader on_stderr, Callback on_exit, bool pty, bool rpc,
+                           bool overlapped, bool detach, ChannelStdinMode stdin_mode,
+                           const char *cwd, uint16_t pty_width, uint16_t pty_height, dict_T *env,
+                           varnumber_T *status_out)
 {
   Channel *chan = channel_alloc(kChannelStreamProc);
   chan->on_data = on_stdout;
@@ -364,6 +384,7 @@ Channel *channel_job_start(char **argv, CallbackReader on_stdout, CallbackReader
 
   Process *proc = &chan->stream.proc;
   proc->argv = argv;
+  proc->exepath = exepath;
   proc->cb = channel_process_exit_cb;
   proc->events = chan->events;
   proc->detach = detach;
@@ -371,7 +392,7 @@ Channel *channel_job_start(char **argv, CallbackReader on_stdout, CallbackReader
   proc->env = env;
   proc->overlapped = overlapped;
 
-  char *cmd = xstrdup(proc->argv[0]);
+  char *cmd = xstrdup(process_get_exepath(proc));
   bool has_out, has_err;
   if (proc->type == kProcessTypePty) {
     has_out = true;
@@ -554,7 +575,10 @@ size_t channel_send(uint64_t id, char *data, size_t len, bool data_owned, const 
       goto retfree;
     }
     // unbuffered write
-    written = len * fwrite(data, len, 1, stderr);
+    ptrdiff_t wres = os_write(STDERR_FILENO, data, len, false);
+    if (wres >= 0) {
+      written = (size_t)wres;
+    }
     goto retfree;
   }
 
@@ -658,7 +682,7 @@ static void schedule_channel_event(Channel *chan)
 {
   if (!chan->callback_scheduled) {
     if (!chan->callback_busy) {
-      multiqueue_put(chan->events, on_channel_event, 1, chan);
+      multiqueue_put(chan->events, on_channel_event, chan);
       channel_incref(chan);
     }
     chan->callback_scheduled = true;
@@ -683,7 +707,7 @@ static void on_channel_event(void **args)
   chan->callback_busy = false;
   if (chan->callback_scheduled) {
     // further callback was deferred to avoid recursion.
-    multiqueue_put(chan->events, on_channel_event, 1, chan);
+    multiqueue_put(chan->events, on_channel_event, chan);
     channel_incref(chan);
   }
 
@@ -778,20 +802,21 @@ static void channel_callback_call(Channel *chan, CallbackReader *reader)
 /// and `buf` is assumed to be a new, unmodified buffer.
 void channel_terminal_open(buf_T *buf, Channel *chan)
 {
-  TerminalOptions topts;
-  topts.data = chan;
-  topts.width = chan->stream.pty.width;
-  topts.height = chan->stream.pty.height;
-  topts.write_cb = term_write;
-  topts.resize_cb = term_resize;
-  topts.close_cb = term_close;
-  buf->b_p_channel = (long)chan->id;  // 'channel' option
-  Terminal *term = terminal_open(buf, topts);
-  chan->term = term;
+  TerminalOptions topts = {
+    .data = chan,
+    .width = chan->stream.pty.width,
+    .height = chan->stream.pty.height,
+    .write_cb = term_write,
+    .resize_cb = term_resize,
+    .close_cb = term_close,
+    .force_crlf = false,
+  };
+  buf->b_p_channel = (OptInt)chan->id;  // 'channel' option
   channel_incref(chan);
+  terminal_open(&chan->term, buf, topts);
 }
 
-static void term_write(char *buf, size_t size, void *data)
+static void term_write(const char *buf, size_t size, void *data)
 {
   Channel *chan = data;
   if (chan->stream.proc.in.closed) {
@@ -814,7 +839,7 @@ static inline void term_delayed_free(void **argv)
 {
   Channel *chan = argv[0];
   if (chan->stream.proc.in.pending_reqs || chan->stream.proc.out.pending_reqs) {
-    multiqueue_put(chan->events, term_delayed_free, 1, chan);
+    multiqueue_put(chan->events, term_delayed_free, chan);
     return;
   }
 
@@ -828,7 +853,7 @@ static void term_close(void *data)
 {
   Channel *chan = data;
   process_stop(&chan->stream.proc);
-  multiqueue_put(chan->events, term_delayed_free, 1, data);
+  multiqueue_put(chan->events, term_delayed_free, data);
 }
 
 void channel_info_changed(Channel *chan, bool new_chan)
@@ -836,7 +861,7 @@ void channel_info_changed(Channel *chan, bool new_chan)
   event_T event = new_chan ? EVENT_CHANOPEN : EVENT_CHANINFO;
   if (has_event(event)) {
     channel_incref(chan);
-    multiqueue_put(main_loop.events, set_info_event, 2, chan, event);
+    multiqueue_put(main_loop.events, set_info_event, chan, (void *)(intptr_t)event);
   }
 }
 
@@ -849,7 +874,8 @@ static void set_info_event(void **argv)
   dict_T *dict = get_v_event(&save_v_event);
   Dictionary info = channel_info(chan->id);
   typval_T retval;
-  (void)object_to_vim(DICTIONARY_OBJ(info), &retval, NULL);
+  object_to_vim(DICTIONARY_OBJ(info), &retval, NULL);
+  assert(retval.v_type == VAR_DICT);
   tv_dict_add_dict(dict, S_LEN("info"), retval.vval.v_dict);
   tv_dict_set_keys_readonly(dict);
 
@@ -914,9 +940,6 @@ Dictionary channel_info(uint64_t id)
   case kChannelStreamSocket:
     stream_desc = "socket";
     break;
-
-  default:
-    abort();
   }
   PUT(info, "stream", CSTR_TO_OBJ(stream_desc));
 
@@ -934,12 +957,28 @@ Dictionary channel_info(uint64_t id)
   return info;
 }
 
+/// Simple int64_t comparison function for use with qsort()
+static int int64_t_cmp(const void *a, const void *b)
+{
+  int64_t diff = *(int64_t *)a - *(int64_t *)b;
+  return (diff < 0) ? -1 : (diff > 0);
+}
+
 Array channel_all_info(void)
 {
-  Channel *channel;
-  Array ret = ARRAY_DICT_INIT;
-  pmap_foreach_value(&channels, channel, {
-    ADD(ret, DICTIONARY_OBJ(channel_info(channel->id)));
+  // order the items in the array by channel number, for Determinism™
+  kvec_t(int64_t) ids = KV_INITIAL_VALUE;
+  kv_resize(ids, map_size(&channels));
+  uint64_t id;
+  map_foreach_key(&channels, id, {
+    kv_push(ids, (int64_t)id);
   });
+  qsort(ids.items, ids.size, sizeof ids.items[0], int64_t_cmp);
+
+  Array ret = ARRAY_DICT_INIT;
+  for (size_t i = 0; i < ids.size; i++) {
+    ADD(ret, DICTIONARY_OBJ(channel_info((uint64_t)ids.items[i])));
+  }
+  kv_destroy(ids);
   return ret;
 }

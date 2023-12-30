@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -9,7 +6,7 @@
 #include <uv.h>
 
 #include "nvim/api/private/defs.h"
-#include "nvim/ascii.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/autocmd.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/event/loop.h"
@@ -21,16 +18,16 @@
 #include "nvim/globals.h"
 #include "nvim/keycodes.h"
 #include "nvim/log.h"
-#include "nvim/macros.h"
+#include "nvim/macros_defs.h"
 #include "nvim/main.h"
 #include "nvim/msgpack_rpc/channel.h"
-#include "nvim/option_defs.h"
+#include "nvim/option_vars.h"
 #include "nvim/os/input.h"
+#include "nvim/os/os_defs.h"
 #include "nvim/os/time.h"
 #include "nvim/profile.h"
 #include "nvim/rbuffer.h"
 #include "nvim/state.h"
-#include "nvim/vim.h"
 
 #define READ_BUFFER_SIZE 0xfff
 #define INPUT_BUFFER_SIZE (READ_BUFFER_SIZE * 4)
@@ -78,6 +75,13 @@ void input_stop(void)
   stream_close(&read_stream, NULL, NULL);
 }
 
+#ifdef EXITFREE
+void input_free_all_mem(void)
+{
+  rbuffer_free(input_buffer);
+}
+#endif
+
 static void cursorhold_event(void **argv)
 {
   event_T event = State & MODE_INSERT ? EVENT_CURSORHOLDI : EVENT_CURSORHOLD;
@@ -92,7 +96,7 @@ static void create_cursorhold_event(bool events_enabled)
   // TODO(tarruda): Cursorhold should be implemented as a timer set during the
   // `state_check` callback for the states where it can be triggered.
   assert(!events_enabled || multiqueue_empty(main_loop.events));
-  multiqueue_put(main_loop.events, cursorhold_event, 0);
+  multiqueue_put(main_loop.events, cursorhold_event, NULL);
 }
 
 static void restart_cursorhold_wait(int tb_change_cnt)
@@ -242,8 +246,8 @@ bool os_isatty(int fd)
 
 size_t input_enqueue(String keys)
 {
-  char *ptr = keys.data;
-  char *end = ptr + keys.size;
+  const char *ptr = keys.data;
+  const char *end = ptr + keys.size;
 
   while (rbuffer_space(input_buffer) >= 19 && ptr < end) {
     // A "<x>" form occupies at least 1 characters, and produces up
@@ -254,8 +258,7 @@ size_t input_enqueue(String keys)
     uint8_t buf[19] = { 0 };
     // Do not simplify the keys here. Simplification will be done later.
     unsigned new_size
-      = trans_special((const char **)&ptr, (size_t)(end - ptr), (char *)buf, FSK_KEYCODE, true,
-                      NULL);
+      = trans_special(&ptr, (size_t)(end - ptr), (char *)buf, FSK_KEYCODE, true, NULL);
 
     if (new_size) {
       new_size = handle_mouse_event(&ptr, buf, new_size);
@@ -264,7 +267,7 @@ size_t input_enqueue(String keys)
     }
 
     if (*ptr == '<') {
-      char *old_ptr = ptr;
+      const char *old_ptr = ptr;
       // Invalid or incomplete key sequence, skip until the next '>' or *end.
       do {
         ptr++;
@@ -308,7 +311,8 @@ static uint8_t check_multiclick(int code, int grid, int row, int col)
   }
 
   // For click events the number of clicks is updated.
-  if (code == KE_LEFTMOUSE || code == KE_RIGHTMOUSE || code == KE_MIDDLEMOUSE) {
+  if (code == KE_LEFTMOUSE || code == KE_RIGHTMOUSE || code == KE_MIDDLEMOUSE
+      || code == KE_X1MOUSE || code == KE_X2MOUSE) {
     uint64_t mouse_time = os_hrtime();    // time of current mouse click (ns)
     // compute the time elapsed since the previous mouse click and
     // convert p_mouse from ms to ns
@@ -346,7 +350,7 @@ static uint8_t check_multiclick(int code, int grid, int row, int col)
 
 // Mouse event handling code(Extract row/col if available and detect multiple
 // clicks)
-static unsigned handle_mouse_event(char **ptr, uint8_t *buf, unsigned bufsize)
+static unsigned handle_mouse_event(const char **ptr, uint8_t *buf, unsigned bufsize)
 {
   int mouse_code = 0;
   int type = 0;
@@ -412,7 +416,8 @@ static unsigned handle_mouse_event(char **ptr, uint8_t *buf, unsigned bufsize)
 size_t input_enqueue_mouse(int code, uint8_t modifier, int grid, int row, int col)
 {
   modifier |= check_multiclick(code, grid, row, col);
-  uint8_t buf[7], *p = buf;
+  uint8_t buf[7];
+  uint8_t *p = buf;
   if (modifier) {
     p[0] = K_SPECIAL;
     p[1] = KS_MODIFIER;

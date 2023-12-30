@@ -8,6 +8,10 @@ local pcall_err = helpers.pcall_err
 local feed = helpers.feed
 local poke_eventloop = helpers.poke_eventloop
 local is_os = helpers.is_os
+local meths = helpers.meths
+local async_meths = helpers.async_meths
+local testprg = helpers.testprg
+local assert_alive = helpers.assert_alive
 
 describe('terminal channel is closed and later released if', function()
   local screen
@@ -24,6 +28,7 @@ describe('terminal channel is closed and later released if', function()
     -- channel hasn't been released yet
     eq("Vim(call):Can't send data to closed stream",
        pcall_err(command, [[bdelete! | call chansend(id, 'test')]]))
+    feed('<Ignore>')  -- add input to separate two RPC requests
     -- channel has been released after one main loop iteration
     eq(chans - 1, eval('len(nvim_list_chans())'))
   end)
@@ -40,6 +45,7 @@ describe('terminal channel is closed and later released if', function()
     feed('i<CR>')
     -- need to first process input
     poke_eventloop()
+    feed('<Ignore>')  -- add input to separate two RPC requests
     -- channel has been released after another main loop iteration
     eq(chans - 1, eval('len(nvim_list_chans())'))
   end)
@@ -55,6 +61,7 @@ describe('terminal channel is closed and later released if', function()
     -- channel still hasn't been released yet
     eq("Vim(call):Can't send data to closed stream",
        pcall_err(command, [[bdelete | call chansend(id, 'test')]]))
+    feed('<Ignore>')  -- add input to separate two RPC requests
     -- channel has been released after one main loop iteration
     eq(chans - 1, eval('len(nvim_list_chans())'))
   end)
@@ -72,6 +79,7 @@ describe('terminal channel is closed and later released if', function()
     feed('i<CR>')
     -- need to first process input
     poke_eventloop()
+    feed('<Ignore>')  -- add input to separate two RPC requests
     -- channel has been released after another main loop iteration
     eq(chans - 1, eval('len(nvim_list_chans())'))
   end)
@@ -89,6 +97,7 @@ describe('terminal channel is closed and later released if', function()
     -- channel still hasn't been released yet
     eq("Vim(call):Can't send data to closed stream",
        pcall_err(command, [[bdelete | call chansend(id, 'test')]]))
+    feed('<Ignore>')  -- add input to separate two RPC requests
     -- channel has been released after one main loop iteration
     eq(chans - 1, eval('len(nvim_list_chans())'))
   end)
@@ -110,4 +119,128 @@ it('chansend sends lines to terminal channel in proper order', function()
       any='%[No Name%]'
     }
   end
+end)
+
+describe('no crash when TermOpen autocommand', function()
+  local screen
+
+  before_each(function()
+    clear()
+    meths.set_option_value('shell', testprg('shell-test'), {})
+    command('set shellcmdflag=EXE shellredir= shellpipe= shellquote= shellxquote=')
+    screen = Screen.new(60, 4)
+    screen:set_default_attr_ids({
+      [0] = {bold = true, foreground = Screen.colors.Blue};
+    })
+    screen:attach()
+  end)
+
+  it('processes job exit event when using termopen()', function()
+    command([[autocmd TermOpen * call input('')]])
+    async_meths.command('terminal foobar')
+    screen:expect{grid=[[
+                                                                  |
+      {0:~                                                           }|*2
+      ^                                                            |
+    ]]}
+    feed('<CR>')
+    screen:expect{grid=[[
+      ^ready $ foobar                                              |
+                                                                  |
+      [Process exited 0]                                          |
+                                                                  |
+    ]]}
+    feed('i<CR>')
+    screen:expect{grid=[[
+      ^                                                            |
+      {0:~                                                           }|*2
+                                                                  |
+    ]]}
+    assert_alive()
+  end)
+
+  it('wipes buffer and processes events when using termopen()', function()
+    command([[autocmd TermOpen * bwipe! | call input('')]])
+    async_meths.command('terminal foobar')
+    screen:expect{grid=[[
+                                                                  |
+      {0:~                                                           }|*2
+      ^                                                            |
+    ]]}
+    feed('<CR>')
+    screen:expect{grid=[[
+      ^                                                            |
+      {0:~                                                           }|*2
+                                                                  |
+    ]]}
+    assert_alive()
+  end)
+
+  it('wipes buffer and processes events when using nvim_open_term()', function()
+    command([[autocmd TermOpen * bwipe! | call input('')]])
+    async_meths.open_term(0, {})
+    screen:expect{grid=[[
+                                                                  |
+      {0:~                                                           }|*2
+      ^                                                            |
+    ]]}
+    feed('<CR>')
+    screen:expect{grid=[[
+      ^                                                            |
+      {0:~                                                           }|*2
+                                                                  |
+    ]]}
+    assert_alive()
+  end)
+end)
+
+describe('nvim_open_term', function()
+  local screen
+
+  before_each(function()
+    clear()
+    screen = Screen.new(8, 10)
+    screen:attach()
+  end)
+
+  it('with force_crlf=true converts newlines', function()
+    local win = meths.get_current_win()
+    local buf = meths.create_buf(false, true)
+    local term = meths.open_term(buf, {force_crlf = true})
+    meths.win_set_buf(win, buf)
+    meths.chan_send(term, 'here\nthere\nfoo\r\nbar\n\ntest')
+    screen:expect{grid=[[
+      ^here        |
+      there       |
+      foo         |
+      bar         |
+                  |
+      test        |
+                  |*4
+    ]]}
+    meths.chan_send(term, '\nfirst')
+    screen:expect{grid=[[
+      ^here        |
+      there       |
+      foo         |
+      bar         |
+                  |
+      test        |
+      first       |
+                  |*3
+    ]]}
+  end)
+
+  it('with force_crlf=false does not convert newlines', function()
+    local win = meths.get_current_win()
+    local buf = meths.create_buf(false, true)
+    local term = meths.open_term(buf, {force_crlf = false})
+    meths.win_set_buf(win, buf)
+    meths.chan_send(term, 'here\nthere')
+    screen:expect{grid=[[
+      ^here        |
+          there   |
+                  |*8
+    ]]}
+  end)
 end)

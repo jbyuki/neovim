@@ -1,12 +1,11 @@
-#ifndef NVIM_API_OPTIONS_H
-#define NVIM_API_OPTIONS_H
+#pragma once
 
-#include "nvim/api/keysets.h"
-#include "nvim/api/private/defs.h"
-#include "nvim/option.h"
+#include <stdint.h>  // IWYU pragma: keep
+
+#include "nvim/api/keysets_defs.h"  // IWYU pragma: keep
+#include "nvim/api/private/defs.h"  // IWYU pragma: keep
+#include "nvim/option_defs.h"  // IWYU pragma: keep
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "api/options.h.generated.h"
 #endif
-
-#endif  // NVIM_API_OPTIONS_H

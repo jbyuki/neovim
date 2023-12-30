@@ -169,7 +169,7 @@ CTRL-W v						*CTRL-W_v*
 		it doesn't!
 
 CTRL-W n						*CTRL-W_n*
-CTRL-W CTRL_N						*CTRL-W_CTRL-N*
+CTRL-W CTRL-N						*CTRL-W_CTRL-N*
 :[N]new [++opt] [+cmd]					*:new*
 		Create a new window and start editing an empty file in it.
 		Make new window N high (default is to use half the existing
@@ -242,8 +242,10 @@ and 'winminwidth' are relevant.
 						*:hor* *:horizontal*
 :hor[izontal] {cmd}
 		Execute {cmd}.  Currently only makes a difference for
-		`horizontal wincmd =`, which will equalize windows only
-		horizontally.
+		the following commands:
+		- `:wincmd =`: equalize windows only horizontally.
+		- |:terminal|: open a |terminal| buffer in a split window.
+		- |:checkhealth|: open a healthcheck buffer in a split window.
 
 :lefta[bove] {cmd}				*:lefta* *:leftabove*
 :abo[veleft] {cmd}				*:abo* *:aboveleft*
@@ -390,6 +392,11 @@ CTRL-W CTRL-O					*CTRL-W_CTRL-O* *:on* *:only*
 		buffers that are modified are not removed, unless the [!] is
 		given, then they become hidden.  But modified buffers are
 		never abandoned, so changes cannot get lost.
+
+							*:fc* *:fclose*
+:[count]fc[lose][!]
+		Close [count] floating windows with the highest zindex values.
+		'!' to close all floating windows.
 
 ==============================================================================
 4. Moving cursor to other windows			*window-move-cursor*

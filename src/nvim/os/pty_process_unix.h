@@ -1,11 +1,11 @@
-#ifndef NVIM_OS_PTY_PROCESS_UNIX_H
-#define NVIM_OS_PTY_PROCESS_UNIX_H
+#pragma once
+// IWYU pragma: private, include "nvim/os/pty_process.h"
 
 #include <stdint.h>
 #include <sys/ioctl.h>
 
-#include "nvim/event/loop.h"
 #include "nvim/event/process.h"
+#include "nvim/types_defs.h"
 
 typedef struct pty_process {
   Process process;
@@ -27,5 +27,3 @@ static inline PtyProcess pty_process_init(Loop *loop, void *data)
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "os/pty_process_unix.h.generated.h"
 #endif
-
-#endif  // NVIM_OS_PTY_PROCESS_UNIX_H

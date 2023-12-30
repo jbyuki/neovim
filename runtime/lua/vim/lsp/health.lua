@@ -28,12 +28,19 @@ function M.check()
   local report_fn = (log_size / 1000000 > 100 and report_warn or report_info)
   report_fn(string.format('Log size: %d KB', log_size / 1000))
 
-  local clients = vim.lsp.get_active_clients()
+  local clients = vim.lsp.get_clients()
   vim.health.start('vim.lsp: Active Clients')
   if next(clients) then
     for _, client in pairs(clients) do
+      local attached_to = table.concat(vim.tbl_keys(client.attached_buffers or {}), ',')
       report_info(
-        string.format('%s (id=%s, root_dir=%s)', client.name, client.id, client.config.root_dir)
+        string.format(
+          '%s (id=%s, root_dir=%s, attached_to=[%s])',
+          client.name,
+          client.id,
+          vim.fn.fnamemodify(client.config.root_dir, ':~'),
+          attached_to
+        )
       )
     end
   else

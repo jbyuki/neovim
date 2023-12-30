@@ -1,15 +1,14 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "nvim/linematch.h"
-#include "nvim/macros.h"
+#include "nvim/macros_defs.h"
 #include "nvim/memory.h"
+#include "nvim/pos_defs.h"
 
 #define LN_MAX_BUFS 8
 #define LN_DECISION_MAX 255  // pow(2, LN_MAX_BUFS(8)) - 1 = 255
@@ -143,9 +142,9 @@ static int count_n_matched_chars(const char **sp, const size_t n, bool iwhite)
   return matched_chars;
 }
 
-void fastforward_buf_to_lnum(const char **s, long lnum)
+void fastforward_buf_to_lnum(const char **s, linenr_T lnum)
 {
-  for (long i = 0; i < lnum - 1; i++) {
+  for (int i = 0; i < lnum - 1; i++) {
     *s = strchr(*s, '\n');
     if (!*s) {
       return;

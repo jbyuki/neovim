@@ -15,7 +15,6 @@ Query.__index = Query
 ---@class TSQueryModule
 local M = {}
 
----@private
 ---@param files string[]
 ---@return string[]
 local function dedupe_files(files)
@@ -33,7 +32,6 @@ local function dedupe_files(files)
   return result
 end
 
----@private
 local function safe_read(filename, read_quantifier)
   local file, err = io.open(filename, 'r')
   if not file then
@@ -44,7 +42,6 @@ local function safe_read(filename, read_quantifier)
   return content
 end
 
----@private
 --- Adds {ilang} to {base_langs}, only if {ilang} is different than {lang}
 ---
 ---@return boolean true If lang == ilang
@@ -153,7 +150,6 @@ function M.get_files(lang, query_name, is_included)
   return query_files
 end
 
----@private
 ---@param filenames string[]
 ---@return string
 local function read_query_files(filenames)
@@ -207,7 +203,7 @@ end
 ---@param query_name string Name of the query (e.g. "highlights")
 ---
 ---@return Query|nil Parsed query
-function M.get(lang, query_name)
+M.get = vim.func._memoize('concat-2', function(lang, query_name)
   if explicit_queries[lang][query_name] then
     return explicit_queries[lang][query_name]
   end
@@ -215,14 +211,11 @@ function M.get(lang, query_name)
   local query_files = M.get_files(lang, query_name)
   local query_string = read_query_files(query_files)
 
-  if #query_string > 0 then
-    return M.parse(lang, query_string)
+  if #query_string == 0 then
+    return nil
   end
-end
 
----@type {[string]: {[string]: Query}}
-local query_cache = vim.defaulttable(function()
-  return setmetatable({}, { __mode = 'v' })
+  return M.parse(lang, query_string)
 end)
 
 ---@deprecated
@@ -248,20 +241,15 @@ end
 ---@param query string Query in s-expr syntax
 ---
 ---@return Query Parsed query
-function M.parse(lang, query)
+M.parse = vim.func._memoize('concat-2', function(lang, query)
   language.add(lang)
-  local cached = query_cache[lang][query]
-  if cached then
-    return cached
-  end
 
   local self = setmetatable({}, Query)
   self.query = vim._ts_parse_query(lang, query)
   self.info = self.query:inspect()
   self.captures = self.info.captures
-  query_cache[lang][query] = self
   return self
-end
+end)
 
 ---@deprecated
 function M.get_range(...)
@@ -317,7 +305,6 @@ local predicate_handlers = {
 
   ['match?'] = (function()
     local magic_prefixes = { ['\\v'] = true, ['\\m'] = true, ['\\M'] = true, ['\\V'] = true }
-    ---@private
     local function check_magic(str)
       if string.len(str) < 2 or magic_prefixes[string.sub(str, 1, 2)] then
         return str
@@ -421,7 +408,8 @@ local predicate_handlers = {
 predicate_handlers['vim-match?'] = predicate_handlers['match?']
 
 ---@class TSMetadata
----@field range Range
+---@field range? Range
+---@field conceal? string
 ---@field [integer] TSMetadata
 ---@field [string] integer|string
 
@@ -500,7 +488,10 @@ local directive_handlers = {
   -- Example: (#trim! @fold)
   -- TODO(clason): generalize to arbitrary whitespace removal
   ['trim!'] = function(match, _, bufnr, pred, metadata)
-    local node = match[pred[2]]
+    local capture_id = pred[2]
+    assert(type(capture_id) == 'number')
+
+    local node = match[capture_id]
     if not node then
       return
     end
@@ -512,9 +503,9 @@ local directive_handlers = {
       return
     end
 
-    while true do
+    while end_row >= start_row do
       -- As we only care when end_col == 0, always inspect one line above end_row.
-      local end_line = vim.api.nvim_buf_get_lines(bufnr, end_row - 1, end_row, true)[1]
+      local end_line = api.nvim_buf_get_lines(bufnr, end_row - 1, end_row, true)[1]
 
       if end_line ~= '' then
         break
@@ -525,34 +516,8 @@ local directive_handlers = {
 
     -- If this produces an invalid range, we just skip it.
     if start_row < end_row or (start_row == end_row and start_col <= end_col) then
-      metadata.range = { start_row, start_col, end_row, end_col }
-    end
-  end,
-  -- Set injection language from node text, interpreted first as language and then as filetype
-  -- Example: (#inject-language! @_lang)
-  ['inject-language!'] = function(match, _, bufnr, pred, metadata)
-    local id = pred[2]
-    local node = match[id]
-    if not node then
-      return
-    end
-
-    -- TODO(clason): replace by refactored `ts.has_parser` API
-    local has_parser = function(lang)
-      return vim._ts_has_language(lang)
-        or #vim.api.nvim_get_runtime_file('parser/' .. lang .. '.*', false) > 0
-    end
-
-    local alias = vim.treesitter.get_node_text(node, bufnr, { metadata = metadata[id] })
-    if not alias then
-      return
-    elseif has_parser(alias) then
-      metadata['injection.language'] = alias
-    else
-      local lang = vim.treesitter.language.get_lang(alias)
-      if lang and has_parser(lang) then
-        metadata['injection.language'] = lang
-      end
+      metadata[capture_id] = metadata[capture_id] or {}
+      metadata[capture_id].range = { start_row, start_col, end_row, end_col }
     end
   end,
 }
@@ -606,12 +571,10 @@ function M.list_predicates()
   return vim.tbl_keys(predicate_handlers)
 end
 
----@private
 local function xor(x, y)
   return (x or y) and not (x and y)
 end
 
----@private
 local function is_directive(name)
   return string.sub(name, -1) == '!'
 end
@@ -682,7 +645,6 @@ end
 --- Returns the start and stop value if set else the node's range.
 -- When the node's range is used, the stop is incremented by 1
 -- to make the search inclusive.
----@private
 ---@param start integer
 ---@param stop integer
 ---@param node TSNode
@@ -708,7 +670,8 @@ end
 --- The iterator returns three values: a numeric id identifying the capture,
 --- the captured node, and metadata from any directives processing the match.
 --- The following example shows how to get captures by name:
---- <pre>lua
+---
+--- ```lua
 --- for id, node, metadata in query:iter_captures(tree:root(), bufnr, first, last) do
 ---   local name = query.captures[id] -- name of the capture in the query
 ---   -- typically useful info about the node:
@@ -716,14 +679,15 @@ end
 ---   local row1, col1, row2, col2 = node:range() -- range of the capture
 ---   -- ... use the info here ...
 --- end
---- </pre>
+--- ```
 ---
 ---@param node TSNode under which the search will occur
 ---@param source (integer|string) Source buffer or string to extract text from
 ---@param start integer Starting line for the search
 ---@param stop integer Stopping line for the search (end-exclusive)
 ---
----@return (fun(): integer, TSNode, TSMetadata): capture id, capture node, metadata
+---@return (fun(end_line: integer|nil): integer, TSNode, TSMetadata):
+---        capture id, capture node, metadata
 function Query:iter_captures(node, source, start, stop)
   if type(source) == 'number' and source == 0 then
     source = api.nvim_get_current_buf()
@@ -732,8 +696,7 @@ function Query:iter_captures(node, source, start, stop)
   start, stop = value_or_node_range(start, stop, node)
 
   local raw_iter = node:_rawquery(self.query, true, start, stop)
-  ---@private
-  local function iter()
+  local function iter(end_line)
     local capture, captured_node, match = raw_iter()
     local metadata = {}
 
@@ -741,7 +704,10 @@ function Query:iter_captures(node, source, start, stop)
       local active = self:match_preds(match, match.pattern, source)
       match.active = active
       if not active then
-        return iter() -- tail call: try next match
+        if end_line and captured_node:range() > end_line then
+          return nil, captured_node, nil
+        end
+        return iter(end_line) -- tail call: try next match
       end
 
       self:apply_directives(match, match.pattern, source, metadata)
@@ -760,7 +726,8 @@ end
 --- If the query has more than one pattern, the capture table might be sparse
 --- and e.g. `pairs()` method should be used over `ipairs`.
 --- Here is an example iterating over all captures in every match:
---- <pre>lua
+---
+--- ```lua
 --- for pattern, match, metadata in cquery:iter_matches(tree:root(), bufnr, first, last) do
 ---   for id, node in pairs(match) do
 ---     local name = query.captures[id]
@@ -771,7 +738,7 @@ end
 ---     -- ... use the info here ...
 ---   end
 --- end
---- </pre>
+--- ```
 ---
 ---@param node TSNode under which the search will occur
 ---@param source (integer|string) Source buffer or string to search
@@ -841,11 +808,26 @@ end
 --- Omnifunc for completing node names and predicates in treesitter queries.
 ---
 --- Use via
---- <pre>lua
----   vim.bo.omnifunc = 'v:lua.vim.treesitter.query.omnifunc'
---- </pre>
+---
+--- ```lua
+--- vim.bo.omnifunc = 'v:lua.vim.treesitter.query.omnifunc'
+--- ```
+---
 function M.omnifunc(findstart, base)
   return require('vim.treesitter._query_linter').omnifunc(findstart, base)
+end
+
+--- Opens a live editor to query the buffer you started from.
+---
+--- Can also be shown with *:EditQuery*.
+---
+--- If you move the cursor to a capture name ("@foo"), text matching the capture is highlighted in
+--- the source buffer. The query editor is a scratch buffer, use `:write` to save it. You can find
+--- example queries at `$VIMRUNTIME/queries/`.
+---
+--- @param lang? string language to open the query editor for. If omitted, inferred from the current buffer's filetype.
+function M.edit(lang)
+  require('vim.treesitter.dev').edit_query(lang)
 end
 
 return M

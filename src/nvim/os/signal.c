@@ -1,9 +1,7 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
+
 #ifndef MSWIN
 # include <signal.h>
 #endif
@@ -15,8 +13,11 @@
 #include "nvim/globals.h"
 #include "nvim/log.h"
 #include "nvim/main.h"
-#include "nvim/memline.h"
 #include "nvim/os/signal.h"
+
+#ifdef SIGPWR
+# include "nvim/memline.h"
+#endif
 
 static SignalWatcher spipe, shup, squit, sterm, susr1, swinch;
 #ifdef SIGPWR

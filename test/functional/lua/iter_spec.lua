@@ -91,6 +91,11 @@ describe('vim.iter', function()
     end
   end)
 
+  it('join()', function()
+    eq('1, 2, 3', vim.iter({1, 2, 3}):join(', '))
+    eq('a|b|c|d', vim.iter(vim.gsplit('a|b|c|d', '|')):join('|'))
+  end)
+
   it('next()', function()
     local it = vim.iter({1, 2, 3}):map(function(v) return 2 * v end)
     eq(2, it:next())
@@ -154,6 +159,9 @@ describe('vim.iter', function()
     eq({1, 2}, vim.iter(t):slice(1, 2):totable())
     eq({10}, vim.iter(t):slice(10, 10):totable())
     eq({8, 9, 10}, vim.iter(t):slice(8, 11):totable())
+
+    local it = vim.iter(vim.gsplit('a|b|c|d', '|'))
+    matches('slice%(%) requires a list%-like table', pcall_err(it.slice, it, 1, 3))
   end)
 
   it('nth()', function()
@@ -193,6 +201,33 @@ describe('vim.iter', function()
 
     local it = vim.iter(vim.gsplit('a|b|c|d', '|'))
     matches('skipback%(%) requires a list%-like table', pcall_err(it.nthback, it, 1))
+  end)
+
+  it('take()', function()
+    do
+      local t = { 4, 3, 2, 1 }
+      eq({}, vim.iter(t):take(0):totable())
+      eq({ 4 }, vim.iter(t):take(1):totable())
+      eq({ 4, 3 }, vim.iter(t):take(2):totable())
+      eq({ 4, 3, 2 }, vim.iter(t):take(3):totable())
+      eq({ 4, 3, 2, 1 }, vim.iter(t):take(4):totable())
+      eq({ 4, 3, 2, 1 }, vim.iter(t):take(5):totable())
+    end
+
+    do
+      local t = { 4, 3, 2, 1 }
+      local it = vim.iter(t)
+      eq({ 4, 3 }, it:take(2):totable())
+      -- tail is already set from the previous take()
+      eq({ 4, 3 }, it:take(3):totable())
+    end
+
+    do
+      local it = vim.iter(vim.gsplit('a|b|c|d', '|'))
+      eq({ 'a', 'b' }, it:take(2):totable())
+      -- non-array iterators are consumed by take()
+      eq({}, it:take(2):totable())
+    end
   end)
 
   it('any()', function()
@@ -395,40 +430,5 @@ describe('vim.iter', function()
       { item_2 = 'test' },
       { item_3 = 'test' },
     }, output)
-  end)
-
-  it('handles nil values', function()
-    local t = {1, 2, 3, 4, 5}
-    do
-      local it = vim.iter(t):enumerate():map(function(i, v)
-        if i % 2 == 0 then
-          return nil, v*v
-        end
-        return v, nil
-      end)
-      eq({
-        { [1] = 1 },
-        { [2] = 4 },
-        { [1] = 3 },
-        { [2] = 16 },
-        { [1] = 5 },
-      }, it:totable())
-    end
-
-    do
-      local it = vim.iter(ipairs(t)):map(function(i, v)
-        if i % 2 == 0 then
-          return nil, v*v
-        end
-        return v, nil
-      end)
-      eq({
-        { [1] = 1 },
-        { [2] = 4 },
-        { [1] = 3 },
-        { [2] = 16 },
-        { [1] = 5 },
-      }, it:totable())
-    end
   end)
 end)

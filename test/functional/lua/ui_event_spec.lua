@@ -46,18 +46,14 @@ describe('vim.ui_attach', function()
     feed('ifo')
     screen:expect{grid=[[
       fo^                                      |
-      {1:~                                       }|
-      {1:~                                       }|
-      {1:~                                       }|
+      {1:~                                       }|*3
       {2:-- INSERT --}                            |
     ]]}
 
     funcs.complete(1, {'food', 'foobar', 'foo'})
     screen:expect{grid=[[
       food^                                    |
-      {1:~                                       }|
-      {1:~                                       }|
-      {1:~                                       }|
+      {1:~                                       }|*3
       {2:-- INSERT --}                            |
     ]]}
     expect_events {
@@ -67,9 +63,7 @@ describe('vim.ui_attach', function()
     feed '<c-n>'
     screen:expect{grid=[[
       foobar^                                  |
-      {1:~                                       }|
-      {1:~                                       }|
-      {1:~                                       }|
+      {1:~                                       }|*3
       {2:-- INSERT --}                            |
     ]]}
     expect_events {
@@ -77,8 +71,7 @@ describe('vim.ui_attach', function()
     }
 
     feed '<c-y>'
-    -- There is an intermediate state where the 'showmode' message disappears.
-    screen:expect_unchanged(true)
+    screen:expect_unchanged()
     expect_events {
        { "popupmenu_hide" };
     }
@@ -102,7 +95,7 @@ describe('vim.ui_attach', function()
   end)
 
   it('does not crash on exit', function()
-    helpers.funcs.system({
+    funcs.system({
       helpers.nvim_prog,
       '-u', 'NONE',
       '-i', 'NONE',

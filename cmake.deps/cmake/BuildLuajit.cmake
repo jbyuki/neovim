@@ -7,10 +7,6 @@ function(BuildLuajit)
     "TARGET"
     "CONFIGURE_COMMAND;BUILD_COMMAND;INSTALL_COMMAND;DEPENDS"
     ${ARGN})
-  if(NOT _luajit_CONFIGURE_COMMAND AND NOT _luajit_BUILD_COMMAND
-        AND NOT _luajit_INSTALL_COMMAND)
-    message(FATAL_ERROR "Must pass at least one of CONFIGURE_COMMAND, BUILD_COMMAND, INSTALL_COMMAND")
-  endif()
   if(NOT _luajit_TARGET)
     set(_luajit_TARGET "luajit")
   endif()
@@ -18,20 +14,13 @@ function(BuildLuajit)
   ExternalProject_Add(${_luajit_TARGET}
     URL ${LUAJIT_URL}
     URL_HASH SHA256=${LUAJIT_SHA256}
-    DOWNLOAD_NO_PROGRESS TRUE
-    DOWNLOAD_DIR ${DEPS_DOWNLOAD_DIR}/luajit
+    DOWNLOAD_DIR ${DEPS_DOWNLOAD_DIR}/${_luajit_TARGET}
     CONFIGURE_COMMAND "${_luajit_CONFIGURE_COMMAND}"
     BUILD_IN_SOURCE 1
     BUILD_COMMAND "${_luajit_BUILD_COMMAND}"
     INSTALL_COMMAND "${_luajit_INSTALL_COMMAND}"
-    DEPENDS "${_luajit_DEPENDS}")
-
-  # Create symlink for development version manually.
-  if(UNIX)
-    add_custom_command(
-      TARGET ${_luajit_TARGET}
-      COMMAND ${CMAKE_COMMAND} -E create_symlink luajit-2.1.0-beta3 ${DEPS_BIN_DIR}/${_luajit_TARGET})
-  endif()
+    DEPENDS "${_luajit_DEPENDS}"
+    ${EXTERNALPROJECT_OPTIONS})
 endfunction()
 
 check_c_compiler_flag(-fno-stack-check HAS_NO_STACK_CHECK)
@@ -127,7 +116,7 @@ elseif(MINGW)
 	    COMMAND ${CMAKE_COMMAND} -E copy ${DEPS_BUILD_DIR}/src/luajit/src/libluajit.a ${DEPS_LIB_DIR}
 	    COMMAND ${CMAKE_COMMAND} -E make_directory ${DEPS_INSTALL_DIR}/include/luajit-2.1
 	    COMMAND ${CMAKE_COMMAND} -DFROM_GLOB=${DEPS_BUILD_DIR}/src/luajit/src/*.h -DTO=${DEPS_INSTALL_DIR}/include/luajit-2.1 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyFilesGlob.cmake
-            COMMAND ${CMAKE_COMMAND} -E copy_directory ${DEPS_BUILD_DIR}/src/luajit/src/jit ${DEPS_INSTALL_DIR}/share/luajit-2.1.0-beta3/jit
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${DEPS_BUILD_DIR}/src/luajit/src/jit ${DEPS_INSTALL_DIR}/share/luajit-2.1/jit
 	    )
 elseif(MSVC)
 
@@ -143,16 +132,8 @@ elseif(MSVC)
       COMMAND ${CMAKE_COMMAND} -E copy ${DEPS_BUILD_DIR}/src/luajit/src/lua51.lib ${DEPS_LIB_DIR}/luajit.lib
       COMMAND ${CMAKE_COMMAND} -E make_directory ${DEPS_INSTALL_DIR}/include/luajit-2.1
       COMMAND ${CMAKE_COMMAND} -DFROM_GLOB=${DEPS_BUILD_DIR}/src/luajit/src/*.h -DTO=${DEPS_INSTALL_DIR}/include/luajit-2.1 -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyFilesGlob.cmake
-      COMMAND ${CMAKE_COMMAND} -E copy_directory ${DEPS_BUILD_DIR}/src/luajit/src/jit ${DEPS_INSTALL_DIR}/share/luajit-2.1.0-beta3/jit
+      COMMAND ${CMAKE_COMMAND} -E copy_directory ${DEPS_BUILD_DIR}/src/luajit/src/jit ${DEPS_INSTALL_DIR}/share/luajit-2.1/jit
       )
 else()
   message(FATAL_ERROR "Trying to build luajit in an unsupported system ${CMAKE_SYSTEM_NAME}/${CMAKE_C_COMPILER_ID}")
-endif()
-
-if (NOT MSVC)
-  add_custom_target(clean_shared_libraries_luajit ALL
-    COMMAND ${CMAKE_COMMAND}
-      -D REMOVE_FILE_GLOB=${DEPS_LIB_DIR}/${CMAKE_SHARED_LIBRARY_PREFIX}*${CMAKE_SHARED_LIBRARY_SUFFIX}*
-      -P ${PROJECT_SOURCE_DIR}/cmake/RemoveFiles.cmake)
-  add_dependencies(clean_shared_libraries_luajit luajit)
 endif()

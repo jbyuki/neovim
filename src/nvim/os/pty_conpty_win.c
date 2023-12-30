@@ -1,11 +1,9 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <uv.h>
 
+#include "nvim/log.h"
 #include "nvim/os/os.h"
 #include "nvim/os/pty_conpty_win.h"
-#include "nvim/vim.h"
+#include "nvim/vim_defs.h"
 
 #ifndef EXTENDED_STARTUPINFO_PRESENT
 # define EXTENDED_STARTUPINFO_PRESENT 0x00080000
@@ -14,9 +12,9 @@
 # define PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE 0x00020016
 #endif
 
-HRESULT (WINAPI *pCreatePseudoConsole)(COORD, HANDLE, HANDLE, DWORD, HPCON *);
-HRESULT (WINAPI *pResizePseudoConsole)(HPCON, COORD);
-void (WINAPI *pClosePseudoConsole)(HPCON);
+HRESULT(WINAPI *pCreatePseudoConsole)(COORD, HANDLE, HANDLE, DWORD, HPCON *);
+HRESULT(WINAPI *pResizePseudoConsole)(HPCON, COORD);
+void(WINAPI *pClosePseudoConsole)(HPCON);
 
 bool os_has_conpty_working(void)
 {

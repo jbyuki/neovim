@@ -1,11 +1,8 @@
-#ifndef NVIM_STATUSLINE_DEFS_H
-#define NVIM_STATUSLINE_DEFS_H
+#pragma once
 
-#include <stddef.h>
+#include <stdbool.h>
 
 #include "nvim/fold_defs.h"
-#include "nvim/macros.h"
-#include "nvim/os/os_defs.h"
 #include "nvim/sign_defs.h"
 
 /// Status line click definition
@@ -57,23 +54,14 @@ struct stl_item {
 };
 
 /// Struct to hold info for 'statuscolumn'
-typedef struct statuscol statuscol_T;
-
-struct statuscol {
+typedef struct {
   int width;                           ///< width of the status column
-  int cur_attr;                        ///< current attributes in text
   int num_attr;                        ///< default highlight attr
   int sign_cul_id;                     ///< cursorline sign highlight id
   int truncate;                        ///< truncated width
   bool draw;                           ///< whether to draw the statuscolumn
   bool use_cul;                        ///< whether to use cursorline attrs
-  char text[MAXPATHL];                 ///< text in status column
-  char *textp;                         ///< current position in text
-  char *text_end;                      ///< end of text (the NUL byte)
   stl_hlrec_t *hlrec;                  ///< highlight groups
-  stl_hlrec_t *hlrecp;                 ///< current highlight group
   foldinfo_T foldinfo;                 ///< fold information
   SignTextAttrs *sattrs;               ///< sign attributes
-};
-
-#endif  // NVIM_STATUSLINE_DEFS_H
+} statuscol_T;

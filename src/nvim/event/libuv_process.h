@@ -1,10 +1,9 @@
-#ifndef NVIM_EVENT_LIBUV_PROCESS_H
-#define NVIM_EVENT_LIBUV_PROCESS_H
+#pragma once
 
 #include <uv.h>
 
-#include "nvim/event/loop.h"
 #include "nvim/event/process.h"
+#include "nvim/types_defs.h"
 
 typedef struct libuv_process {
   Process process;
@@ -24,4 +23,3 @@ static inline LibuvProcess libuv_process_init(Loop *loop, void *data)
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "event/libuv_process.h.generated.h"
 #endif
-#endif  // NVIM_EVENT_LIBUV_PROCESS_H

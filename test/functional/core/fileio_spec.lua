@@ -19,7 +19,6 @@ local meths = helpers.meths
 local mkdir = helpers.mkdir
 local sleep = helpers.sleep
 local read_file = helpers.read_file
-local tmpname = helpers.tmpname
 local trim = helpers.trim
 local currentdir = helpers.funcs.getcwd
 local assert_alive = helpers.assert_alive
@@ -31,6 +30,8 @@ local feed_command = helpers.feed_command
 local skip = helpers.skip
 local is_os = helpers.is_os
 local is_ci = helpers.is_ci
+local spawn = helpers.spawn
+local set_session = helpers.set_session
 
 describe('fileio', function()
   before_each(function()
@@ -41,54 +42,83 @@ describe('fileio', function()
     os.remove('Xtest_startup_file1')
     os.remove('Xtest_startup_file1~')
     os.remove('Xtest_startup_file2')
+    os.remove('Xtest_startup_file2~')
     os.remove('Xtest_тест.md')
     os.remove('Xtest-u8-int-max')
     os.remove('Xtest-overwrite-forced')
     rmdir('Xtest_startup_swapdir')
     rmdir('Xtest_backupdir')
+    rmdir('Xtest_backupdir with spaces')
   end)
 
-  it('fsync() codepaths #8304', function()
-    clear({ args={ '-i', 'Xtest_startup_shada',
-                   '--cmd', 'set directory=Xtest_startup_swapdir' } })
+  local args = { nvim_prog, '--clean', '--cmd', 'set nofsync directory=Xtest_startup_swapdir', }
+  --- Starts a new nvim session and returns an attached screen.
+  local function startup(extra_args)
+    extra_args = extra_args or {}
+    local argv = vim.tbl_flatten({args, '--embed', extra_args})
+    local screen_nvim = spawn(argv)
+    set_session(screen_nvim)
+    local screen = Screen.new(70, 10)
+    screen:attach()
+    screen:set_default_attr_ids({
+      [1] = {foreground = Screen.colors.NvimDarkGrey4};
+      [2] = {background = Screen.colors.NvimDarkGrey1, foreground = Screen.colors.NvimLightGrey3};
+      [3] = {foreground = Screen.colors.NvimLightCyan};
+    })
+    return screen
+  end
+
+  it("fsync() with 'nofsync' #8304", function()
+    clear({ args={ '--cmd', 'set nofsync directory=Xtest_startup_swapdir', } })
 
     -- These cases ALWAYS force fsync (regardless of 'fsync' option):
 
     -- 1. Idle (CursorHold) with modified buffers (+ 'swapfile').
     command('write Xtest_startup_file1')
-    feed('ifoo<esc>h')
+    feed('Afoo<esc>h')
     command('write')
-    eq(0, request('nvim__stats').fsync)   -- 'nofsync' is the default.
+    eq(0, request('nvim__stats').fsync)
     command('set swapfile')
     command('set updatetime=1')
-    feed('izub<esc>h')                    -- File is 'modified'.
+    feed('Azub<esc>h')                    -- File is 'modified'.
     sleep(3)                              -- Allow 'updatetime' to expire.
     retry(3, nil, function()
       eq(1, request('nvim__stats').fsync)
     end)
-    command('set updatetime=9999')
+    command('set updatetime=100000 updatecount=100000')
 
-    -- 2. Exit caused by deadly signal (+ 'swapfile').
-    local j = funcs.jobstart({ nvim_prog, '-u', 'NONE', '-i',
-                               'Xtest_startup_shada', '--headless',
-                               '-c', 'set swapfile',
-                               '-c', 'write Xtest_startup_file2',
-                               '-c', 'put =localtime()', })
-    sleep(10)         -- Let Nvim start.
+    -- 2. Explicit :preserve command.
+    command('preserve')
+    -- TODO: should be exactly 2; where is the extra fsync() is coming from? #26404
+    ok(request('nvim__stats').fsync == 2 or request('nvim__stats').fsync == 3)
+
+    -- 3. Enable 'fsync' option, write file.
+    command('set fsync')
+    feed('Abaz<esc>h')
+    command('write')
+    -- TODO: should be exactly 4; where is the extra fsync() is coming from? #26404
+    ok(request('nvim__stats').fsync == 4 or request('nvim__stats').fsync == 5)
+    eq('foozubbaz', trim(read_file('Xtest_startup_file1')))
+
+    -- 4. Exit caused by deadly signal (+ 'swapfile').
+    local j = funcs.jobstart(vim.tbl_flatten({args, '--embed'}), {rpc=true})
+    funcs.rpcrequest(j, 'nvim_exec2', [[
+      set nofsync directory=Xtest_startup_swapdir
+      edit Xtest_startup_file2
+      write
+      put ='fsyncd text'
+    ]], {})
+    eq('Xtest_startup_swapdir', funcs.rpcrequest(j, 'nvim_eval', '&directory'))
     funcs.jobstop(j)  -- Send deadly signal.
 
-    -- 3. SIGPWR signal.
-    -- ??
+    local screen = startup()
+    feed(':recover Xtest_startup_file2<cr>')
+    screen:expect({any = [[Using swap file "Xtest_startup_swapdir[/\]Xtest_startup_file2%.swp"]]})
+    feed('<cr>')
+    screen:expect({any = 'fsyncd text'})
 
-    -- 4. Explicit :preserve command.
-    command('preserve')
-    eq(2, request('nvim__stats').fsync)
-
-    -- 5. Enable 'fsync' option, write file.
-    command('set fsync')
-    feed('ibaz<esc>h')
-    command('write')
-    eq(4, request('nvim__stats').fsync)
+    -- 5. SIGPWR signal.
+    -- oldtest: Test_signal_PWR()
   end)
 
   it('backup #9709', function()
@@ -127,6 +157,28 @@ describe('fileio', function()
     local backup_file_name = string.gsub(currentdir()..'/Xtest_startup_file1',
       is_os('win') and '[:/\\]' or '/', '%%') .. '~'
     local foo_contents = trim(read_file('Xtest_backupdir/'..backup_file_name))
+    local foobar_contents = trim(read_file('Xtest_startup_file1'))
+
+    eq('foobar', foobar_contents);
+    eq('foo', foo_contents);
+  end)
+
+  it('backup with full path with spaces', function()
+    skip(is_ci('cirrus'))
+    clear()
+    mkdir('Xtest_backupdir with spaces')
+    command('set backup')
+    command('set backupdir=Xtest_backupdir\\ with\\ spaces//')
+    command('write Xtest_startup_file1')
+    feed('ifoo<esc>')
+    command('write')
+    feed('Abar<esc>')
+    command('write')
+
+    -- Backup filename = fullpath, separators replaced with "%".
+    local backup_file_name = string.gsub(currentdir()..'/Xtest_startup_file1',
+      is_os('win') and '[:/\\]' or '/', '%%') .. '~'
+    local foo_contents = trim(read_file('Xtest_backupdir with spaces/'..backup_file_name))
     local foobar_contents = trim(read_file('Xtest_startup_file1'))
 
     eq('foobar', foobar_contents);
@@ -219,8 +271,7 @@ describe('fileio', function()
     command("e Xtest-overwrite-forced")
     screen:expect([[
       ^foobar                                  |
-      {1:~                                       }|
-      {1:~                                       }|
+      {1:~                                       }|*2
       "Xtest-overwrite-forced" [noeol] 1L, 6B |
     ]])
 
@@ -236,24 +287,22 @@ describe('fileio', function()
     screen:expect([[
       {2:WARNING: The file has been changed since}|
       {2: reading it!!!}                          |
-      {3:Do you really want to write to it (y/n)^?}|
-                                              |
+      {3:Do you really want to write to it (y/n)?}|
+      ^                                        |
     ]])
 
     feed("n")
     feed("<cr>")
     screen:expect([[
       ^foobar                                  |
-      {1:~                                       }|
-      {1:~                                       }|
+      {1:~                                       }|*2
                                               |
     ]])
     -- Use a screen test because the warning does not set v:errmsg.
     command("w!")
     screen:expect([[
       ^foobar                                  |
-      {1:~                                       }|
-      {1:~                                       }|
+      {1:~                                       }|*2
       <erwrite-forced" [noeol] 1L, 6B written |
     ]])
   end)
@@ -266,9 +315,7 @@ describe('tmpdir', function()
 
   before_each(function()
     -- Fake /tmp dir so that we can mess it up.
-    os_tmpdir = tmpname()
-    os.remove(os_tmpdir)
-    mkdir(os_tmpdir)
+    os_tmpdir = vim.uv.fs_mkdtemp(vim.fs.dirname(helpers.tmpname()) .. '/nvim_XXXXXXXXXX')
   end)
 
   after_each(function()
@@ -357,4 +404,14 @@ describe('tmpdir', function()
     rm_tmpdir()
     eq('E5431: tempdir disappeared (3 times)', meths.get_vvar('errmsg'))
   end)
+
+  it('$NVIM_APPNAME relative path', function()
+    clear({ env={
+      NVIM_APPNAME='a/b',
+      NVIM_LOG_FILE=testlog,
+      TMPDIR=os_tmpdir,
+    } })
+    matches([=[.*[/\\]a%%b%.[^/\\]+]=], funcs.tempname())
+  end)
+
 end)

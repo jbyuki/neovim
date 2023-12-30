@@ -1,17 +1,15 @@
-#ifndef NVIM_GRID_DEFS_H
-#define NVIM_GRID_DEFS_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#include "nvim/types.h"
+#include "nvim/pos_defs.h"
+#include "nvim/types_defs.h"
 
-#define MAX_MCO  6  // fixed value for 'maxcombine'
-
-// The characters and attributes drawn on grids.
-typedef char schar_T[(MAX_MCO + 1) * 4 + 1];
-typedef int sattr_T;
+// Includes final NUL. MAX_MCO is no longer used, but at least 4*(MAX_MCO+1)+1=29
+// ensures we can fit all composed chars which did fit before.
+#define MAX_SCHAR_SIZE 32
 
 enum {
   kZIndexDefaultGrid = 0,
@@ -29,7 +27,7 @@ enum {
 /// we can avoid sending bigger updates than necessary to the Ul layer.
 ///
 /// Screen cells are stored as NUL-terminated UTF-8 strings, and a cell can
-/// contain up to MAX_MCO composing characters after the base character.
+/// contain composing characters as many as fits in MAX_SCHAR_SIZE-1 bytes
 /// The composing characters are to be drawn on top of the original character.
 /// The content after the NUL is not defined (so comparison must be done a
 /// single cell at a time). Double-width characters are stored in the left cell,
@@ -37,20 +35,24 @@ enum {
 /// screen is cleared, the cells should be filled with a single whitespace char.
 ///
 /// attrs[] contains the highlighting attribute for each cell.
-/// line_offset[n] is the offset from chars[] and attrs[] for the
-/// start of line 'n'. These offsets are in general not linear, as full screen
-/// scrolling is implemented by rotating the offsets in the line_offset array.
-/// line_wraps[] is an array of boolean flags indicating if the screen line
-/// wraps to the next line. It can only be true if a window occupies the entire
-/// screen width.
+///
+/// vcols[] contains the virtual columns in the line. -1 means not available
+/// or before buffer text, MAXCOL means after the end of the line.
+/// -2 or -3 means in fold column and a mouse click should:
+///  -2: open a fold
+///  -3: close a fold
+///
+/// line_offset[n] is the offset from chars[], attrs[] and vcols[] for the start
+/// of line 'n'. These offsets are in general not linear, as full screen scrolling
+/// is implemented by rotating the offsets in the line_offset array.
 typedef struct ScreenGrid ScreenGrid;
 struct ScreenGrid {
   handle_T handle;
 
   schar_T *chars;
   sattr_T *attrs;
+  colnr_T *vcols;
   size_t *line_offset;
-  char *line_wraps;
 
   // last column that was drawn (not cleared with the default background).
   // only used when "throttled" is set. Not allocated by grid_alloc!
@@ -117,6 +119,5 @@ typedef struct {
   int coloff;
   int cur_attr;
   int clear_width;
+  bool wrap;
 } GridLineEvent;
-
-#endif  // NVIM_GRID_DEFS_H

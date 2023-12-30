@@ -1,0 +1,32 @@
+name: docs
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'src/nvim/api/*.[ch]'
+      - 'src/nvim/eval.lua'
+      - 'runtime/lua/**.lua'
+      - 'runtime/doc/**'
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y doxygen python3-msgpack
+
+      - name: Generate docs
+        run: |
+          make doc
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Job failed, run 'make doc' and commit your doc changes."
+            echo "::error::The doc generation produces the following changes:"
+            git diff --color --exit-code
+          fi

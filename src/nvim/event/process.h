@@ -1,18 +1,12 @@
-#ifndef NVIM_EVENT_PROCESS_H
-#define NVIM_EVENT_PROCESS_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #include "nvim/eval/typval_defs.h"
-#include "nvim/event/loop.h"
-#include "nvim/event/multiqueue.h"
-#include "nvim/event/rstream.h"
-#include "nvim/event/stream.h"
-#include "nvim/event/wstream.h"
-
-struct process;
+#include "nvim/event/defs.h"  // IWYU pragma: export
+#include "nvim/types_defs.h"
 
 typedef enum {
   kProcessTypeUv,
@@ -32,6 +26,7 @@ struct process {
   uint64_t stopped_time;  // process_stop() timestamp
   const char *cwd;
   char **argv;
+  const char *exepath;
   dict_T *env;
   Stream in, out, err;
   /// Exit handler. If set, user must call process_free().
@@ -54,6 +49,7 @@ static inline Process process_init(Loop *loop, ProcessType type, void *data)
     .stopped_time = 0,
     .cwd = NULL,
     .argv = NULL,
+    .exepath = NULL,
     .in = { .closed = false },
     .out = { .closed = false },
     .err = { .closed = false },
@@ -66,6 +62,12 @@ static inline Process process_init(Loop *loop, ProcessType type, void *data)
   };
 }
 
+/// Get the path to the executable of the process.
+static inline const char *process_get_exepath(Process *proc)
+{
+  return proc->exepath != NULL ? proc->exepath : proc->argv[0];
+}
+
 static inline bool process_is_stopped(Process *proc)
 {
   bool exited = (proc->status >= 0);
@@ -75,4 +77,3 @@ static inline bool process_is_stopped(Process *proc)
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "event/process.h.generated.h"
 #endif
-#endif  // NVIM_EVENT_PROCESS_H

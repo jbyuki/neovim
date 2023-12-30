@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 /// @file fileio.c
 ///
 /// Buffered reading/writing to a file. Unlike fileio.c this is not dealing with
@@ -18,17 +15,21 @@
 #include "nvim/gettext.h"
 #include "nvim/globals.h"
 #include "nvim/log.h"
-#include "nvim/macros.h"
+#include "nvim/macros_defs.h"
 #include "nvim/memory.h"
 #include "nvim/message.h"
 #include "nvim/os/fileio.h"
-#include "nvim/os/os.h"
+#include "nvim/os/fs.h"
 #include "nvim/os/os_defs.h"
 #include "nvim/rbuffer.h"
-#include "nvim/types.h"
+#include "nvim/types_defs.h"
 
 #ifdef MSWIN
 # include "nvim/os/os_win_console.h"
+#endif
+
+#ifdef HAVE_SYS_UIO_H
+# include <sys/uio.h>
 #endif
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -53,7 +54,6 @@ int file_open(FileDescriptor *const ret_fp, const char *const fname, const int f
 {
   int os_open_flags = 0;
   TriState wr = kNone;
-  // -V:FLAG:501
 #define FLAG(flags, flag, fcntl_flags, wrval, cond) \
   do { \
     if (flags & flag) { \
@@ -282,9 +282,10 @@ static char writebuf[kRWBufferSize];
 ///
 /// @param[in,out]  rv  RBuffer instance used.
 /// @param[in,out]  fp  File to work with.
-static void file_rb_write_full_cb(RBuffer *const rv, FileDescriptor *const fp)
+static void file_rb_write_full_cb(RBuffer *const rv, void *const fp_in)
   FUNC_ATTR_NONNULL_ALL
 {
+  FileDescriptor *const fp = fp_in;
   assert(fp->wr);
   assert(rv->data == (void *)fp);
   if (rbuffer_size(rv) == 0) {

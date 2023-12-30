@@ -1,22 +1,27 @@
-#ifndef NVIM_OS_OS_H
-#define NVIM_OS_OS_H
+#pragma once
 
-#include <stdbool.h>
-#include <uv.h>
+#include <stddef.h>  // IWYU pragma: keep
+#include <stdint.h>  // IWYU pragma: keep
+#include <uv.h>  // IWYU pragma: keep
 
-#include "nvim/os/fs_defs.h"
-#include "nvim/os/stdpaths_defs.h"
-#include "nvim/vim.h"
+#include "nvim/cmdexpand_defs.h"  // IWYU pragma: keep
+#include "nvim/garray_defs.h"  // IWYU pragma: keep
+#include "nvim/os/os_defs.h"  // IWYU pragma: export
+#include "nvim/os/stdpaths_defs.h"  // IWYU pragma: keep
+#include "nvim/types_defs.h"  // IWYU pragma: keep
+
+extern char *default_vim_dir;
+extern char *default_vimruntime_dir;
+extern char *default_lib_dir;
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
+// IWYU pragma: begin_exports
 # include "os/env.h.generated.h"
-# include "os/fs.h.generated.h"
 # include "os/mem.h.generated.h"
 # include "os/stdpaths.h.generated.h"
 # include "os/users.h.generated.h"
+// IWYU pragma: end_exports
 #endif
 
 #define ENV_LOGFILE "NVIM_LOG_FILE"
 #define ENV_NVIM "NVIM"
-
-#endif  // NVIM_OS_OS_H

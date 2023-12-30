@@ -4,7 +4,6 @@ if exists('s:did_load')
   set commentstring=/*%s*/
   set complete=.,w,b,u,t,i
   set define=^\\s*#\\s*define
-  set directory&
   set directory^=.
   set display=
   set fillchars=vert:\|,foldsep:\|,fold:-
@@ -21,15 +20,15 @@ if exists('s:did_load')
   set shortmess=filnxtToOS
   set sidescroll=0
   set tags=./tags,tags
-  set undodir&
   set undodir^=.
   set wildoptions=
   set startofline
-  set sessionoptions&
   set sessionoptions+=options
-  set viewoptions&
   set viewoptions+=options
   set switchbuf=
+  if has('win32')
+    set isfname+=:
+  endif
   if g:testname !~ 'test_mapping.vim$'
     " Make "Q" switch to Ex mode.
     " This does not work for all tests.
@@ -54,11 +53,18 @@ tlunmenu *
 " roughly equivalent to test_setmouse() in Vim
 func Ntest_setmouse(row, col)
   call nvim_input_mouse('move', '', '', 0, a:row - 1, a:col - 1)
+  if state('m') == ''
+    call getchar(0)
+  endif
+endfunc
+
+" roughly equivalent to term_wait() in Vim
+func Nterm_wait(buf, time = 10)
+  execute $'sleep {a:time}m'
 endfunc
 
 " Prevent Nvim log from writing to stderr.
 let $NVIM_LOG_FILE = exists($NVIM_LOG_FILE) ? $NVIM_LOG_FILE : 'Xnvim.log'
-
 
 " Make sure 'runtimepath' and 'packpath' does not include $HOME.
 set rtp=$VIM/vimfiles,$VIMRUNTIME,$VIM/vimfiles/after
@@ -87,3 +93,6 @@ let $HOME = expand(getcwd() . '/XfakeHOME')
 if !isdirectory($HOME)
   call mkdir($HOME)
 endif
+
+" Use Vim's default color scheme
+colorscheme vim

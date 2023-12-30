@@ -239,7 +239,8 @@ describe("'inccommand' for user commands", function()
       [1] = {background = Screen.colors.Yellow1},
       [2] = {foreground = Screen.colors.Blue1, bold = true},
       [3] = {reverse = true},
-      [4] = {reverse = true, bold = true}
+      [4] = {reverse = true, bold = true},
+      [5] = {foreground = Screen.colors.Blue},
     })
     screen:attach()
     exec_lua(setup_replace_cmd)
@@ -269,13 +270,7 @@ describe("'inccommand' for user commands", function()
         why won't it stop                     |
         make the {1:cats} stop                    |
                                               |
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
+      {2:~                                       }|*7
       :Replace text cats^                      |
     ]])
   end)
@@ -317,13 +312,7 @@ describe("'inccommand' for user commands", function()
         why won't it stop                     |
         make the text stop                    |
       ^                                        |
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
+      {2:~                                       }|*7
                                               |
     ]])
   end)
@@ -341,13 +330,7 @@ describe("'inccommand' for user commands", function()
         why won't it stop                     |
         make the cats stop                    |
       ^                                        |
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
+      {2:~                                       }|*7
       :Replace text cats                      |
     ]])
   end)
@@ -365,13 +348,7 @@ describe("'inccommand' for user commands", function()
         why won't it stop                     |
         make the text stop                    |
                                               |
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
+      {2:~                                       }|*7
       :.Replace text cats^                     |
     ]])
   end)
@@ -424,16 +401,99 @@ describe("'inccommand' for user commands", function()
         why won't it stop                     |
         make the cats stop                    |
                                               |
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
-      {2:~                                       }|
+      {2:~                                       }|*7
       :C^                                      |
     ]])
     assert_alive()
+  end)
+
+  it('no crash if preview callback executes undo #20036', function()
+    command('set inccommand=nosplit')
+    exec_lua([[
+      vim.api.nvim_create_user_command('Foo', function() end, {
+        nargs = '?',
+        preview = function(_, _, _)
+          vim.cmd.undo()
+        end,
+      })
+    ]])
+
+    -- Clear undo history
+    command('set undolevels=-1')
+    feed('ggyyp')
+    command('set undolevels=1000')
+
+    feed('yypp:Fo')
+    assert_alive()
+    feed('<Esc>:Fo')
+    assert_alive()
+  end)
+
+  local function test_preview_break_undo()
+    command('set inccommand=nosplit')
+    exec_lua([[
+      vim.api.nvim_create_user_command('Test', function() end, {
+        nargs = 1,
+        preview = function(opts, _, _)
+          vim.cmd('norm i' .. opts.args)
+          return 1
+        end
+      })
+    ]])
+    feed(':Test a.a.a.a.')
+    screen:expect([[
+        text on line 1                        |
+        more text on line 2                   |
+        oh no, even more text                 |
+        will the text ever stop               |
+        oh well                               |
+        did the text stop                     |
+        why won't it stop                     |
+        make the text stop                    |
+      a.a.a.a.                                |
+      {2:~                                       }|*7
+      :Test a.a.a.a.^                          |
+    ]])
+    feed('<C-V><Esc>u')
+    screen:expect([[
+        text on line 1                        |
+        more text on line 2                   |
+        oh no, even more text                 |
+        will the text ever stop               |
+        oh well                               |
+        did the text stop                     |
+        why won't it stop                     |
+        make the text stop                    |
+      a.a.a.                                  |
+      {2:~                                       }|*7
+      :Test a.a.a.a.{5:^[}u^                       |
+    ]])
+    feed('<Esc>')
+    screen:expect([[
+        text on line 1                        |
+        more text on line 2                   |
+        oh no, even more text                 |
+        will the text ever stop               |
+        oh well                               |
+        did the text stop                     |
+        why won't it stop                     |
+        make the text stop                    |
+      ^                                        |
+      {2:~                                       }|*7
+                                              |
+    ]])
+  end
+
+  describe('breaking undo chain in Insert mode works properly', function()
+    it('when using i_CTRL-G_u #20248', function()
+      command('inoremap . .<C-G>u')
+      test_preview_break_undo()
+    end)
+
+    it('when setting &l:undolevels to itself #24575', function()
+      command('inoremap . .<Cmd>let &l:undolevels = &l:undolevels<CR>')
+      test_preview_break_undo()
+    end)
   end)
 end)
 
@@ -473,17 +533,7 @@ describe("'inccommand' with multiple buffers", function()
         baz {1:bar} bar       │  bar baz {1:bar}      |
         {1:bar} bar baz       │  baz {1:bar} bar      |
                           │                   |
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
+      {2:~                   }│{2:~                  }|*11
       {4:[No Name] [+]        }{3:[No Name] [+]      }|
       :Replace foo bar^                        |
     ]])
@@ -493,17 +543,7 @@ describe("'inccommand' with multiple buffers", function()
         baz bar bar       │  bar baz bar      |
         bar bar baz       │  baz bar bar      |
       ^                    │                   |
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
+      {2:~                   }│{2:~                  }|*11
       {4:[No Name] [+]        }{3:[No Name] [+]      }|
       :Replace foo bar                        |
     ]])
@@ -537,17 +577,7 @@ describe("'inccommand' with multiple buffers", function()
         baz bar bar       │  bar baz bar      |
         bar bar baz       │  baz bar bar      |
       ^                    │                   |
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
-      {2:~                   }│{2:~                  }|
+      {2:~                   }│{2:~                  }|*11
       {4:[No Name] [+]        }{3:[No Name] [+]      }|
       :Replace foo bar                        |
     ]])

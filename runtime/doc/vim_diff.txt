@@ -30,6 +30,11 @@ Defaults					            *nvim-defaults*
   ":filetype off" to |init.vim|.
 - Syntax highlighting is enabled by default. This can be disabled by adding
   ":syntax off" to |init.vim|.
+- Default color scheme has been updated. This can result in color schemes
+  looking differently due to them relying on how highlight groups are defined
+  by default. Add ":colorscheme vim" to |init.vim| or
+  ":source $VIMRUNTIME/colors/vim.lua" to your color scheme file to restore
+  the old default links and colors.
 
 - 'autoindent' is enabled
 - 'autoread' is enabled (works in all UIs, including terminal)
@@ -37,6 +42,7 @@ Defaults					            *nvim-defaults*
 - 'backspace' defaults to "indent,eol,start"
 - 'backupdir' defaults to .,~/.local/state/nvim/backup// (|xdg|), auto-created
 - 'belloff' defaults to "all"
+- 'comments' includes "fb:•"
 - 'commentstring' defaults to ""
 - 'compatible' is always disabled
 - 'complete' excludes "i"
@@ -44,14 +50,15 @@ Defaults					            *nvim-defaults*
 - 'directory' defaults to ~/.local/state/nvim/swap// (|xdg|), auto-created
 - 'display' defaults to "lastline"
 - 'encoding' is UTF-8 (cf. 'fileencoding' for file-content encoding)
-- 'fillchars' defaults (in effect) to "vert:│,fold:·,sep:│"
+- 'fillchars' defaults (in effect) to "vert:│,fold:·,foldsep:│"
 - 'formatoptions' defaults to "tcqj"
-- 'fsync' is disabled
 - 'hidden' is enabled
 - 'history' defaults to 10000 (the maximum)
 - 'hlsearch' is enabled
 - 'include' defaults to "". The C ftplugin sets it to "^\\s*#\\s*include"
 - 'incsearch' is enabled
+- 'isfname' does not include ":" (on Windows). Drive letters are handled
+  correctly without it. (Use |gF| for filepaths suffixed with ":line:col").
 - 'joinspaces' is disabled
 - 'langnoremap' is enabled
 - 'langremap' is disabled
@@ -71,6 +78,8 @@ Defaults					            *nvim-defaults*
 - 'switchbuf' defaults to "uselast"
 - 'tabpagemax' defaults to 50
 - 'tags' defaults to "./tags;,tags"
+- 'termguicolors' is enabled by default if Nvim can detect support from the
+  host terminal
 - 'ttimeoutlen' defaults to 50
 - 'ttyfast' is always set
 - 'undodir' defaults to ~/.local/state/nvim/undo// (|xdg|), auto-created
@@ -114,15 +123,19 @@ DEFAULT MAPPINGS
 							*default-mappings*
 Nvim creates the following default mappings at |startup|. You can disable any
 of these in your config by simply removing the mapping, e.g. ":unmap Y".
->vim
-	nnoremap Y y$
-	nnoremap <C-L> <Cmd>nohlsearch<Bar>diffupdate<Bar>normal! <C-L><CR>
-	inoremap <C-U> <C-G>u<C-U>
-	inoremap <C-W> <C-G>u<C-W>
-	xnoremap * y/\V<C-R>"<CR>
-	xnoremap # y?\V<C-R>"<CR>
-	nnoremap & :&&<CR>
-<
+
+- Y |Y-default|
+- <C-U> |i_CTRL-U-default|
+- <C-W> |i_CTRL-W-default|
+- <C-L> |CTRL-L-default|
+- & |&-default|
+- Q |v_Q-default|
+- @ |v_@-default|
+- # |v_#-default|
+- * |v_star-default|
+- Nvim LSP client defaults |lsp-defaults|
+  - K |K-lsp-default|
+
 DEFAULT AUTOCOMMANDS
 							*default-autocmds*
 Default autocommands exist in the following groups. Use ":autocmd! {group}" to
@@ -130,9 +143,16 @@ remove them and ":autocmd {group}" to see how they're defined.
 
 nvim_terminal:
 - BufReadCmd: Treats "term://" buffers as |terminal| buffers. |terminal-start|
+- TermClose: A |terminal| buffer started with no arguments (which thus uses
+  'shell') and which exits with no error is closed automatically.
 
 nvim_cmdwin:
 - CmdwinEnter: Limits syntax sync to maxlines=1 in the |cmdwin|.
+
+nvim_swapfile:
+- SwapExists: Skips the swapfile prompt (sets |v:swapchoice| to "e") when the
+  swapfile is owned by a running Nvim process. Shows |W325| "Ignoring
+  swapfile…" message.
 
 ==============================================================================
 New Features						       *nvim-features*
@@ -186,7 +206,7 @@ backwards-compatibility cost. Some examples:
 
 Some features are built in that otherwise required external plugins:
 
-- Highlighting the yanked region, see |lua-highlight|.
+- Highlighting the yanked region, see |vim.highlight|.
 
 ARCHITECTURE
 
@@ -253,6 +273,7 @@ Highlight groups:
   |hl-NormalFloat| highlights floating window
   |hl-FloatBorder| highlights border of a floating window
   |hl-FloatTitle| highlights title of a floating window
+  |hl-FloatFooter| highlights footer of a floating window
   |hl-NormalNC| highlights non-current windows
   |hl-MsgArea| highlights messages/cmdline area
   |hl-MsgSeparator| highlights separator for scrolled messages
@@ -276,18 +297,23 @@ Normal commands:
   |Q| replays the last recorded macro instead of switching to Ex mode (|gQ|).
 
 Options:
+  Local values for global-local number/boolean options are unset when the
+  option is set without a scope (e.g. by using |:set|), similarly to how
+  global-local string options work.
+
   'autoread'    works in the terminal (if it supports "focus" events)
+  'background'  colorscheme is only reloaded if value is changed, not every
+                time it is set
   'cpoptions'   flags: |cpo-_|
   'diffopt'     "linematch" feature
   'exrc'        searches for ".nvim.lua", ".nvimrc", or ".exrc" files. The
                 user is prompted whether to trust the file.
-  'fillchars'   flags: "msgsep", "horiz", "horizup",
-                "horizdown", "vertleft", "vertright", "verthoriz"
+  'fillchars'   flags: "msgsep", "horiz", "horizup", "horizdown",
+                "vertleft", "vertright", "verthoriz"
   'foldcolumn'  supports up to 9 dynamic/fixed columns
   'guicursor'   works in the terminal (TUI)
   'inccommand'  shows interactive results for |:substitute|-like commands
                 and |:command-preview| commands
-  'jumpoptions' "stack" behavior
   'jumpoptions' "view" tries to restore the |mark-view| when moving through
   the |jumplist|, |changelist|, |alternate-file| or using |mark-motions|.
   'laststatus'  global statusline support
@@ -298,6 +324,7 @@ Options:
   'signcolumn'  supports up to 9 dynamic/fixed columns
   'statuscolumn' full control of columns using 'statusline' format
   'tabline'     %@Func@foo%X can call any function on mouse-click
+  'termpastefilter'
   'ttimeout', 'ttimeoutlen' behavior was simplified
   'winblend'    pseudo-transparency in floating windows |api-floatwin|
   'winhighlight' window-local highlights
@@ -324,6 +351,7 @@ Shell:
 
 Signs:
   Signs are removed if the associated line is deleted.
+  Signs placed twice with the same identifier in the same group are moved.
 
 Startup:
   |-e| and |-es| invoke the same "improved Ex mode" as -E and -Es.
@@ -366,6 +394,10 @@ UI/Display:
 Variables:
   |v:progpath| is always absolute ("full")
   |v:windowid| is always available (for use by external UIs)
+  |OptionSet| autocommand args |v:option_new|, |v:option_old|,
+  |v:option_oldlocal|, |v:option_oldglobal| have the type of the option
+  instead of always being strings. |v:option_old| is now the old global value
+  for all global-local options, instead of just string global-local options.
 
 Vimscript:
   |:redir| nested in |execute()| works.
@@ -376,6 +408,7 @@ Upstreamed features					 *nvim-upstreamed*
 These Nvim features were later integrated into Vim.
 
 - 'fillchars' flags: "eob"
+- 'jumpoptions' "stack" behavior
 - 'wildoptions' flags: "pum" enables popupmenu for wildmode completion
 - |<Cmd>|
 - |WinClosed|
@@ -391,7 +424,7 @@ This section documents various low-level behavior changes.
 
 |mkdir()| behaviour changed:
 1. Assuming /tmp/foo does not exist and /tmp can be written to
-   mkdir('/tmp/foo/bar', 'p', 0700) will create both /tmp/foo and /tmp/foo/bar 
+   mkdir('/tmp/foo/bar', 'p', 0700) will create both /tmp/foo and /tmp/foo/bar
    with 0700 permissions. Vim mkdir will create /tmp/foo with 0755.
 2. If you try to create an existing directory with `'p'` (e.g. mkdir('/',
    'p')) mkdir() will silently exit. In Vim this was an error.
@@ -416,16 +449,16 @@ This section documents various low-level behavior changes.
    error out.
 5. Stringifyed infinite and NaN values now use |str2float()| and can be evaled
    back.
-6. (internal) Trying to print or stringify VAR_UNKNOWN in Vim results in 
+6. (internal) Trying to print or stringify VAR_UNKNOWN in Vim results in
    nothing, E908, in Nvim it is internal error.
 
 |json_decode()| behaviour changed:
 1. It may output |msgpack-special-dict|.
-2. |msgpack-special-dict| is emitted also in case of duplicate keys, while in 
+2. |msgpack-special-dict| is emitted also in case of duplicate keys, while in
    Vim it errors out.
 3. It accepts only valid JSON.  Trailing commas are not accepted.
 
-|json_encode()| behaviour slightly changed: now |msgpack-special-dict| values 
+|json_encode()| behaviour slightly changed: now |msgpack-special-dict| values
 are accepted, but |v:none| is not.
 
 Viminfo text files were replaced with binary (messagepack) |shada| files.
@@ -444,15 +477,15 @@ Additional differences:
   |shada-error-handling|
 - ShaDa file keeps search direction (|v:searchforward|), viminfo does not.
 
-|printf()| returns something meaningful when used with `%p` argument: in Vim 
-it used to return useless address of the string (strings are copied to the 
-newly allocated memory all over the place) and fail on types which cannot be 
-coerced to strings. See |id()| for more details, currently it uses 
+|printf()| returns something meaningful when used with `%p` argument: in Vim
+it used to return useless address of the string (strings are copied to the
+newly allocated memory all over the place) and fail on types which cannot be
+coerced to strings. See |id()| for more details, currently it uses
 `printf("%p", {expr})` internally.
 
 |c_CTRL-R| pasting a non-special register into |cmdline| omits the last <CR>.
 
-|CursorMoved| always triggers when moving between windows.
+|CursorMoved| triggers when moving between windows.
 
 Lua interface (|lua.txt|):
 
@@ -464,7 +497,7 @@ Lua interface (|lua.txt|):
 <  whereas Vim emits only "TEST".
 - Lua has direct access to Nvim |API| via `vim.api`.
 - Lua package.path and package.cpath are automatically updated according to
-  'runtimepath': |lua-require|.
+  'runtimepath'. |lua-module-load|
 
 Commands:
   |:doautocmd| does not warn about "No matching autocommands".
@@ -489,9 +522,9 @@ Highlight groups:
   using |n| or |N|
   |hl-CursorLine| is low-priority unless foreground color is set
   |hl-VertSplit| superseded by |hl-WinSeparator|
-  Highlight groups names are allowed to contain the characters `.` and `@`.
+  Highlight groups names are allowed to contain `@` characters.
   It is an error to define a highlight group with a name that doesn't match
-  the regexp `[a-zA-Z0-9_.@]*` (see |group-name|).
+  the regexp `[a-zA-Z0-9_.@-]*` (see |group-name|).
 
 Macro/|recording| behavior
   Replay of a macro recorded during :lmap produces the same actions as when it
@@ -510,6 +543,9 @@ Mappings:
 
 Motion:
   The |jumplist| avoids useless/phantom jumps.
+
+Performance:
+  Folds are not updated during insert-mode.
 
 Syntax highlighting:
   syncolor.vim has been removed. Nvim now sets up default highlighting groups
@@ -535,13 +571,21 @@ Working directory (Vim implemented some of these after Nvim):
 - `getcwd(-1)` is equivalent to `getcwd(-1, 0)` instead of returning the global
   working directory. Use `getcwd(-1, -1)` to get the global working directory.
 
+Autocommands:
+- Fixed inconsistent behavior in execution of nested autocommands:
+  https://github.com/neovim/neovim/issues/23368
+- |TermResponse| is fired for any OSC sequence received from the terminal,
+  instead of the Primary Device Attributes response. |v:termresponse|
+
 ==============================================================================
-Missing legacy features					 *nvim-missing*
+Missing features					 *nvim-missing*
 
 These legacy Vim features are not yet implemented:
 
-*:gui*
-*:gvim*
+- *:gui*
+- *:gvim*
+- *'completepopup'*
+- *'previewpopup'*
 
 ==============================================================================
 Removed legacy features					 *nvim-removed*
@@ -596,6 +640,7 @@ Cscope:
 Eval:
   Vim9script
   *cscope_connection()*
+  *err_teapot()*
   *js_encode()*
   *js_decode()*
   *v:none* (used by Vim to represent JavaScript "undefined"); use |v:null| instead.
@@ -604,6 +649,7 @@ Eval:
   *v:sizeofpointer*
 
 Events:
+  *SafeStateAgain*
   *SigUSR1* Use |Signal| to detect `SIGUSR1` signal instead.
 
 Highlight groups:
@@ -620,13 +666,18 @@ Highlight groups:
 Options:
   *'aleph'* *'al'*
   antialias
+  'backspace' no longer supports number values. Instead:
+    - for `backspace=0` set `backspace=` (empty)
+    - for `backspace=1` set `backspace=indent,eol`
+    - for `backspace=2` set `backspace=indent,eol,start` (default behavior in Nvim)
+    - for `backspace=3` set `backspace=indent,eol,nostop`
   *'balloondelay'* *'bdlay'*
   *'ballooneval'* *'beval'* *'noballooneval'* *'nobeval'*
   *'balloonexpr'* *'bexpr'*
   bioskey (MS-DOS)
   conskey (MS-DOS)
   *'cp'* *'nocompatible'* *'nocp'* *'compatible'* (Nvim is always "nocompatible".)
-  'cpoptions' (gjkHw<*- and all POSIX flags were removed)
+  'cpoptions' (gjpkHw<*- and all POSIX flags were removed)
   *'cryptmethod'* *'cm'* *'key'* (Vim encryption implementation)
   cscopepathcomp
   cscopeprg
@@ -644,6 +695,7 @@ Options:
   'highlight' (Names of builtin |highlight-groups| cannot be changed.)
   *'hkmap'* *'hk'* use `set keymap=hebrew` instead.
   *'hkmapp'* *'hkp'* use `set keymap=hebrewp` instead.
+  keyprotocol
 
   *'pastetoggle'* *'pt'* Just Paste It.™ |paste| is handled automatically when
   you paste text using your terminal's or GUI's paste feature (CTRL-SHIFT-v,
@@ -682,11 +734,19 @@ Options:
 <
   *'macatsui'*
   *'maxcombine'* *'mco'*
-    Nvim always displays up to 6 combining characters.  You can still edit
-    text with more than 6 combining characters, you just can't see them.
-    Use |g8| or |ga|.  See |mbyte-combining|.
+    Nvim counts maximum character sizes in bytes, not codepoints. This is
+    guaranteed to be big enough to always fit all chars properly displayed
+    in vim with 'maxcombine' set to 6.
+
+    You can still edit text with larger characters than fits in the screen buffer,
+    you just can't see them. Use |g8| or |ga|. See |mbyte-combining|.
+
+    NOTE: the rexexp engine still has a hard-coded limit of considering
+    6 composing chars only.
+
   *'maxmem'* Nvim delegates memory-management to the OS.
   *'maxmemtot'* Nvim delegates memory-management to the OS.
+  printoptions
   *'printdevice'*
   *'printencoding'*
   *'printexpr'*
@@ -700,6 +760,7 @@ Options:
     Everything is allowed in 'exrc' files since they must be explicitly marked
     trusted.
   *'shelltype'*
+  'shortmess' flags: *shm-f* *shm-n* *shm-x* *shm-i* (behave like always on)
   *'shortname'* *'sn'* *'noshortname'* *'nosn'*
   *'swapsync'* *'sws'*
   *'termencoding'* *'tenc'* (Vim 7.4.852 also removed this for Windows)
@@ -714,9 +775,6 @@ Options:
   *'ttyscroll'* *'tsl'*
   *'ttytype'* *'tty'*
   weirdinvert
-
-Performance:
-  Folds are not updated during insert-mode.
 
 Plugins:
 

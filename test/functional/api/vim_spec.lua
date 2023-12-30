@@ -28,7 +28,6 @@ local write_file = helpers.write_file
 local exec_lua = helpers.exec_lua
 local exc_exec = helpers.exc_exec
 local insert = helpers.insert
-local expect_exit = helpers.expect_exit
 local skip = helpers.skip
 
 local pcall_err = helpers.pcall_err
@@ -286,12 +285,7 @@ describe('API', function()
       meths.exec2("echo 'hello'", { output = false })
       screen:expect{grid=[[
         ^                                        |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*6
         hello                                   |
       ]]}
     end)
@@ -305,10 +299,7 @@ describe('API', function()
       meths.exec2("echo 'hello'", { output = true })
       screen:expect{grid=[[
         ^                                        |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*4
                                                 |
       ]]}
       exec([[
@@ -319,10 +310,7 @@ describe('API', function()
       feed([[:echon 1 | call Print() | echon 5<CR>]])
       screen:expect{grid=[[
         ^                                        |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*4
         15                                      |
       ]]}
     end)
@@ -440,7 +428,7 @@ describe('API', function()
       eq({mode='n', blocking=false}, nvim("get_mode"))
     end)
 
-    it('Does not cause heap buffer overflow with large output', function()
+    it('does not cause heap buffer overflow with large output', function()
       eq(eval('string(range(1000000))'),
          nvim('command_output', 'echo range(1000000)'))
     end)
@@ -577,7 +565,6 @@ describe('API', function()
     local start_dir
 
     before_each(function()
-      clear()
       funcs.mkdir("Xtestdir")
       start_dir = funcs.getcwd()
     end)
@@ -1142,8 +1129,7 @@ describe('API', function()
       nvim('paste', '', true, 3)
       screen:expect([[
                             |
-        ~                   |
-        ~                   |
+        ~                   |*2
         :Foo^                |
       ]])
     end)
@@ -1154,8 +1140,7 @@ describe('API', function()
       nvim('paste', 'normal! \023\022\006\027', true, -1)
       screen:expect([[
                             |
-        ~                   |
-        ~                   |
+        ~                   |*2
         :normal! ^W^V^F^[^   |
       ]])
     end)
@@ -1321,6 +1306,10 @@ describe('API', function()
       eq("Key not found: lua", pcall_err(meths.del_var, 'lua'))
       meths.set_var('lua', 1)
 
+      -- Empty keys are allowed in Vim dicts (and msgpack).
+      nvim('set_var', 'dict_empty_key', {[''] = 'empty key'})
+      eq({[''] = 'empty key'}, nvim('get_var', 'dict_empty_key'))
+
       -- Set locked g: var.
       command('lockvar lua')
       eq('Key is locked: lua', pcall_err(meths.del_var, 'lua'))
@@ -1352,12 +1341,59 @@ describe('API', function()
     end)
 
     it('nvim_get_vvar, nvim_set_vvar', function()
-      -- Set readonly v: var.
-      eq('Key is read-only: count',
-        pcall_err(request, 'nvim_set_vvar', 'count', 42))
-      -- Set writable v: var.
+      eq('Key is read-only: count', pcall_err(request, 'nvim_set_vvar', 'count', 42))
+      eq('Dictionary is locked', pcall_err(request, 'nvim_set_vvar', 'nosuchvar', 42))
       meths.set_vvar('errmsg', 'set by API')
       eq('set by API', meths.get_vvar('errmsg'))
+      meths.set_vvar('errmsg', 42)
+      eq('42', eval('v:errmsg'))
+      meths.set_vvar('oldfiles', { 'one', 'two' })
+      eq({ 'one', 'two' }, eval('v:oldfiles'))
+      meths.set_vvar('oldfiles', {})
+      eq({}, eval('v:oldfiles'))
+      eq('Setting v:oldfiles to value with wrong type', pcall_err(meths.set_vvar, 'oldfiles', 'a'))
+      eq({}, eval('v:oldfiles'))
+
+      feed('i foo foo foo<Esc>0/foo<CR>')
+      eq({1, 1}, meths.win_get_cursor(0))
+      eq(1, eval('v:searchforward'))
+      feed('n')
+      eq({1, 5}, meths.win_get_cursor(0))
+      meths.set_vvar('searchforward', 0)
+      eq(0, eval('v:searchforward'))
+      feed('n')
+      eq({1, 1}, meths.win_get_cursor(0))
+      meths.set_vvar('searchforward', 1)
+      eq(1, eval('v:searchforward'))
+      feed('n')
+      eq({1, 5}, meths.win_get_cursor(0))
+
+      local screen = Screen.new(60, 3)
+      screen:set_default_attr_ids({
+        [0] = {bold = true, foreground = Screen.colors.Blue},
+        [1] = {background = Screen.colors.Yellow},
+      })
+      screen:attach()
+      eq(1, eval('v:hlsearch'))
+      screen:expect{grid=[[
+         {1:foo} {1:^foo} {1:foo}                                                |
+        {0:~                                                           }|
+                                                                    |
+      ]]}
+      meths.set_vvar('hlsearch', 0)
+      eq(0, eval('v:hlsearch'))
+      screen:expect{grid=[[
+         foo ^foo foo                                                |
+        {0:~                                                           }|
+                                                                    |
+      ]]}
+      meths.set_vvar('hlsearch', 1)
+      eq(1, eval('v:hlsearch'))
+      screen:expect{grid=[[
+         {1:foo} {1:^foo} {1:foo}                                                |
+        {0:~                                                           }|
+                                                                    |
+      ]]}
     end)
 
     it('vim_set_var returns the old value', function()
@@ -1418,13 +1454,19 @@ describe('API', function()
       eq(true, status)
       eq('  equalalways\n\tLast set from Lua', rv)
     end)
-  end)
 
-  describe('nvim_get_option_value, nvim_set_option_value', function()
-    it('works', function()
-      ok(nvim('get_option_value', 'equalalways', {}))
-      nvim('set_option_value', 'equalalways', false, {})
-      ok(not nvim('get_option_value', 'equalalways', {}))
+    it('updates whether the option has ever been set #25025', function()
+      eq(false, nvim('get_option_info2', 'autochdir', {}).was_set)
+      nvim('set_option_value', 'autochdir', true, {})
+      eq(true, nvim('get_option_info2', 'autochdir', {}).was_set)
+
+      eq(false, nvim('get_option_info2', 'cmdwinheight', {}).was_set)
+      nvim('set_option_value', 'cmdwinheight', 10, {})
+      eq(true, nvim('get_option_info2', 'cmdwinheight', {}).was_set)
+
+      eq(false, nvim('get_option_info2', 'debug', {}).was_set)
+      nvim('set_option_value', 'debug', 'beep', {})
+      eq(true, nvim('get_option_info2', 'debug', {}).was_set)
     end)
 
     it('validation', function()
@@ -1434,11 +1476,11 @@ describe('API', function()
         pcall_err(nvim, 'set_option_value', 'scrolloff', 1, {scope = 'bogus'}))
       eq("Invalid 'scope': expected String, got Integer",
         pcall_err(nvim, 'get_option_value', 'scrolloff', {scope = 42}))
-      eq("Invalid 'value': expected Integer/Boolean/String, got Array",
+      eq("Invalid 'value': expected valid option type, got Array",
         pcall_err(nvim, 'set_option_value', 'scrolloff', {}, {}))
-      eq("Invalid value for option 'scrolloff': expected Number, got Boolean true",
+      eq("Invalid value for option 'scrolloff': expected number, got boolean true",
         pcall_err(nvim, 'set_option_value', 'scrolloff', true, {}))
-      eq("Invalid value for option 'scrolloff': expected Number, got String \"wrong\"",
+      eq("Invalid value for option 'scrolloff': expected number, got string \"wrong\"",
         pcall_err(nvim, 'set_option_value', 'scrolloff', 'wrong', {}))
     end)
 
@@ -1485,14 +1527,18 @@ describe('API', function()
 
       -- Now try with options with a special "local is unset" value (e.g. 'undolevels')
       nvim('set_option_value', 'undolevels', 1000, {})
-      eq(1000, nvim('get_option_value', 'undolevels', {scope = 'local'}))
+      nvim('set_option_value', 'undolevels', 1200, {scope = 'local'})
+      eq(1200, nvim('get_option_value', 'undolevels', {scope = 'local'}))
       nvim('set_option_value', 'undolevels', NIL, {scope = 'local'})
       eq(-123456, nvim('get_option_value', 'undolevels', {scope = 'local'}))
+      eq(1000, nvim('get_option_value', 'undolevels', {}))
 
       nvim('set_option_value', 'autoread', true, {})
-      eq(true, nvim('get_option_value', 'autoread', {scope = 'local'}))
+      nvim('set_option_value', 'autoread', false, {scope = 'local'})
+      eq(false, nvim('get_option_value', 'autoread', {scope = 'local'}))
       nvim('set_option_value', 'autoread', NIL, {scope = 'local'})
       eq(NIL, nvim('get_option_value', 'autoread', {scope = 'local'}))
+      eq(true, nvim('get_option_value', 'autoread', {}))
     end)
 
     it('set window options', function()
@@ -1557,6 +1603,15 @@ describe('API', function()
          pcall_err(nvim, 'get_option_value', 'commentstring', { filetype = 'lua' }))
     end)
 
+    it("value of 'modified' is always false for scratch buffers", function()
+      nvim('set_current_buf', nvim('create_buf', true, true))
+      insert([[
+        foo
+        bar
+        baz
+      ]])
+      eq(false, nvim('get_option_value', 'modified', {}))
+    end)
   end)
 
   describe('nvim_{get,set}_current_buf, nvim_list_bufs', function()
@@ -1829,6 +1884,23 @@ describe('API', function()
       feed('<C-D>')
       expect('a')  -- recognized i_0_CTRL-D
     end)
+
+    it("does not interrupt with 'digraph'", function()
+      command('set digraph')
+      feed('i,')
+      eq(2, eval('1+1'))  -- causes K_EVENT key
+      feed('<BS>')
+      eq(2, eval('1+1'))  -- causes K_EVENT key
+      feed('.')
+      expect('…')  -- digraph ",." worked
+      feed('<Esc>')
+      feed(':,')
+      eq(2, eval('1+1'))  -- causes K_EVENT key
+      feed('<BS>')
+      eq(2, eval('1+1'))  -- causes K_EVENT key
+      feed('.')
+      eq('…', funcs.getcmdline())  -- digraph ",." worked
+    end)
   end)
 
   describe('nvim_get_context', function()
@@ -1898,6 +1970,13 @@ describe('API', function()
       nvim('load_context', ctx)
       eq({1, 2 ,3}, eval('[g:one, g:Two, g:THREE]'))
     end)
+
+    it('errors when context dictionary is invalid', function()
+      eq('E474: Failed to convert list to msgpack string buffer',
+         pcall_err(nvim, 'load_context', { regs = { {} }, jumps = { {} } }))
+      eq('E474: Failed to convert list to msgpack string buffer',
+         pcall_err(nvim, 'load_context', { regs = { { [''] = '' } } }))
+    end)
   end)
 
   describe('nvim_replace_termcodes', function()
@@ -1941,6 +2020,12 @@ describe('API', function()
       -- value.
       eq('', meths.replace_termcodes('', true, true, true))
     end)
+
+    -- Not exactly the case, as nvim_replace_termcodes() escapes K_SPECIAL in Unicode
+    it('translates the result of keytrans() on string with 0x80 byte back', function()
+      local s = 'ff\128\253\097tt'
+      eq(s, meths.replace_termcodes(funcs.keytrans(s), true, true, true))
+    end)
   end)
 
   describe('nvim_feedkeys', function()
@@ -1971,6 +2056,19 @@ describe('API', function()
   end)
 
   describe('nvim_out_write', function()
+    local screen
+
+    before_each(function()
+      screen = Screen.new(40, 8)
+      screen:attach()
+      screen:set_default_attr_ids({
+        [0] = {bold = true, foreground = Screen.colors.Blue},
+        [1] = {bold = true, foreground = Screen.colors.SeaGreen},
+        [2] = {bold = true, reverse = true},
+        [3] = {foreground = Screen.colors.Blue},
+      })
+    end)
+
     it('prints long messages correctly #20534', function()
       exec([[
         set more
@@ -1989,6 +2087,41 @@ describe('API', function()
         redir END
       ]])
       eq('\naaa\n' .. ('a'):rep(5002) .. '\naaa', meths.get_var('out'))
+    end)
+
+    it('blank line in message', function()
+      feed([[:call nvim_out_write("\na\n")<CR>]])
+      screen:expect{grid=[[
+                                                |
+        {0:~                                       }|*3
+        {2:                                        }|
+                                                |
+        a                                       |
+        {1:Press ENTER or type command to continue}^ |
+      ]]}
+      feed('<CR>')
+      feed([[:call nvim_out_write("b\n\nc\n")<CR>]])
+      screen:expect{grid=[[
+                                                |
+        {0:~                                       }|*2
+        {2:                                        }|
+        b                                       |
+                                                |
+        c                                       |
+        {1:Press ENTER or type command to continue}^ |
+      ]]}
+    end)
+
+    it('NUL bytes in message', function()
+      feed([[:lua vim.api.nvim_out_write('aaa\0bbb\0\0ccc\nddd\0\0\0eee\n')<CR>]])
+      screen:expect{grid=[[
+                                                |
+        {0:~                                       }|*3
+        {2:                                        }|
+        aaa{3:^@}bbb{3:^@^@}ccc                         |
+        ddd{3:^@^@^@}eee                            |
+        {1:Press ENTER or type command to continue}^ |
+      ]]}
     end)
   end)
 
@@ -2010,12 +2143,7 @@ describe('API', function()
       nvim_async('err_write', 'has bork\n')
       screen:expect([[
         ^                                        |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*6
         {1:has bork}                                |
       ]])
     end)
@@ -2024,9 +2152,7 @@ describe('API', function()
       nvim_async('err_write', 'something happened\nvery bad\n')
       screen:expect([[
                                                 |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*3
         {3:                                        }|
         {1:something happened}                      |
         {1:very bad}                                |
@@ -2054,12 +2180,7 @@ describe('API', function()
       nvim_async('err_write', 'fail\n')
       screen:expect([[
         ^                                        |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*6
         {1:very fail}                               |
       ]])
       helpers.poke_eventloop()
@@ -2068,15 +2189,25 @@ describe('API', function()
       nvim_async('err_write', 'more fail\ntoo fail\n')
       screen:expect([[
                                                 |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*3
         {3:                                        }|
         {1:more fail}                               |
         {1:too fail}                                |
         {2:Press ENTER or type command to continue}^ |
       ]])
       feed('<cr>')  -- exit the press ENTER screen
+    end)
+
+    it('NUL bytes in message', function()
+      nvim_async('err_write', 'aaa\0bbb\0\0ccc\nddd\0\0\0eee\n')
+      screen:expect{grid=[[
+                                                |
+        {0:~                                       }|*3
+        {3:                                        }|
+        {1:aaa^@bbb^@^@ccc}                         |
+        {1:ddd^@^@^@eee}                            |
+        {2:Press ENTER or type command to continue}^ |
+      ]]}
     end)
   end)
 
@@ -2109,12 +2240,7 @@ describe('API', function()
       feed('<CR>')
       screen:expect([[
         ^                                        |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*6
                                                 |
       ]])
     end)
@@ -2231,7 +2357,11 @@ describe('API', function()
       eq(info, meths.get_chan_info(3))
 
       -- :terminal with args + running process.
-      command(':exe "terminal" shellescape(v:progpath) "-u NONE -i NONE"')
+      command('enew')
+      local progpath_esc = eval('shellescape(v:progpath)')
+      funcs.termopen(('%s -u NONE -i NONE'):format(progpath_esc), {
+        env = { VIMRUNTIME = os.getenv('VIMRUNTIME') }
+      })
       eq(-1, eval('jobwait([&channel], 0)[0]'))  -- Running?
       local expected2 = {
         stream = 'job',
@@ -2241,11 +2371,11 @@ describe('API', function()
             eval('&shell'),
             '/s',
             '/c',
-            fmt('"%s -u NONE -i NONE"', eval('shellescape(v:progpath)')),
+            fmt('"%s -u NONE -i NONE"', progpath_esc),
           } or {
             eval('&shell'),
             eval('&shellcmdflag'),
-            fmt('%s -u NONE -i NONE', eval('shellescape(v:progpath)')),
+            fmt('%s -u NONE -i NONE', progpath_esc),
           }
         ),
         mode = 'terminal',
@@ -2396,7 +2526,7 @@ describe('API', function()
   it('can throw exceptions', function()
     local status, err = pcall(nvim, 'get_option_value', 'invalid-option', {})
     eq(false, status)
-    ok(err:match("Invalid 'option': 'invalid%-option'") ~= nil)
+    ok(err:match("Unknown option 'invalid%-option'") ~= nil)
   end)
 
   it('does not truncate error message <1 MB #5984', function()
@@ -2690,8 +2820,7 @@ describe('API', function()
       meths.set_current_buf(2)
       screen:expect([[
         ^some text           |
-        {1:~                   }|
-        {1:~                   }|
+        {1:~                   }|*2
                             |
       ]], {
         [1] = {bold = true, foreground = Screen.colors.Blue1},
@@ -2718,6 +2847,18 @@ describe('API', function()
       meths.buf_set_lines(2, 0, -1, true, {"test", "text"})
 
       eq(false, eval('g:fired'))
+    end)
+
+    it('TextChanged and TextChangedI do not trigger without changes', function()
+      local buf = meths.create_buf(true, false)
+      command([[let g:changed = '']])
+      meths.create_autocmd({'TextChanged', 'TextChangedI'}, {
+        buffer = buf,
+        command = 'let g:changed ..= mode()',
+      })
+      meths.set_current_buf(buf)
+      feed('i')
+      eq('', meths.get_var('changed'))
     end)
 
     it('scratch-buffer', function()
@@ -2756,8 +2897,7 @@ describe('API', function()
       meths.set_current_buf(edited_buf)
       screen:expect([[
         ^some text           |
-        {1:~                   }|
-        {1:~                   }|
+        {1:~                   }|*2
                             |
       ]])
       eq('nofile', meths.get_option_value('buftype', {buf=edited_buf}))
@@ -2769,15 +2909,16 @@ describe('API', function()
       command('bwipe')
       screen:expect([[
         ^                    |
-        {1:~                   }|
-        {1:~                   }|
+        {1:~                   }|*2
                             |
       ]])
     end)
 
     it('does not cause heap-use-after-free on exit while setting options', function()
       command('au OptionSet * q')
-      expect_exit(command, 'silent! call nvim_create_buf(0, 1)')
+      command('silent! call nvim_create_buf(0, 1)')
+      -- nowadays this works because we don't execute any spurious autocmds at all #24824
+      assert_alive()
     end)
   end)
 
@@ -3029,11 +3170,10 @@ describe('API', function()
     local screen
 
     before_each(function()
-      clear()
       screen = Screen.new(40, 8)
       screen:attach()
       screen:set_default_attr_ids({
-        [0] = {bold=true, foreground=Screen.colors.Blue},
+        [0] = {bold = true, foreground = Screen.colors.Blue},
         [1] = {bold = true, foreground = Screen.colors.SeaGreen},
         [2] = {bold = true, reverse = true},
         [3] = {foreground = Screen.colors.Brown, bold = true}, -- Statement
@@ -3047,12 +3187,7 @@ describe('API', function()
       feed(':call nvim_echo([["msg"]], v:false, {})<CR>')
       screen:expect{grid=[[
         ^                                        |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*6
         msg                                     |
       ]]}
     end)
@@ -3061,12 +3196,7 @@ describe('API', function()
       nvim_async("echo", {{"msg_a"}, {"msg_b", "Statement"}, {"msg_c", "Special"}}, true, {})
       screen:expect{grid=[[
         ^                                        |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*6
         msg_a{3:msg_b}{4:msg_c}                         |
       ]]}
     end)
@@ -3075,9 +3205,7 @@ describe('API', function()
       nvim_async("echo", {{"msg_a\nmsg_a", "Statement"}, {"msg_b", "Special"}}, true, {})
       screen:expect{grid=[[
                                                 |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*3
         {2:                                        }|
         {3:msg_a}                                   |
         {3:msg_a}{4:msg_b}                              |
@@ -3103,7 +3231,6 @@ describe('API', function()
     local screen
 
     before_each(function()
-      clear()
       screen = Screen.new(100, 35)
       screen:attach()
       screen:set_default_attr_ids({
@@ -3157,8 +3284,7 @@ describe('API', function()
         {0:~}{3:Press ENTER or type command to continue}{1:                                        }{0:                    }|
         {0:~}{4:term://~/config2/docs/pres//32693:vim --clean +smile         29,39          All}{0:                    }|
         {0:~}{1::call nvim__screenshot("smile2.cat")                                           }{0:                    }|
-        {0:~                                                                                                   }|
-        {0:~                                                                                                   }|
+        {0:~                                                                                                   }|*2
                                                                                                             |
       ]]}
     end)
@@ -3186,13 +3312,8 @@ describe('API', function()
       screen:expect{grid=[[
                                                           |
         {0:~}{1:^                                        }{0:         }|
-        {0:~}{1:                                        }{0:         }|
-        {0:~}{1:                                        }{0:         }|
-        {0:~}{1:                                        }{0:         }|
-        {0:~}{1:                                        }{0:         }|
-        {0:~                                                 }|
-        {0:~                                                 }|
-        {0:~                                                 }|
+        {0:~}{1:                                        }{0:         }|*4
+        {0:~                                                 }|*3
                                                           |
       ]]}
 
@@ -3200,13 +3321,8 @@ describe('API', function()
       screen:expect{grid=[[
                                                           |
         {0:~}{7: }{1:                                       }{0:         }|
-        {0:~}{1:                                        }{0:         }|
-        {0:~}{1:                                        }{0:         }|
-        {0:~}{1:                                        }{0:         }|
-        {0:~}{1:                                        }{0:         }|
-        {0:~                                                 }|
-        {0:~                                                 }|
-        {0:~                                                 }|
+        {0:~}{1:                                        }{0:         }|*4
+        {0:~                                                 }|*3
         {6:-- TERMINAL --}                                    |
       ]]}
 
@@ -3219,13 +3335,8 @@ describe('API', function()
       screen:expect{grid=[[
                                                           |
         {0:~}{1:herrejösses!}{7: }{1:                           }{0:         }|
-        {0:~}{1:                                        }{0:         }|
-        {0:~}{1:                                        }{0:         }|
-        {0:~}{1:                                        }{0:         }|
-        {0:~}{1:                                        }{0:         }|
-        {0:~                                                 }|
-        {0:~                                                 }|
-        {0:~                                                 }|
+        {0:~}{1:                                        }{0:         }|*4
+        {0:~                                                 }|*3
         {6:-- TERMINAL --}                                    |
       ]]}
       eq('ba\024blaherrejösses!', exec_lua [[ return stream ]])
@@ -3467,6 +3578,7 @@ describe('API', function()
       end)
     end)
   end)
+
   describe('nvim_parse_cmd', function()
     it('works', function()
       eq({
@@ -3977,8 +4089,7 @@ describe('API', function()
       screen:expect([[
         foo                                                         |
         bar                                                         |
-        {0:~                                                           }|
-        {0:~                                                           }|
+        {0:~                                                           }|*2
         {1:                                                            }|
         Entering Ex mode.  Type "visual" to go to Normal mode.      |
         :1^                                                          |
@@ -4048,7 +4159,13 @@ describe('API', function()
       meths.cmd(meths.parse_cmd("set cursorline", {}), {})
       eq(true, meths.get_option_value("cursorline", {}))
     end)
+    it('no side-effects (error messages) in pcall() #20339', function()
+      eq({ false, 'Error while parsing command line: E16: Invalid range' },
+        exec_lua([=[return {pcall(vim.api.nvim_parse_cmd, "'<,'>n", {})}]=]))
+      eq('', eval('v:errmsg'))
+    end)
   end)
+
   describe('nvim_cmd', function()
     it('works', function ()
       meths.cmd({ cmd = "set", args = { "cursorline" } }, {})
@@ -4058,12 +4175,10 @@ describe('API', function()
     it('validation', function()
       eq("Invalid 'cmd': expected non-empty String",
         pcall_err(meths.cmd, { cmd = ""}, {}))
-      eq("Invalid 'cmd': expected non-empty String",
+      eq("Invalid 'cmd': expected String, got Array",
         pcall_err(meths.cmd, { cmd = {}}, {}))
       eq("Invalid 'args': expected Array, got Boolean",
         pcall_err(meths.cmd, { cmd = "set", args = true }, {}))
-      eq("Invalid 'magic': expected Dict, got Array",
-        pcall_err(meths.cmd, { cmd = "set", args = {}, magic = {} }, {}))
       eq("Invalid command arg: expected non-whitespace",
         pcall_err(meths.cmd, { cmd = "set", args = {'  '}, }, {}))
       eq("Invalid command arg: expected valid type, got Array",
@@ -4084,7 +4199,7 @@ describe('API', function()
 
       eq("Command cannot accept count: set",
         pcall_err(meths.cmd, { cmd = "set", args = {}, count = 1 }, {}))
-      eq("Invalid 'count': expected non-negative Integer",
+      eq("Invalid 'count': expected Integer, got Boolean",
         pcall_err(meths.cmd, { cmd = "print", args = {}, count = true }, {}))
       eq("Invalid 'count': expected non-negative Integer",
         pcall_err(meths.cmd, { cmd = "print", args = {}, count = -1 }, {}))
@@ -4104,9 +4219,10 @@ describe('API', function()
       -- Lua call allows empty {} for dict item.
       eq('', exec_lua([[return vim.cmd{ cmd = "set", args = {}, magic = {} }]]))
       eq('', exec_lua([[return vim.cmd{ cmd = "set", args = {}, mods = {} }]]))
+      eq('', meths.cmd({ cmd = "set", args = {}, magic = {} }, {}))
 
       -- Lua call does not allow non-empty list-like {} for dict item.
-      eq("Invalid 'magic': expected Dict, got Array",
+      eq("Invalid 'magic': Expected Dict-like Lua table",
         pcall_err(exec_lua, [[return vim.cmd{ cmd = "set", args = {}, magic = { 'a' } }]]))
       eq("Invalid key: 'bogus'",
         pcall_err(exec_lua, [[return vim.cmd{ cmd = "set", args = {}, magic = { bogus = true } }]]))
@@ -4331,10 +4447,7 @@ describe('API', function()
       meths.cmd({cmd = 'echo', args = {[['hello']]}}, {output = true})
       screen:expect{grid=[[
         ^                                        |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*4
                                                 |
       ]]}
       exec([[
@@ -4345,10 +4458,7 @@ describe('API', function()
       feed([[:echon 1 | call Print() | echon 5<CR>]])
       screen:expect{grid=[[
         ^                                        |
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
-        {0:~                                       }|
+        {0:~                                       }|*4
         15                                      |
       ]]}
     end)
@@ -4357,8 +4467,6 @@ describe('API', function()
       eq('1', meths.cmd({cmd = 'echo', args = {true}}, {output = true}))
     end)
     describe('first argument as count', function()
-      before_each(clear)
-
       it('works', function()
         command('vsplit | enew')
         meths.cmd({cmd = 'bdelete', args = {meths.get_current_buf()}}, {})
@@ -4369,6 +4477,25 @@ describe('API', function()
         meths.cmd({cmd = 'sleep', args = {'100m'}}, {})
         ok(luv.now() - start <= 300)
       end)
+    end)
+    it(':call with unknown function does not crash #26289', function()
+      eq('Vim:E117: Unknown function: UnknownFunc',
+         pcall_err(meths.cmd, {cmd = 'call', args = {'UnknownFunc()'}}, {}))
+    end)
+    it(':throw does not crash #24556', function()
+      eq('42', pcall_err(meths.cmd, {cmd = 'throw', args = {'42'}}, {}))
+    end)
+    it('can use :return #24556', function()
+      exec([[
+        func Foo()
+          let g:pos = 'before'
+          call nvim_cmd({'cmd': 'return', 'args': ['[1, 2, 3]']}, {})
+          let g:pos = 'after'
+        endfunc
+        let g:result = Foo()
+      ]])
+      eq('before', meths.get_var('pos'))
+      eq({1, 2, 3}, meths.get_var('result'))
     end)
   end)
 end)

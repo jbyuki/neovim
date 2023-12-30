@@ -3,6 +3,7 @@
 Neovim is a very powerful editor that has many commands, too many to explain in
 a tutorial such as this. This tutorial is designed to describe enough of the
 commands that you will be able to easily use Neovim as an all-purpose editor.
+
 It is IMPORTANT to remember that this tutorial is set up to teach by use. That
 means that you need to do the exercises to learn them properly. If you only
 read the text, you will soon forget what is most important!
@@ -19,17 +20,16 @@ pressing [<Esc>](<Esc>) and then [u](u) will undo the latest change.
 This tutorial is interactive, and there are a few things you should know.
 - Type [<Enter>](<Enter>) on links [like this](holy-grail    ) to open the linked help section.
 - Or simply type [K](K) on any word to find its documentation!
-- You can close this help window with `:q`{vim}
-- Sometimes you will be required to modify text like
+- You can close this help window with `:q`{vim} `<Enter>`{normal}
 
-    this here
-
+When there is a ✗ sign at the left, you will be required to modify text.
 Once you have done the changes correctly, the ✗ sign at the left will change
 to ✓. I imagine you can already see how neat Neovim can be.
+
 Other times, you'll be prompted to run a command (I'll explain this later):
-~~~ cmd
-    :help <Enter>
-~~~
+
+    `:help`{vim} `<Enter>`{normal}
+
 or press a sequence of keys
 ~~~ normal
     <Esc>0f<Space>d3wP$P
@@ -70,19 +70,19 @@ NOTE: The cursor keys should also work. But using hjkl you will be able to
 
  2. Type:
 
-    `:q!`{vim} `<Enter>`{normal}.
+    `:q!`{vim} `<Enter>`{normal}
 
     This quits the editor, DISCARDING any changes you have made.
 
  3. Open Neovim and get back here by executing the command that got you into
     this tutorial. That might be:
 
-    :Tutor <Enter>
+    `:Tutor`{vim} `<Enter>`{normal}
 
  4. If you have these steps memorized and are confident, execute steps
     1 through 3 to exit and re-enter the editor.
 
-NOTE: [:q!](:q) <Enter> discards any changes you made. In a few lessons you
+NOTE: [:q!](:q) `<Enter>`{normal} discards any changes you made. In a few lessons you
       will learn how to save the changes to a file.
 
  5. Move the cursor down to Lesson 1.3.
@@ -438,7 +438,7 @@ Notice that [c](c)e deletes the word and places you in Insert mode.
  5. Type `c$`{normal} and type the rest of the line like the second and press `<Esc>`{normal}.
 
 The end of this line needs some help to make it like the second.
-The end of this line needs to be corrected using the `c$`{normal} command.
+The end of this line needs to be corrected using the c$ command.
 
 NOTE: You can use the Backspace key to correct mistakes while typing.
 
@@ -629,7 +629,7 @@ NOTE: All `:`{vim} commands are executed when you press `<Enter>`{normal}.
 
 ** To save the changes made to the text, type `:w`{vim} FILENAME. **
 
- 1. Type `:!ls`{vim} to get a listing of your directory.
+ 1. Type `:!{unix:(ls),win:(dir)}`{vim} to get a listing of your directory.
     You already know you must hit `<Enter>`{normal} after this.
 
  2. Choose a filename that does not exist yet, such as TEST.
@@ -641,14 +641,14 @@ NOTE: All `:`{vim} commands are executed when you press `<Enter>`{normal}.
    (where TEST is the filename you chose.)
 
  4. This saves the current file under the name TEST.
-    To verify this, type `:!ls`{vim} again to see your directory.
+    To verify this, type `:!{unix:(ls),win:(dir)}`{vim} again to see your directory.
 
 NOTE: If you were to exit Neovim and start it again with `nvim TEST`, the file
       would be an exact copy of the tutorial when you saved it.
 
  5. Now remove the file by typing:
 ~~~ cmd
-        :!rm TEST
+        :!{unix:(rm),win:(del)} TEST
 ~~~
 # Lesson 5.3: SELECTING TEXT TO WRITE
 
@@ -675,7 +675,7 @@ NOTE: If you were to exit Neovim and start it again with `nvim TEST`, the file
 
     before you press `<Enter>`{normal}.
 
- 5. Neovim will write the selected lines to the file TEST. Use `:!ls`{vim} to see it.
+ 5. Neovim will write the selected lines to the file TEST. Use `:!{unix:(ls),win:(dir)}`{vim} to see it.
     Do not remove it yet! We will use it in the next lesson.
 
 NOTE: Pressing [v](v) starts [Visual selection](visual-mode). You can move the cursor around to
@@ -703,7 +703,7 @@ NOTE:  After executing Step 2 you will see text from Lesson 5.3. Then move
 
 NOTE: You can also read the output of an external command. For example,
 
-        `:r !ls`{vim}
+        `:r !{unix:(ls),win:(dir)}`{vim}
 
       reads the output of the `ls` command and puts it below the cursor.
 
@@ -712,8 +712,8 @@ NOTE: You can also read the output of an external command. For example,
  1. [:!command](:!cmd) executes an external command.
 
      Some useful examples are:
-     `:!ls`{vim}                    - shows a directory listing
-     `:!rm FILENAME`{vim}           - removes file FILENAME
+     `:!{unix:(ls ),win:(dir)}`{vim}                   - shows a directory listing
+     `:!{unix:(rm ),win:(del)} FILENAME`{vim}          - removes file FILENAME
 
  2. [:w](:w) FILENAME              writes the current Neovim file to disk with
                              name FILENAME.
@@ -724,7 +724,7 @@ NOTE: You can also read the output of an external command. For example,
  4. [:r](:r) FILENAME              retrieves disk file FILENAME and puts it
                              below the cursor position.
 
- 5. [:r !dir](:r!)                  reads the output of the dir command and
+ 5. {unix:([:r !ls](:r!) ),win:([:r !dir](:r!))}                  reads the output of the {unix:(ls),win:(dir)} command and
                              puts it below the cursor position.
 
 # Lesson 6.1: THE OPEN COMMAND
@@ -928,7 +928,7 @@ To start using more features create an "init.vim" file.
 
 ** Command line completion with `<C-d>`{normal} and `<Tab>`{normal}. **
 
- 1. List the contents of the current directory: `:!ls`{vim}
+ 1. List the contents of the current directory: `:!{unix:(ls),win:(dir)}`{vim}
 
  2. Type the start of a command: `:e`{vim}
 

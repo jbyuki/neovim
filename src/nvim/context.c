@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 // Context: snapshot of the entire editor state as one big object/map
 
 #include <assert.h>
@@ -9,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "nvim/api/keysets_defs.h"
 #include "nvim/api/private/converter.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
@@ -16,14 +14,11 @@
 #include "nvim/context.h"
 #include "nvim/eval/encode.h"
 #include "nvim/eval/typval.h"
-#include "nvim/eval/typval_defs.h"
 #include "nvim/eval/userfunc.h"
 #include "nvim/ex_docmd.h"
-#include "nvim/gettext.h"
 #include "nvim/hashtab.h"
 #include "nvim/keycodes.h"
 #include "nvim/memory.h"
-#include "nvim/message.h"
 #include "nvim/option.h"
 #include "nvim/shada.h"
 
@@ -143,8 +138,8 @@ bool ctx_restore(Context *ctx, const int flags)
     free_ctx = true;
   }
 
-  OptVal op_shada = get_option_value("shada", NULL, OPT_GLOBAL, NULL);
-  set_option_value("shada", STATIC_CSTR_AS_OPTVAL("!,'100,%"), OPT_GLOBAL);
+  OptVal op_shada = get_option_value(kOptShada, OPT_GLOBAL);
+  set_option_value(kOptShada, STATIC_CSTR_AS_OPTVAL("!,'100,%"), OPT_GLOBAL);
 
   if (flags & kCtxRegs) {
     ctx_restore_regs(ctx);
@@ -170,7 +165,7 @@ bool ctx_restore(Context *ctx, const int flags)
     ctx_free(ctx);
   }
 
-  set_option_value("shada", op_shada, OPT_GLOBAL);
+  set_option_value(kOptShada, op_shada, OPT_GLOBAL);
   optval_free(op_shada);
 
   return true;
@@ -271,8 +266,7 @@ static inline void ctx_save_funcs(Context *ctx, bool scriptonly)
       size_t cmd_len = sizeof("func! ") + strlen(name);
       char *cmd = xmalloc(cmd_len);
       snprintf(cmd, cmd_len, "func! %s", name);
-      Dict(exec_opts) opts = { 0 };
-      opts.output = BOOLEAN_OBJ(true);
+      Dict(exec_opts) opts = { .output = true };
       String func_body = exec_impl(VIML_INTERNAL_CALL, cstr_as_string(cmd),
                                    &opts, &err);
       xfree(cmd);
@@ -322,24 +316,26 @@ static inline Array sbuf_to_array(msgpack_sbuffer sbuf)
 /// Convert readfile()-style array to msgpack_sbuffer.
 ///
 /// @param[in]  array  readfile()-style array to convert.
+/// @param[out]  err   Error object.
 ///
 /// @return msgpack_sbuffer with conversion result.
-static inline msgpack_sbuffer array_to_sbuf(Array array)
+static inline msgpack_sbuffer array_to_sbuf(Array array, Error *err)
+  FUNC_ATTR_NONNULL_ALL
 {
   msgpack_sbuffer sbuf;
   msgpack_sbuffer_init(&sbuf);
 
   typval_T list_tv;
-  Error err = ERROR_INIT;
-  object_to_vim(ARRAY_OBJ(array), &list_tv, &err);
+  object_to_vim(ARRAY_OBJ(array), &list_tv, err);
 
+  assert(list_tv.v_type == VAR_LIST);
   if (!encode_vim_list_to_buf(list_tv.vval.v_list, &sbuf.size, &sbuf.data)) {
-    emsg(_("E474: Failed to convert list to msgpack string buffer"));
+    api_set_error(err, kErrorTypeException, "%s",
+                  "E474: Failed to convert list to msgpack string buffer");
   }
   sbuf.alloc = sbuf.size;
 
   tv_clear(&list_tv);
-  api_clear_error(&err);
   return sbuf;
 }
 
@@ -368,31 +364,32 @@ Dictionary ctx_to_dict(Context *ctx)
 ///
 /// @param[in]   dict  Context Dictionary representation.
 /// @param[out]  ctx   Context object to store conversion result into.
+/// @param[out]  err   Error object.
 ///
 /// @return types of included context items.
-int ctx_from_dict(Dictionary dict, Context *ctx)
+int ctx_from_dict(Dictionary dict, Context *ctx, Error *err)
   FUNC_ATTR_NONNULL_ALL
 {
   assert(ctx != NULL);
 
   int types = 0;
-  for (size_t i = 0; i < dict.size; i++) {
+  for (size_t i = 0; i < dict.size && !ERROR_SET(err); i++) {
     KeyValuePair item = dict.items[i];
     if (item.value.type != kObjectTypeArray) {
       continue;
     }
     if (strequal(item.key.data, "regs")) {
       types |= kCtxRegs;
-      ctx->regs = array_to_sbuf(item.value.data.array);
+      ctx->regs = array_to_sbuf(item.value.data.array, err);
     } else if (strequal(item.key.data, "jumps")) {
       types |= kCtxJumps;
-      ctx->jumps = array_to_sbuf(item.value.data.array);
+      ctx->jumps = array_to_sbuf(item.value.data.array, err);
     } else if (strequal(item.key.data, "bufs")) {
       types |= kCtxBufs;
-      ctx->bufs = array_to_sbuf(item.value.data.array);
+      ctx->bufs = array_to_sbuf(item.value.data.array, err);
     } else if (strequal(item.key.data, "gvars")) {
       types |= kCtxGVars;
-      ctx->gvars = array_to_sbuf(item.value.data.array);
+      ctx->gvars = array_to_sbuf(item.value.data.array, err);
     } else if (strequal(item.key.data, "funcs")) {
       types |= kCtxFuncs;
       ctx->funcs = copy_object(item.value, NULL).data.array;

@@ -43,6 +43,11 @@ describe('autocmd api', function()
         group = 0,
         command = 'ls',
       }))
+
+      eq("Invalid 'event': 'foo'", pcall_err(meths.create_autocmd, 'foo', { command = '' }))
+      eq("Invalid 'event': 'VimEnter '", pcall_err(meths.create_autocmd, 'VimEnter ', { command = '' }))
+      eq("Invalid 'event': 'VimEnter foo'", pcall_err(meths.create_autocmd, 'VimEnter foo', { command = '' }))
+      eq("Invalid 'event': 'BufAdd,BufDelete'", pcall_err(meths.create_autocmd, 'BufAdd,BufDelete', { command = '' }))
     end)
 
     it('doesnt leak when you use ++once', function()
@@ -737,7 +742,7 @@ describe('autocmd api', function()
       eq("Invalid 'group': 0", pcall_err(meths.exec_autocmds, 'FileType', {
         group = 0,
       }))
-      eq("Invalid 'buffer': expected Integer, got Array", pcall_err(meths.exec_autocmds, 'FileType', {
+      eq("Invalid 'buffer': expected Buffer, got Array", pcall_err(meths.exec_autocmds, 'FileType', {
         buffer = {},
       }))
       eq("Invalid 'event' item: expected String, got Array", pcall_err(meths.exec_autocmds,
@@ -1328,7 +1333,7 @@ describe('autocmd api', function()
       local without_group = meths.get_autocmds(search)
       eq(2, #without_group)
 
-      -- Doest clear with passing group.
+      -- Doesn't clear with passing group.
       meths.clear_autocmds { buffer = 0, group = search.group }
       local with_group = meths.get_autocmds(search)
       eq(1, #with_group)

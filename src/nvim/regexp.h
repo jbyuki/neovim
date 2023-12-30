@@ -1,9 +1,9 @@
-#ifndef NVIM_REGEXP_H
-#define NVIM_REGEXP_H
+#pragma once
 
-#include "nvim/buffer_defs.h"
-#include "nvim/regexp_defs.h"
-#include "nvim/types.h"
+#include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
+#include "nvim/pos_defs.h"  // IWYU pragma: keep
+#include "nvim/regexp_defs.h"  // IWYU pragma: export
+#include "nvim/types_defs.h"  // IWYU pragma: keep
 
 // Second argument for vim_regcomp().
 #define RE_MAGIC        1       ///< 'magic' option
@@ -17,12 +17,6 @@
 #define REX_USE        2       ///< to allow \z\1 et al.
 #define REX_ALL       (REX_SET | REX_USE)
 
-// regexp.c
-// uncrustify:off
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "regexp.h.generated.h"
-# include "regexp_bt.h.generated.h"
 #endif
-// uncrustify:on
-
-#endif  // NVIM_REGEXP_H

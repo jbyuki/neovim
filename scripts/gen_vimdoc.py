@@ -42,9 +42,12 @@ import subprocess
 import collections
 import msgpack
 import logging
+from typing import Tuple
 from pathlib import Path
 
 from xml.dom import minidom
+Element = minidom.Element
+Document = minidom.Document
 
 MIN_PYTHON_VERSION = (3, 6)
 MIN_DOXYGEN_VERSION = (1, 9, 0)
@@ -133,7 +136,7 @@ CONFIG = {
         # Section helptag.
         'helptag_fmt': lambda name: f'*api-{name.lower()}*',
         # Per-function helptag.
-        'fn_helptag_fmt': lambda fstem, name: f'*{name}()*',
+        'fn_helptag_fmt': lambda fstem, name, istbl: f'*{name}()*',
         # Module name overrides (for Lua).
         'module_override': {},
         # Append the docs for these modules, do not start a new section.
@@ -143,6 +146,15 @@ CONFIG = {
         'mode': 'lua',
         'filename': 'lua.txt',
         'section_order': [
+            'highlight.lua',
+            'regex.lua',
+            'diff.lua',
+            'mpack.lua',
+            'json.lua',
+            'base64.lua',
+            'spell.lua',
+            'builtin.lua',
+            '_options.lua',
             '_editor.lua',
             '_inspector.lua',
             'shared.lua',
@@ -155,10 +167,13 @@ CONFIG = {
             'secure.lua',
             'version.lua',
             'iter.lua',
+            'snippet.lua',
+            'text.lua',
         ],
         'files': [
             'runtime/lua/vim/iter.lua',
             'runtime/lua/vim/_editor.lua',
+            'runtime/lua/vim/_options.lua',
             'runtime/lua/vim/shared.lua',
             'runtime/lua/vim/loader.lua',
             'runtime/lua/vim/uri.lua',
@@ -166,30 +181,53 @@ CONFIG = {
             'runtime/lua/vim/filetype.lua',
             'runtime/lua/vim/keymap.lua',
             'runtime/lua/vim/fs.lua',
+            'runtime/lua/vim/highlight.lua',
             'runtime/lua/vim/secure.lua',
             'runtime/lua/vim/version.lua',
             'runtime/lua/vim/_inspector.lua',
+            'runtime/lua/vim/snippet.lua',
+            'runtime/lua/vim/text.lua',
+            'runtime/lua/vim/_meta/builtin.lua',
+            'runtime/lua/vim/_meta/diff.lua',
+            'runtime/lua/vim/_meta/mpack.lua',
+            'runtime/lua/vim/_meta/json.lua',
+            'runtime/lua/vim/_meta/base64.lua',
+            'runtime/lua/vim/_meta/regex.lua',
+            'runtime/lua/vim/_meta/spell.lua',
         ],
         'file_patterns': '*.lua',
         'fn_name_prefix': '',
+        'fn_name_fmt': lambda fstem, name: (
+            name if fstem in [ 'vim.iter' ] else
+            f'vim.{name}' if fstem in [ '_editor', 'vim.regex'] else
+            f'vim.{name}' if fstem == '_options' and not name[0].isupper() else
+            f'{fstem}.{name}' if fstem.startswith('vim') else
+            name
+        ),
         'section_name': {
             'lsp.lua': 'core',
             '_inspector.lua': 'inspector',
         },
         'section_fmt': lambda name: (
-            'Lua module: vim'
-            if name.lower() == '_editor'
-            else f'Lua module: {name.lower()}'),
+            'Lua module: vim' if name.lower() == '_editor' else
+            'LUA-VIMSCRIPT BRIDGE' if name.lower() == '_options' else
+            f'VIM.{name.upper()}' if name.lower() in [ 'highlight', 'mpack', 'json', 'base64', 'diff', 'spell', 'regex' ] else
+            'VIM' if name.lower() == 'builtin' else
+            f'Lua module: vim.{name.lower()}'),
         'helptag_fmt': lambda name: (
-            '*lua-vim*'
-            if name.lower() == '_editor'
-            else f'*lua-{name.lower()}*'),
-        'fn_helptag_fmt': lambda fstem, name: (
-            f'*vim.{name}()*'
-            if fstem.lower() == '_editor'
-            else f'*{name}()*'
-            if name[0].isupper()
-            else f'*{fstem}.{name}()*'),
+            '*lua-vim*' if name.lower() == '_editor' else
+            '*lua-vimscript*' if name.lower() == '_options' else
+            f'*vim.{name.lower()}*'),
+        'fn_helptag_fmt': lambda fstem, name, istbl: (
+            f'*vim.opt:{name.split(":")[-1]}()*' if ':' in name and name.startswith('Option') else
+            # Exclude fstem for methods
+            f'*{name}()*' if ':' in name else
+            f'*vim.{name}()*' if fstem.lower() == '_editor' else
+            f'*vim.{name}*' if fstem.lower() == '_options' and istbl else
+            # Prevents vim.regex.regex
+            f'*{fstem}()*' if fstem.endswith('.' + name) else
+            f'*{fstem}.{name}{"" if istbl else "()"}*'
+            ),
         'module_override': {
             # `shared` functions are exposed on the `vim` module.
             'shared': 'vim',
@@ -200,9 +238,19 @@ CONFIG = {
             'filetype': 'vim.filetype',
             'keymap': 'vim.keymap',
             'fs': 'vim.fs',
+            'highlight': 'vim.highlight',
             'secure': 'vim.secure',
             'version': 'vim.version',
             'iter': 'vim.iter',
+            'diff': 'vim',
+            'builtin': 'vim',
+            'mpack': 'vim.mpack',
+            'json': 'vim.json',
+            'base64': 'vim.base64',
+            'regex': 'vim.regex',
+            'spell': 'vim.spell',
+            'snippet': 'vim.snippet',
+            'text': 'vim.text',
         },
         'append_only': [
             'shared.lua',
@@ -216,6 +264,7 @@ CONFIG = {
             'buf.lua',
             'diagnostic.lua',
             'codelens.lua',
+            'inlay_hint.lua',
             'tagfunc.lua',
             'semantic_tokens.lua',
             'handlers.lua',
@@ -239,14 +288,11 @@ CONFIG = {
             '*lsp-core*'
             if name.lower() == 'lsp'
             else f'*lsp-{name.lower()}*'),
-        'fn_helptag_fmt': lambda fstem, name: (
-            f'*vim.lsp.{name}()*'
-            if fstem == 'lsp' and name != 'client'
-            else (
-                '*vim.lsp.client*'
-                # HACK. TODO(justinmk): class/structure support in lua2dox
-                if 'lsp.client' == f'{fstem}.{name}'
-                else f'*vim.lsp.{fstem}.{name}()*')),
+        'fn_helptag_fmt': lambda fstem, name, istbl: (
+            f'*vim.lsp.{name}{"" if istbl else "()"}*' if fstem == 'lsp' and name != 'client' else
+            # HACK. TODO(justinmk): class/structure support in lua2dox
+            '*vim.lsp.client*' if 'lsp.client' == f'{fstem}.{name}' else
+            f'*vim.lsp.{fstem}.{name}{"" if istbl else "()"}*'),
         'module_override': {},
         'append_only': [],
     },
@@ -259,10 +305,11 @@ CONFIG = {
         'files': ['runtime/lua/vim/diagnostic.lua'],
         'file_patterns': '*.lua',
         'fn_name_prefix': '',
+        'include_tables': False,
         'section_name': {'diagnostic.lua': 'diagnostic'},
         'section_fmt': lambda _: 'Lua module: vim.diagnostic',
         'helptag_fmt': lambda _: '*diagnostic-api*',
-        'fn_helptag_fmt': lambda fstem, name: f'*vim.{fstem}.{name}()*',
+        'fn_helptag_fmt': lambda fstem, name, istbl: f'*vim.{fstem}.{name}{"" if istbl else "()"}*',
         'module_override': {},
         'append_only': [],
     },
@@ -292,7 +339,7 @@ CONFIG = {
             '*lua-treesitter-core*'
             if name.lower() == 'treesitter'
             else f'*lua-treesitter-{name.lower()}*'),
-        'fn_helptag_fmt': lambda fstem, name: (
+        'fn_helptag_fmt': lambda fstem, name, istbl: (
             f'*vim.{fstem}.{name}()*'
             if fstem == 'treesitter'
             else f'*{name}()*'
@@ -310,10 +357,35 @@ param_exclude = (
 # Annotations are displayed as line items after API function descriptions.
 annotation_map = {
     'FUNC_API_FAST': '|api-fast|',
-    'FUNC_API_CHECK_TEXTLOCK': 'not allowed when |textlock| is active',
+    'FUNC_API_TEXTLOCK': 'not allowed when |textlock| is active or in the |cmdwin|',
+    'FUNC_API_TEXTLOCK_ALLOW_CMDWIN': 'not allowed when |textlock| is active',
     'FUNC_API_REMOTE_ONLY': '|RPC| only',
     'FUNC_API_LUA_ONLY': 'Lua |vim.api| only',
 }
+
+
+def nvim_api_info() -> Tuple[int, bool]:
+    """Returns NVIM_API_LEVEL, NVIM_API_PRERELEASE from CMakeLists.txt"""
+    if not hasattr(nvim_api_info, 'LEVEL'):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        cmake_file_path = os.path.join(script_dir, '..', 'CMakeLists.txt')
+        with open(cmake_file_path, 'r') as cmake_file:
+            cmake_content = cmake_file.read()
+
+        api_level_match = re.search(r'set\(NVIM_API_LEVEL (\d+)\)', cmake_content)
+        api_prerelease_match = re.search(
+            r'set\(NVIM_API_PRERELEASE (\w+)\)', cmake_content
+        )
+
+        if not api_level_match or not api_prerelease_match:
+            raise RuntimeError(
+                'Could not find NVIM_API_LEVEL or NVIM_API_PRERELEASE in CMakeLists.txt'
+            )
+
+        nvim_api_info.LEVEL = int(api_level_match.group(1))
+        nvim_api_info.PRERELEASE = api_prerelease_match.group(1).lower() == 'true'
+
+    return nvim_api_info.LEVEL, nvim_api_info.PRERELEASE
 
 
 # Raises an error with details about `o`, if `cond` is in object `o`,
@@ -403,7 +475,7 @@ def is_blank(text):
     return '' == clean_lines(text)
 
 
-def get_text(n, preformatted=False):
+def get_text(n):
     """Recursively concatenates all text in a node tree."""
     text = ''
     if n.nodeType == n.TEXT_NODE:
@@ -412,11 +484,13 @@ def get_text(n, preformatted=False):
         for node in n.childNodes:
             text += get_text(node)
         return '`{}`'.format(text)
+    if n.nodeName == 'sp': # space, used in "programlisting" nodes
+        return ' '
     for node in n.childNodes:
         if node.nodeType == node.TEXT_NODE:
             text += node.data
         elif node.nodeType == node.ELEMENT_NODE:
-            text += get_text(node, preformatted)
+            text += get_text(node)
     return text
 
 
@@ -534,15 +608,24 @@ def render_node(n, text, prefix='', indent='', width=text_width - indentation,
     # text += (int(not space_preceding) * ' ')
 
     if n.nodeName == 'preformatted':
-        o = get_text(n, preformatted=True)
+        o = get_text(n)
         ensure_nl = '' if o[-1] == '\n' else '\n'
         if o[0:4] == 'lua\n':
             text += '>lua{}{}\n<'.format(ensure_nl, o[3:-1])
         elif o[0:4] == 'vim\n':
             text += '>vim{}{}\n<'.format(ensure_nl, o[3:-1])
+        elif o[0:5] == 'help\n':
+            text += o[4:-1]
         else:
             text += '>{}{}\n<'.format(ensure_nl, o)
+    elif n.nodeName == 'programlisting': # codeblock (```)
+        o = get_text(n)
+        text += '>'
+        if 'filename' in n.attributes:
+            filename = n.attributes['filename'].value
+            text += filename.lstrip('.')
 
+        text += '\n{}\n<'.format(textwrap.indent(o, ' ' * 4))
     elif is_inline(n):
         text = doc_wrap(get_text(n), prefix=prefix, indent=indent, width=width)
     elif n.nodeName == 'verbatim':
@@ -584,10 +667,12 @@ def render_node(n, text, prefix='', indent='', width=text_width - indentation,
                                               indent=indent, width=width))
             i = i + 1
     elif n.nodeName == 'simplesect' and 'note' == n.getAttribute('kind'):
-        text += '\nNote:\n    '
+        text += ind('  ')
         for c in n.childNodes:
-            text += render_node(c, text, indent='    ', width=width)
-        text += '\n'
+            if is_blank(render_node(c, text, prefix='• ', indent='    ', width=width)):
+                continue
+            text += render_node(c, text, prefix='• ', indent='    ', width=width)
+        # text += '\n'
     elif n.nodeName == 'simplesect' and 'warning' == n.getAttribute('kind'):
         text += 'Warning:\n    '
         for c in n.childNodes:
@@ -619,6 +704,7 @@ def para_as_map(parent, indent='', width=text_width - indentation, fmt_vimhelp=F
 
     Keys:
         'text': Text from this <para> element
+        'note': List of @note strings
         'params': <parameterlist> map
         'return': List of @return strings
         'seealso': List of @see strings
@@ -626,14 +712,17 @@ def para_as_map(parent, indent='', width=text_width - indentation, fmt_vimhelp=F
     """
     chunks = {
         'text': '',
+        'note': [],
         'params': collections.OrderedDict(),
         'return': [],
         'seealso': [],
+        'prerelease': False,
         'xrefs': []
     }
 
     # Ordered dict of ordered lists.
     groups = collections.OrderedDict([
+        ('note', []),
         ('params', []),
         ('return', []),
         ('seealso', []),
@@ -644,7 +733,6 @@ def para_as_map(parent, indent='', width=text_width - indentation, fmt_vimhelp=F
     # nodes to appear together.
     text = ''
     kind = ''
-    last = ''
     if is_inline(parent):
         # Flatten inline text from a tree of non-block nodes.
         text = doc_wrap(render_node(parent, "", fmt_vimhelp=fmt_vimhelp),
@@ -657,15 +745,24 @@ def para_as_map(parent, indent='', width=text_width - indentation, fmt_vimhelp=F
             elif child.nodeName == 'xrefsect':
                 groups['xrefs'].append(child)
             elif child.nodeName == 'simplesect':
-                last = kind
                 kind = child.getAttribute('kind')
-                if kind == 'return' or (kind == 'note' and last == 'return'):
+                if kind == 'note':
+                    groups['note'].append(child)
+                elif kind == 'return':
                     groups['return'].append(child)
                 elif kind == 'see':
                     groups['seealso'].append(child)
-                elif kind in ('note', 'warning'):
+                elif kind == 'warning':
                     text += render_node(child, text, indent=indent,
                                         width=width, fmt_vimhelp=fmt_vimhelp)
+                elif kind == 'since':
+                    since_match = re.match(r'^(\d+)', get_text(child))
+                    since = int(since_match.group(1)) if since_match else 0
+                    NVIM_API_LEVEL, NVIM_API_PRERELEASE = nvim_api_info()
+                    if since > NVIM_API_LEVEL or (
+                        since == NVIM_API_LEVEL and NVIM_API_PRERELEASE
+                    ):
+                        chunks['prerelease'] = True
                 else:
                     raise RuntimeError('unhandled simplesect: {}\n{}'.format(
                         child.nodeName, child.toprettyxml(indent='  ', newl='\n')))
@@ -688,6 +785,9 @@ def para_as_map(parent, indent='', width=text_width - indentation, fmt_vimhelp=F
     if len(groups['params']) > 0:
         for child in groups['params']:
             update_params_map(child, ret_map=chunks['params'], width=width)
+    for child in groups['note']:
+        chunks['note'].append(render_node(
+            child, '', indent=indent, width=width, fmt_vimhelp=fmt_vimhelp).rstrip())
     for child in groups['return']:
         chunks['return'].append(render_node(
             child, '', indent=indent, width=width, fmt_vimhelp=fmt_vimhelp))
@@ -711,8 +811,28 @@ def para_as_map(parent, indent='', width=text_width - indentation, fmt_vimhelp=F
 
     return chunks, xrefs
 
+def is_program_listing(para):
+    """
+    Return True if `para` contains a "programlisting" (i.e. a Markdown code
+    block ```).
 
-def fmt_node_as_vimhelp(parent, width=text_width - indentation, indent='',
+    Sometimes a <para> element will have only a single "programlisting" child
+    node, but othertimes it will have extra whitespace around the
+    "programlisting" node.
+
+    @param para XML <para> node
+    @return True if <para> is a programlisting
+    """
+
+    # Remove any child text nodes that are only whitespace
+    children = [
+        n for n in para.childNodes
+        if n.nodeType != n.TEXT_NODE or n.data.strip() != ''
+    ]
+
+    return len(children) == 1 and children[0].nodeName == 'programlisting'
+
+def fmt_node_as_vimhelp(parent: Element, width=text_width - indentation, indent='',
                         fmt_vimhelp=False):
     """Renders (nested) Doxygen <para> nodes as Vim :help text.
 
@@ -725,6 +845,8 @@ def fmt_node_as_vimhelp(parent, width=text_width - indentation, indent='',
         max_name_len = max_name(m.keys()) + 4
         out = ''
         for name, desc in m.items():
+            if name == 'self':
+                continue
             name = '  • {}'.format('{{{}}}'.format(name).ljust(max_name_len))
             out += '{}{}\n'.format(name, desc)
         return out.rstrip()
@@ -738,13 +860,28 @@ def fmt_node_as_vimhelp(parent, width=text_width - indentation, indent='',
     for child in parent.childNodes:
         para, _ = para_as_map(child, indent, width, fmt_vimhelp)
 
+        # 'programlisting' blocks are Markdown code blocks. Do not include
+        # these as a separate paragraph, but append to the last non-empty line
+        # in the text
+        if is_program_listing(child):
+            while rendered_blocks and rendered_blocks[-1] == '':
+                rendered_blocks.pop()
+            rendered_blocks[-1] += ' ' + para['text']
+            continue
+
         # Generate text from the gathered items.
         chunks = [para['text']]
+        notes = ["    This API is pre-release (unstable)."] if para['prerelease'] else []
+        notes += para['note']
+        if len(notes) > 0:
+            chunks.append('\nNote: ~')
+            for s in notes:
+                chunks.append(s)
         if len(para['params']) > 0 and has_nonexcluded_params(para['params']):
             chunks.append('\nParameters: ~')
             chunks.append(fmt_param_doc(para['params']))
         if len(para['return']) > 0:
-            chunks.append('\nReturn: ~')
+            chunks.append('\nReturn (multiple): ~' if len(para['return']) > 1 else '\nReturn: ~')
             for s in para['return']:
                 chunks.append(s)
         if len(para['seealso']) > 0:
@@ -788,6 +925,13 @@ def extract_from_xml(filename, target, width, fmt_vimhelp):
 
         return_type = get_text(get_child(member, 'type'))
         if return_type == '':
+            continue
+
+        if 'local_function' in return_type:  # Special from lua2dox.lua.
+            continue
+
+        istbl = return_type.startswith('table')  # Special from lua2dox.lua.
+        if istbl and not CONFIG[target].get('include_tables', True):
             continue
 
         if return_type.startswith(('ArrayOf', 'DictionaryOf')):
@@ -838,6 +982,7 @@ def extract_from_xml(filename, target, width, fmt_vimhelp):
                 and any(x[1] == 'self' for x in params):
             split_return = return_type.split(' ')
             name = f'{split_return[1]}:{name}'
+            params = [x for x in params if x[1] != 'self']
 
         c_args = []
         for param_type, param_name in params:
@@ -851,12 +996,20 @@ def extract_from_xml(filename, target, width, fmt_vimhelp):
             if '.' in compoundname:
                 fstem = compoundname.split('.')[0]
                 fstem = CONFIG[target]['module_override'].get(fstem, fstem)
-            vimtag = CONFIG[target]['fn_helptag_fmt'](fstem, name)
+            vimtag = CONFIG[target]['fn_helptag_fmt'](fstem, name, istbl)
 
-        prefix = '%s(' % name
-        suffix = '%s)' % ', '.join('{%s}' % a[1] for a in params
-                                   if a[0] not in ('void', 'Error', 'Arena',
-                                                   'lua_State'))
+            if 'fn_name_fmt' in CONFIG[target]:
+                name = CONFIG[target]['fn_name_fmt'](fstem, name)
+
+        if istbl:
+            aopen, aclose = '', ''
+        else:
+            aopen, aclose = '(', ')'
+
+        prefix = name + aopen
+        suffix = ', '.join('{%s}' % a[1] for a in params
+                           if a[0] not in ('void', 'Error', 'Arena',
+                                           'lua_State')) + aclose
 
         if not fmt_vimhelp:
             c_decl = '%s %s(%s);' % (return_type, name, ', '.join(c_args))
@@ -1034,6 +1187,42 @@ def delete_lines_below(filename, tokenstr):
         fp.writelines(lines[0:i])
 
 
+def extract_defgroups(base: str, dom: Document):
+    '''Generate module-level (section) docs (@defgroup).'''
+    section_docs = {}
+
+    for compound in dom.getElementsByTagName('compound'):
+        if compound.getAttribute('kind') != 'group':
+            continue
+
+        # Doxygen "@defgroup" directive.
+        groupname = get_text(find_first(compound, 'name'))
+        groupxml = os.path.join(base, '%s.xml' %
+                                compound.getAttribute('refid'))
+
+        group_parsed = minidom.parse(groupxml)
+        doc_list = []
+        brief_desc = find_first(group_parsed, 'briefdescription')
+        if brief_desc:
+            for child in brief_desc.childNodes:
+                doc_list.append(fmt_node_as_vimhelp(child))
+
+        desc = find_first(group_parsed, 'detaileddescription')
+        if desc:
+            doc = fmt_node_as_vimhelp(desc)
+
+            if doc:
+                doc_list.append(doc)
+
+        # Can't use '.' in @defgroup, so convert to '--'
+        # "vim.json" => "vim-dot-json"
+        groupname = groupname.replace('-dot-', '.')
+
+        section_docs[groupname] = "\n".join(doc_list)
+
+    return section_docs
+
+
 def main(doxygen_config, args):
     """Generates:
 
@@ -1075,37 +1264,12 @@ def main(doxygen_config, args):
 
         fn_map_full = {}  # Collects all functions as each module is processed.
         sections = {}
-        section_docs = {}
         sep = '=' * text_width
 
         base = os.path.join(output_dir, 'xml')
         dom = minidom.parse(os.path.join(base, 'index.xml'))
 
-        # Generate module-level (section) docs (@defgroup).
-        for compound in dom.getElementsByTagName('compound'):
-            if compound.getAttribute('kind') != 'group':
-                continue
-
-            # Doxygen "@defgroup" directive.
-            groupname = get_text(find_first(compound, 'name'))
-            groupxml = os.path.join(base, '%s.xml' %
-                                    compound.getAttribute('refid'))
-
-            group_parsed = minidom.parse(groupxml)
-            doc_list = []
-            brief_desc = find_first(group_parsed, 'briefdescription')
-            if brief_desc:
-                for child in brief_desc.childNodes:
-                    doc_list.append(fmt_node_as_vimhelp(child))
-
-            desc = find_first(group_parsed, 'detaileddescription')
-            if desc:
-                doc = fmt_node_as_vimhelp(desc)
-
-                if doc:
-                    doc_list.append(doc)
-
-            section_docs[groupname] = "\n".join(doc_list)
+        section_docs = extract_defgroups(base, dom)
 
         # Generate docs for all functions in the current module.
         for compound in dom.getElementsByTagName('compound'):

@@ -48,59 +48,9 @@ describe('display', function()
     feed('VG7kk')
     screen:expect([[
       {3:  }^f{2:oo}                                                       |
-      {3:  }foo                                                       |
-      {3:  }foo                                                       |
-      {3:  }foo                                                       |
-      {3:  }foo                                                       |
-      {3:  }foo                                                       |
-      {3:  }foo                                                       |
+      {3:  }foo                                                       |*6
       {1:-- VISUAL LINE --}                                           |
     ]])
-  end)
-
-  -- oldtest: Test_matchparen_clear_highlight()
-  it('matchparen highlight is cleared when switching buffer', function()
-    local screen = Screen.new(20, 5)
-    screen:set_default_attr_ids({
-      [0] = {bold = true, foreground = Screen.colors.Blue},
-      [1] = {background = Screen.colors.Cyan},
-    })
-    screen:attach()
-
-    local screen1 = [[
-      {1:^()}                  |
-      {0:~                   }|
-      {0:~                   }|
-      {0:~                   }|
-                          |
-    ]]
-    local screen2 = [[
-      ^aa                  |
-      {0:~                   }|
-      {0:~                   }|
-      {0:~                   }|
-                          |
-    ]]
-
-    exec([[
-      source $VIMRUNTIME/plugin/matchparen.vim
-      set hidden
-      call setline(1, ['()'])
-      normal 0
-    ]])
-    screen:expect(screen1)
-
-    exec([[
-      enew
-      exe "normal iaa\<Esc>0"
-    ]])
-    screen:expect(screen2)
-
-    feed('<C-^>')
-    screen:expect(screen1)
-
-    feed('<C-^>')
-    screen:expect(screen2)
   end)
 
   local function run_test_display_lastline(euro)
@@ -125,12 +75,9 @@ describe('display', function()
     end
     screen:expect((([[
       ^a│aaa                                                                      |
-      a│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      a│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
+      a│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|*2
       b│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb                   |
-      b│{1:~                                                                        }|
-      b│{1:~                                                                        }|
-      b│{1:~                                                                        }|
+      b│{1:~                                                                        }|*3
       {1:@}│{1:~                                                                        }|
       {2:< }{3:[No Name] [+]                                                            }|
                                                                                  |
@@ -142,12 +89,9 @@ describe('display', function()
     command('100wincmd >')
     screen:expect((([[
       ^aaa                                                                      │a|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│a|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│a|
+      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb│a|*2
       bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb                   │b|
-      {1:~                                                                        }│b|
-      {1:~                                                                        }│b|
-      {1:~                                                                        }│b|
+      {1:~                                                                        }│b|*3
       {1:~                                                                        }│{1:@}|
       {2:[No Name] [+]                                                             }{3:<}|
                                                                                  |
@@ -164,8 +108,7 @@ describe('display', function()
       {1:@@@                                                                        }|
       {2:[No Name] [+]                                                              }|
       aaa                                                                        |
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
+      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|*2
       bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb                         |
       {3:[No Name] [+]                                                              }|
                                                                                  |
@@ -178,9 +121,7 @@ describe('display', function()
       a │bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
       bb│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
       bb│bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb                |
-      bb│{1:~                                                                       }|
-      bb│{1:~                                                                       }|
-      bb│{1:~                                                                       }|
+      bb│{1:~                                                                       }|*3
       {1:@@}│{1:~                                                                       }|
       {2:<  }{3:[No Name] [+]                                                           }|
                                                                                  |
@@ -209,17 +150,7 @@ describe('display', function()
     feed('736|')
     screen:expect([[
       <<<aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|*11
       ^aaaaaaaaaaaaaaa                    |
                                          |
     ]])
@@ -227,16 +158,7 @@ describe('display', function()
     feed('D')
     screen:expect([[
       <<<aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|*10
       aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa^a|
       bbbbb bbbbb bbbbb bbbbb bbbbb bb@@@|
                                          |
@@ -250,29 +172,14 @@ describe('display', function()
        bbbbb ccccc ccccc ccccc ccccc cccc|
       c ccccc ccccc ddddd ddddd ddddd ddd|
       dd ddddd ddddd ddddd               |
-      ~                                  |
-      ~                                  |
-      ~                                  |
-      ~                                  |
-      ~                                  |
-      ~                                  |
-      ~                                  |
-      ~                                  |
+      ~                                  |*8
                                          |
     ]])
     -- "w_skipcol" is reset to bring the entire topline into view because
     -- the line length is now smaller than the current skipcol + marker.
     feed('x')
     screen:expect([[
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
-      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|*9
       aa^a                                |
       bbbbb bbbbb bbbbb bbbbb bbbbb bbbbb|
        bbbbb ccccc ccccc ccccc ccccc cccc|
@@ -291,11 +198,7 @@ describe('display', function()
     ]])
     screen:expect([[
       <<<bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
+      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|*5
       b^b                                                                         |
                                                                                  |
     ]])
@@ -305,12 +208,7 @@ describe('display', function()
     feed('$0')
     screen:expect([[
       <<<b^bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
+      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|*6
                                                                                  |
     ]])
     -- Going to the start of the line with "b" did not set w_skipcol correctly with 'smoothscroll'.
@@ -318,24 +216,14 @@ describe('display', function()
     feed('$b')
     screen:expect([[
         2 b ^bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
+      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|*6
                                                                                  |
     ]])
     -- Same for "ge".
     feed('$ge')
     screen:expect([[
         2 ^b bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
-      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|
+      bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|*6
                                                                                  |
     ]])
   end)

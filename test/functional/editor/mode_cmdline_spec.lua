@@ -1,9 +1,11 @@
 -- Cmdline-mode tests.
 
 local helpers = require('test.functional.helpers')(after_each)
+local Screen = require('test.functional.ui.screen')
 local clear, insert, funcs, eq, feed =
   helpers.clear, helpers.insert, helpers.funcs, helpers.eq, helpers.feed
 local eval = helpers.eval
+local command = helpers.command
 local meths = helpers.meths
 
 describe('cmdline', function()
@@ -43,10 +45,34 @@ describe('cmdline', function()
     eq('"<C-J><C-@><C-[><C-S-M><M-C-I><C-D-J>', eval('@:'))
   end)
 
+  it('redraws statusline when toggling overstrike', function()
+    local screen = Screen.new(60, 4)
+    screen:set_default_attr_ids({
+      [0] = {bold = true, foreground = Screen.colors.Blue},  -- NonText
+      [1] = {reverse = true, bold = true},  -- StatusLine
+    })
+    screen:attach()
+    command('set laststatus=2 statusline=%!mode(1)')
+    feed(':')
+    screen:expect{grid=[[
+                                                                  |
+      {0:~                                                           }|
+      {1:c                                                           }|
+      :^                                                           |
+    ]]}
+    feed('<Insert>')
+    screen:expect{grid=[[
+                                                                  |
+      {0:~                                                           }|
+      {1:cr                                                          }|
+      :^                                                           |
+    ]]}
+  end)
+
   describe('history', function()
     it('correctly clears start of the history', function()
       -- Regression test: check absence of the memory leak when clearing start of
-      -- the history using ex_getln.c/clr_history().
+      -- the history using cmdhist.c/clr_history().
       eq(1, funcs.histadd(':', 'foo'))
       eq(1, funcs.histdel(':'))
       eq('', funcs.histget(':', -1))
@@ -54,7 +80,7 @@ describe('cmdline', function()
 
     it('correctly clears end of the history', function()
       -- Regression test: check absence of the memory leak when clearing end of
-      -- the history using ex_getln.c/clr_history().
+      -- the history using cmdhist.c/clr_history().
       meths.set_option_value('history', 1, {})
       eq(1, funcs.histadd(':', 'foo'))
       eq(1, funcs.histdel(':'))
@@ -62,7 +88,7 @@ describe('cmdline', function()
     end)
 
     it('correctly removes item from history', function()
-      -- Regression test: check that ex_getln.c/del_history_idx() correctly clears
+      -- Regression test: check that cmdhist.c/del_history_idx() correctly clears
       -- history index after removing history entry. If it does not then deleting
       -- history will result in a double free.
       eq(1, funcs.histadd(':', 'foo'))

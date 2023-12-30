@@ -8,6 +8,7 @@ local feed = helpers.feed
 before_each(clear)
 
 describe("'cursorbind'", function()
+  -- oldtest: Test_cursorline_cursorbind_horizontal_scroll()
   it("behaves consistently whether 'cursorline' is set or not vim-patch:8.2.4795", function()
     local screen = Screen.new(60, 8)
     screen:set_default_attr_ids({
@@ -31,10 +32,7 @@ describe("'cursorbind'", function()
     feed('20l')
     screen:expect([[
       a bb cc dd ee ff gg │aa bb cc dd ee ff gg^ hh ii jj kk ll mm |
-                         {4: }│                    {4: }                  |
-                         {4: }│                    {4: }                  |
-                         {4: }│                    {4: }                  |
-                         {4: }│                    {4: }                  |
+                         {4: }│                    {4: }                  |*4
       {1:~                   }│{1:~                                      }|
       {3:[No Name] [+]        }{2:[No Name] [+]                          }|
                                                                   |
@@ -42,10 +40,7 @@ describe("'cursorbind'", function()
     feed('10l')
     screen:expect([[
        hh ii jj kk ll mm n│aa bb cc dd ee ff gg hh ii jj ^kk ll mm |
-                {4: }         │                              {4: }        |
-                {4: }         │                              {4: }        |
-                {4: }         │                              {4: }        |
-                {4: }         │                              {4: }        |
+                {4: }         │                              {4: }        |*4
       {1:~                   }│{1:~                                      }|
       {3:[No Name] [+]        }{2:[No Name] [+]                          }|
                                                                   |
@@ -55,10 +50,7 @@ describe("'cursorbind'", function()
     feed('20l')
     screen:expect([[
       {4:a bb cc dd ee ff gg }│{4:aa bb cc dd ee ff gg^ hh ii jj kk ll mm }|
-                         {4: }│                    {4: }                  |
-                         {4: }│                    {4: }                  |
-                         {4: }│                    {4: }                  |
-                         {4: }│                    {4: }                  |
+                         {4: }│                    {4: }                  |*4
       {1:~                   }│{1:~                                      }|
       {3:[No Name] [+]        }{2:[No Name] [+]                          }|
                                                                   |
@@ -66,10 +58,7 @@ describe("'cursorbind'", function()
     feed('10l')
     screen:expect([[
       {4: hh ii jj kk ll mm n}│{4:aa bb cc dd ee ff gg hh ii jj ^kk ll mm }|
-                {4: }         │                              {4: }        |
-                {4: }         │                              {4: }        |
-                {4: }         │                              {4: }        |
-                {4: }         │                              {4: }        |
+                {4: }         │                              {4: }        |*4
       {1:~                   }│{1:~                                      }|
       {3:[No Name] [+]        }{2:[No Name] [+]                          }|
                                                                   |
@@ -79,10 +68,7 @@ describe("'cursorbind'", function()
     feed('40l')
     screen:expect([[
       kk ll mm nn oo pp qq│ bb cc dd ee ff gg hh ii jj kk ll mm n^n|
-                          │                                       |
-                          │                                       |
-                          │                                       |
-                          │                                       |
+                          │                                       |*4
       {1:~                   }│{1:~                                      }|
       {3:[No Name] [+]        }{2:[No Name] [+]                          }|
                                                                   |

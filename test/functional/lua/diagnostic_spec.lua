@@ -181,6 +181,18 @@ describe('vim.diagnostic', function()
     eq(0, #diagnostics)
   end)
 
+  it('always returns a copy of diagnostic tables', function()
+    local result = exec_lua [[
+      vim.diagnostic.set(diagnostic_ns, diagnostic_bufnr, {
+        make_error('Diagnostic #1', 1, 1, 1, 1),
+      })
+      local diag = vim.diagnostic.get()
+      diag[1].col = 10000
+      return vim.diagnostic.get()[1].col == 10000
+    ]]
+    eq(result, false)
+  end)
+
   it('resolves buffer number 0 to the current buffer', function()
     eq(2, exec_lua [[
       vim.api.nvim_set_current_buf(diagnostic_bufnr)
@@ -860,7 +872,7 @@ end)
       ]])
     end)
 
-    it('returns only requested diagnostics when severity is supplied', function()
+    it('returns only requested diagnostics when severity range is supplied', function()
       eq({2, 3, 2}, exec_lua [[
         vim.diagnostic.set(diagnostic_ns, diagnostic_bufnr, {
           make_error("Error 1", 1, 1, 1, 5),
@@ -876,6 +888,28 @@ end)
             severity = {
               min=vim.diagnostic.severity.INFO,
               max=vim.diagnostic.severity.WARN,
+            }
+          }),
+        }
+      ]])
+    end)
+
+    it('returns only requested diagnostics when severities are supplied', function()
+      eq({1, 1, 2}, exec_lua [[
+        vim.diagnostic.set(diagnostic_ns, diagnostic_bufnr, {
+          make_error("Error 1", 1, 1, 1, 5),
+          make_warning("Warning on Server 1", 1, 1, 2, 3),
+          make_info("Ignored information", 1, 1, 2, 3),
+          make_hint("Here's a hint", 1, 1, 2, 3),
+        })
+
+        return {
+          #vim.diagnostic.get(diagnostic_bufnr, { severity = {vim.diagnostic.severity.WARN} }),
+          #vim.diagnostic.get(diagnostic_bufnr, { severity = {vim.diagnostic.severity.ERROR} }),
+          #vim.diagnostic.get(diagnostic_bufnr, {
+            severity = {
+              vim.diagnostic.severity.INFO,
+              vim.diagnostic.severity.WARN,
             }
           }),
         }
@@ -1046,9 +1080,19 @@ end)
             table.insert(virt_texts, (string.gsub(virt_text[i][2], "DiagnosticVirtualText", "")))
           end
 
+          local ns = vim.diagnostic.get_namespace(diagnostic_ns)
+          local sign_ns = ns.user_data.sign_ns
           local signs = {}
-          for _, v in ipairs(vim.fn.sign_getplaced(diagnostic_bufnr, {group = "*"})[1].signs) do
-            table.insert(signs, (string.gsub(v.name, "DiagnosticSign", "")))
+          local all_signs = vim.api.nvim_buf_get_extmarks(diagnostic_bufnr, sign_ns, 0, -1, {type = 'sign', details = true})
+          table.sort(all_signs, function(a, b)
+            return a[1] > b[1]
+          end)
+
+          for _, v in ipairs(all_signs) do
+            local s = v[4].sign_hl_group:gsub('DiagnosticSign', "")
+            if not vim.tbl_contains(signs, s) then
+              signs[#signs + 1] = s
+            end
           end
 
           return {virt_texts, signs}
@@ -1203,7 +1247,7 @@ end)
         return prefix .. message
       ]])
 
-      eq('[err-code] Some error',  exec_lua [[
+      eq('[(1/1) err-code] Some error',  exec_lua [[
         local diagnostics = {
           make_error('Some error', 0, 0, 0, 0, nil, 'err-code'),
         }
@@ -1211,7 +1255,7 @@ end)
         vim.diagnostic.set(diagnostic_ns, diagnostic_bufnr, diagnostics, {
           underline = false,
           virtual_text = {
-            prefix = function(diag) return string.format('[%s]', diag.code) end,
+            prefix = function(diag, i, total) return string.format('[(%d/%d) %s]', i, total, diag.code) end,
             suffix = '',
           }
         })
@@ -1451,7 +1495,58 @@ end)
       ]])
     end)
 
-    it('sets signs', function()
+    it('sets and clears signs #26193 #26555', function()
+      do
+        local result = exec_lua [[
+          vim.diagnostic.config({
+            signs = true,
+          })
+
+          local diagnostics = {
+            make_error('Error', 1, 1, 1, 2),
+            make_warning('Warning', 3, 3, 3, 3),
+          }
+
+          vim.diagnostic.set(diagnostic_ns, diagnostic_bufnr, diagnostics)
+
+          local ns = vim.diagnostic.get_namespace(diagnostic_ns)
+          local sign_ns = ns.user_data.sign_ns
+
+          local signs = vim.api.nvim_buf_get_extmarks(diagnostic_bufnr, sign_ns, 0, -1, {type ='sign', details = true})
+          local result = {}
+          for _, s in ipairs(signs) do
+            result[#result + 1] = { lnum = s[2] + 1, name = s[4].sign_hl_group }
+          end
+          return result
+        ]]
+
+        eq({2, 'DiagnosticSignError'}, {result[1].lnum, result[1].name})
+        eq({4, 'DiagnosticSignWarn'}, {result[2].lnum, result[2].name})
+      end
+
+      do
+        local result = exec_lua [[
+          vim.diagnostic.set(diagnostic_ns, diagnostic_bufnr, {})
+
+          local ns = vim.diagnostic.get_namespace(diagnostic_ns)
+          local sign_ns = ns.user_data.sign_ns
+
+          return vim.api.nvim_buf_get_extmarks(diagnostic_bufnr, sign_ns, 0, -1, {type ='sign', details = true})
+        ]]
+
+        eq({}, result)
+      end
+    end)
+
+    it('respects legacy signs placed with :sign define or sign_define #26618', function()
+      -- Legacy signs for diagnostics were deprecated in 0.10 and will be removed in 0.12
+      eq(0, helpers.funcs.has('nvim-0.12'))
+
+      helpers.command('sign define DiagnosticSignError text= texthl= linehl=ErrorMsg numhl=ErrorMsg')
+      helpers.command('sign define DiagnosticSignWarn text= texthl= linehl=WarningMsg numhl=WarningMsg')
+      helpers.command('sign define DiagnosticSignInfo text= texthl= linehl=Underlined numhl=Underlined')
+      helpers.command('sign define DiagnosticSignHint text= texthl= linehl=Underlined numhl=Underlined')
+
       local result = exec_lua [[
         vim.diagnostic.config({
           signs = true,
@@ -1464,11 +1559,38 @@ end)
 
         vim.diagnostic.set(diagnostic_ns, diagnostic_bufnr, diagnostics)
 
-        return vim.fn.sign_getplaced(diagnostic_bufnr, {group = '*'})[1].signs
+        local ns = vim.diagnostic.get_namespace(diagnostic_ns)
+        local sign_ns = ns.user_data.sign_ns
+
+        local signs = vim.api.nvim_buf_get_extmarks(diagnostic_bufnr, sign_ns, 0, -1, {type ='sign', details = true})
+        local result = {}
+        for _, s in ipairs(signs) do
+          result[#result + 1] = {
+            lnum = s[2] + 1,
+            name = s[4].sign_hl_group,
+            text = s[4].sign_text or '',
+            numhl = s[4].number_hl_group,
+            linehl = s[4].line_hl_group,
+          }
+        end
+        return result
       ]]
 
-      eq({2, 'DiagnosticSignError'}, {result[1].lnum, result[1].name})
-      eq({4, 'DiagnosticSignWarn'}, {result[2].lnum, result[2].name})
+      eq({
+        lnum = 2,
+        name = 'DiagnosticSignError',
+        text = '',
+        numhl = 'ErrorMsg',
+        linehl = 'ErrorMsg',
+      }, result[1])
+
+      eq({
+        lnum = 4,
+        name = 'DiagnosticSignWarn',
+        text = '',
+        numhl = 'WarningMsg',
+        linehl = 'WarningMsg',
+      }, result[2])
     end)
   end)
 

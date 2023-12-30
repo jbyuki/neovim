@@ -1,25 +1,20 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check
-// it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 #include "klib/kvec.h"
 #include "nvim/api/private/converter.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
-#include "nvim/assert.h"
+#include "nvim/assert_defs.h"
 #include "nvim/eval/typval.h"
 #include "nvim/eval/typval_defs.h"
 #include "nvim/eval/userfunc.h"
-#include "nvim/garray.h"
 #include "nvim/lua/executor.h"
 #include "nvim/memory.h"
-#include "nvim/types.h"
-#include "nvim/vim.h"
+#include "nvim/types_defs.h"
+#include "nvim/vim_defs.h"
 
 /// Helper structure for vim_to_object
 typedef struct {
@@ -204,6 +199,7 @@ static inline void typval_encode_dict_end(EncodedData *const edata)
 #define TYPVAL_ENCODE_FIRST_ARG_TYPE EncodedData *const
 #define TYPVAL_ENCODE_FIRST_ARG_NAME edata
 #include "nvim/eval/typval_encode.c.h"
+
 #undef TYPVAL_ENCODE_SCOPE
 #undef TYPVAL_ENCODE_NAME
 #undef TYPVAL_ENCODE_FIRST_ARG_TYPE
@@ -261,8 +257,8 @@ Object vim_to_object(typval_T *obj)
 /// @param obj  Object to convert from.
 /// @param tv   Conversion result is placed here. On failure member v_type is
 ///             set to VAR_UNKNOWN (no allocation was made for this variable).
-/// returns     true if conversion is successful, otherwise false.
-bool object_to_vim(Object obj, typval_T *tv, Error *err)
+/// @param err  Error object.
+void object_to_vim(Object obj, typval_T *tv, Error *err)
 {
   tv->v_type = VAR_UNKNOWN;
   tv->v_lock = VAR_UNLOCKED;
@@ -309,12 +305,7 @@ bool object_to_vim(Object obj, typval_T *tv, Error *err)
     for (uint32_t i = 0; i < obj.data.array.size; i++) {
       Object item = obj.data.array.items[i];
       typval_T li_tv;
-
-      if (!object_to_vim(item, &li_tv, err)) {
-        tv_list_free(list);
-        return false;
-      }
-
+      object_to_vim(item, &li_tv, err);
       tv_list_append_owned_tv(list, li_tv);
     }
     tv_list_ref(list);
@@ -330,24 +321,8 @@ bool object_to_vim(Object obj, typval_T *tv, Error *err)
     for (uint32_t i = 0; i < obj.data.dictionary.size; i++) {
       KeyValuePair item = obj.data.dictionary.items[i];
       String key = item.key;
-
-      if (key.size == 0) {
-        api_set_error(err, kErrorTypeValidation,
-                      "Empty dictionary keys aren't allowed");
-        // cleanup
-        tv_dict_free(dict);
-        return false;
-      }
-
       dictitem_T *const di = tv_dict_item_alloc(key.data);
-
-      if (!object_to_vim(item.value, &di->di_tv, err)) {
-        // cleanup
-        tv_dict_item_free(di);
-        tv_dict_free(dict);
-        return false;
-      }
-
+      object_to_vim(item.value, &di->di_tv, err);
       tv_dict_add(dict, di);
     }
     dict->dv_refcount++;
@@ -363,10 +338,5 @@ bool object_to_vim(Object obj, typval_T *tv, Error *err)
     tv->vval.v_string = xstrdup(name);
     break;
   }
-
-  default:
-    abort();
   }
-
-  return true;
 }

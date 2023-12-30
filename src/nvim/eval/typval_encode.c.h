@@ -246,13 +246,12 @@
 #include <inttypes.h>
 #include <stddef.h>
 
+#include "klib/kvec.h"
+#include "nvim/eval.h"
 #include "nvim/eval/encode.h"
 #include "nvim/eval/typval.h"
 #include "nvim/eval/typval_encode.h"
 #include "nvim/func_attr.h"
-#include "klib/kvec.h"
-
-// -V::1063
 
 /// Dummy variable used because some macros need lvalue
 ///
@@ -260,7 +259,7 @@
 /// macros argument is (not) equal to `&TYPVAL_ENCODE_NODICT_VAR`.
 const dict_T *const TYPVAL_ENCODE_NODICT_VAR = NULL;
 
-static inline int _TYPVAL_ENCODE_CHECK_SELF_REFERENCE(
+static inline int TYPVAL_ENCODE_CHECK_SELF_REFERENCE(
                                                       TYPVAL_ENCODE_FIRST_ARG_TYPE TYPVAL_ENCODE_FIRST_ARG_NAME,
                                                       void *const val, int *const val_copyID,
                                                       const MPConvStack *const mpstack, const int copyID,
@@ -283,7 +282,7 @@ static inline int _TYPVAL_ENCODE_CHECK_SELF_REFERENCE(
 /// @param[in]  objname  Object name, used for error reporting.
 ///
 /// @return NOTDONE in case of success, what to return in case of failure.
-static inline int _TYPVAL_ENCODE_CHECK_SELF_REFERENCE(
+static inline int TYPVAL_ENCODE_CHECK_SELF_REFERENCE(
                                                      TYPVAL_ENCODE_FIRST_ARG_TYPE TYPVAL_ENCODE_FIRST_ARG_NAME, void *const val, int *const val_copyID,
                                                      const MPConvStack *const mpstack, const int copyID, const MPConvStackValType conv_type,
                                                      const char *const objname)
@@ -296,7 +295,7 @@ static inline int _TYPVAL_ENCODE_CHECK_SELF_REFERENCE(
   return NOTDONE;
 }
 
-static int _TYPVAL_ENCODE_CONVERT_ONE_VALUE(
+static int TYPVAL_ENCODE_CONVERT_ONE_VALUE(
                                             TYPVAL_ENCODE_FIRST_ARG_TYPE TYPVAL_ENCODE_FIRST_ARG_NAME,
                                             MPConvStack *const mpstack, MPConvStackVal *const cur_mpsv,
                                             typval_T *const tv, const int copyID,
@@ -320,7 +319,7 @@ static int _TYPVAL_ENCODE_CONVERT_ONE_VALUE(
 /// @param[in]  objname  Object name, used for error reporting.
 ///
 /// @return OK in case of success, FAIL in case of failure.
-static int _TYPVAL_ENCODE_CONVERT_ONE_VALUE(
+static int TYPVAL_ENCODE_CONVERT_ONE_VALUE(
                                            TYPVAL_ENCODE_FIRST_ARG_TYPE TYPVAL_ENCODE_FIRST_ARG_NAME, MPConvStack *const mpstack,
                                            MPConvStackVal *const cur_mpsv, typval_T *const tv, const int copyID, const char *const objname)
 {
@@ -347,8 +346,8 @@ static int _TYPVAL_ENCODE_CONVERT_ONE_VALUE(
   case VAR_PARTIAL: {
     partial_T *const pt = tv->vval.v_partial;
     (void)pt;
-    TYPVAL_ENCODE_CONV_FUNC_START(tv, (pt == NULL ? NULL : partial_name(pt)));  // -V547
-    _mp_push(*mpstack, ((MPConvStackVal) {  // -V779
+    TYPVAL_ENCODE_CONV_FUNC_START(tv, (pt == NULL ? NULL : partial_name(pt)));
+    kvi_push(*mpstack, ((MPConvStackVal) {
         .type = kMPConvPartial,
         .tv = tv,
         .saved_copyID = copyID - 1,
@@ -367,11 +366,11 @@ static int _TYPVAL_ENCODE_CONVERT_ONE_VALUE(
       break;
     }
     const int saved_copyID = tv_list_copyid(tv->vval.v_list);
-    _TYPVAL_ENCODE_DO_CHECK_SELF_REFERENCE(tv->vval.v_list, lv_copyID, copyID,
-                                           kMPConvList);
+    TYPVAL_ENCODE_DO_CHECK_SELF_REFERENCE(tv->vval.v_list, lv_copyID, copyID,
+                                          kMPConvList);
     TYPVAL_ENCODE_CONV_LIST_START(tv, tv_list_len(tv->vval.v_list));
     assert(saved_copyID != copyID);
-    _mp_push(*mpstack, ((MPConvStackVal) {
+    kvi_push(*mpstack, ((MPConvStackVal) {
         .type = kMPConvList,
         .tv = tv,
         .saved_copyID = saved_copyID,
@@ -382,7 +381,7 @@ static int _TYPVAL_ENCODE_CONVERT_ONE_VALUE(
           },
         },
     }));
-    TYPVAL_ENCODE_CONV_REAL_LIST_AFTER_START(tv, _mp_last(*mpstack));
+    TYPVAL_ENCODE_CONV_REAL_LIST_AFTER_START(tv, kv_last(*mpstack));
     break;
   }
   case VAR_BOOL:
@@ -396,7 +395,7 @@ static int _TYPVAL_ENCODE_CONVERT_ONE_VALUE(
   case VAR_SPECIAL:
     switch (tv->vval.v_special) {
     case kSpecialVarNull:
-      TYPVAL_ENCODE_CONV_NIL(tv);  // -V1037
+      TYPVAL_ENCODE_CONV_NIL(tv);
       break;
     }
     break;
@@ -509,7 +508,7 @@ static int _TYPVAL_ENCODE_CONVERT_ONE_VALUE(
         }
         if (is_string) {
           TYPVAL_ENCODE_CONV_STR_STRING(tv, buf, len);
-        } else {  // -V523
+        } else {
           TYPVAL_ENCODE_CONV_STRING(tv, buf, len);
         }
         xfree(buf);
@@ -520,12 +519,12 @@ static int _TYPVAL_ENCODE_CONVERT_ONE_VALUE(
           goto _convert_one_value_regular_dict;
         }
         const int saved_copyID = tv_list_copyid(val_di->di_tv.vval.v_list);
-        _TYPVAL_ENCODE_DO_CHECK_SELF_REFERENCE(val_di->di_tv.vval.v_list,
-                                               lv_copyID, copyID,
-                                               kMPConvList);
+        TYPVAL_ENCODE_DO_CHECK_SELF_REFERENCE(val_di->di_tv.vval.v_list,
+                                              lv_copyID, copyID,
+                                              kMPConvList);
         TYPVAL_ENCODE_CONV_LIST_START(tv, tv_list_len(val_di->di_tv.vval.v_list));
         assert(saved_copyID != copyID && saved_copyID != copyID - 1);
-        _mp_push(*mpstack, ((MPConvStackVal) {
+        kvi_push(*mpstack, ((MPConvStackVal) {
               .tv = tv,
               .type = kMPConvList,
               .saved_copyID = saved_copyID,
@@ -544,8 +543,7 @@ static int _TYPVAL_ENCODE_CONVERT_ONE_VALUE(
         }
         list_T *const val_list = val_di->di_tv.vval.v_list;
         if (val_list == NULL || tv_list_len(val_list) == 0) {
-          TYPVAL_ENCODE_CONV_EMPTY_DICT(  // -V501
-                                          tv, TYPVAL_ENCODE_NODICT_VAR);
+          TYPVAL_ENCODE_CONV_EMPTY_DICT(tv, TYPVAL_ENCODE_NODICT_VAR);
           break;
         }
         TV_LIST_ITER_CONST(val_list, li, {
@@ -555,12 +553,12 @@ static int _TYPVAL_ENCODE_CONVERT_ONE_VALUE(
               }
             });
         const int saved_copyID = tv_list_copyid(val_di->di_tv.vval.v_list);
-        _TYPVAL_ENCODE_DO_CHECK_SELF_REFERENCE(val_list, lv_copyID, copyID,
-                                               kMPConvPairs);
+        TYPVAL_ENCODE_DO_CHECK_SELF_REFERENCE(val_list, lv_copyID, copyID,
+                                              kMPConvPairs);
         TYPVAL_ENCODE_CONV_DICT_START(tv, TYPVAL_ENCODE_NODICT_VAR,
                                       tv_list_len(val_list));
         assert(saved_copyID != copyID && saved_copyID != copyID - 1);
-        _mp_push(*mpstack, ((MPConvStackVal) {
+        kvi_push(*mpstack, ((MPConvStackVal) {
               .tv = tv,
               .type = kMPConvPairs,
               .saved_copyID = saved_copyID,
@@ -603,12 +601,12 @@ static int _TYPVAL_ENCODE_CONVERT_ONE_VALUE(
     }
 _convert_one_value_regular_dict: {}
     const int saved_copyID = tv->vval.v_dict->dv_copyID;
-    _TYPVAL_ENCODE_DO_CHECK_SELF_REFERENCE(tv->vval.v_dict, dv_copyID, copyID,
-                                           kMPConvDict);
+    TYPVAL_ENCODE_DO_CHECK_SELF_REFERENCE(tv->vval.v_dict, dv_copyID, copyID,
+                                          kMPConvDict);
     TYPVAL_ENCODE_CONV_DICT_START(tv, tv->vval.v_dict,
                                   tv->vval.v_dict->dv_hashtab.ht_used);
     assert(saved_copyID != copyID);
-    _mp_push(*mpstack, ((MPConvStackVal) {
+    kvi_push(*mpstack, ((MPConvStackVal) {
         .tv = tv,
         .type = kMPConvDict,
         .saved_copyID = saved_copyID,
@@ -622,20 +620,20 @@ _convert_one_value_regular_dict: {}
         },
     }));
     TYPVAL_ENCODE_CONV_REAL_DICT_AFTER_START(tv, tv->vval.v_dict,
-                                             _mp_last(*mpstack));
+                                             kv_last(*mpstack));
     break;
   }
   case VAR_UNKNOWN:
-    internal_error(STR(_TYPVAL_ENCODE_CONVERT_ONE_VALUE) "()");
+    internal_error(STR(TYPVAL_ENCODE_CONVERT_ONE_VALUE) "()");
     return FAIL;
   }
 typval_encode_stop_converting_one_item:
   return OK;
   // Prevent “unused label” warnings.
-  goto typval_encode_stop_converting_one_item;  // -V779
+  goto typval_encode_stop_converting_one_item;
 }
 
-TYPVAL_ENCODE_SCOPE int _TYPVAL_ENCODE_ENCODE(
+TYPVAL_ENCODE_SCOPE int TYPVAL_ENCODE_ENCODE(
                                               TYPVAL_ENCODE_FIRST_ARG_TYPE TYPVAL_ENCODE_FIRST_ARG_NAME,
                                               typval_T *const tv, const char *const objname)
   REAL_FATTR_NONNULL_ARG(2, 3) REAL_FATTR_WARN_UNUSED_RESULT;
@@ -649,29 +647,29 @@ TYPVAL_ENCODE_SCOPE int _TYPVAL_ENCODE_ENCODE(
 /// @param[in]  objname  Object name, used for error reporting.
 ///
 /// @return OK in case of success, FAIL in case of failure.
-TYPVAL_ENCODE_SCOPE int _TYPVAL_ENCODE_ENCODE(
+TYPVAL_ENCODE_SCOPE int TYPVAL_ENCODE_ENCODE(
                                              TYPVAL_ENCODE_FIRST_ARG_TYPE TYPVAL_ENCODE_FIRST_ARG_NAME, typval_T *const top_tv,
                                              const char *const objname)
 {
   const int copyID = get_copyID();
   MPConvStack mpstack;
-  _mp_init(mpstack);
-  if (_TYPVAL_ENCODE_CONVERT_ONE_VALUE(TYPVAL_ENCODE_FIRST_ARG_NAME, &mpstack,
-                                       NULL,
-                                       top_tv, copyID, objname)
+  kvi_init(mpstack);
+  if (TYPVAL_ENCODE_CONVERT_ONE_VALUE(TYPVAL_ENCODE_FIRST_ARG_NAME, &mpstack,
+                                      NULL,
+                                      top_tv, copyID, objname)
       == FAIL) {
     goto encode_vim_to__error_ret;
   }
 /// Label common for this and convert_one_value functions, used for escaping
 /// from macros like TYPVAL_ENCODE_CONV_DICT_START.
 typval_encode_stop_converting_one_item:
-  while (_mp_size(mpstack)) {
-    MPConvStackVal *cur_mpsv = &_mp_last(mpstack);
+  while (kv_size(mpstack)) {
+    MPConvStackVal *cur_mpsv = &kv_last(mpstack);
     typval_T *tv = NULL;
     switch (cur_mpsv->type) {
     case kMPConvDict: {
       if (!cur_mpsv->data.d.todo) {
-        (void)_mp_pop(mpstack);
+        (void)kv_pop(mpstack);
         cur_mpsv->data.d.dict->dv_copyID = cur_mpsv->saved_copyID;
         TYPVAL_ENCODE_CONV_DICT_END(cur_mpsv->tv, *cur_mpsv->data.d.dictp);
         continue;
@@ -695,7 +693,7 @@ typval_encode_stop_converting_one_item:
     }
     case kMPConvList:
       if (cur_mpsv->data.l.li == NULL) {
-        (void)_mp_pop(mpstack);
+        (void)kv_pop(mpstack);
         tv_list_set_copyid(cur_mpsv->data.l.list, cur_mpsv->saved_copyID);
         TYPVAL_ENCODE_CONV_LIST_END(cur_mpsv->tv);
         continue;
@@ -709,7 +707,7 @@ typval_encode_stop_converting_one_item:
       break;
     case kMPConvPairs: {
       if (cur_mpsv->data.l.li == NULL) {
-        (void)_mp_pop(mpstack);
+        (void)kv_pop(mpstack);
         tv_list_set_copyid(cur_mpsv->data.l.list, cur_mpsv->saved_copyID);
         TYPVAL_ENCODE_CONV_DICT_END(cur_mpsv->tv, TYPVAL_ENCODE_NODICT_VAR);
         continue;
@@ -722,8 +720,8 @@ typval_encode_stop_converting_one_item:
       TYPVAL_ENCODE_SPECIAL_DICT_KEY_CHECK(encode_vim_to__error_ret,
                                            *TV_LIST_ITEM_TV(tv_list_first(kv_pair)));
       if (
-          _TYPVAL_ENCODE_CONVERT_ONE_VALUE(TYPVAL_ENCODE_FIRST_ARG_NAME, &mpstack, cur_mpsv,
-                                           TV_LIST_ITEM_TV(tv_list_first(kv_pair)), copyID, objname)
+          TYPVAL_ENCODE_CONVERT_ONE_VALUE(TYPVAL_ENCODE_FIRST_ARG_NAME, &mpstack, cur_mpsv,
+                                          TV_LIST_ITEM_TV(tv_list_first(kv_pair)), copyID, objname)
           == FAIL) {
         goto encode_vim_to__error_ret;
       }
@@ -745,7 +743,7 @@ typval_encode_stop_converting_one_item:
         cur_mpsv->data.p.stage = kMPConvPartialSelf;
         if (pt != NULL && pt->pt_argc > 0) {
           TYPVAL_ENCODE_CONV_LIST_START(NULL, pt->pt_argc);
-          _mp_push(mpstack, ((MPConvStackVal) {
+          kvi_push(mpstack, ((MPConvStackVal) {
               .type = kMPConvPartialList,
               .tv = NULL,
               .saved_copyID = copyID - 1,
@@ -769,10 +767,10 @@ typval_encode_stop_converting_one_item:
             continue;
           }
           const int saved_copyID = dict->dv_copyID;
-          const int te_csr_ret = _TYPVAL_ENCODE_CHECK_SELF_REFERENCE(TYPVAL_ENCODE_FIRST_ARG_NAME,
-                                                                     dict, &dict->dv_copyID,
-                                                                     &mpstack, copyID, kMPConvDict,
-                                                                     objname);
+          const int te_csr_ret = TYPVAL_ENCODE_CHECK_SELF_REFERENCE(TYPVAL_ENCODE_FIRST_ARG_NAME,
+                                                                    dict, &dict->dv_copyID,
+                                                                    &mpstack, copyID, kMPConvDict,
+                                                                    objname);
           if (te_csr_ret != NOTDONE) {
             if (te_csr_ret == FAIL) {
               goto encode_vim_to__error_ret;
@@ -783,7 +781,7 @@ typval_encode_stop_converting_one_item:
           TYPVAL_ENCODE_CONV_DICT_START(NULL, pt->pt_dict,
                                         dict->dv_hashtab.ht_used);
           assert(saved_copyID != copyID && saved_copyID != copyID - 1);
-          _mp_push(mpstack, ((MPConvStackVal) {
+          kvi_push(mpstack, ((MPConvStackVal) {
                 .type = kMPConvDict,
                 .tv = NULL,
                 .saved_copyID = saved_copyID,
@@ -797,7 +795,7 @@ typval_encode_stop_converting_one_item:
                 },
           }));
           TYPVAL_ENCODE_CONV_REAL_DICT_AFTER_START(NULL, pt->pt_dict,
-                                                   _mp_last(mpstack));
+                                                   kv_last(mpstack));
         } else {
           TYPVAL_ENCODE_CONV_FUNC_BEFORE_SELF(tv, -1);
         }
@@ -805,14 +803,14 @@ typval_encode_stop_converting_one_item:
       }
       case kMPConvPartialEnd:
         TYPVAL_ENCODE_CONV_FUNC_END(tv);
-        (void)_mp_pop(mpstack);
+        (void)kv_pop(mpstack);
         break;
       }
       continue;
     }
     case kMPConvPartialList:
       if (!cur_mpsv->data.a.todo) {
-        (void)_mp_pop(mpstack);
+        (void)kv_pop(mpstack);
         TYPVAL_ENCODE_CONV_LIST_END(NULL);
         continue;
       } else if (cur_mpsv->data.a.argv != cur_mpsv->data.a.arg) {
@@ -823,17 +821,17 @@ typval_encode_stop_converting_one_item:
       break;
     }
     assert(tv != NULL);
-    if (_TYPVAL_ENCODE_CONVERT_ONE_VALUE(TYPVAL_ENCODE_FIRST_ARG_NAME, &mpstack,
-                                         cur_mpsv, tv, copyID, objname)
+    if (TYPVAL_ENCODE_CONVERT_ONE_VALUE(TYPVAL_ENCODE_FIRST_ARG_NAME, &mpstack,
+                                        cur_mpsv, tv, copyID, objname)
         == FAIL) {
       goto encode_vim_to__error_ret;
     }
   }
-  _mp_destroy(mpstack);
+  kvi_destroy(mpstack);
   return OK;
 encode_vim_to__error_ret:
-  _mp_destroy(mpstack);
+  kvi_destroy(mpstack);
   return FAIL;
   // Prevent “unused label” warnings.
-  goto typval_encode_stop_converting_one_item;  // -V779
+  goto typval_encode_stop_converting_one_item;
 }

@@ -41,9 +41,9 @@ func AssertHighlightGroups(lnum, startcol, expected, trans = 1, msg = "")
 
   for l:i in range(a:startcol, a:startcol + l:expectedGroups->len() - 1)
     let l:errors += synID(a:lnum, l:i, a:trans)
-         \ ->synIDattr("name")
-         \ ->assert_equal(l:expectedGroups[l:i - 1],
-         \    l:msg .. l:i)
+          \ ->synIDattr("name")
+          \ ->assert_equal(l:expectedGroups[l:i - 1],
+          \    l:msg .. l:i)
   endfor
 endfunc
 
@@ -214,7 +214,7 @@ endfunc
 func Test_echohl_completion()
   call feedkeys(":echohl no\<C-A>\<C-B>\"\<CR>", 'tx')
   " call assert_equal('"echohl NonText Normal none', @:)
-  call assert_equal('"echohl NonText Normal NormalFloat none', @:)
+  call assert_equal('"echohl NonText Normal NormalFloat NormalNC none', @:)
 endfunc
 
 func Test_syntax_arg_skipped()
