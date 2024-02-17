@@ -83,3 +83,7 @@ tags
 /contrib/result-*
 
 CMakeUserPresets.json
+
+install/
+build/
+.deps/
