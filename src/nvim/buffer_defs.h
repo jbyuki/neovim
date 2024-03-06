@@ -573,6 +573,7 @@ struct file_buffer {
   OptInt b_p_smc;               ///< 'synmaxcol'
   char *b_p_syn;                ///< 'syntax'
   OptInt b_p_ts;                ///< 'tabstop'
+  int b_p_tgl;                  ///< 'tangle'
   OptInt b_p_tw;                ///< 'textwidth'
   OptInt b_p_tw_nobin;          ///< b_p_tw saved for binary mode
   OptInt b_p_tw_nopaste;        ///< b_p_tw saved for paste mode
