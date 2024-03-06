@@ -15,6 +15,7 @@
 #include "nvim/api/extmark.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
+#include "nvim/api/ui.h"
 #include "nvim/ascii_defs.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/change.h"
@@ -1828,7 +1829,11 @@ bool nlua_exec_file(const char *path)
     lua_getglobal(lstate, "loadfile");
     lua_pushstring(lstate, path);
   } else {
-    FileDescriptor *stdin_dup = file_open_stdin();
+    FileDescriptor stdin_dup;
+    int error = file_open_stdin(&stdin_dup);
+    if (error) {
+      return false;
+    }
 
     StringBuilder sb = KV_INITIAL_VALUE;
     kv_resize(sb, 64);
@@ -1837,7 +1842,7 @@ bool nlua_exec_file(const char *path)
       if (got_int) {  // User canceled.
         return false;
       }
-      ptrdiff_t read_size = file_read(stdin_dup, IObuff, 64);
+      ptrdiff_t read_size = file_read(&stdin_dup, IObuff, 64);
       if (read_size < 0) {  // Error.
         return false;
       }
@@ -1849,7 +1854,7 @@ bool nlua_exec_file(const char *path)
       }
     }
     kv_push(sb, NUL);
-    file_free(stdin_dup, false);
+    file_close(&stdin_dup, false);
 
     lua_getglobal(lstate, "loadstring");
     lua_pushstring(lstate, sb.items);
@@ -2327,11 +2332,9 @@ int nlua_do_ucmd(ucmd_T *cmd, exarg_T *eap, bool preview)
 /// String representation of a Lua function reference
 ///
 /// @return Allocated string
-char *nlua_funcref_str(LuaRef ref)
+char *nlua_funcref_str(LuaRef ref, Arena *arena)
 {
   lua_State *const lstate = global_lstate;
-  StringBuilder str = KV_INITIAL_VALUE;
-  kv_resize(str, 16);
 
   if (!lua_checkstack(lstate, 1)) {
     goto plain;
@@ -2345,14 +2348,13 @@ char *nlua_funcref_str(LuaRef ref)
   lua_Debug ar;
   if (lua_getinfo(lstate, ">S", &ar) && *ar.source == '@' && ar.linedefined >= 0) {
     char *src = home_replace_save(NULL, ar.source + 1);
-    kv_printf(str, "<Lua %d: %s:%d>", ref, src, ar.linedefined);
+    String str = arena_printf(arena, "<Lua %d: %s:%d>", ref, src, ar.linedefined);
     xfree(src);
-    return str.items;
+    return str.data;
   }
 
-plain:
-  kv_printf(str, "<Lua %d>", ref);
-  return str.items;
+plain: {}
+  return arena_printf(arena, "<Lua %d>", ref).data;
 }
 
 /// Execute the vim._defaults module to set up default mappings and autocommands

@@ -817,9 +817,10 @@ void ui_ext_win_position(win_T *wp, bool validate)
 
       int comp_row = (int)row - (south ? wp->w_height_outer : 0);
       int comp_col = (int)col - (east ? wp->w_width_outer : 0);
+      int above_ch = wp->w_config.zindex < kZIndexMessages ? (int)p_ch : 0;
       comp_row += grid->comp_row;
       comp_col += grid->comp_col;
-      comp_row = MAX(MIN(comp_row, Rows - wp->w_height_outer - (p_ch > 0 ? 1 : 0)), 0);
+      comp_row = MAX(MIN(comp_row, Rows - wp->w_height_outer - above_ch), 0);
       if (!c.fixed || east) {
         comp_col = MAX(MIN(comp_col, Columns - wp->w_width_outer), 0);
       }
@@ -4946,12 +4947,12 @@ win_T *buf_jump_open_tab(buf_T *buf)
   return NULL;
 }
 
+static int last_win_id = LOWEST_WIN_ID - 1;
+
 /// @param hidden  allocate a window structure and link it in the window if
 //                 false.
 win_T *win_alloc(win_T *after, bool hidden)
 {
-  static int last_win_id = LOWEST_WIN_ID - 1;
-
   // allocate window structure and linesizes arrays
   win_T *new_wp = xcalloc(1, sizeof(win_T));
 
@@ -4988,6 +4989,9 @@ win_T *win_alloc(win_T *after, bool hidden)
   new_wp->w_viewport_last_topline = 1;
 
   new_wp->w_ns_hl = -1;
+
+  Set(uint32_t) ns_set = SET_INIT;
+  new_wp->w_ns_set = ns_set;
 
   // use global option for global-local options
   new_wp->w_allbuf_opt.wo_so = new_wp->w_p_so = -1;
@@ -5026,6 +5030,8 @@ void win_free(win_T *wp, tabpage_T *tp)
 
   // Don't execute autocommands while the window is halfway being deleted.
   block_autocmds();
+
+  set_destroy(uint32_t, &wp->w_ns_set);
 
   clear_winopt(&wp->w_onebuf_opt);
   clear_winopt(&wp->w_allbuf_opt);
@@ -7444,6 +7450,11 @@ skip:
   }
 
   return NULL;    // no error
+}
+
+int get_last_winid(void)
+{
+  return last_win_id;
 }
 
 void win_get_tabwin(handle_T id, int *tabnr, int *winnr)

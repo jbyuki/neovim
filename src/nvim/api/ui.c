@@ -165,7 +165,7 @@ void remote_ui_wait_for_attach(bool only_stdio)
 
 /// Activates UI events on the channel.
 ///
-/// Entry point of all UI clients.  Allows |\-\-embed| to continue startup.
+/// Entry point of all UI clients.  Allows |--embed| to continue startup.
 /// Implies that the client is ready to show the UI.  Adds the client to the
 /// list of UIs. |nvim_list_uis()|
 ///
@@ -541,7 +541,7 @@ void nvim_ui_pum_set_bounds(uint64_t channel_id, Float width, Float height, Floa
 ///
 /// @param channel_id
 /// @param event Event name
-/// @param payload Event payload
+/// @param value Event payload
 /// @param[out] err Error details, if any.
 void nvim_ui_term_event(uint64_t channel_id, String event, Object value, Error *err)
   FUNC_API_SINCE(12) FUNC_API_REMOTE_ONLY
@@ -1046,7 +1046,7 @@ static Array translate_firstarg(UI *ui, Array args, Arena *arena)
 
   ADD_C(new_args, ARRAY_OBJ(translate_contents(ui, contents, arena)));
   for (size_t i = 1; i < args.size; i++) {
-    ADD(new_args, args.items[i]);
+    ADD_C(new_args, args.items[i]);
   }
   return new_args;
 }

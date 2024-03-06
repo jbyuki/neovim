@@ -95,6 +95,8 @@
   name.capacity = maxsize; \
   name.items = name##__items; \
 
+typedef kvec_withinit_t(Object, 16) ArrayBuilder;
+
 #define cbuf_as_string(d, s) ((String) { .data = d, .size = s })
 
 #define STATIC_CSTR_AS_STRING(s) ((String) { .data = s, .size = sizeof("" s) - 1 })
@@ -122,13 +124,6 @@
 #define api_init_dictionary = ARRAY_DICT_INIT
 
 #define KEYDICT_INIT { 0 }
-
-#define api_free_boolean(value)
-#define api_free_integer(value)
-#define api_free_float(value)
-#define api_free_buffer(value)
-#define api_free_window(value)
-#define api_free_tabpage(value)
 
 EXTERN PMap(int) buffer_handles INIT( = MAP_INIT);
 EXTERN PMap(int) window_handles INIT( = MAP_INIT);

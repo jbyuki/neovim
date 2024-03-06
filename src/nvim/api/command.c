@@ -67,7 +67,7 @@
 ///             - file: (boolean) The command expands filenames. Which means characters such as "%",
 ///                               "#" and wildcards are expanded.
 ///             - bar: (boolean) The "|" character is treated as a command separator and the double
-///                              quote character (\") is treated as the start of a comment.
+///                              quote character (") is treated as the start of a comment.
 ///         - mods: (dictionary) |:command-modifiers|.
 ///             - filter: (dictionary) |:filter|.
 ///                 - pattern: (string) Filter pattern. Empty string if there is no filter.
@@ -1166,10 +1166,10 @@ err:
 /// @param[out]  err   Error details, if any.
 ///
 /// @returns Map of maps describing commands.
-Dictionary nvim_get_commands(Dict(get_commands) *opts, Error *err)
+Dictionary nvim_get_commands(Dict(get_commands) *opts, Arena *arena, Error *err)
   FUNC_API_SINCE(4)
 {
-  return nvim_buf_get_commands(-1, opts, err);
+  return nvim_buf_get_commands(-1, opts, arena, err);
 }
 
 /// Gets a map of buffer-local |user-commands|.
@@ -1179,7 +1179,7 @@ Dictionary nvim_get_commands(Dict(get_commands) *opts, Error *err)
 /// @param[out]  err   Error details, if any.
 ///
 /// @returns Map of maps describing commands.
-Dictionary nvim_buf_get_commands(Buffer buffer, Dict(get_commands) *opts, Error *err)
+Dictionary nvim_buf_get_commands(Buffer buffer, Dict(get_commands) *opts, Arena *arena, Error *err)
   FUNC_API_SINCE(4)
 {
   bool global = (buffer == -1);
@@ -1192,12 +1192,12 @@ Dictionary nvim_buf_get_commands(Buffer buffer, Dict(get_commands) *opts, Error 
       api_set_error(err, kErrorTypeValidation, "builtin=true not implemented");
       return (Dictionary)ARRAY_DICT_INIT;
     }
-    return commands_array(NULL);
+    return commands_array(NULL, arena);
   }
 
   buf_T *buf = find_buffer_by_handle(buffer, err);
   if (opts->builtin || !buf) {
     return (Dictionary)ARRAY_DICT_INIT;
   }
-  return commands_array(buf);
+  return commands_array(buf, arena);
 }

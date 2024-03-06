@@ -123,7 +123,7 @@ Dictionary nvim_get_hl(Integer ns_id, Dict(get_highlight) *opts, Arena *arena, E
 ///
 /// @note Unlike the `:highlight` command which can update a highlight group,
 ///       this function completely replaces the definition. For example:
-///       ``nvim_set_hl(0, 'Visual', {})`` will clear the highlight group
+///       `nvim_set_hl(0, 'Visual', {})` will clear the highlight group
 ///       'Visual'.
 ///
 /// @note The fg and bg keys also accept the string values `"fg"` or `"bg"`
@@ -141,9 +141,9 @@ Dictionary nvim_get_hl(Integer ns_id, Dict(get_highlight) *opts, Arena *arena, E
 ///              |nvim_set_hl_ns()| or |nvim_win_set_hl_ns()| to activate them.
 /// @param name  Highlight group name, e.g. "ErrorMsg"
 /// @param val   Highlight definition map, accepts the following keys:
-///                - fg (or foreground): color name or "#RRGGBB", see note.
-///                - bg (or background): color name or "#RRGGBB", see note.
-///                - sp (or special): color name or "#RRGGBB"
+///                - fg: color name or "#RRGGBB", see note.
+///                - bg: color name or "#RRGGBB", see note.
+///                - sp: color name or "#RRGGBB"
 ///                - blend: integer between 0 and 100
 ///                - bold: boolean
 ///                - standout: boolean
@@ -461,7 +461,7 @@ error:
 /// @see replace_termcodes
 /// @see cpoptions
 String nvim_replace_termcodes(String str, Boolean from_part, Boolean do_lt, Boolean special)
-  FUNC_API_SINCE(1)
+  FUNC_API_SINCE(1) FUNC_API_RET_ALLOC
 {
   if (str.size == 0) {
     // Empty string
@@ -543,16 +543,22 @@ Integer nvim_strwidth(String text, Error *err)
 /// Gets the paths contained in |runtime-search-path|.
 ///
 /// @return List of paths
-ArrayOf(String) nvim_list_runtime_paths(Error *err)
+ArrayOf(String) nvim_list_runtime_paths(Arena *arena, Error *err)
   FUNC_API_SINCE(1)
 {
-  return nvim_get_runtime_file(NULL_STRING, true, err);
+  return nvim_get_runtime_file(NULL_STRING, true, arena, err);
 }
 
-Array nvim__runtime_inspect(void)
+/// @nodoc
+Array nvim__runtime_inspect(Arena *arena)
 {
-  return runtime_inspect();
+  return runtime_inspect(arena);
 }
+
+typedef struct {
+  ArrayBuilder rv;
+  Arena *arena;
+} RuntimeCookie;
 
 /// Find files in runtime directories
 ///
@@ -566,25 +572,27 @@ Array nvim__runtime_inspect(void)
 /// @param name pattern of files to search for
 /// @param all whether to return all matches or only the first
 /// @return list of absolute paths to the found files
-ArrayOf(String) nvim_get_runtime_file(String name, Boolean all, Error *err)
+ArrayOf(String) nvim_get_runtime_file(String name, Boolean all, Arena *arena, Error *err)
   FUNC_API_SINCE(7)
   FUNC_API_FAST
 {
-  Array rv = ARRAY_DICT_INIT;
+  RuntimeCookie cookie = { .rv = ARRAY_DICT_INIT, .arena = arena, };
+  kvi_init(cookie.rv);
 
   int flags = DIP_DIRFILE | (all ? DIP_ALL : 0);
 
   TRY_WRAP(err, {
-    do_in_runtimepath((name.size ? name.data : ""), flags, find_runtime_cb, &rv);
+    do_in_runtimepath((name.size ? name.data : ""), flags, find_runtime_cb, &cookie);
   });
-  return rv;
+  return arena_take_arraybuilder(arena, &cookie.rv);
 }
 
-static bool find_runtime_cb(int num_fnames, char **fnames, bool all, void *cookie)
+static bool find_runtime_cb(int num_fnames, char **fnames, bool all, void *c)
 {
-  Array *rv = (Array *)cookie;
+  RuntimeCookie *cookie = (RuntimeCookie *)c;
   for (int i = 0; i < num_fnames; i++) {
-    ADD(*rv, CSTR_TO_OBJ(fnames[i]));
+    // TODO(bfredl): consider memory management of gen_expand_wildcards() itself
+    kvi_push(cookie->rv, CSTR_TO_ARENA_OBJ(cookie->arena, fnames[i]));
     if (!all) {
       return true;
     }
@@ -593,7 +601,9 @@ static bool find_runtime_cb(int num_fnames, char **fnames, bool all, void *cooki
   return num_fnames > 0;
 }
 
+/// @nodoc
 String nvim__get_lib_dir(void)
+  FUNC_API_RET_ALLOC
 {
   return cstr_as_string(get_lib_dir());
 }
@@ -668,21 +678,21 @@ String nvim_get_current_line(Arena *arena, Error *err)
 ///
 /// @param line     Line contents
 /// @param[out] err Error details, if any
-void nvim_set_current_line(String line, Error *err)
+void nvim_set_current_line(String line, Arena *arena, Error *err)
   FUNC_API_SINCE(1)
   FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
-  buffer_set_line(curbuf->handle, curwin->w_cursor.lnum - 1, line, err);
+  buffer_set_line(curbuf->handle, curwin->w_cursor.lnum - 1, line, arena, err);
 }
 
 /// Deletes the current line.
 ///
 /// @param[out] err Error details, if any
-void nvim_del_current_line(Error *err)
+void nvim_del_current_line(Arena *arena, Error *err)
   FUNC_API_SINCE(1)
   FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
-  buffer_del_line(curbuf->handle, curwin->w_cursor.lnum - 1, err);
+  buffer_del_line(curbuf->handle, curwin->w_cursor.lnum - 1, arena, err);
 }
 
 /// Gets a global (g:) variable.
@@ -825,20 +835,19 @@ void nvim_err_writeln(String str)
 /// Use |nvim_buf_is_loaded()| to check if a buffer is loaded.
 ///
 /// @return List of buffer handles
-ArrayOf(Buffer) nvim_list_bufs(void)
+ArrayOf(Buffer) nvim_list_bufs(Arena *arena)
   FUNC_API_SINCE(1)
 {
-  Array rv = ARRAY_DICT_INIT;
+  size_t n = 0;
 
   FOR_ALL_BUFFERS(b) {
-    rv.size++;
+    n++;
   }
 
-  rv.items = xmalloc(sizeof(Object) * rv.size);
-  size_t i = 0;
+  Array rv = arena_array(arena, n);
 
   FOR_ALL_BUFFERS(b) {
-    rv.items[i++] = BUFFER_OBJ(b->handle);
+    ADD_C(rv, BUFFER_OBJ(b->handle));
   }
 
   return rv;
@@ -880,20 +889,19 @@ void nvim_set_current_buf(Buffer buffer, Error *err)
 /// Gets the current list of window handles.
 ///
 /// @return List of window handles
-ArrayOf(Window) nvim_list_wins(void)
+ArrayOf(Window) nvim_list_wins(Arena *arena)
   FUNC_API_SINCE(1)
 {
-  Array rv = ARRAY_DICT_INIT;
+  size_t n = 0;
 
   FOR_ALL_TAB_WINDOWS(tp, wp) {
-    rv.size++;
+    n++;
   }
 
-  rv.items = xmalloc(sizeof(Object) * rv.size);
-  size_t i = 0;
+  Array rv = arena_array(arena, n);
 
   FOR_ALL_TAB_WINDOWS(tp, wp) {
-    rv.items[i++] = WINDOW_OBJ(wp->handle);
+    ADD_C(rv, WINDOW_OBJ(wp->handle));
   }
 
   return rv;
@@ -1117,20 +1125,19 @@ void nvim_chan_send(Integer chan, String data, Error *err)
 /// Gets the current list of tabpage handles.
 ///
 /// @return List of tabpage handles
-ArrayOf(Tabpage) nvim_list_tabpages(void)
+ArrayOf(Tabpage) nvim_list_tabpages(Arena *arena)
   FUNC_API_SINCE(1)
 {
-  Array rv = ARRAY_DICT_INIT;
+  size_t n = 0;
 
   FOR_ALL_TABS(tp) {
-    rv.size++;
+    n++;
   }
 
-  rv.items = xmalloc(sizeof(Object) * rv.size);
-  size_t i = 0;
+  Array rv = arena_array(arena, n);
 
   FOR_ALL_TABS(tp) {
-    rv.items[i++] = TABPAGE_OBJ(tp->handle);
+    ADD_C(rv, TABPAGE_OBJ(tp->handle));
   }
 
   return rv;
@@ -1201,14 +1208,13 @@ Boolean nvim_paste(String data, Boolean crlf, Integer phase, Arena *arena, Error
   VALIDATE_INT((phase >= -1 && phase <= 3), "phase", phase, {
     return false;
   });
-  Array lines = ARRAY_DICT_INIT;
   if (phase == -1 || phase == 1) {  // Start of paste-stream.
     draining = false;
   } else if (draining) {
     // Skip remaining chunks.  Report error only once per "stream".
     goto theend;
   }
-  lines = string_to_array(data, crlf);
+  Array lines = string_to_array(data, crlf, arena);
   MAXSIZE_TEMP_ARRAY(args, 2);
   ADD_C(args, ARRAY_OBJ(lines));
   ADD_C(args, INTEGER_OBJ(phase));
@@ -1239,7 +1245,6 @@ Boolean nvim_paste(String data, Boolean crlf, Integer phase, Arena *arena, Error
     AppendCharToRedobuff(ESC);  // Dot-repeat.
   }
 theend:
-  api_free_array(lines);
   if (cancel || phase == -1 || phase == 3) {  // End of paste-stream.
     draining = false;
   }
@@ -1260,24 +1265,27 @@ theend:
 /// @param after  If true insert after cursor (like |p|), or before (like |P|).
 /// @param follow  If true place cursor at end of inserted text.
 /// @param[out] err Error details, if any
-void nvim_put(ArrayOf(String) lines, String type, Boolean after, Boolean follow, Error *err)
+void nvim_put(ArrayOf(String) lines, String type, Boolean after, Boolean follow, Arena *arena,
+              Error *err)
   FUNC_API_SINCE(6)
   FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
-  yankreg_T *reg = xcalloc(1, sizeof(yankreg_T));
+  yankreg_T reg[1] = { 0 };
   VALIDATE_S((prepare_yankreg_from_object(reg, type, lines.size)), "type", type.data, {
-    goto cleanup;
+    return;
   });
   if (lines.size == 0) {
-    goto cleanup;  // Nothing to do.
+    return;  // Nothing to do.
   }
 
+  reg->y_array = arena_alloc(arena, lines.size * sizeof(uint8_t *), true);
+  reg->y_size = lines.size;
   for (size_t i = 0; i < lines.size; i++) {
     VALIDATE_T("line", kObjectTypeString, lines.items[i].type, {
-      goto cleanup;
+      return;
     });
     String line = lines.items[i].data.string;
-    reg->y_array[i] = xmemdupz(line.data, line.size);
+    reg->y_array[i] = arena_memdupz(arena, line.data, line.size);
     memchrsub(reg->y_array[i], NUL, NL, line.size);
   }
 
@@ -1290,10 +1298,6 @@ void nvim_put(ArrayOf(String) lines, String type, Boolean after, Boolean follow,
     msg_silent--;
     VIsual_active = VIsual_was_active;
   });
-
-cleanup:
-  free_register(reg);
-  xfree(reg);
 }
 
 /// Subscribes to event broadcasts.
@@ -1456,10 +1460,10 @@ Dictionary nvim_get_mode(Arena *arena)
 /// @param  mode       Mode short-name ("n", "i", "v", ...)
 /// @returns Array of |maparg()|-like dictionaries describing mappings.
 ///          The "buffer" key is always zero.
-ArrayOf(Dictionary) nvim_get_keymap(String mode)
+ArrayOf(Dictionary) nvim_get_keymap(String mode, Arena *arena)
   FUNC_API_SINCE(3)
 {
-  return keymap_array(mode, NULL);
+  return keymap_array(mode, NULL, arena);
 }
 
 /// Sets a global |mapping| for the given mode.
@@ -1525,7 +1529,7 @@ Array nvim_get_api_info(uint64_t channel_id, Arena *arena)
 
   assert(channel_id <= INT64_MAX);
   ADD_C(rv, INTEGER_OBJ((int64_t)channel_id));
-  ADD_C(rv, DICTIONARY_OBJ(api_metadata()));
+  ADD_C(rv, api_metadata());
 
   return rv;
 }
@@ -1545,14 +1549,14 @@ Array nvim_get_api_info(uint64_t channel_id, Arena *arena)
 /// @param channel_id
 /// @param name Short name for the connected client
 /// @param version  Dictionary describing the version, with these
-///                 (optional) keys:
+///     (optional) keys:
 ///     - "major" major version (defaults to 0 if not set, for no release yet)
 ///     - "minor" minor version
 ///     - "patch" patch number
 ///     - "prerelease" string describing a prerelease, like "dev" or "beta1"
 ///     - "commit" hash or similar identifier of commit
 /// @param type Must be one of the following values. Client libraries should
-///             default to "remote" unless overridden by the user.
+///     default to "remote" unless overridden by the user.
 ///     - "remote" remote client connected "Nvim flavored" MessagePack-RPC (responses
 ///                must be in reverse order of requests). |msgpack-rpc|
 ///     - "msgpack-rpc" remote client connected to Nvim via fully MessagePack-RPC
@@ -1563,12 +1567,12 @@ Array nvim_get_api_info(uint64_t channel_id, Arena *arena)
 ///     - "host" plugin host, typically started by nvim
 ///     - "plugin" single plugin, started by nvim
 /// @param methods Builtin methods in the client. For a host, this does not
-///                include plugin methods which will be discovered later.
-///                The key should be the method name, the values are dicts with
-///                these (optional) keys (more keys may be added in future
-///                versions of Nvim, thus unknown keys are ignored. Clients
-///                must only use keys defined in this or later versions of
-///                Nvim):
+///     include plugin methods which will be discovered later.
+///     The key should be the method name, the values are dicts with
+///     these (optional) keys (more keys may be added in future
+///     versions of Nvim, thus unknown keys are ignored. Clients
+///     must only use keys defined in this or later versions of
+///     Nvim):
 ///     - "async"  if true, send as a notification. If false or unspecified,
 ///                use a blocking request
 ///     - "nargs" Number of arguments. Could be a single integer or an array
@@ -1583,13 +1587,12 @@ Array nvim_get_api_info(uint64_t channel_id, Arena *arena)
 ///
 /// @param[out] err Error details, if any
 void nvim_set_client_info(uint64_t channel_id, String name, Dictionary version, String type,
-                          Dictionary methods, Dictionary attributes, Error *err)
+                          Dictionary methods, Dictionary attributes, Arena *arena, Error *err)
   FUNC_API_SINCE(4) FUNC_API_REMOTE_ONLY
 {
-  Dictionary info = ARRAY_DICT_INIT;
-  PUT(info, "name", copy_object(STRING_OBJ(name), NULL));
+  MAXSIZE_TEMP_DICT(info, 5);
+  PUT_C(info, "name", STRING_OBJ(name));
 
-  version = copy_dictionary(version, NULL);
   bool has_major = false;
   for (size_t i = 0; i < version.size; i++) {
     if (strequal(version.items[i].key.data, "major")) {
@@ -1598,15 +1601,21 @@ void nvim_set_client_info(uint64_t channel_id, String name, Dictionary version, 
     }
   }
   if (!has_major) {
-    PUT(version, "major", INTEGER_OBJ(0));
+    Dictionary v = arena_dict(arena, version.size + 1);
+    if (version.size) {
+      memcpy(v.items, version.items, version.size * sizeof(v.items[0]));
+      v.size = version.size;
+    }
+    PUT_C(v, "major", INTEGER_OBJ(0));
+    version = v;
   }
-  PUT(info, "version", DICTIONARY_OBJ(version));
+  PUT_C(info, "version", DICTIONARY_OBJ(version));
 
-  PUT(info, "type", copy_object(STRING_OBJ(type), NULL));
-  PUT(info, "methods", DICTIONARY_OBJ(copy_dictionary(methods, NULL)));
-  PUT(info, "attributes", DICTIONARY_OBJ(copy_dictionary(attributes, NULL)));
+  PUT_C(info, "type", STRING_OBJ(type));
+  PUT_C(info, "methods", DICTIONARY_OBJ(methods));
+  PUT_C(info, "attributes", DICTIONARY_OBJ(attributes));
 
-  rpc_set_client_info(channel_id, info);
+  rpc_set_client_info(channel_id, copy_dictionary(info, NULL));
 }
 
 /// Gets information about a channel.
@@ -1633,7 +1642,7 @@ void nvim_set_client_info(uint64_t channel_id, String name, Dictionary version, 
 ///                 the RPC channel), if provided by it via
 ///                 |nvim_set_client_info()|.
 ///
-Dictionary nvim_get_chan_info(uint64_t channel_id, Integer chan, Error *err)
+Dictionary nvim_get_chan_info(uint64_t channel_id, Integer chan, Arena *arena, Error *err)
   FUNC_API_SINCE(4)
 {
   if (chan < 0) {
@@ -1644,17 +1653,17 @@ Dictionary nvim_get_chan_info(uint64_t channel_id, Integer chan, Error *err)
     assert(channel_id <= INT64_MAX);
     chan = (Integer)channel_id;
   }
-  return channel_info((uint64_t)chan);
+  return channel_info((uint64_t)chan, arena);
 }
 
 /// Get information about all open channels.
 ///
 /// @returns Array of Dictionaries, each describing a channel with
 ///          the format specified at |nvim_get_chan_info()|.
-Array nvim_list_chans(void)
+Array nvim_list_chans(Arena *arena)
   FUNC_API_SINCE(4)
 {
-  return channel_all_info();
+  return channel_all_info(arena);
 }
 
 /// Calls many API methods atomically.
@@ -1720,7 +1729,7 @@ Array nvim_call_atomic(uint64_t channel_id, Array calls, Arena *arena, Error *er
     // directly here. But `result` might become invalid when next api function
     // is called in the loop.
     ADD_C(results, copy_object(result, arena));
-    if (!handler.arena_return) {
+    if (handler.ret_alloc) {
       api_free_object(result);
     }
   }
@@ -1800,9 +1809,9 @@ static void write_msg(String message, bool to_err, bool writeln)
 /// @param[in]  obj  Object to return.
 ///
 /// @return its argument.
-Object nvim__id(Object obj)
+Object nvim__id(Object obj, Arena *arena)
 {
-  return copy_object(obj, NULL);
+  return copy_object(obj, arena);
 }
 
 /// Returns array given as argument.
@@ -1813,9 +1822,9 @@ Object nvim__id(Object obj)
 /// @param[in]  arr  Array to return.
 ///
 /// @return its argument.
-Array nvim__id_array(Array arr)
+Array nvim__id_array(Array arr, Arena *arena)
 {
-  return copy_array(arr, NULL);
+  return copy_array(arr, arena);
 }
 
 /// Returns dictionary given as argument.
@@ -1826,9 +1835,9 @@ Array nvim__id_array(Array arr)
 /// @param[in]  dct  Dictionary to return.
 ///
 /// @return its argument.
-Dictionary nvim__id_dictionary(Dictionary dct)
+Dictionary nvim__id_dictionary(Dictionary dct, Arena *arena)
 {
-  return copy_dictionary(dct, NULL);
+  return copy_dictionary(dct, arena);
 }
 
 /// Returns floating-point value given as argument.
@@ -1891,7 +1900,7 @@ Array nvim_get_proc_children(Integer pid, Arena *arena, Error *err)
     // syscall failed (possibly because of kernel options), try shelling out.
     DLOG("fallback to vim._os_proc_children()");
     MAXSIZE_TEMP_ARRAY(a, 1);
-    ADD(a, INTEGER_OBJ(pid));
+    ADD_C(a, INTEGER_OBJ(pid));
     Object o = NLUA_EXEC_STATIC("return vim._os_proc_children(...)", a, kRetObject, arena, err);
     if (o.type == kObjectTypeArray) {
       rvobj = o.data.array;
@@ -1903,7 +1912,7 @@ Array nvim_get_proc_children(Integer pid, Arena *arena, Error *err)
   } else {
     rvobj = arena_array(arena, proc_count);
     for (size_t i = 0; i < proc_count; i++) {
-      ADD(rvobj, INTEGER_OBJ(proc_list[i]));
+      ADD_C(rvobj, INTEGER_OBJ(proc_list[i]));
     }
   }
 
@@ -1925,7 +1934,7 @@ Object nvim_get_proc(Integer pid, Arena *arena, Error *err)
   });
 
 #ifdef MSWIN
-  rvobj = DICTIONARY_OBJ(os_proc_info((int)pid));
+  rvobj = DICTIONARY_OBJ(os_proc_info((int)pid, arena));
   if (rvobj.data.dictionary.size == 0) {  // Process not found.
     return NIL;
   }
@@ -1972,7 +1981,7 @@ void nvim_select_popupmenu_item(Integer item, Boolean insert, Boolean finish, Di
   pum_ext_select_item((int)item, insert, finish);
 }
 
-/// NB: if your UI doesn't use hlstate, this will not return hlstate first time
+/// NB: if your UI doesn't use hlstate, this will not return hlstate first time.
 Array nvim__inspect_cell(Integer grid, Integer row, Integer col, Arena *arena, Error *err)
 {
   Array ret = ARRAY_DICT_INIT;
@@ -2008,6 +2017,7 @@ Array nvim__inspect_cell(Integer grid, Integer row, Integer col, Arena *arena, E
   return ret;
 }
 
+/// @nodoc
 void nvim__screenshot(String path)
   FUNC_API_FAST
 {
@@ -2022,10 +2032,11 @@ void nvim__invalidate_glyph_cache(void)
   must_redraw = UPD_CLEAR;
 }
 
-Object nvim__unpack(String str, Error *err)
+/// @nodoc
+Object nvim__unpack(String str, Arena *arena, Error *err)
   FUNC_API_FAST
 {
-  return unpack(str.data, str.size, err);
+  return unpack(str.data, str.size, arena, err);
 }
 
 /// Deletes an uppercase/file named mark. See |mark-motions|.
@@ -2312,6 +2323,7 @@ Dictionary nvim_eval_statusline(String str, Dict(eval_statusline) *opts, Arena *
   return result;
 }
 
+/// @nodoc
 void nvim_error_event(uint64_t channel_id, Integer lvl, String data)
   FUNC_API_REMOTE_ONLY
 {

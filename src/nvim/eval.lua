@@ -3973,7 +3973,7 @@ M.funcs = {
       |getbufoneline()|
     ]=],
     name = 'getline',
-    params = { { 'lnum', 'integer' }, { 'end', 'nil|false' } },
+    params = { { 'lnum', 'integer|string' }, { 'end', 'nil|false' } },
     signature = 'getline({lnum} [, {end}])',
     returns = 'string',
   },
@@ -4354,6 +4354,58 @@ M.funcs = {
     params = { { 'regname', 'string' } },
     returns = 'table',
     signature = 'getreginfo([{regname}])',
+  },
+  getregion = {
+    args = { 2, 3 },
+    base = 1,
+    desc = [=[
+      Returns the list of strings from {pos1} to {pos2} in current
+      buffer.
+
+      {pos1} and {pos2} must both be |List|s with four numbers.
+      See |getpos()| for the format of the list.
+
+      The optional argument {opts} is a Dict and supports the
+      following items:
+
+      	type		Specify the region's selection type
+      			(default: "v"):
+      	    "v"		for |charwise| mode
+      	    "V"		for |linewise| mode
+      	    "<CTRL-V>"	for |blockwise-visual| mode
+
+      	exclusive	If |TRUE|, use exclusive selection
+      			for the end position
+      			(default: follow 'selection')
+
+      You can get the last selection type by |visualmode()|.
+      If Visual mode is active, use |mode()| to get the Visual mode
+      (e.g., in a |:vmap|).
+      This function is useful to get text starting and ending in
+      different columns, such as a |charwise-visual| selection.
+
+      Note that:
+      - Order of {pos1} and {pos2} doesn't matter, it will always
+        return content from the upper left position to the lower
+        right position.
+      - If 'virtualedit' is enabled and the region is past the end
+        of the lines, resulting lines are padded with spaces.
+      - If the region is blockwise and it starts or ends in the
+        middle of a multi-cell character, it is not included but
+        its selected part is substituted with spaces.
+      - If {pos1} or {pos2} is not current in the buffer, an empty
+        list is returned.
+
+      Examples: >
+      	:xnoremap <CR>
+      	\ <Cmd>echom getregion(
+      	\ getpos('v'), getpos('.'), #{ type: mode() })<CR>
+      <
+    ]=],
+    name = 'getregion',
+    params = { { 'pos1', 'table' }, { 'pos2', 'table' }, { 'opts', 'table' } },
+    returns = 'string[]',
+    signature = 'getregion({pos1}, {pos2} [, {opts}])',
   },
   getregtype = {
     args = { 0, 1 },
@@ -5167,7 +5219,7 @@ M.funcs = {
 
     ]=],
     name = 'indent',
-    params = { { 'lnum', 'integer' } },
+    params = { { 'lnum', 'integer|string' } },
     returns = 'integer',
     signature = 'indent({lnum})',
   },
@@ -6501,6 +6553,7 @@ M.funcs = {
       Note that when {count} is added the way {start} works changes,
       see above.
 
+      				*match-pattern*
       See |pattern| for the patterns that are accepted.
       The 'ignorecase' option is used to set the ignore-caseness of
       the pattern.  'smartcase' is NOT used.  The matching is always
@@ -6680,6 +6733,9 @@ M.funcs = {
 
       This function works only for loaded buffers. First call
       |bufload()| if needed.
+
+      See |match-pattern| for information about the effect of some
+      option settings on the pattern.
 
       When {buf} is not a valid buffer, the buffer is not loaded or
       {lnum} or {end} is not valid then an error is given and an
@@ -6914,6 +6970,9 @@ M.funcs = {
           text	matched string
           submatches	a List of submatches.  Present only if
       		"submatches" is set to v:true in {dict}.
+
+      See |match-pattern| for information about the effect of some
+      option settings on the pattern.
 
       Example: >vim
           :echo matchstrlist(['tik tok'], '\<\k\+\>')
@@ -9704,7 +9763,7 @@ M.funcs = {
 
     ]=],
     name = 'setreg',
-    params = { { 'regname', 'string' }, { 'value', 'any' }, { 'options', 'table' } },
+    params = { { 'regname', 'string' }, { 'value', 'any' }, { 'options', 'string' } },
     signature = 'setreg({regname}, {value} [, {options}])',
   },
   settabvar = {

@@ -77,15 +77,16 @@ void nvim_win_set_buf(Window window, Buffer buffer, Error *err)
 /// @param window   Window handle, or 0 for current window
 /// @param[out] err Error details, if any
 /// @return (row, col) tuple
-ArrayOf(Integer, 2) nvim_win_get_cursor(Window window, Error *err)
+ArrayOf(Integer, 2) nvim_win_get_cursor(Window window, Arena *arena, Error *err)
   FUNC_API_SINCE(1)
 {
   Array rv = ARRAY_DICT_INIT;
   win_T *win = find_window_by_handle(window, err);
 
   if (win) {
-    ADD(rv, INTEGER_OBJ(win->w_cursor.lnum));
-    ADD(rv, INTEGER_OBJ(win->w_cursor.col));
+    rv = arena_array(arena, 2);
+    ADD_C(rv, INTEGER_OBJ(win->w_cursor.lnum));
+    ADD_C(rv, INTEGER_OBJ(win->w_cursor.col));
   }
 
   return rv;
@@ -451,6 +452,7 @@ Object nvim_win_call(Window window, LuaRef fun, Error *err)
 ///
 /// This takes precedence over the 'winhighlight' option.
 ///
+/// @param window
 /// @param ns_id the namespace to use
 /// @param[out] err Error details, if any
 void nvim_win_set_hl_ns(Window window, Integer ns_id, Error *err)

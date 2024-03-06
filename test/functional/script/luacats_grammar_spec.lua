@@ -1,7 +1,7 @@
 local helpers = require('test.functional.helpers')(after_each)
 local eq = helpers.eq
 
-local grammar = require('src/nvim/generators/luacats_grammar')
+local grammar = require('scripts/luacats_grammar')
 
 describe('luacats grammar', function()
   --- @param text string
@@ -85,7 +85,7 @@ describe('luacats grammar', function()
   test('@param level (integer|string) desc', {
     kind = 'param',
     name = 'level',
-    type = '(integer|string)',
+    type = 'integer|string',
     desc = 'desc',
   })
 
@@ -130,4 +130,13 @@ describe('luacats grammar', function()
     type = 'b',
     desc = 'desc',
   })
+
+  test(
+    '@field prefix? string|table|(fun(diagnostic:vim.Diagnostic,i:integer,total:integer): string, string)',
+    {
+      kind = 'field',
+      name = 'prefix?',
+      type = 'string|table|(fun(diagnostic:vim.Diagnostic,i:integer,total:integer): string, string)',
+    }
+  )
 end)

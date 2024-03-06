@@ -30,6 +30,7 @@
 #include "nvim/memory_defs.h"
 #include "nvim/message.h"
 #include "nvim/msgpack_rpc/helpers.h"
+#include "nvim/msgpack_rpc/unpacker.h"
 #include "nvim/pos_defs.h"
 #include "nvim/types_defs.h"
 #include "nvim/ui.h"
@@ -37,9 +38,8 @@
 #include "nvim/version.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
-# include "api/private/funcs_metadata.generated.h"
+# include "api/private/api_metadata.generated.h"
 # include "api/private/helpers.c.generated.h"
-# include "api/private/ui_events_metadata.generated.h"
 #endif
 
 /// Start block that may cause Vimscript exceptions while evaluating another code
@@ -455,9 +455,10 @@ String ga_take_string(garray_T *ga)
 /// @param input  Binary string
 /// @param crlf  Also break lines at CR and CRLF.
 /// @return [allocated] String array
-Array string_to_array(const String input, bool crlf)
+Array string_to_array(const String input, bool crlf, Arena *arena)
 {
-  Array ret = ARRAY_DICT_INIT;
+  ArrayBuilder ret = ARRAY_DICT_INIT;
+  kvi_init(ret);
   for (size_t i = 0; i < input.size; i++) {
     const char *start = input.data + i;
     const char *end = start;
@@ -472,20 +473,17 @@ Array string_to_array(const String input, bool crlf)
     if (crlf && *end == CAR && i + 1 < input.size && *(end + 1) == NL) {
       i += 1;  // Advance past CRLF.
     }
-    String s = {
-      .size = line_len,
-      .data = xmemdupz(start, line_len),
-    };
+    String s = CBUF_TO_ARENA_STR(arena, start, line_len);
     memchrsub(s.data, NUL, NL, line_len);
-    ADD(ret, STRING_OBJ(s));
+    kvi_push(ret, STRING_OBJ(s));
     // If line ends at end-of-buffer, add empty final item.
     // This is "readfile()-style", see also ":help channel-lines".
     if (i + 1 == input.size && (*end == NL || (crlf && *end == CAR))) {
-      ADD(ret, STRING_OBJ(STRING_INIT));
+      kvi_push(ret, STRING_OBJ(STRING_INIT));
     }
   }
 
-  return ret;
+  return arena_take_arraybuilder(arena, &ret);
 }
 
 /// Normalizes 0-based indexes to buffer line numbers.
@@ -581,6 +579,15 @@ String arena_string(Arena *arena, String str)
   }
 }
 
+Array arena_take_arraybuilder(Arena *arena, ArrayBuilder *arr)
+{
+  Array ret = arena_array(arena, kv_size(*arr));
+  ret.size = kv_size(*arr);
+  memcpy(ret.items, arr->items, sizeof(ret.items[0]) * ret.size);
+  kvi_destroy(*arr);
+  return ret;
+}
+
 void api_free_object(Object value)
 {
   switch (value.type) {
@@ -641,102 +648,30 @@ void api_clear_error(Error *value)
   value->type = kErrorTypeNone;
 }
 
-/// @returns a shared value. caller must not modify it!
-Dictionary api_metadata(void)
-{
-  static Dictionary metadata = ARRAY_DICT_INIT;
+// initialized once, never freed
+static ArenaMem mem_for_metadata = NULL;
 
-  if (!metadata.size) {
-    PUT(metadata, "version", DICTIONARY_OBJ(version_dict()));
-    init_function_metadata(&metadata);
-    init_ui_event_metadata(&metadata);
-    init_error_type_metadata(&metadata);
-    init_type_metadata(&metadata);
+/// @returns a shared value. caller must not modify it!
+Object api_metadata(void)
+{
+  static Object metadata = OBJECT_INIT;
+
+  if (metadata.type == kObjectTypeNil) {
+    Arena arena = ARENA_EMPTY;
+    Error err = ERROR_INIT;
+    metadata = unpack((char *)packed_api_metadata, sizeof(packed_api_metadata), &arena, &err);
+    if (ERROR_SET(&err) || metadata.type != kObjectTypeDictionary) {
+      abort();
+    }
+    mem_for_metadata = arena_finish(&arena);
   }
 
   return metadata;
 }
 
-static void init_function_metadata(Dictionary *metadata)
+String api_metadata_raw(void)
 {
-  msgpack_unpacked unpacked;
-  msgpack_unpacked_init(&unpacked);
-  if (msgpack_unpack_next(&unpacked,
-                          (const char *)funcs_metadata,
-                          sizeof(funcs_metadata),
-                          NULL) != MSGPACK_UNPACK_SUCCESS) {
-    abort();
-  }
-  Object functions;
-  msgpack_rpc_to_object(&unpacked.data, &functions);
-  msgpack_unpacked_destroy(&unpacked);
-  PUT(*metadata, "functions", functions);
-}
-
-static void init_ui_event_metadata(Dictionary *metadata)
-{
-  msgpack_unpacked unpacked;
-  msgpack_unpacked_init(&unpacked);
-  if (msgpack_unpack_next(&unpacked,
-                          (const char *)ui_events_metadata,
-                          sizeof(ui_events_metadata),
-                          NULL) != MSGPACK_UNPACK_SUCCESS) {
-    abort();
-  }
-  Object ui_events;
-  msgpack_rpc_to_object(&unpacked.data, &ui_events);
-  msgpack_unpacked_destroy(&unpacked);
-  PUT(*metadata, "ui_events", ui_events);
-  Array ui_options = ARRAY_DICT_INIT;
-  ADD(ui_options, CSTR_TO_OBJ("rgb"));
-  for (UIExtension i = 0; i < kUIExtCount; i++) {
-    if (ui_ext_names[i][0] != '_') {
-      ADD(ui_options, CSTR_TO_OBJ(ui_ext_names[i]));
-    }
-  }
-  PUT(*metadata, "ui_options", ARRAY_OBJ(ui_options));
-}
-
-static void init_error_type_metadata(Dictionary *metadata)
-{
-  Dictionary types = ARRAY_DICT_INIT;
-
-  Dictionary exception_metadata = ARRAY_DICT_INIT;
-  PUT(exception_metadata, "id", INTEGER_OBJ(kErrorTypeException));
-
-  Dictionary validation_metadata = ARRAY_DICT_INIT;
-  PUT(validation_metadata, "id", INTEGER_OBJ(kErrorTypeValidation));
-
-  PUT(types, "Exception", DICTIONARY_OBJ(exception_metadata));
-  PUT(types, "Validation", DICTIONARY_OBJ(validation_metadata));
-
-  PUT(*metadata, "error_types", DICTIONARY_OBJ(types));
-}
-
-static void init_type_metadata(Dictionary *metadata)
-{
-  Dictionary types = ARRAY_DICT_INIT;
-
-  Dictionary buffer_metadata = ARRAY_DICT_INIT;
-  PUT(buffer_metadata, "id",
-      INTEGER_OBJ(kObjectTypeBuffer - EXT_OBJECT_TYPE_SHIFT));
-  PUT(buffer_metadata, "prefix", CSTR_TO_OBJ("nvim_buf_"));
-
-  Dictionary window_metadata = ARRAY_DICT_INIT;
-  PUT(window_metadata, "id",
-      INTEGER_OBJ(kObjectTypeWindow - EXT_OBJECT_TYPE_SHIFT));
-  PUT(window_metadata, "prefix", CSTR_TO_OBJ("nvim_win_"));
-
-  Dictionary tabpage_metadata = ARRAY_DICT_INIT;
-  PUT(tabpage_metadata, "id",
-      INTEGER_OBJ(kObjectTypeTabpage - EXT_OBJECT_TYPE_SHIFT));
-  PUT(tabpage_metadata, "prefix", CSTR_TO_OBJ("nvim_tabpage_"));
-
-  PUT(types, "Buffer", DICTIONARY_OBJ(buffer_metadata));
-  PUT(types, "Window", DICTIONARY_OBJ(window_metadata));
-  PUT(types, "Tabpage", DICTIONARY_OBJ(tabpage_metadata));
-
-  PUT(*metadata, "types", DICTIONARY_OBJ(types));
+  return cbuf_as_string((char *)packed_api_metadata, sizeof(packed_api_metadata));
 }
 
 // all the copy_[object] functions allow arena=NULL,

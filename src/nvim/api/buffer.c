@@ -50,9 +50,8 @@
 # include "api/buffer.c.generated.h"
 #endif
 
-/// \defgroup api-buffer
-///
-/// \brief For more information on buffers, see |buffers|
+/// @brief <pre>help
+/// For more information on buffers, see |buffers|.
 ///
 /// Unloaded Buffers: ~
 ///
@@ -64,6 +63,7 @@
 ///
 /// You can use |nvim_buf_is_loaded()| or |nvim_buf_line_count()| to check
 /// whether a buffer is loaded.
+/// </pre>
 
 /// Returns the number of lines in the given buffer.
 ///
@@ -229,6 +229,7 @@ Boolean nvim_buf_detach(uint64_t channel_id, Buffer buffer, Error *err)
   return true;
 }
 
+/// @nodoc
 void nvim__buf_redraw_range(Buffer buffer, Integer first, Integer last, Error *err)
 {
   buf_T *buf = find_buffer_by_handle(buffer, err);
@@ -325,7 +326,8 @@ ArrayOf(String) nvim_buf_get_lines(uint64_t channel_id,
 /// @param replacement      Array of lines to use as replacement
 /// @param[out] err         Error details, if any
 void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integer end,
-                        Boolean strict_indexing, ArrayOf(String) replacement, Error *err)
+                        Boolean strict_indexing, ArrayOf(String) replacement, Arena *arena,
+                        Error *err)
   FUNC_API_SINCE(1)
   FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
@@ -360,14 +362,14 @@ void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integ
   size_t new_len = replacement.size;
   size_t old_len = (size_t)(end - start);
   ptrdiff_t extra = 0;  // lines added to text, can be negative
-  char **lines = (new_len != 0) ? xcalloc(new_len, sizeof(char *)) : NULL;
+  char **lines = (new_len != 0) ? arena_alloc(arena, new_len * sizeof(char *), true) : NULL;
 
   for (size_t i = 0; i < new_len; i++) {
     const String l = replacement.items[i].data.string;
 
     // Fill lines[i] with l's contents. Convert NULs to newlines as required by
     // NL-used-for-NUL.
-    lines[i] = xmemdupz(l.data, l.size);
+    lines[i] = arena_memdupz(arena, l.data, l.size);
     memchrsub(lines[i], NUL, NL, l.size);
   }
 
@@ -412,15 +414,12 @@ void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integ
       goto end;
     });
 
-    if (ml_replace_buf(buf, (linenr_T)lnum, lines[i], false) == FAIL) {
+    if (ml_replace_buf(buf, (linenr_T)lnum, lines[i], false, true) == FAIL) {
       api_set_error(err, kErrorTypeException, "Failed to replace line");
       goto end;
     }
 
     inserted_bytes += (bcount_t)strlen(lines[i]) + 1;
-    // Mark lines that haven't been passed to the buffer as they need
-    // to be freed later
-    lines[i] = NULL;
   }
 
   // Now we may need to insert the remaining new old_len
@@ -438,9 +437,6 @@ void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integ
 
     inserted_bytes += (bcount_t)strlen(lines[i]) + 1;
 
-    // Same as with replacing, but we also need to free lines
-    xfree(lines[i]);
-    lines[i] = NULL;
     extra++;
   }
 
@@ -463,11 +459,6 @@ void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integ
   }
 
 end:
-  for (size_t i = 0; i < new_len; i++) {
-    xfree(lines[i]);
-  }
-
-  xfree(lines);
   try_end(err);
 }
 
@@ -500,7 +491,8 @@ end:
 /// @param replacement      Array of lines to use as replacement
 /// @param[out] err         Error details, if any
 void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, Integer start_col,
-                       Integer end_row, Integer end_col, ArrayOf(String) replacement, Error *err)
+                       Integer end_row, Integer end_col, ArrayOf(String) replacement, Arena *arena,
+                       Error *err)
   FUNC_API_SINCE(7)
   FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
@@ -535,33 +527,31 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
     return;
   });
 
-  char *str_at_start = NULL;
-  char *str_at_end = NULL;
-
-  // Another call to ml_get_buf() may free the line, so make a copy.
-  str_at_start = xstrdup(ml_get_buf(buf, (linenr_T)start_row));
+  // Another call to ml_get_buf() may free the lines, so we make copies
+  char *str_at_start = ml_get_buf(buf, (linenr_T)start_row);
   size_t len_at_start = strlen(str_at_start);
+  str_at_start = arena_memdupz(arena, str_at_start, len_at_start);
   start_col = start_col < 0 ? (int64_t)len_at_start + start_col + 1 : start_col;
   VALIDATE_RANGE((start_col >= 0 && (size_t)start_col <= len_at_start), "start_col", {
-    goto early_end;
+    return;
   });
 
-  // Another call to ml_get_buf() may free the line, so make a copy.
-  str_at_end = xstrdup(ml_get_buf(buf, (linenr_T)end_row));
+  char *str_at_end = ml_get_buf(buf, (linenr_T)end_row);
   size_t len_at_end = strlen(str_at_end);
+  str_at_end = arena_memdupz(arena, str_at_end, len_at_end);
   end_col = end_col < 0 ? (int64_t)len_at_end + end_col + 1 : end_col;
   VALIDATE_RANGE((end_col >= 0 && (size_t)end_col <= len_at_end), "end_col", {
-    goto early_end;
+    return;
   });
 
   VALIDATE((start_row <= end_row && !(end_row == start_row && start_col > end_col)),
            "%s", "'start' is higher than 'end'", {
-    goto early_end;
+    return;
   });
 
   bool disallow_nl = (channel_id != VIML_INTERNAL_CALL);
   if (!check_string_array(replacement, "replacement string", disallow_nl, err)) {
-    goto early_end;
+    return;
   }
 
   size_t new_len = replacement.size;
@@ -591,7 +581,7 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
   if (replacement.size == 1) {
     firstlen += last_part_len;
   }
-  char *first = xmallocz(firstlen);
+  char *first = arena_allocz(arena, firstlen);
   char *last = NULL;
   memcpy(first, str_at_start, (size_t)start_col);
   memcpy(first + start_col, first_item.data, first_item.size);
@@ -599,13 +589,13 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
   if (replacement.size == 1) {
     memcpy(first + start_col + first_item.size, str_at_end + end_col, last_part_len);
   } else {
-    last = xmallocz(last_item.size + last_part_len);
+    last = arena_allocz(arena, last_item.size + last_part_len);
     memcpy(last, last_item.data, last_item.size);
     memchrsub(last, NUL, NL, last_item.size);
     memcpy(last + last_item.size, str_at_end + end_col, last_part_len);
   }
 
-  char **lines = xcalloc(new_len, sizeof(char *));
+  char **lines = arena_alloc(arena, new_len * sizeof(char *), true);
   lines[0] = first;
   new_byte += (bcount_t)(first_item.size);
   for (size_t i = 1; i < new_len - 1; i++) {
@@ -613,7 +603,7 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
 
     // Fill lines[i] with l's contents. Convert NULs to newlines as required by
     // NL-used-for-NUL.
-    lines[i] = xmemdupz(l.data, l.size);
+    lines[i] = arena_memdupz(arena, l.data, l.size);
     memchrsub(lines[i], NUL, NL, l.size);
     new_byte += (bcount_t)(l.size) + 1;
   }
@@ -665,13 +655,10 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
       goto end;
     });
 
-    if (ml_replace_buf(buf, (linenr_T)lnum, lines[i], false) == FAIL) {
+    if (ml_replace_buf(buf, (linenr_T)lnum, lines[i], false, true) == FAIL) {
       api_set_error(err, kErrorTypeException, "Failed to replace line");
       goto end;
     }
-    // Mark lines that haven't been passed to the buffer as they need
-    // to be freed later
-    lines[i] = NULL;
   }
 
   // Now we may need to insert the remaining new old_len
@@ -687,9 +674,6 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
       goto end;
     }
 
-    // Same as with replacing, but we also need to free lines
-    xfree(lines[i]);
-    lines[i] = NULL;
     extra++;
   }
 
@@ -722,15 +706,7 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
   }
 
 end:
-  for (size_t i = 0; i < new_len; i++) {
-    xfree(lines[i]);
-  }
-  xfree(lines);
   try_end(err);
-
-early_end:
-  xfree(str_at_start);
-  xfree(str_at_end);
 }
 
 /// Gets a range from the buffer.
@@ -900,12 +876,12 @@ Integer nvim_buf_get_changedtick(Buffer buffer, Error *err)
 
 /// Gets a list of buffer-local |mapping| definitions.
 ///
-/// @param  mode       Mode short-name ("n", "i", "v", ...)
 /// @param  buffer     Buffer handle, or 0 for current buffer
+/// @param  mode       Mode short-name ("n", "i", "v", ...)
 /// @param[out]  err   Error details, if any
 /// @returns Array of |maparg()|-like dictionaries describing mappings.
 ///          The "buffer" key holds the associated buffer handle.
-ArrayOf(Dictionary) nvim_buf_get_keymap(Buffer buffer, String mode, Error *err)
+ArrayOf(Dictionary) nvim_buf_get_keymap(Buffer buffer, String mode, Arena *arena, Error *err)
   FUNC_API_SINCE(3)
 {
   buf_T *buf = find_buffer_by_handle(buffer, err);
@@ -914,7 +890,7 @@ ArrayOf(Dictionary) nvim_buf_get_keymap(Buffer buffer, String mode, Error *err)
     return (Array)ARRAY_DICT_INIT;
   }
 
-  return keymap_array(mode, buf);
+  return keymap_array(mode, buf, arena);
 }
 
 /// Sets a buffer-local |mapping| for the given mode.
@@ -981,7 +957,7 @@ void nvim_buf_del_var(Buffer buffer, String name, Error *err)
 /// @param buffer     Buffer handle, or 0 for current buffer
 /// @param[out] err   Error details, if any
 /// @return Buffer name
-String nvim_buf_get_name(Buffer buffer, Arena *arena, Error *err)
+String nvim_buf_get_name(Buffer buffer, Error *err)
   FUNC_API_SINCE(1)
 {
   String rv = STRING_INIT;
@@ -1248,6 +1224,7 @@ Object nvim_buf_call(Buffer buffer, LuaRef fun, Error *err)
   return res;
 }
 
+/// @nodoc
 Dictionary nvim__buf_stats(Buffer buffer, Arena *arena, Error *err)
 {
   buf_T *buf = find_buffer_by_handle(buffer, err);
