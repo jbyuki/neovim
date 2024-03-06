@@ -87,3 +87,7 @@ CMakeUserPresets.json
 install/
 build/
 .deps/
+share
+*.dll
+hello.cpp.t2
+/init.lua

@@ -8728,6 +8728,20 @@ return {
       varname = 'p_tags',
     },
     {
+      abbreviation = 'tgl',
+      defaults = { if_true = false },
+      cb = 'did_set_tangle',
+      desc = [=[
+        Associates to a tangle buffer if true.
+      ]=],
+      full_name = 'tangle',
+      redraw = { 'current_buffer' },
+      scope = { 'buffer' },
+      short_desc = N_('Associate to tangle buffer'),
+      type = 'boolean',
+      varname = 'p_tgl',
+    },
+    {
       abbreviation = 'tgst',
       defaults = { if_true = true },
       desc = [=[

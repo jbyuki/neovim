@@ -2576,6 +2576,13 @@ static const char *did_set_textwidth(optset_T *args FUNC_ATTR_UNUSED)
   return NULL;
 }
 
+/// Process the new 'tangle' option value.
+static const char *did_set_tangle(optset_T *args FUNC_ATTR_UNUSED)
+{
+  return NULL;
+}
+
+
 /// Process the updated 'title' or the 'icon' option value.
 static const char *did_set_title_icon(optset_T *args FUNC_ATTR_UNUSED)
 {
@@ -4784,6 +4791,8 @@ void *get_varp_from(vimoption_T *p, buf_T *buf, win_T *win)
     return &(buf->b_p_ts);
   case PV_TW:
     return &(buf->b_p_tw);
+  case PV_TGL:
+    return &(buf->b_p_tgl);
   case PV_UDF:
     return &(buf->b_p_udf);
   case PV_WM:
@@ -5218,6 +5227,7 @@ void buf_copy_options(buf_T *buf, int flags)
       buf->b_p_ul = NO_LOCAL_UNDOLEVEL;
       buf->b_p_bkc = empty_string_option;
       buf->b_bkc_flags = 0;
+      buf->b_p_tgl = 0;
       buf->b_p_gp = empty_string_option;
       buf->b_p_mp = empty_string_option;
       buf->b_p_efm = empty_string_option;
