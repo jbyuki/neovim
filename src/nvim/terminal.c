@@ -307,7 +307,8 @@ void terminal_open(Terminal **termpp, buf_T *buf, TerminalOptions opts)
   // Set up screen
   term->vts = vterm_obtain_screen(term->vt);
   vterm_screen_enable_altscreen(term->vts, true);
-  vterm_screen_enable_reflow(term->vts, true);
+  // TODO(clason): reenable when https://github.com/neovim/neovim/issues/23762 is fixed
+  // vterm_screen_enable_reflow(term->vts, true);
   // delete empty lines at the end of the buffer
   vterm_screen_set_callbacks(term->vts, &vterm_screen_callbacks, term);
   vterm_screen_set_unrecognised_fallbacks(term->vts, &vterm_fallbacks, term);
@@ -612,7 +613,7 @@ static void terminal_check_cursor(void)
                               row_to_linenr(term, term->cursor.row));
   // Nudge cursor when returning to normal-mode.
   int off = is_focused(term) ? 0 : (curwin->w_p_rl ? 1 : -1);
-  coladvance(MAX(0, term->cursor.col + off));
+  coladvance(curwin, MAX(0, term->cursor.col + off));
 }
 
 // Function executed before each iteration of terminal mode.
@@ -626,7 +627,7 @@ static int terminal_check(VimState *state)
   }
 
   terminal_check_cursor();
-  validate_cursor();
+  validate_cursor(curwin);
 
   if (must_redraw) {
     update_screen();
