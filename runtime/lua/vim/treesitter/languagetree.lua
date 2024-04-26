@@ -117,8 +117,18 @@ function LanguageTree.new(source, lang, opts)
 
   local injections = opts.injections or {}
 
+  local tangle_buffer = nil
+  local ok, result = pcall(function() return vim.bo[source].tangle end)
+  if ok then
+    local found, ntangle  = pcall(require, "ntangle-compact")
+    if found and ntangle then
+      tangle_buffer = ntangle.activated[source]
+    end
+  end
+
   --- @type vim.treesitter.LanguageTree
   local self = {
+    _tangle_buffer = tangle_buffer,
     _source = source,
     _lang = lang,
     _children = {},
@@ -353,7 +363,7 @@ function LanguageTree:_parse_regions(range)
     then
       self._parser:set_included_ranges(ranges)
       local parse_time, tree, tree_changes =
-        tcall(self._parser.parse, self._parser, self._trees[i], self._source, true)
+        tcall(self._parser.parse, self._parser, self._trees[i], self._tangle_buffer and self._tangle_buffer.tangle_buf or self._source, true)
 
       -- Pass ranges if this is an initial parse
       local cb_changes = self._trees[i] and tree_changes or tree:included_ranges(true)

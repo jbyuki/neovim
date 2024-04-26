@@ -295,6 +295,22 @@ end
 ---@param line integer
 ---@param is_spell_nav boolean
 local function on_line_impl(self, buf, line, is_spell_nav)
+  local tangled = false
+  local bufnr = self.bufnr
+  if self.tree._tangle_buffer then
+    local offs = self.tree._tangle_buffer:NTtoT(line)
+    for _, off in ipairs(offs) do
+      line = off[1]
+      break
+    end
+
+    if #offs == 0 then
+      return
+    end
+    tangled = true
+    bufnr = self.tree._tangle_buffer.tangle_buf
+  end
+
   self:for_each_highlight_state(function(state)
     -- Use the injection level to offset the subpriority passed to nvim_buf_set_extmark
     -- so injections always appear over base highlights.
@@ -302,15 +318,18 @@ local function on_line_impl(self, buf, line, is_spell_nav)
     local root_node = state.tstree:root()
     local root_start_row, _, root_end_row, _ = root_node:range()
 
+
     -- Only consider trees that contain this line
     if root_start_row > line or root_end_row < line then
       return
     end
 
-    if state.iter == nil or state.next_row < line then
-      state.iter = state.highlighter_query
-        :query()
-        :iter_matches(root_node, self.bufnr, line, root_end_row + 1, { all = true })
+    state.iter = state.highlighter_query
+      :query()
+      :iter_matches(root_node, bufnr, line, root_end_row + 1, { all = true })
+
+    if tangled then
+      state.next_row = line
     end
 
     while line >= state.next_row do
@@ -332,31 +351,58 @@ local function on_line_impl(self, buf, line, is_spell_nav)
           or vim.highlight.priorities.treesitter
         ) + spell_pri_offset
 
-        local url = get_url(match, buf, capture, metadata)
+        local url = get_url(match, bufnr, capture, metadata)
 
         -- The "conceal" attribute can be set at the pattern level or on a particular capture
         local conceal = metadata.conceal or metadata[capture] and metadata[capture].conceal
 
         for _, node in ipairs(nodes) do
-          local range = vim.treesitter.get_range(node, buf, metadata[capture])
+          local range = vim.treesitter.get_range(node, bufnr, metadata[capture])
           local start_row, start_col, end_row, end_col = Range.unpack4(range)
 
-          if hl and end_row >= line and (not is_spell_nav or spell ~= nil) then
-            api.nvim_buf_set_extmark(buf, ns, start_row, start_col, {
-              end_line = end_row,
-              end_col = end_col,
-              hl_group = hl,
-              ephemeral = true,
-              priority = priority,
-              _subpriority = pattern_offset + pattern,
-              conceal = conceal,
-              spell = spell,
-              url = url,
-            })
-          end
+          if tangled then
+            if hl and end_row >= line and (not is_spell_nav or spell ~= nil) then
+              local sr = self.tree._tangle_buffer:TtoNT(start_row) 
+              local er = self.tree._tangle_buffer:TtoNT(end_row) 
 
-          if start_row > line then
-            state.next_row = start_row
+              -- FIX COL
+              -- FIX MULTI LINE
+
+              api.nvim_buf_set_extmark(buf, ns, sr, start_col, {
+                end_line = er,
+                end_col = end_col,
+                hl_group = hl,
+                ephemeral = true,
+                priority = priority,
+                _subpriority = pattern_offset + pattern,
+                conceal = conceal,
+                spell = spell,
+                url = url,
+              })
+            end
+
+            if start_row > line then
+              -- FIX THIS
+              state.next_row = start_row
+            end
+          else
+            if hl and end_row >= line and (not is_spell_nav or spell ~= nil) then
+              api.nvim_buf_set_extmark(buf, ns, start_row, start_col, {
+                end_line = end_row,
+                end_col = end_col,
+                hl_group = hl,
+                ephemeral = true,
+                priority = priority,
+                _subpriority = pattern_offset + pattern,
+                conceal = conceal,
+                spell = spell,
+                url = url,
+              })
+            end
+
+            if start_row > line then
+              state.next_row = start_row
+            end
           end
         end
       end
