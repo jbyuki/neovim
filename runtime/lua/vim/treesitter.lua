@@ -57,6 +57,10 @@ function M._create_parser(bufnr, lang, opts)
 
   local source = self:source() --[[@as integer]]
 
+  -- if self._tangle_buffer then
+    -- source = self._tangle_buffer.tangle_buf
+  -- end
+
   api.nvim_buf_attach(
     source,
     false,

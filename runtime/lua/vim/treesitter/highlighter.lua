@@ -295,6 +295,7 @@ end
 ---@param line integer
 ---@param is_spell_nav boolean
 local function on_line_impl(self, buf, line, is_spell_nav)
+  print(line)
   local tangled = false
   local bufnr = self.bufnr
   if self.tree._tangle_buffer then

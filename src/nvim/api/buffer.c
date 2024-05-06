@@ -462,6 +462,163 @@ end:
   try_end(err);
 }
 
+/// Sets (replaces) a line-range in the buffer.
+///
+/// Indexing is zero-based, end-exclusive. Negative indices are interpreted
+/// as length+1+index: -1 refers to the index past the end. So to change
+/// or delete the last element use start=-2 and end=-1.
+///
+/// To insert lines at a given index, set `start` and `end` to the same index.
+/// To delete a range of lines, set `replacement` to an empty array.
+///
+/// Out-of-bounds indices are clamped to the nearest valid value, unless
+/// `strict_indexing` is set.
+///
+/// @see |nvim_buf_set_text()|
+///
+/// @param channel_id
+/// @param buffer           Buffer handle, or 0 for current buffer
+/// @param start            First line index
+/// @param end              Last line index, exclusive
+/// @param strict_indexing  Whether out-of-bounds should be an error.
+/// @param replacement      Array of lines to use as replacement
+/// @param[out] err         Error details, if any
+void nvim_buf_set_lines_unsafe(uint64_t channel_id, Buffer buffer, Integer start, Integer end,
+                        Boolean strict_indexing, ArrayOf(String) replacement, Arena *arena,
+                        Error *err)
+  FUNC_API_SINCE(10)
+{
+  buf_T *buf = find_buffer_by_handle(buffer, err);
+
+  if (!buf) {
+    return;
+  }
+
+  // Load buffer if necessary. #22670
+  if (!buf_ensure_loaded(buf)) {
+    api_set_error(err, kErrorTypeException, "Failed to load buffer");
+    return;
+  }
+
+  bool oob = false;
+  start = normalize_index(buf, start, true, &oob);
+  end = normalize_index(buf, end, true, &oob);
+
+  VALIDATE((!strict_indexing || !oob), "%s", "Index out of bounds", {
+    return;
+  });
+  VALIDATE((start <= end), "%s", "'start' is higher than 'end'", {
+    return;
+  });
+
+  bool disallow_nl = (channel_id != VIML_INTERNAL_CALL);
+  if (!check_string_array(replacement, "replacement string", disallow_nl, err)) {
+    return;
+  }
+
+  size_t new_len = replacement.size;
+  size_t old_len = (size_t)(end - start);
+  ptrdiff_t extra = 0;  // lines added to text, can be negative
+  char **lines = (new_len != 0) ? arena_alloc(arena, new_len * sizeof(char *), true) : NULL;
+
+  for (size_t i = 0; i < new_len; i++) {
+    const String l = replacement.items[i].data.string;
+
+    // Fill lines[i] with l's contents. Convert NULs to newlines as required by
+    // NL-used-for-NUL.
+    lines[i] = arena_memdupz(arena, l.data, l.size);
+    memchrsub(lines[i], NUL, NL, l.size);
+  }
+
+  try_start();
+
+  if (!MODIFIABLE(buf)) {
+    api_set_error(err, kErrorTypeException, "Buffer is not 'modifiable'");
+    goto end;
+  }
+
+  // if (u_save_buf(buf, (linenr_T)(start - 1), (linenr_T)end) == FAIL) {
+    // api_set_error(err, kErrorTypeException, "Failed to save undo information");
+    // goto end;
+  // }
+
+  bcount_t deleted_bytes = get_region_bytecount(buf, (linenr_T)start, (linenr_T)end, 0, 0);
+
+  // If the size of the range is reducing (ie, new_len < old_len) we
+  // need to delete some old_len. We do this at the start, by
+  // repeatedly deleting line "start".
+  size_t to_delete = (new_len < old_len) ? old_len - new_len : 0;
+  for (size_t i = 0; i < to_delete; i++) {
+    if (ml_delete_buf(buf, (linenr_T)start, false) == FAIL) {
+      api_set_error(err, kErrorTypeException, "Failed to delete line");
+      goto end;
+    }
+  }
+
+  if (to_delete > 0) {
+    extra -= (ptrdiff_t)to_delete;
+  }
+
+  // For as long as possible, replace the existing old_len with the
+  // new old_len. This is a more efficient operation, as it requires
+  // less memory allocation and freeing.
+  size_t to_replace = old_len < new_len ? old_len : new_len;
+  bcount_t inserted_bytes = 0;
+  for (size_t i = 0; i < to_replace; i++) {
+    int64_t lnum = start + (int64_t)i;
+
+    VALIDATE(lnum < MAXLNUM, "%s", "Index out of bounds", {
+      goto end;
+    });
+
+    if (ml_replace_buf(buf, (linenr_T)lnum, lines[i], false, true) == FAIL) {
+      api_set_error(err, kErrorTypeException, "Failed to replace line");
+      goto end;
+    }
+
+    inserted_bytes += (bcount_t)strlen(lines[i]) + 1;
+  }
+
+  // Now we may need to insert the remaining new old_len
+  for (size_t i = to_replace; i < new_len; i++) {
+    int64_t lnum = start + (int64_t)i - 1;
+
+    VALIDATE(lnum < MAXLNUM, "%s", "Index out of bounds", {
+      goto end;
+    });
+
+    if (ml_append_buf(buf, (linenr_T)lnum, lines[i], 0, false) == FAIL) {
+      api_set_error(err, kErrorTypeException, "Failed to insert line");
+      goto end;
+    }
+
+    inserted_bytes += (bcount_t)strlen(lines[i]) + 1;
+
+    extra++;
+  }
+
+  // Adjust marks. Invalidate any which lie in the
+  // changed range, and move any in the remainder of the buffer.
+  linenr_T adjust = end > start ? MAXLNUM : 0;
+  mark_adjust_buf(buf, (linenr_T)start, (linenr_T)(end - 1), adjust, (linenr_T)extra,
+                  true, true, kExtmarkNOOP);
+
+  extmark_splice(buf, (int)start - 1, 0, (int)(end - start), 0,
+                 deleted_bytes, (int)new_len, 0, inserted_bytes,
+                 kExtmarkUndo);
+
+  changed_lines(buf, (linenr_T)start, 0, (linenr_T)end, (linenr_T)extra, true);
+
+  // FOR_ALL_TAB_WINDOWS(tp, win) {
+    // if (win->w_buffer == buf) {
+      // fix_cursor(win, (linenr_T)start, (linenr_T)end, (linenr_T)extra);
+    // }
+  // }
+
+end:
+  try_end(err);
+}
+
 /// Sets (replaces) a range in the buffer
 ///
 /// This is recommended over |nvim_buf_set_lines()| when only modifying parts of
