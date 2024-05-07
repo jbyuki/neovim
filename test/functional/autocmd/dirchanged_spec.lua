@@ -1,11 +1,12 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local eval = helpers.eval
-local request = helpers.request
-local is_os = helpers.is_os
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local eval = n.eval
+local request = n.request
+local is_os = t.is_os
 
 describe('autocmd DirChanged and DirChangedPre', function()
   local curdir = vim.uv.cwd():gsub('\\', '/')
@@ -22,12 +23,12 @@ describe('autocmd DirChanged and DirChangedPre', function()
 
   setup(function()
     for _, dir in pairs(dirs) do
-      helpers.mkdir(dir)
+      t.mkdir(dir)
     end
   end)
   teardown(function()
     for _, dir in pairs(dirs) do
-      helpers.rmdir(dir)
+      n.rmdir(dir)
     end
   end)
 

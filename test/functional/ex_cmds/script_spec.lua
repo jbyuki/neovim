@@ -1,15 +1,16 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local eq = helpers.eq
-local neq = helpers.neq
-local command = helpers.command
-local exec_capture = helpers.exec_capture
-local write_file = helpers.write_file
-local api = helpers.api
-local clear = helpers.clear
-local dedent = helpers.dedent
-local exc_exec = helpers.exc_exec
-local missing_provider = helpers.missing_provider
+local eq = t.eq
+local neq = t.neq
+local command = n.command
+local exec_capture = n.exec_capture
+local write_file = t.write_file
+local api = n.api
+local clear = n.clear
+local dedent = t.dedent
+local exc_exec = n.exc_exec
+local missing_provider = n.missing_provider
 
 local tmpfile = 'X_ex_cmds_script'
 

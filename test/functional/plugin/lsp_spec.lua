@@ -1,36 +1,38 @@
-local helpers = require('test.functional.helpers')(after_each)
-local lsp_helpers = require('test.functional.plugin.lsp.helpers')
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local assert_log = helpers.assert_log
-local buf_lines = helpers.buf_lines
-local clear = helpers.clear
-local command = helpers.command
-local dedent = helpers.dedent
-local exec_lua = helpers.exec_lua
-local eq = helpers.eq
-local eval = helpers.eval
-local matches = helpers.matches
-local pcall_err = helpers.pcall_err
+local t_lsp = require('test.functional.plugin.lsp.testutil')
+
+local assert_log = t.assert_log
+local buf_lines = n.buf_lines
+local clear = n.clear
+local command = n.command
+local dedent = t.dedent
+local exec_lua = n.exec_lua
+local eq = t.eq
+local eval = n.eval
+local matches = t.matches
+local pcall_err = t.pcall_err
 local pesc = vim.pesc
-local insert = helpers.insert
-local fn = helpers.fn
-local retry = helpers.retry
-local stop = helpers.stop
+local insert = n.insert
+local fn = n.fn
+local retry = t.retry
+local stop = n.stop
 local NIL = vim.NIL
-local read_file = require('test.helpers').read_file
-local write_file = require('test.helpers').write_file
-local is_ci = helpers.is_ci
-local api = helpers.api
-local is_os = helpers.is_os
-local skip = helpers.skip
-local mkdir = helpers.mkdir
-local tmpname = helpers.tmpname
+local read_file = t.read_file
+local write_file = t.write_file
+local is_ci = t.is_ci
+local api = n.api
+local is_os = t.is_os
+local skip = t.skip
+local mkdir = t.mkdir
+local tmpname = t.tmpname
 
-local clear_notrace = lsp_helpers.clear_notrace
-local create_server_definition = lsp_helpers.create_server_definition
-local fake_lsp_code = lsp_helpers.fake_lsp_code
-local fake_lsp_logfile = lsp_helpers.fake_lsp_logfile
-local test_rpc_server = lsp_helpers.test_rpc_server
+local clear_notrace = t_lsp.clear_notrace
+local create_server_definition = t_lsp.create_server_definition
+local fake_lsp_code = t_lsp.fake_lsp_code
+local fake_lsp_logfile = t_lsp.fake_lsp_logfile
+local test_rpc_server = t_lsp.test_rpc_server
 
 local function get_buf_option(name, bufnr)
   bufnr = bufnr or 'BUFFER'
@@ -83,7 +85,7 @@ describe('LSP', function()
   end)
 
   after_each(function()
-    exec_lua("vim.api.nvim_exec_autocmds('VimLeavePre', { modeline = false })")
+    api.nvim_exec_autocmds('VimLeavePre', { modeline = false })
     -- exec_lua("lsp.stop_all_clients(true)")
   end)
 
@@ -146,7 +148,7 @@ describe('LSP', function()
     after_each(function()
       stop()
       exec_lua('lsp.stop_client(lsp.get_clients(), true)')
-      exec_lua("vim.api.nvim_exec_autocmds('VimLeavePre', { modeline = false })")
+      api.nvim_exec_autocmds('VimLeavePre', { modeline = false })
     end)
 
     it('should run correctly', function()
@@ -249,7 +251,7 @@ describe('LSP', function()
       if is_ci() then
         pending('hangs the build on CI #14028, re-enable with freeze timeout #14204')
         return
-      elseif helpers.skip_fragile(pending) then
+      elseif t.skip_fragile(pending) then
         return
       end
       local expected_handlers = {
@@ -279,7 +281,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'shutdown', client_id = 1 } },
         { NIL, {}, { method = 'finish', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_finish',
         on_setup = function()
@@ -312,7 +314,7 @@ describe('LSP', function()
     end)
 
     it('should fire autocommands on attach and detach', function()
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_init',
         on_setup = function()
@@ -349,7 +351,7 @@ describe('LSP', function()
     end)
 
     it('should set default options on attach', function()
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'set_defaults_all_capabilities',
         on_init = function(_client)
@@ -397,7 +399,7 @@ describe('LSP', function()
     end)
 
     it('should overwrite options set by ftplugins', function()
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'set_defaults_all_capabilities',
         on_init = function(_client)
@@ -437,7 +439,7 @@ describe('LSP', function()
     end)
 
     it('should not overwrite user-defined options', function()
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'set_defaults_all_capabilities',
         on_init = function(_client)
@@ -508,7 +510,7 @@ describe('LSP', function()
         },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'check_workspace_configuration',
         on_init = function(_client)
@@ -598,7 +600,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'shutdown', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'text_document_sync_save_bool',
         on_init = function(c)
@@ -692,7 +694,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'shutdown', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server({
         test_name = 'text_document_save_did_open',
         on_init = function(c)
@@ -732,7 +734,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'shutdown', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'text_document_sync_save_includeText',
         on_init = function(c)
@@ -808,14 +810,12 @@ describe('LSP', function()
               BUFFER = vim.api.nvim_get_current_buf()
               lsp.buf_attach_client(BUFFER, TEST_RPC_CLIENT_ID)
               vim.lsp.handlers['textDocument/typeDefinition'] = function() end
+              vim.cmd(BUFFER.."bwipeout")
             ]=])
         end,
         on_init = function(client)
           client.stop()
           exec_lua('vim.lsp.buf.type_definition()')
-          exec_lua [[
-            vim.api.nvim_command(BUFFER.."bwipeout")
-          ]]
         end,
         on_exit = function(code, signal)
           eq(0, code, 'exit code')
@@ -859,7 +859,7 @@ describe('LSP', function()
       local expected_handlers = {
         { NIL, {}, { method = 'finish', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'check_forward_request_cancelled',
         on_init = function(_client)
@@ -885,7 +885,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { { code = -32801 }, NIL, { method = 'error_code_test', bufnr = 1, client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'check_forward_content_modified',
         on_init = function(_client)
@@ -915,7 +915,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { NIL, {}, { method = 'slow_request', bufnr = 1, client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'check_pending_request_tracked',
         on_init = function(_client)
@@ -949,7 +949,7 @@ describe('LSP', function()
       local expected_handlers = {
         { NIL, {}, { method = 'finish', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'check_cancel_request_tracked',
         on_init = function(_client)
@@ -982,7 +982,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { NIL, {}, { method = 'slow_request', bufnr = 1, client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'check_tracked_requests_cleared',
         on_init = function(_client)
@@ -1021,7 +1021,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { NIL, {}, { method = 'slow_request', bufnr = 1, client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'check_tracked_requests_cleared',
         on_init = function(_client)
@@ -1057,7 +1057,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'shutdown', client_id = 1 } },
         { NIL, {}, { method = 'finish', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_finish',
         on_setup = function()
@@ -1067,12 +1067,10 @@ describe('LSP', function()
               "testing";
               "123";
             })
-          ]]
-          eq(1, exec_lua('return TEST_RPC_CLIENT_ID'))
-          eq(true, exec_lua('return lsp.buf_attach_client(BUFFER, TEST_RPC_CLIENT_ID)'))
-          eq(true, exec_lua('return lsp.buf_is_attached(BUFFER, TEST_RPC_CLIENT_ID)'))
-          exec_lua [[
-            vim.api.nvim_command(BUFFER.."bwipeout")
+            assert(TEST_RPC_CLIENT_ID == 1)
+            assert(lsp.buf_attach_client(BUFFER, TEST_RPC_CLIENT_ID))
+            assert(lsp.buf_is_attached(BUFFER, TEST_RPC_CLIENT_ID))
+            vim.cmd(BUFFER.."bwipeout")
           ]]
         end,
         on_init = function(_client)
@@ -1101,7 +1099,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_check_buffer_open',
         on_setup = function()
@@ -1147,7 +1145,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_check_buffer_open',
         on_setup = function()
@@ -1190,7 +1188,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_check_buffer_open_and_change',
         on_setup = function()
@@ -1238,7 +1236,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_check_buffer_open_and_change_noeol',
         on_setup = function()
@@ -1305,7 +1303,7 @@ describe('LSP', function()
         },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'inlay_hint',
         on_setup = function()
@@ -1332,7 +1330,7 @@ describe('LSP', function()
         on_handler = function(err, result, ctx)
           if ctx.method == 'start' then
             exec_lua [[
-              vim.lsp.inlay_hint.enable(BUFFER)
+              vim.lsp.inlay_hint.enable(true, { bufnr = BUFFER })
             ]]
           end
           if ctx.method == 'textDocument/inlayHint' then
@@ -1352,7 +1350,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_check_buffer_open_and_change_incremental',
         options = {
@@ -1403,7 +1401,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_check_buffer_open_and_change_incremental',
         options = {
@@ -1457,7 +1455,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_check_buffer_open_and_change_incremental_editing',
         on_setup = function()
@@ -1485,7 +1483,7 @@ describe('LSP', function()
         end,
         on_handler = function(err, result, ctx)
           if ctx.method == 'start' then
-            helpers.command('normal! 1Go')
+            n.command('normal! 1Go')
             client.notify('finish')
           end
           eq(table.remove(expected_handlers), { err, result, ctx }, 'expected handler')
@@ -1502,7 +1500,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_check_buffer_open_and_change_multi',
         on_setup = function()
@@ -1553,7 +1551,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_check_buffer_open_and_change_multi_and_close',
         on_setup = function()
@@ -1607,7 +1605,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'finish', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'invalid_header',
         on_setup = function() end,
@@ -1640,7 +1638,7 @@ describe('LSP', function()
         },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'decode_nil',
         on_setup = function()
@@ -1807,7 +1805,7 @@ describe('LSP', function()
         make_edit(1, 0, 2, 5, 'foobar'),
         make_edit(4, 0, 5, 0, 'barfoo'),
       }
-      eq(true, exec_lua('return vim.api.nvim_buf_set_mark(1, "a", 2, 1, {})'))
+      eq(true, api.nvim_buf_set_mark(1, 'a', 2, 1, {}))
       exec_lua('vim.lsp.util.apply_text_edits(...)', edits, 1, 'utf-16')
       eq({
         'First line of text',
@@ -1815,7 +1813,7 @@ describe('LSP', function()
         'Fourth line of text',
         'barfoo',
       }, buf_lines(1))
-      local mark = exec_lua('return vim.api.nvim_buf_get_mark(1, "a")')
+      local mark = api.nvim_buf_get_mark(1, 'a')
       eq({ 2, 1 }, mark)
     end)
 
@@ -1824,7 +1822,7 @@ describe('LSP', function()
         make_edit(1, 0, 2, 15, 'foobar'),
         make_edit(4, 0, 5, 0, 'barfoo'),
       }
-      eq(true, exec_lua('return vim.api.nvim_buf_set_mark(1, "a", 2, 10, {})'))
+      eq(true, api.nvim_buf_set_mark(1, 'a', 2, 10, {}))
       exec_lua('vim.lsp.util.apply_text_edits(...)', edits, 1, 'utf-16')
       eq({
         'First line of text',
@@ -1832,7 +1830,7 @@ describe('LSP', function()
         'Fourth line of text',
         'barfoo',
       }, buf_lines(1))
-      local mark = exec_lua('return vim.api.nvim_buf_get_mark(1, "a")')
+      local mark = api.nvim_buf_get_mark(1, 'a')
       eq({ 2, 9 }, mark)
     end)
 
@@ -1841,19 +1839,19 @@ describe('LSP', function()
         make_edit(1, 0, 4, 5, 'foobar'),
         make_edit(4, 0, 5, 0, 'barfoo'),
       }
-      eq(true, exec_lua('return vim.api.nvim_buf_set_mark(1, "a", 4, 1, {})'))
+      eq(true, api.nvim_buf_set_mark(1, 'a', 4, 1, {}))
       exec_lua('vim.lsp.util.apply_text_edits(...)', edits, 1, 'utf-16')
       eq({
         'First line of text',
         'foobaro',
       }, buf_lines(1))
-      local mark = exec_lua('return vim.api.nvim_buf_get_mark(1, "a")')
+      local mark = api.nvim_buf_get_mark(1, 'a')
       eq({ 2, 1 }, mark)
     end)
 
     describe('cursor position', function()
       it("don't fix the cursor if the range contains the cursor", function()
-        fn.nvim_win_set_cursor(0, { 2, 6 })
+        api.nvim_win_set_cursor(0, { 2, 6 })
         local edits = {
           make_edit(1, 0, 1, 19, 'Second line of text'),
         }
@@ -1865,11 +1863,11 @@ describe('LSP', function()
           'Fourth line of text',
           'å å ɧ 汉语 ↥ 🤦 🦄',
         }, buf_lines(1))
-        eq({ 2, 6 }, fn.nvim_win_get_cursor(0))
+        eq({ 2, 6 }, api.nvim_win_get_cursor(0))
       end)
 
       it('fix the cursor to the valid col if the content was removed', function()
-        fn.nvim_win_set_cursor(0, { 2, 6 })
+        api.nvim_win_set_cursor(0, { 2, 6 })
         local edits = {
           make_edit(1, 0, 1, 6, ''),
           make_edit(1, 6, 1, 19, ''),
@@ -1882,11 +1880,11 @@ describe('LSP', function()
           'Fourth line of text',
           'å å ɧ 汉语 ↥ 🤦 🦄',
         }, buf_lines(1))
-        eq({ 2, 0 }, fn.nvim_win_get_cursor(0))
+        eq({ 2, 0 }, api.nvim_win_get_cursor(0))
       end)
 
       it('fix the cursor to the valid row if the content was removed', function()
-        fn.nvim_win_set_cursor(0, { 2, 6 })
+        api.nvim_win_set_cursor(0, { 2, 6 })
         local edits = {
           make_edit(1, 0, 1, 6, ''),
           make_edit(0, 18, 5, 0, ''),
@@ -1895,11 +1893,11 @@ describe('LSP', function()
         eq({
           'First line of text',
         }, buf_lines(1))
-        eq({ 1, 17 }, fn.nvim_win_get_cursor(0))
+        eq({ 1, 17 }, api.nvim_win_get_cursor(0))
       end)
 
       it('fix the cursor row', function()
-        fn.nvim_win_set_cursor(0, { 3, 0 })
+        api.nvim_win_set_cursor(0, { 3, 0 })
         local edits = {
           make_edit(1, 0, 2, 0, ''),
         }
@@ -1910,14 +1908,14 @@ describe('LSP', function()
           'Fourth line of text',
           'å å ɧ 汉语 ↥ 🤦 🦄',
         }, buf_lines(1))
-        eq({ 2, 0 }, fn.nvim_win_get_cursor(0))
+        eq({ 2, 0 }, api.nvim_win_get_cursor(0))
       end)
 
       it('fix the cursor col', function()
         -- append empty last line. See #22636
-        exec_lua('vim.api.nvim_buf_set_lines(...)', 1, -1, -1, true, { '' })
+        api.nvim_buf_set_lines(1, -1, -1, true, { '' })
 
-        fn.nvim_win_set_cursor(0, { 2, 11 })
+        api.nvim_win_set_cursor(0, { 2, 11 })
         local edits = {
           make_edit(1, 7, 1, 11, ''),
         }
@@ -1930,11 +1928,11 @@ describe('LSP', function()
           'å å ɧ 汉语 ↥ 🤦 🦄',
           '',
         }, buf_lines(1))
-        eq({ 2, 7 }, fn.nvim_win_get_cursor(0))
+        eq({ 2, 7 }, api.nvim_win_get_cursor(0))
       end)
 
       it('fix the cursor row and col', function()
-        fn.nvim_win_set_cursor(0, { 2, 12 })
+        api.nvim_win_set_cursor(0, { 2, 12 })
         local edits = {
           make_edit(0, 11, 1, 12, ''),
         }
@@ -1945,7 +1943,7 @@ describe('LSP', function()
           'Fourth line of text',
           'å å ɧ 汉语 ↥ 🤦 🦄',
         }, buf_lines(1))
-        eq({ 1, 11 }, fn.nvim_win_get_cursor(0))
+        eq({ 1, 11 }, api.nvim_win_get_cursor(0))
       end)
     end)
 
@@ -2021,7 +2019,7 @@ describe('LSP', function()
   end)
 
   describe('apply_text_document_edit', function()
-    local target_bufnr
+    local target_bufnr --- @type integer
     local text_document_edit = function(editVersion)
       return {
         edits = {
@@ -2267,7 +2265,7 @@ describe('LSP', function()
         },
       }
       exec_lua('vim.lsp.util.apply_workspace_edit(...)', edit, 'utf-16')
-      eq(true, exec_lua('return vim.uv.fs_stat(...) ~= nil', tmpfile))
+      eq(true, vim.uv.fs_stat(tmpfile) ~= nil)
     end)
     it(
       'Supports file creation in folder that needs to be created with CreateFile payload',
@@ -2285,7 +2283,7 @@ describe('LSP', function()
           },
         }
         exec_lua('vim.lsp.util.apply_workspace_edit(...)', edit, 'utf-16')
-        eq(true, exec_lua('return vim.uv.fs_stat(...) ~= nil', tmpfile))
+        eq(true, vim.uv.fs_stat(tmpfile) ~= nil)
       end
     )
     it('createFile does not touch file if it exists and ignoreIfExists is set', function()
@@ -2304,7 +2302,7 @@ describe('LSP', function()
         },
       }
       exec_lua('vim.lsp.util.apply_workspace_edit(...)', edit, 'utf-16')
-      eq(true, exec_lua('return vim.uv.fs_stat(...) ~= nil', tmpfile))
+      eq(true, vim.uv.fs_stat(tmpfile) ~= nil)
       eq('Dummy content', read_file(tmpfile))
     end)
     it('createFile overrides file if overwrite is set', function()
@@ -2324,7 +2322,7 @@ describe('LSP', function()
         },
       }
       exec_lua('vim.lsp.util.apply_workspace_edit(...)', edit, 'utf-16')
-      eq(true, exec_lua('return vim.uv.fs_stat(...) ~= nil', tmpfile))
+      eq(true, vim.uv.fs_stat(tmpfile) ~= nil)
       eq('', read_file(tmpfile))
     end)
     it('DeleteFile delete file and buffer', function()
@@ -2348,8 +2346,8 @@ describe('LSP', function()
         },
       }
       eq(true, pcall(exec_lua, 'vim.lsp.util.apply_workspace_edit(...)', edit, 'utf-16'))
-      eq(false, exec_lua('return vim.uv.fs_stat(...) ~= nil', tmpfile))
-      eq(false, exec_lua('return vim.api.nvim_buf_is_loaded(vim.fn.bufadd(...))', tmpfile))
+      eq(false, vim.uv.fs_stat(tmpfile) ~= nil)
+      eq(false, api.nvim_buf_is_loaded(fn.bufadd(tmpfile)))
     end)
     it('DeleteFile fails if file does not exist and ignoreIfNotExists is false', function()
       local tmpfile = tmpname()
@@ -2367,12 +2365,12 @@ describe('LSP', function()
         },
       }
       eq(false, pcall(exec_lua, 'vim.lsp.util.apply_workspace_edit(...)', edit))
-      eq(false, exec_lua('return vim.uv.fs_stat(...) ~= nil', tmpfile))
+      eq(false, vim.uv.fs_stat(tmpfile) ~= nil)
     end)
   end)
 
   describe('lsp.util.rename', function()
-    local pathsep = helpers.get_pathsep()
+    local pathsep = n.get_pathsep()
 
     it('Can rename an existing file', function()
       local old = tmpname()
@@ -2395,9 +2393,9 @@ describe('LSP', function()
         new
       )
       eq({ 'Test content' }, lines)
-      local exists = exec_lua('return vim.uv.fs_stat(...) ~= nil', old)
+      local exists = vim.uv.fs_stat(old) ~= nil
       eq(false, exists)
-      exists = exec_lua('return vim.uv.fs_stat(...) ~= nil', new)
+      exists = vim.uv.fs_stat(new) ~= nil
       eq(true, exists)
       os.remove(new)
     end)
@@ -2408,7 +2406,7 @@ describe('LSP', function()
       os.remove(old_dir)
       os.remove(new_dir)
 
-      helpers.mkdir_p(old_dir)
+      n.mkdir_p(old_dir)
 
       local file = 'file.txt'
       write_file(old_dir .. pathsep .. file, 'Test content')
@@ -2433,9 +2431,9 @@ describe('LSP', function()
         file
       )
       eq({ 'Test content' }, lines)
-      eq(false, exec_lua('return vim.uv.fs_stat(...) ~= nil', old_dir))
-      eq(true, exec_lua('return vim.uv.fs_stat(...) ~= nil', new_dir))
-      eq(true, exec_lua('return vim.uv.fs_stat(...) ~= nil', new_dir .. pathsep .. file))
+      eq(false, vim.uv.fs_stat(old_dir) ~= nil)
+      eq(true, vim.uv.fs_stat(new_dir) ~= nil)
+      eq(true, vim.uv.fs_stat(new_dir .. pathsep .. file) ~= nil)
 
       os.remove(new_dir)
     end)
@@ -2444,7 +2442,7 @@ describe('LSP', function()
       local new = tmpname()
       os.remove(old)
       os.remove(new)
-      helpers.mkdir_p(old)
+      n.mkdir_p(old)
 
       local result = exec_lua(
         [[
@@ -2499,7 +2497,7 @@ describe('LSP', function()
           new
         )
 
-        eq(true, exec_lua('return vim.uv.fs_stat(...) ~= nil', old))
+        eq(true, vim.uv.fs_stat(old) ~= nil)
         eq('New file', read_file(new))
 
         exec_lua(
@@ -2513,7 +2511,7 @@ describe('LSP', function()
           new
         )
 
-        eq(true, exec_lua('return vim.uv.fs_stat(...) ~= nil', old))
+        eq(true, vim.uv.fs_stat(old) ~= nil)
         eq('New file', read_file(new))
       end
     )
@@ -2543,8 +2541,8 @@ describe('LSP', function()
         old,
         new
       )
-      eq(false, exec_lua('return vim.uv.fs_stat(...) ~= nil', old))
-      eq(true, exec_lua('return vim.uv.fs_stat(...) ~= nil', new))
+      eq(false, vim.uv.fs_stat(old) ~= nil)
+      eq(true, vim.uv.fs_stat(new) ~= nil)
       eq(true, undo_kept)
     end)
     it('Maintains undo information for unloaded buffer', function()
@@ -2570,8 +2568,8 @@ describe('LSP', function()
         old,
         new
       )
-      eq(false, exec_lua('return vim.uv.fs_stat(...) ~= nil', old))
-      eq(true, exec_lua('return vim.uv.fs_stat(...) ~= nil', new))
+      eq(false, vim.uv.fs_stat(old) ~= nil)
+      eq(true, vim.uv.fs_stat(new) ~= nil)
       eq(true, undo_kept)
     end)
     it('Does not rename file when it conflicts with a buffer without file', function()
@@ -2615,8 +2613,8 @@ describe('LSP', function()
         new
       )
 
-      eq(false, exec_lua('return vim.uv.fs_stat(...) ~= nil', old))
-      eq(true, exec_lua('return vim.uv.fs_stat(...) ~= nil', new))
+      eq(false, vim.uv.fs_stat(old) ~= nil)
+      eq(true, vim.uv.fs_stat(new) ~= nil)
       eq('Old file', read_file(new))
     end)
   end)
@@ -2697,6 +2695,7 @@ describe('LSP', function()
       eq(expected, actual)
     end)
   end)
+
   describe('lsp.util.symbols_to_items', function()
     describe('convert DocumentSymbol[] to items', function()
       it('DocumentSymbol has children', function()
@@ -2971,7 +2970,7 @@ describe('LSP', function()
   end)
 
   describe('lsp.util.jump_to_location', function()
-    local target_bufnr
+    local target_bufnr --- @type integer
 
     before_each(function()
       target_bufnr = exec_lua [[
@@ -2994,10 +2993,10 @@ describe('LSP', function()
 
     local jump = function(msg)
       eq(true, exec_lua('return vim.lsp.util.jump_to_location(...)', msg, 'utf-16'))
-      eq(target_bufnr, exec_lua [[return vim.fn.bufnr('%')]])
+      eq(target_bufnr, fn.bufnr('%'))
       return {
-        line = exec_lua [[return vim.fn.line('.')]],
-        col = exec_lua [[return vim.fn.col('.')]],
+        line = fn.line('.'),
+        col = fn.col('.'),
       }
     end
 
@@ -3027,25 +3026,25 @@ describe('LSP', function()
       local pos = jump(location(1, 2, 1, 2))
       eq(2, pos.line)
       eq(4, pos.col)
-      eq('å', exec_lua [[return vim.fn.expand('<cword>')]])
+      eq('å', fn.expand('<cword>'))
     end)
 
     it('adds current position to jumplist before jumping', function()
-      fn.nvim_win_set_buf(0, target_bufnr)
-      local mark = fn.nvim_buf_get_mark(target_bufnr, "'")
+      api.nvim_win_set_buf(0, target_bufnr)
+      local mark = api.nvim_buf_get_mark(target_bufnr, "'")
       eq({ 1, 0 }, mark)
 
-      fn.nvim_win_set_cursor(0, { 2, 3 })
+      api.nvim_win_set_cursor(0, { 2, 3 })
       jump(location(0, 9, 0, 9))
 
-      mark = fn.nvim_buf_get_mark(target_bufnr, "'")
+      mark = api.nvim_buf_get_mark(target_bufnr, "'")
       eq({ 2, 3 }, mark)
     end)
   end)
 
   describe('lsp.util.show_document', function()
-    local target_bufnr
-    local target_bufnr2
+    local target_bufnr --- @type integer
+    local target_bufnr2 --- @type integer
 
     before_each(function()
       target_bufnr = exec_lua([[
@@ -3084,11 +3083,11 @@ describe('LSP', function()
         )
       )
       if focus == true or focus == nil then
-        eq(target_bufnr, exec_lua([[return vim.fn.bufnr('%')]]))
+        eq(target_bufnr, fn.bufnr('%'))
       end
       return {
-        line = exec_lua([[return vim.fn.line('.')]]),
-        col = exec_lua([[return vim.fn.col('.')]]),
+        line = fn.line('.'),
+        col = fn.col('.'),
       }
     end
 
@@ -3132,101 +3131,101 @@ describe('LSP', function()
     end)
 
     it('does not add current position to jumplist if not focus', function()
-      fn.nvim_win_set_buf(0, target_bufnr)
-      local mark = fn.nvim_buf_get_mark(target_bufnr, "'")
+      api.nvim_win_set_buf(0, target_bufnr)
+      local mark = api.nvim_buf_get_mark(target_bufnr, "'")
       eq({ 1, 0 }, mark)
 
-      fn.nvim_win_set_cursor(0, { 2, 3 })
+      api.nvim_win_set_cursor(0, { 2, 3 })
       show_document(location(0, 9, 0, 9), false, true)
       show_document(location(0, 9, 0, 9, true), false, true)
 
-      mark = fn.nvim_buf_get_mark(target_bufnr, "'")
+      mark = api.nvim_buf_get_mark(target_bufnr, "'")
       eq({ 1, 0 }, mark)
     end)
 
     it('does not change cursor position if not focus and not reuse_win', function()
-      fn.nvim_win_set_buf(0, target_bufnr)
-      local cursor = fn.nvim_win_get_cursor(0)
+      api.nvim_win_set_buf(0, target_bufnr)
+      local cursor = api.nvim_win_get_cursor(0)
 
       show_document(location(0, 9, 0, 9), false, false)
-      eq(cursor, fn.nvim_win_get_cursor(0))
+      eq(cursor, api.nvim_win_get_cursor(0))
     end)
 
     it('does not change window if not focus', function()
-      fn.nvim_win_set_buf(0, target_bufnr)
-      local win = fn.nvim_get_current_win()
+      api.nvim_win_set_buf(0, target_bufnr)
+      local win = api.nvim_get_current_win()
 
       -- same document/bufnr
       show_document(location(0, 9, 0, 9), false, true)
-      eq(win, fn.nvim_get_current_win())
+      eq(win, api.nvim_get_current_win())
 
       -- different document/bufnr, new window/split
       show_document(location(0, 9, 0, 9, true), false, true)
-      eq(2, #fn.nvim_list_wins())
-      eq(win, fn.nvim_get_current_win())
+      eq(2, #api.nvim_list_wins())
+      eq(win, api.nvim_get_current_win())
     end)
 
     it("respects 'reuse_win' parameter", function()
-      fn.nvim_win_set_buf(0, target_bufnr)
+      api.nvim_win_set_buf(0, target_bufnr)
 
       -- does not create a new window if the buffer is already open
       show_document(location(0, 9, 0, 9), false, true)
-      eq(1, #fn.nvim_list_wins())
+      eq(1, #api.nvim_list_wins())
 
       -- creates a new window even if the buffer is already open
       show_document(location(0, 9, 0, 9), false, false)
-      eq(2, #fn.nvim_list_wins())
+      eq(2, #api.nvim_list_wins())
     end)
 
     it('correctly sets the cursor of the split if range is given without focus', function()
-      fn.nvim_win_set_buf(0, target_bufnr)
+      api.nvim_win_set_buf(0, target_bufnr)
 
       show_document(location(0, 9, 0, 9, true), false, true)
 
-      local wins = fn.nvim_list_wins()
+      local wins = api.nvim_list_wins()
       eq(2, #wins)
       table.sort(wins)
 
-      eq({ 1, 0 }, fn.nvim_win_get_cursor(wins[1]))
-      eq({ 1, 9 }, fn.nvim_win_get_cursor(wins[2]))
+      eq({ 1, 0 }, api.nvim_win_get_cursor(wins[1]))
+      eq({ 1, 9 }, api.nvim_win_get_cursor(wins[2]))
     end)
 
     it('does not change cursor of the split if not range and not focus', function()
-      fn.nvim_win_set_buf(0, target_bufnr)
-      fn.nvim_win_set_cursor(0, { 2, 3 })
+      api.nvim_win_set_buf(0, target_bufnr)
+      api.nvim_win_set_cursor(0, { 2, 3 })
 
       exec_lua([[vim.cmd.new()]])
-      fn.nvim_win_set_buf(0, target_bufnr2)
-      fn.nvim_win_set_cursor(0, { 2, 3 })
+      api.nvim_win_set_buf(0, target_bufnr2)
+      api.nvim_win_set_cursor(0, { 2, 3 })
 
       show_document({ uri = 'file:///fake/uri2' }, false, true)
 
-      local wins = fn.nvim_list_wins()
+      local wins = api.nvim_list_wins()
       eq(2, #wins)
-      eq({ 2, 3 }, fn.nvim_win_get_cursor(wins[1]))
-      eq({ 2, 3 }, fn.nvim_win_get_cursor(wins[2]))
+      eq({ 2, 3 }, api.nvim_win_get_cursor(wins[1]))
+      eq({ 2, 3 }, api.nvim_win_get_cursor(wins[2]))
     end)
 
     it('respects existing buffers', function()
-      fn.nvim_win_set_buf(0, target_bufnr)
-      local win = fn.nvim_get_current_win()
+      api.nvim_win_set_buf(0, target_bufnr)
+      local win = api.nvim_get_current_win()
 
       exec_lua([[vim.cmd.new()]])
-      fn.nvim_win_set_buf(0, target_bufnr2)
-      fn.nvim_win_set_cursor(0, { 2, 3 })
-      local split = fn.nvim_get_current_win()
+      api.nvim_win_set_buf(0, target_bufnr2)
+      api.nvim_win_set_cursor(0, { 2, 3 })
+      local split = api.nvim_get_current_win()
 
       -- reuse win for open document/bufnr if called from split
       show_document(location(0, 9, 0, 9, true), false, true)
-      eq({ 1, 9 }, fn.nvim_win_get_cursor(split))
-      eq(2, #fn.nvim_list_wins())
+      eq({ 1, 9 }, api.nvim_win_get_cursor(split))
+      eq(2, #api.nvim_list_wins())
 
-      fn.nvim_set_current_win(win)
+      api.nvim_set_current_win(win)
 
       -- reuse win for open document/bufnr if called outside the split
       show_document(location(0, 9, 0, 9, true), false, true)
-      eq({ 1, 9 }, fn.nvim_win_get_cursor(split))
-      eq(2, #fn.nvim_list_wins())
+      eq({ 1, 9 }, api.nvim_win_get_cursor(split))
+      eq(2, #api.nvim_list_wins())
     end)
   end)
 
@@ -3464,6 +3463,442 @@ describe('LSP', function()
     end)
   end)
 
+  describe('vim.lsp.buf.typehierarchy subtypes', function()
+    it('does nothing for an empty response', function()
+      local qflist_count = exec_lua([=[
+        require'vim.lsp.handlers'['typeHierarchy/subtypes'](nil, nil, {})
+        return #vim.fn.getqflist()
+      ]=])
+      eq(0, qflist_count)
+    end)
+
+    it('opens the quickfix list with the right subtypes', function()
+      clear()
+      exec_lua(create_server_definition)
+      local qflist = exec_lua([=[
+        local clangd_response = { {
+          data = {
+            parents = { {
+              parents = { {
+                parents = { {
+                  parents = {},
+                  symbolID = "62B3D268A01B9978"
+                } },
+                symbolID = "DC9B0AD433B43BEC"
+              } },
+              symbolID = "06B5F6A19BA9F6A8"
+            } },
+            symbolID = "EDC336589C09ABB2"
+          },
+          kind = 5,
+          name = "D2",
+          range = {
+            ["end"] = {
+              character = 8,
+              line = 9
+            },
+            start = {
+              character = 6,
+              line = 9
+            }
+          },
+          selectionRange = {
+            ["end"] = {
+              character = 8,
+              line = 9
+            },
+            start = {
+              character = 6,
+              line = 9
+            }
+          },
+          uri = "file:///home/jiangyinzuo/hello.cpp"
+        }, {
+          data = {
+            parents = { {
+              parents = { {
+                parents = { {
+                  parents = {},
+                  symbolID = "62B3D268A01B9978"
+                } },
+                symbolID = "DC9B0AD433B43BEC"
+              } },
+              symbolID = "06B5F6A19BA9F6A8"
+            } },
+            symbolID = "AFFCAED15557EF08"
+          },
+          kind = 5,
+          name = "D1",
+          range = {
+            ["end"] = {
+              character = 8,
+              line = 8
+            },
+            start = {
+              character = 6,
+              line = 8
+            }
+          },
+          selectionRange = {
+            ["end"] = {
+              character = 8,
+              line = 8
+            },
+            start = {
+              character = 6,
+              line = 8
+            }
+          },
+          uri = "file:///home/jiangyinzuo/hello.cpp"
+        } }
+
+        local server = _create_server({
+          capabilities = {
+            positionEncoding = "utf-8"
+          },
+        })
+        local client_id = vim.lsp.start({ name = 'dummy', cmd = server.cmd })
+        local handler = require'vim.lsp.handlers'['typeHierarchy/subtypes']
+        handler(nil, clangd_response, { client_id = client_id, bufnr = 1 })
+        return vim.fn.getqflist()
+      ]=])
+
+      local expected = {
+        {
+          bufnr = 2,
+          col = 7,
+          end_col = 0,
+          end_lnum = 0,
+          lnum = 10,
+          module = '',
+          nr = 0,
+          pattern = '',
+          text = 'D2',
+          type = '',
+          valid = 1,
+          vcol = 0,
+        },
+        {
+          bufnr = 2,
+          col = 7,
+          end_col = 0,
+          end_lnum = 0,
+          lnum = 9,
+          module = '',
+          nr = 0,
+          pattern = '',
+          text = 'D1',
+          type = '',
+          valid = 1,
+          vcol = 0,
+        },
+      }
+
+      eq(expected, qflist)
+    end)
+
+    it('opens the quickfix list with the right subtypes and details', function()
+      clear()
+      exec_lua(create_server_definition)
+      local qflist = exec_lua([=[
+        local jdtls_response = {
+          {
+            data = { element = '=hello-java_ed323c3c/_<{Main.java[Main[A' },
+            detail = '',
+            kind = 5,
+            name = 'A',
+            range = {
+              ['end'] = { character = 26, line = 3 },
+              start = { character = 1, line = 3 },
+            },
+            selectionRange = {
+              ['end'] = { character = 8, line = 3 },
+              start = { character = 7, line = 3 },
+            },
+            tags = {},
+            uri = 'file:///home/jiangyinzuo/hello-java/Main.java',
+          },
+          {
+            data = { element = '=hello-java_ed323c3c/_<mylist{MyList.java[MyList[Inner' },
+            detail = 'mylist',
+            kind = 5,
+            name = 'MyList$Inner',
+            range = {
+              ['end'] = { character = 37, line = 3 },
+              start = { character = 1, line = 3 },
+            },
+            selectionRange = {
+              ['end'] = { character = 19, line = 3 },
+              start = { character = 14, line = 3 },
+            },
+            tags = {},
+            uri = 'file:///home/jiangyinzuo/hello-java/mylist/MyList.java',
+          },
+        }
+
+        local server = _create_server({
+          capabilities = {
+            positionEncoding = "utf-8"
+          },
+        })
+        local client_id = vim.lsp.start({ name = 'dummy', cmd = server.cmd })
+        local handler = require'vim.lsp.handlers'['typeHierarchy/subtypes']
+        handler(nil, jdtls_response, { client_id = client_id, bufnr = 1 })
+        return vim.fn.getqflist()
+      ]=])
+
+      local expected = {
+        {
+          bufnr = 2,
+          col = 2,
+          end_col = 0,
+          end_lnum = 0,
+          lnum = 4,
+          module = '',
+          nr = 0,
+          pattern = '',
+          text = 'A',
+          type = '',
+          valid = 1,
+          vcol = 0,
+        },
+        {
+          bufnr = 3,
+          col = 2,
+          end_col = 0,
+          end_lnum = 0,
+          lnum = 4,
+          module = '',
+          nr = 0,
+          pattern = '',
+          text = 'MyList$Inner mylist',
+          type = '',
+          valid = 1,
+          vcol = 0,
+        },
+      }
+      eq(expected, qflist)
+    end)
+  end)
+
+  describe('vim.lsp.buf.typehierarchy supertypes', function()
+    it('does nothing for an empty response', function()
+      local qflist_count = exec_lua([=[
+        require'vim.lsp.handlers'['typeHierarchy/supertypes'](nil, nil, {})
+        return #vim.fn.getqflist()
+      ]=])
+      eq(0, qflist_count)
+    end)
+
+    it('opens the quickfix list with the right supertypes', function()
+      clear()
+      exec_lua(create_server_definition)
+      local qflist = exec_lua([=[
+        local clangd_response = { {
+          data = {
+            parents = { {
+              parents = { {
+                parents = { {
+                  parents = {},
+                  symbolID = "62B3D268A01B9978"
+                } },
+                symbolID = "DC9B0AD433B43BEC"
+              } },
+              symbolID = "06B5F6A19BA9F6A8"
+            } },
+            symbolID = "EDC336589C09ABB2"
+          },
+          kind = 5,
+          name = "D2",
+          range = {
+            ["end"] = {
+              character = 8,
+              line = 9
+            },
+            start = {
+              character = 6,
+              line = 9
+            }
+          },
+          selectionRange = {
+            ["end"] = {
+              character = 8,
+              line = 9
+            },
+            start = {
+              character = 6,
+              line = 9
+            }
+          },
+          uri = "file:///home/jiangyinzuo/hello.cpp"
+        }, {
+          data = {
+            parents = { {
+              parents = { {
+                parents = { {
+                  parents = {},
+                  symbolID = "62B3D268A01B9978"
+                } },
+                symbolID = "DC9B0AD433B43BEC"
+              } },
+              symbolID = "06B5F6A19BA9F6A8"
+            } },
+            symbolID = "AFFCAED15557EF08"
+          },
+          kind = 5,
+          name = "D1",
+          range = {
+            ["end"] = {
+              character = 8,
+              line = 8
+            },
+            start = {
+              character = 6,
+              line = 8
+            }
+          },
+          selectionRange = {
+            ["end"] = {
+              character = 8,
+              line = 8
+            },
+            start = {
+              character = 6,
+              line = 8
+            }
+          },
+          uri = "file:///home/jiangyinzuo/hello.cpp"
+        } }
+
+        local server = _create_server({
+          capabilities = {
+            positionEncoding = "utf-8"
+          },
+        })
+        local client_id = vim.lsp.start({ name = 'dummy', cmd = server.cmd })
+        local handler = require'vim.lsp.handlers'['typeHierarchy/supertypes']
+        handler(nil, clangd_response, { client_id = client_id, bufnr = 1 })
+        return vim.fn.getqflist()
+      ]=])
+
+      local expected = {
+        {
+          bufnr = 2,
+          col = 7,
+          end_col = 0,
+          end_lnum = 0,
+          lnum = 10,
+          module = '',
+          nr = 0,
+          pattern = '',
+          text = 'D2',
+          type = '',
+          valid = 1,
+          vcol = 0,
+        },
+        {
+          bufnr = 2,
+          col = 7,
+          end_col = 0,
+          end_lnum = 0,
+          lnum = 9,
+          module = '',
+          nr = 0,
+          pattern = '',
+          text = 'D1',
+          type = '',
+          valid = 1,
+          vcol = 0,
+        },
+      }
+
+      eq(expected, qflist)
+    end)
+
+    it('opens the quickfix list with the right supertypes and details', function()
+      clear()
+      exec_lua(create_server_definition)
+      local qflist = exec_lua([=[
+        local jdtls_response = {
+          {
+            data = { element = '=hello-java_ed323c3c/_<{Main.java[Main[A' },
+            detail = '',
+            kind = 5,
+            name = 'A',
+            range = {
+              ['end'] = { character = 26, line = 3 },
+              start = { character = 1, line = 3 },
+            },
+            selectionRange = {
+              ['end'] = { character = 8, line = 3 },
+              start = { character = 7, line = 3 },
+            },
+            tags = {},
+            uri = 'file:///home/jiangyinzuo/hello-java/Main.java',
+          },
+          {
+            data = { element = '=hello-java_ed323c3c/_<mylist{MyList.java[MyList[Inner' },
+            detail = 'mylist',
+            kind = 5,
+            name = 'MyList$Inner',
+            range = {
+              ['end'] = { character = 37, line = 3 },
+              start = { character = 1, line = 3 },
+            },
+            selectionRange = {
+              ['end'] = { character = 19, line = 3 },
+              start = { character = 14, line = 3 },
+            },
+            tags = {},
+            uri = 'file:///home/jiangyinzuo/hello-java/mylist/MyList.java',
+          },
+        }
+
+        local server = _create_server({
+          capabilities = {
+            positionEncoding = "utf-8"
+          },
+        })
+        local client_id = vim.lsp.start({ name = 'dummy', cmd = server.cmd })
+        local handler = require'vim.lsp.handlers'['typeHierarchy/supertypes']
+        handler(nil, jdtls_response, { client_id = client_id, bufnr = 1 })
+        return vim.fn.getqflist()
+      ]=])
+
+      local expected = {
+        {
+          bufnr = 2,
+          col = 2,
+          end_col = 0,
+          end_lnum = 0,
+          lnum = 4,
+          module = '',
+          nr = 0,
+          pattern = '',
+          text = 'A',
+          type = '',
+          valid = 1,
+          vcol = 0,
+        },
+        {
+          bufnr = 3,
+          col = 2,
+          end_col = 0,
+          end_lnum = 0,
+          lnum = 4,
+          module = '',
+          nr = 0,
+          pattern = '',
+          text = 'MyList$Inner mylist',
+          type = '',
+          valid = 1,
+          vcol = 0,
+        },
+      }
+      eq(expected, qflist)
+    end)
+  end)
+
   describe('vim.lsp.buf.rename', function()
     for _, test in ipairs({
       {
@@ -3504,7 +3939,7 @@ describe('LSP', function()
       },
     }) do
       it(test.it, function()
-        local client
+        local client --- @type vim.lsp.Client
         test_rpc_server {
           test_name = test.name,
           on_init = function(_client)
@@ -3554,7 +3989,7 @@ describe('LSP', function()
 
   describe('vim.lsp.buf.code_action', function()
     it('Calls client side command if available', function()
-      local client
+      local client --- @type vim.lsp.Client
       local expected_handlers = {
         { NIL, {}, { method = 'shutdown', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
@@ -3592,7 +4027,7 @@ describe('LSP', function()
       }
     end)
     it('Calls workspace/executeCommand if no client side command', function()
-      local client
+      local client --- @type vim.lsp.Client
       local expected_handlers = {
         { NIL, {}, { method = 'shutdown', client_id = 1 } },
         {
@@ -3632,7 +4067,7 @@ describe('LSP', function()
       })
     end)
     it('Filters and automatically applies action if requested', function()
-      local client
+      local client --- @type vim.lsp.Client
       local expected_handlers = {
         { NIL, {}, { method = 'shutdown', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
@@ -3732,6 +4167,7 @@ describe('LSP', function()
       eq('command:1', result[5].params.command)
     end)
   end)
+
   describe('vim.lsp.commands', function()
     it('Accepts only string keys', function()
       matches(
@@ -3746,9 +4182,10 @@ describe('LSP', function()
       )
     end)
   end)
+
   describe('vim.lsp.codelens', function()
     it('uses client commands', function()
-      local client
+      local client --- @type vim.lsp.Client
       local expected_handlers = {
         { NIL, {}, { method = 'shutdown', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
@@ -3802,7 +4239,7 @@ describe('LSP', function()
     end)
 
     it('releases buffer refresh lock', function()
-      local client
+      local client --- @type vim.lsp.Client
       local expected_handlers = {
         { NIL, {}, { method = 'shutdown', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
@@ -3879,11 +4316,97 @@ describe('LSP', function()
         end,
       }
     end)
+
+    it('refresh multiple buffers', function()
+      local lens_title_per_fake_uri = {
+        ['file:///fake/uri1'] = 'Lens1',
+        ['file:///fake/uri2'] = 'Lens2',
+      }
+      clear()
+      exec_lua(create_server_definition)
+
+      -- setup lsp
+      exec_lua(
+        [[
+          local lens_title_per_fake_uri = ...
+          local server = _create_server({
+            capabilities = {
+              codeLensProvider = {
+                resolveProvider = true
+              },
+            },
+            handlers = {
+              ["textDocument/codeLens"] = function(method, params)
+                local lenses = {
+                  {
+                    range = {
+                      start = { line = 0, character = 0 },
+                      ['end'] = { line = 0, character = 0 },
+                    },
+                    command = {
+                      title = lens_title_per_fake_uri[params.textDocument.uri],
+                      command = 'Dummy',
+                    },
+                  },
+                }
+                return lenses
+              end,
+            }
+          })
+
+          CLIENT_ID = vim.lsp.start({
+            name = "dummy",
+            cmd = server.cmd,
+          })
+        ]],
+        lens_title_per_fake_uri
+      )
+
+      -- create buffers and setup handler
+      exec_lua(
+        [[
+          local lens_title_per_fake_uri = ...
+          local default_buf = vim.api.nvim_get_current_buf()
+          for fake_uri, _ in pairs(lens_title_per_fake_uri) do
+            local bufnr = vim.uri_to_bufnr(fake_uri)
+            vim.api.nvim_set_current_buf(bufnr)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {'Some contents'})
+            vim.lsp.buf_attach_client(bufnr, CLIENT_ID)
+          end
+          vim.api.nvim_buf_delete(default_buf, {force = true})
+
+          REQUEST_COUNT = vim.tbl_count(lens_title_per_fake_uri)
+          RESPONSES = {}
+          local on_codelens = vim.lsp.codelens.on_codelens
+          vim.lsp.codelens.on_codelens = function (err, result, ctx, ...)
+            table.insert(RESPONSES, { err = err, result = result, ctx = ctx })
+            return on_codelens(err, result, ctx, ...)
+          end
+        ]],
+        lens_title_per_fake_uri
+      )
+
+      -- call codelens refresh
+      local cmds = exec_lua([[
+        RESPONSES = {}
+        vim.lsp.codelens.refresh()
+        vim.wait(100, function () return #RESPONSES >= REQUEST_COUNT end)
+
+        local cmds = {}
+        for _, resp in ipairs(RESPONSES) do
+          local uri = resp.ctx.params.textDocument.uri
+          cmds[uri] = resp.result[1].command
+        end
+        return cmds
+      ]])
+      eq({ command = 'Dummy', title = 'Lens1' }, cmds['file:///fake/uri1'])
+      eq({ command = 'Dummy', title = 'Lens2' }, cmds['file:///fake/uri2'])
+    end)
   end)
 
   describe('vim.lsp.buf.format', function()
     it('Aborts with notify if no client matches filter', function()
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_init',
         on_init = function(c)
@@ -3912,7 +4435,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'shutdown', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_formatting',
         on_init = function(c)
@@ -3945,7 +4468,7 @@ describe('LSP', function()
         { NIL, {}, { method = 'shutdown', client_id = 1 } },
         { NIL, {}, { method = 'start', client_id = 1 } },
       }
-      local client
+      local client --- @type vim.lsp.Client
       test_rpc_server {
         test_name = 'basic_formatting',
         on_init = function(c)
@@ -4068,6 +4591,9 @@ describe('LSP', function()
         end
       ]])
       local fail_msg = '[LSP] Format request failed, no matching language servers.'
+      --- @param name string
+      --- @param formatting boolean
+      --- @param range_formatting boolean
       local function check_notify(name, formatting, range_formatting)
         local timeout_msg = '[LSP][' .. name .. '] timeout'
         exec_lua(
@@ -4223,8 +4749,8 @@ describe('LSP', function()
       ]]
       eq('initialize', result.method)
     end)
-    it('can connect to lsp server via rpc.domain_socket_connect', function()
-      local tmpfile
+    it('can connect to lsp server via pipe or domain_socket', function()
+      local tmpfile --- @type string
       if is_os('win') then
         tmpfile = '\\\\.\\\\pipe\\pipe.test'
       else
@@ -4248,7 +4774,7 @@ describe('LSP', function()
                         client:close()
                 end))
         end)
-        vim.lsp.start({ name = "dummy", cmd = vim.lsp.rpc.domain_socket_connect(SOCK) })
+        vim.lsp.start({ name = "dummy", cmd = vim.lsp.rpc.connect(SOCK) })
         vim.wait(1000, function() return init ~= nil end)
         assert(init, "server must receive `initialize` request")
         server:close()
@@ -4449,18 +4975,26 @@ describe('LSP', function()
         string.format('sends notifications when files change (watchfunc=%s)', watchfunc),
         function()
           if watchfunc == 'fswatch' then
+            skip(is_os('win'), 'not supported on windows')
+            skip(is_os('mac'), 'flaky test on mac')
             skip(
               not is_ci() and fn.executable('fswatch') == 0,
               'fswatch not installed and not on CI'
             )
-            skip(is_os('win'), 'not supported on windows')
-            skip(is_os('mac'), 'flaky')
           end
 
-          skip(
-            is_os('bsd'),
-            'kqueue only reports events on watched folder itself, not contained files #26110'
-          )
+          if watchfunc == 'watch' then
+            skip(is_os('mac'), 'flaky test on mac')
+            skip(
+              is_os('bsd'),
+              'Stopped working on bsd after 3ca967387c49c754561c3b11a574797504d40f38'
+            )
+          else
+            skip(
+              is_os('bsd'),
+              'kqueue only reports events on watched folder itself, not contained files #26110'
+            )
+          end
 
           local root_dir = tmpname()
           os.remove(root_dir)
@@ -4679,14 +5213,7 @@ describe('LSP', function()
       )
 
       local function watched_uri(fname)
-        return exec_lua(
-          [[
-            local root_dir, fname = ...
-            return vim.uri_from_fname(root_dir .. '/' .. fname)
-          ]],
-          root_dir,
-          fname
-        )
+        return vim.uri_from_fname(root_dir .. '/' .. fname)
       end
 
       eq(4, #result)
@@ -4792,13 +5319,7 @@ describe('LSP', function()
       )
 
       local function watched_uri(fname)
-        return exec_lua(
-          [[
-            local fname = ...
-            return vim.uri_from_fname('/dir/' .. fname)
-          ]],
-          fname
-        )
+        return vim.uri_from_fname('/dir/' .. fname)
       end
 
       eq(3, #result)
@@ -4923,30 +5444,21 @@ describe('LSP', function()
         root_dir
       )
 
-      local function watched_uri(fname)
-        return exec_lua(
-          [[
-            return vim.uri_from_fname(...)
-          ]],
-          fname
-        )
-      end
-
       eq(3, #result)
       eq('workspace/didChangeWatchedFiles', result[3].method)
       eq({
         changes = {
           {
             type = exec_lua([[return vim.lsp.protocol.FileChangeType.Created]]),
-            uri = watched_uri('file1'),
+            uri = vim.uri_from_fname('file1'),
           },
           {
             type = exec_lua([[return vim.lsp.protocol.FileChangeType.Changed]]),
-            uri = watched_uri('file1'),
+            uri = vim.uri_from_fname('file1'),
           },
           {
             type = exec_lua([[return vim.lsp.protocol.FileChangeType.Created]]),
-            uri = watched_uri('file2'),
+            uri = vim.uri_from_fname('file2'),
           },
         },
       }, result[3].params)

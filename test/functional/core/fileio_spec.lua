@@ -1,37 +1,38 @@
-local uv = vim.uv
-local helpers = require('test.functional.helpers')(after_each)
-
-local assert_log = helpers.assert_log
-local assert_nolog = helpers.assert_nolog
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local neq = helpers.neq
-local ok = helpers.ok
-local feed = helpers.feed
-local fn = helpers.fn
-local nvim_prog = helpers.nvim_prog
-local request = helpers.request
-local retry = helpers.retry
-local rmdir = helpers.rmdir
-local matches = helpers.matches
-local api = helpers.api
-local mkdir = helpers.mkdir
-local sleep = vim.uv.sleep
-local read_file = helpers.read_file
-local trim = vim.trim
-local currentdir = helpers.fn.getcwd
-local assert_alive = helpers.assert_alive
-local check_close = helpers.check_close
-local expect_exit = helpers.expect_exit
-local write_file = helpers.write_file
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local feed_command = helpers.feed_command
-local skip = helpers.skip
-local is_os = helpers.is_os
-local is_ci = helpers.is_ci
-local spawn = helpers.spawn
-local set_session = helpers.set_session
+local uv = vim.uv
+
+local assert_log = t.assert_log
+local assert_nolog = t.assert_nolog
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local neq = t.neq
+local ok = t.ok
+local feed = n.feed
+local fn = n.fn
+local nvim_prog = n.nvim_prog
+local request = n.request
+local retry = t.retry
+local rmdir = n.rmdir
+local matches = t.matches
+local api = n.api
+local mkdir = t.mkdir
+local sleep = vim.uv.sleep
+local read_file = t.read_file
+local trim = vim.trim
+local currentdir = n.fn.getcwd
+local assert_alive = n.assert_alive
+local check_close = n.check_close
+local expect_exit = n.expect_exit
+local write_file = t.write_file
+local feed_command = n.feed_command
+local skip = t.skip
+local is_os = t.is_os
+local is_ci = t.is_ci
+local spawn = n.spawn
+local set_session = n.set_session
 
 describe('fileio', function()
   before_each(function() end)
@@ -54,7 +55,7 @@ describe('fileio', function()
   --- Starts a new nvim session and returns an attached screen.
   local function startup(extra_args)
     extra_args = extra_args or {}
-    local argv = vim.tbl_flatten({ args, '--embed', extra_args })
+    local argv = vim.iter({ args, '--embed', extra_args }):flatten():totable()
     local screen_nvim = spawn(argv)
     set_session(screen_nvim)
     local screen = Screen.new(70, 10)
@@ -100,7 +101,7 @@ describe('fileio', function()
     eq('foozubbaz', trim(read_file('Xtest_startup_file1')))
 
     -- 4. Exit caused by deadly signal (+ 'swapfile').
-    local j = fn.jobstart(vim.tbl_flatten({ args, '--embed' }), { rpc = true })
+    local j = fn.jobstart(vim.iter({ args, '--embed' }):flatten():totable(), { rpc = true })
     fn.rpcrequest(
       j,
       'nvim_exec2',
@@ -228,7 +229,7 @@ describe('fileio', function()
 
     local initial_content = 'foo'
     local backup_dir = 'Xtest_backupdir'
-    local sep = helpers.get_pathsep()
+    local sep = n.get_pathsep()
     local link_file_name = 'Xtest_startup_file2'
     local backup_file_name = backup_dir .. sep .. link_file_name .. '~'
 
@@ -329,7 +330,7 @@ describe('tmpdir', function()
 
   before_each(function()
     -- Fake /tmp dir so that we can mess it up.
-    os_tmpdir = vim.uv.fs_mkdtemp(vim.fs.dirname(helpers.tmpname()) .. '/nvim_XXXXXXXXXX')
+    os_tmpdir = vim.uv.fs_mkdtemp(vim.fs.dirname(t.tmpname()) .. '/nvim_XXXXXXXXXX')
   end)
 
   after_each(function()

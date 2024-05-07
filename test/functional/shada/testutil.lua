@@ -1,9 +1,11 @@
-local helpers = require('test.functional.helpers')(nil)
-local api = helpers.api
-local write_file = helpers.write_file
-local concat_tables = helpers.concat_tables
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local tmpname = helpers.tmpname()
+local api = n.api
+local write_file = t.write_file
+local concat_tables = t.concat_tables
+
+local tmpname = t.tmpname()
 
 --   o={
 --     args=…,
@@ -24,7 +26,7 @@ local function reset(o)
   elseif o.args then
     args = concat_tables(args, o.args)
   end
-  helpers.clear {
+  n.clear {
     args_rm = args_rm,
     args = args,
   }
@@ -32,7 +34,7 @@ local function reset(o)
 end
 
 local clear = function()
-  helpers.expect_exit(helpers.command, 'qall!')
+  n.expect_exit(n.command, 'qall!')
   os.remove(tmpname)
 end
 

@@ -1,17 +1,19 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local eval = helpers.eval
-local eq = helpers.eq
-local feed_command = helpers.feed_command
-local retry = helpers.retry
-local ok = helpers.ok
-local source = helpers.source
-local poke_eventloop = helpers.poke_eventloop
-local load_adjust = helpers.load_adjust
-local write_file = helpers.write_file
-local is_os = helpers.is_os
-local is_ci = helpers.is_ci
-local is_asan = helpers.is_asan
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local eval = n.eval
+local eq = t.eq
+local feed_command = n.feed_command
+local retry = t.retry
+local ok = t.ok
+local source = n.source
+local poke_eventloop = n.poke_eventloop
+local load_adjust = n.load_adjust
+local write_file = t.write_file
+local is_os = t.is_os
+local is_ci = t.is_ci
+local is_asan = n.is_asan
 
 clear()
 if is_asan() then

@@ -1,17 +1,18 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local eq = helpers.eq
+local eq = t.eq
 local NIL = vim.NIL
-local eval = helpers.eval
-local clear = helpers.clear
-local api = helpers.api
-local fn = helpers.fn
-local source = helpers.source
-local dedent = helpers.dedent
-local command = helpers.command
-local exc_exec = helpers.exc_exec
-local exec_capture = helpers.exec_capture
-local matches = helpers.matches
+local eval = n.eval
+local clear = n.clear
+local api = n.api
+local fn = n.fn
+local source = n.source
+local dedent = t.dedent
+local command = n.command
+local exc_exec = n.exc_exec
+local exec_capture = n.exec_capture
+local matches = t.matches
 
 describe(':echo :echon :echomsg :echoerr', function()
   local fn_tbl = { 'String', 'StringN', 'StringMsg', 'StringErr' }
@@ -255,7 +256,7 @@ describe(':echo :echon :echomsg :echoerr', function()
       eval('add(l, l)')
       -- Regression: the below line used to crash (add returns original list and
       -- there was error in dumping partials). Tested explicitly in
-      -- test/unit/api/private_helpers_spec.lua.
+      -- test/unit/api/private_t_spec.lua.
       eval('add(l, function("Test1", l))')
       eq(
         dedent(
@@ -349,8 +350,8 @@ describe(':echo :echon :echomsg :echoerr', function()
   end)
 
   describe('used to represent special values', function()
-    local function chr(n)
-      return ('%c'):format(n)
+    local function chr(_n)
+      return ('%c'):format(_n)
     end
     local function ctrl(c)
       return ('%c'):format(c:upper():byte() - 0x40)

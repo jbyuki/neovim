@@ -1,12 +1,14 @@
 -- Tests for tag search with !_TAG_FILE_ENCODING.
 
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
 local insert, source, clear, expect, write_file =
-  helpers.insert, helpers.source, helpers.clear, helpers.expect, helpers.write_file
+  n.insert, n.source, n.clear, n.expect, t.write_file
 
 local function has_iconv()
   clear() -- ensures session
-  return 1 == helpers.eval('has("iconv")')
+  return 1 == n.eval('has("iconv")')
 end
 
 describe('tag search with !_TAG_FILE_ENCODING', function()
@@ -31,7 +33,7 @@ describe('tag search with !_TAG_FILE_ENCODING', function()
     )
     -- The last file is very long but repetitive and can be generated on the
     -- fly.
-    local text = helpers.dedent([[
+    local text = t.dedent([[
       !_TAG_FILE_SORTED	1	//
       !_TAG_FILE_ENCODING	cp932	//
       ]])

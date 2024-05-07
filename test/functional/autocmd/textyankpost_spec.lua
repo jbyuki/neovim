@@ -1,7 +1,9 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear, eval, eq = helpers.clear, helpers.eval, helpers.eq
-local feed, command, expect = helpers.feed, helpers.command, helpers.expect
-local api, fn, neq = helpers.api, helpers.fn, helpers.neq
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, eval, eq = n.clear, n.eval, t.eq
+local feed, command, expect = n.feed, n.command, n.expect
+local api, fn, neq = n.api, n.fn, t.neq
 
 describe('TextYankPost', function()
   before_each(function()

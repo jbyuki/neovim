@@ -1,12 +1,14 @@
-local helpers = require('test.functional.helpers')(after_each)
-local thelpers = require('test.functional.terminal.helpers')
-local clear, eq, api = helpers.clear, helpers.eq, helpers.api
-local feed = helpers.feed
-local feed_data = thelpers.feed_data
-local enter_altscreen = thelpers.enter_altscreen
-local exit_altscreen = thelpers.exit_altscreen
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-if helpers.skip(helpers.is_os('win')) then
+local tt = require('test.functional.terminal.testutil')
+local clear, eq, api = n.clear, t.eq, n.api
+local feed = n.feed
+local feed_data = tt.feed_data
+local enter_altscreen = tt.enter_altscreen
+local exit_altscreen = tt.exit_altscreen
+
+if t.skip(t.is_os('win')) then
   return
 end
 
@@ -15,7 +17,7 @@ describe(':terminal altscreen', function()
 
   before_each(function()
     clear()
-    screen = thelpers.screen_setup()
+    screen = tt.screen_setup()
     feed_data({
       'line1',
       'line2',

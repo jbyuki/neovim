@@ -1,15 +1,17 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local eval = helpers.eval
-local feed = helpers.feed
-local fn = helpers.fn
-local insert = helpers.insert
-local is_os = helpers.is_os
-local mkdir = helpers.mkdir
-local rmdir = helpers.rmdir
-local write_file = helpers.write_file
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local eval = n.eval
+local feed = n.feed
+local fn = n.fn
+local insert = n.insert
+local is_os = t.is_os
+local mkdir = t.mkdir
+local rmdir = n.rmdir
+local write_file = t.write_file
 
 local function join_path(...)
   local pathsep = (is_os('win') and '\\' or '/')

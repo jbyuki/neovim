@@ -1,11 +1,13 @@
-local helpers = require('test.functional.helpers')(after_each)
-local assert_log = helpers.assert_log
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local exec_lua = helpers.exec_lua
-local expect_exit = helpers.expect_exit
-local request = helpers.request
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local assert_log = t.assert_log
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local exec_lua = n.exec_lua
+local expect_exit = n.expect_exit
+local request = n.request
 
 describe('log', function()
   local testlog = 'Xtest_logging'

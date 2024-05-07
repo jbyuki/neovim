@@ -45,10 +45,12 @@
 #include "nvim/keycodes.h"
 #include "nvim/log.h"
 #include "nvim/lua/executor.h"
+#include "nvim/lua/treesitter.h"
 #include "nvim/macros_defs.h"
 #include "nvim/mapping.h"
 #include "nvim/mark.h"
 #include "nvim/mark_defs.h"
+#include "nvim/math.h"
 #include "nvim/mbyte.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
@@ -167,7 +169,7 @@ Dictionary nvim_get_hl(Integer ns_id, Dict(get_highlight) *opts, Arena *arena, E
 /// @param[out] err Error details, if any
 ///
 // TODO(bfredl): val should take update vs reset flag
-void nvim_set_hl(Integer ns_id, String name, Dict(highlight) *val, Error *err)
+void nvim_set_hl(uint64_t channel_id, Integer ns_id, String name, Dict(highlight) *val, Error *err)
   FUNC_API_SINCE(7)
 {
   int hl_id = syn_check_group(name.data, name.size);
@@ -184,7 +186,9 @@ void nvim_set_hl(Integer ns_id, String name, Dict(highlight) *val, Error *err)
 
   HlAttrs attrs = dict2hlattrs(val, true, &link_id, err);
   if (!ERROR_SET(err)) {
-    ns_hl_def((NS)ns_id, hl_id, attrs, link_id, val);
+    WITH_SCRIPT_CONTEXT(channel_id, {
+      ns_hl_def((NS)ns_id, hl_id, attrs, link_id, val);
+    });
   }
 }
 
@@ -275,6 +279,7 @@ void nvim_feedkeys(String keys, String mode, Boolean escape_ks)
   bool typed = false;
   bool execute = false;
   bool dangerous = false;
+  bool lowlevel = false;
 
   for (size_t i = 0; i < mode.size; i++) {
     switch (mode.data[i]) {
@@ -290,6 +295,8 @@ void nvim_feedkeys(String keys, String mode, Boolean escape_ks)
       execute = true; break;
     case '!':
       dangerous = true; break;
+    case 'L':
+      lowlevel = true; break;
     }
   }
 
@@ -305,10 +312,14 @@ void nvim_feedkeys(String keys, String mode, Boolean escape_ks)
   } else {
     keys_esc = keys.data;
   }
-  ins_typebuf(keys_esc, (remap ? REMAP_YES : REMAP_NONE),
-              insert ? 0 : typebuf.tb_len, !typed, false);
-  if (vgetc_busy) {
-    typebuf_was_filled = true;
+  if (lowlevel) {
+    input_enqueue_raw(cstr_as_string(keys_esc));
+  } else {
+    ins_typebuf(keys_esc, (remap ? REMAP_YES : REMAP_NONE),
+                insert ? 0 : typebuf.tb_len, !typed, false);
+    if (vgetc_busy) {
+      typebuf_was_filled = true;
+    }
   }
 
   if (escape_ks) {
@@ -958,21 +969,21 @@ Buffer nvim_create_buf(Boolean listed, Boolean scratch, Error *err)
   FUNC_API_SINCE(6)
 {
   try_start();
+  // Block autocommands for now so they don't mess with the buffer before we
+  // finish configuring it.
+  block_autocmds();
+
   buf_T *buf = buflist_new(NULL, NULL, 0,
                            BLN_NOOPT | BLN_NEW | (listed ? BLN_LISTED : 0));
-  try_end(err);
   if (buf == NULL) {
+    unblock_autocmds();
     goto fail;
   }
 
   // Open the memline for the buffer. This will avoid spurious autocmds when
   // a later nvim_buf_set_lines call would have needed to "open" the buffer.
-  try_start();
-  block_autocmds();
-  int status = ml_open(buf);
-  unblock_autocmds();
-  try_end(err);
-  if (status == FAIL) {
+  if (ml_open(buf) == FAIL) {
+    unblock_autocmds();
     goto fail;
   }
 
@@ -983,21 +994,39 @@ Buffer nvim_create_buf(Boolean listed, Boolean scratch, Error *err)
   buf->b_last_changedtick_pum = buf_get_changedtick(buf);
 
   // Only strictly needed for scratch, but could just as well be consistent
-  // and do this now. buffer is created NOW, not when it latter first happen
+  // and do this now. Buffer is created NOW, not when it later first happens
   // to reach a window or aucmd_prepbuf() ..
   buf_copy_options(buf, BCO_ENTER | BCO_NOHELP);
 
   if (scratch) {
-    set_string_option_direct_in_buf(buf, kOptBufhidden, "hide", OPT_LOCAL, 0);
-    set_string_option_direct_in_buf(buf, kOptBuftype, "nofile", OPT_LOCAL, 0);
+    set_option_direct_for(kOptBufhidden, STATIC_CSTR_AS_OPTVAL("hide"), OPT_LOCAL, 0, kOptReqBuf,
+                          buf);
+    set_option_direct_for(kOptBuftype, STATIC_CSTR_AS_OPTVAL("nofile"), OPT_LOCAL, 0, kOptReqBuf,
+                          buf);
     assert(buf->b_ml.ml_mfp->mf_fd < 0);  // ml_open() should not have opened swapfile already
     buf->b_p_swf = false;
     buf->b_p_ml = false;
   }
+
+  unblock_autocmds();
+
+  bufref_T bufref;
+  set_bufref(&bufref, buf);
+  if (apply_autocmds(EVENT_BUFNEW, NULL, NULL, false, buf)
+      && !bufref_valid(&bufref)) {
+    goto fail;
+  }
+  if (listed
+      && apply_autocmds(EVENT_BUFADD, NULL, NULL, false, buf)
+      && !bufref_valid(&bufref)) {
+    goto fail;
+  }
+
+  try_end(err);
   return buf->b_fnum;
 
 fail:
-  if (!ERROR_SET(err)) {
+  if (!try_end(err)) {
     api_set_error(err, kErrorTypeException, "Failed to create buffer");
   }
   return 0;
@@ -1671,90 +1700,6 @@ Array nvim_list_chans(Arena *arena)
   return channel_all_info(arena);
 }
 
-/// Calls many API methods atomically.
-///
-/// This has two main usages:
-/// 1. To perform several requests from an async context atomically, i.e.
-///    without interleaving redraws, RPC requests from other clients, or user
-///    interactions (however API methods may trigger autocommands or event
-///    processing which have such side effects, e.g. |:sleep| may wake timers).
-/// 2. To minimize RPC overhead (roundtrips) of a sequence of many requests.
-///
-/// @param channel_id
-/// @param calls an array of calls, where each call is described by an array
-///              with two elements: the request name, and an array of arguments.
-/// @param[out] err Validation error details (malformed `calls` parameter),
-///             if any. Errors from batched calls are given in the return value.
-///
-/// @return Array of two elements. The first is an array of return
-/// values. The second is NIL if all calls succeeded. If a call resulted in
-/// an error, it is a three-element array with the zero-based index of the call
-/// which resulted in an error, the error type and the error message. If an
-/// error occurred, the values from all preceding calls will still be returned.
-Array nvim_call_atomic(uint64_t channel_id, Array calls, Arena *arena, Error *err)
-  FUNC_API_SINCE(1) FUNC_API_REMOTE_ONLY
-{
-  Array rv = arena_array(arena, 2);
-  Array results = arena_array(arena, calls.size);
-  Error nested_error = ERROR_INIT;
-
-  size_t i;  // also used for freeing the variables
-  for (i = 0; i < calls.size; i++) {
-    VALIDATE_T("'calls' item", kObjectTypeArray, calls.items[i].type, {
-      goto theend;
-    });
-    Array call = calls.items[i].data.array;
-    VALIDATE_EXP((call.size == 2), "'calls' item", "2-item Array", NULL, {
-      goto theend;
-    });
-    VALIDATE_T("name", kObjectTypeString, call.items[0].type, {
-      goto theend;
-    });
-    String name = call.items[0].data.string;
-    VALIDATE_T("call args", kObjectTypeArray, call.items[1].type, {
-      goto theend;
-    });
-    Array args = call.items[1].data.array;
-
-    MsgpackRpcRequestHandler handler =
-      msgpack_rpc_get_handler_for(name.data,
-                                  name.size,
-                                  &nested_error);
-
-    if (ERROR_SET(&nested_error)) {
-      break;
-    }
-
-    Object result = handler.fn(channel_id, args, arena, &nested_error);
-    if (ERROR_SET(&nested_error)) {
-      // error handled after loop
-      break;
-    }
-    // TODO(bfredl): wasteful copy. It could be avoided to encoding to msgpack
-    // directly here. But `result` might become invalid when next api function
-    // is called in the loop.
-    ADD_C(results, copy_object(result, arena));
-    if (handler.ret_alloc) {
-      api_free_object(result);
-    }
-  }
-
-  ADD_C(rv, ARRAY_OBJ(results));
-  if (ERROR_SET(&nested_error)) {
-    Array errval = arena_array(arena, 3);
-    ADD_C(errval, INTEGER_OBJ((Integer)i));
-    ADD_C(errval, INTEGER_OBJ(nested_error.type));
-    ADD_C(errval, STRING_OBJ(copy_string(cstr_as_string(nested_error.msg), arena)));
-    ADD_C(rv, ARRAY_OBJ(errval));
-  } else {
-    ADD_C(rv, NIL);
-  }
-
-theend:
-  api_clear_error(&nested_error);
-  return rv;
-}
-
 /// Writes a message to vim output or error buffer. The string is split
 /// and flushed after each newline. Incomplete lines are kept for writing
 /// later.
@@ -1863,12 +1808,13 @@ Float nvim__id_float(Float flt)
 /// @return Map of various internal stats.
 Dictionary nvim__stats(Arena *arena)
 {
-  Dictionary rv = arena_dict(arena, 5);
+  Dictionary rv = arena_dict(arena, 6);
   PUT_C(rv, "fsync", INTEGER_OBJ(g_stats.fsync));
   PUT_C(rv, "log_skip", INTEGER_OBJ(g_stats.log_skip));
   PUT_C(rv, "lua_refcount", INTEGER_OBJ(nlua_get_global_ref_count()));
   PUT_C(rv, "redraw", INTEGER_OBJ(g_stats.redraw));
   PUT_C(rv, "arena_alloc_count", INTEGER_OBJ((Integer)arena_alloc_count));
+  PUT_C(rv, "ts_query_parse_count", INTEGER_OBJ((Integer)tslua_query_parse_count));
   return rv;
 }
 
@@ -2337,20 +2283,18 @@ void nvim_error_event(uint64_t channel_id, Integer lvl, String data)
   ELOG("async error on channel %" PRId64 ": %s", channel_id, data.size ? data.data : "");
 }
 
-/// Set info for the completion candidate index.
-/// if the info was shown in a window, then the
-/// window and buffer ids are returned for further
-/// customization. If the text was not shown, an
-/// empty dict is returned.
+/// EXPERIMENTAL: this API may change in the future.
 ///
-/// @param index  the completion candidate index
+/// Sets info for the completion item at the given index. If the info text was shown in a window,
+/// returns the window and buffer ids, or empty dict if not shown.
+///
+/// @param index  Completion candidate index
 /// @param opts   Optional parameters.
 ///       - info: (string) info text.
 /// @return Dictionary containing these keys:
 ///       - winid: (number) floating window id
 ///       - bufnr: (number) buffer id in floating window
-Dictionary nvim_complete_set(Integer index, Dict(complete_set) *opts, Arena *arena)
-  FUNC_API_SINCE(12)
+Dictionary nvim__complete_set(Integer index, Dict(complete_set) *opts, Arena *arena)
 {
   Dictionary rv = arena_dict(arena, 2);
   if (HAS_KEY(opts, complete_set, info)) {
@@ -2361,4 +2305,160 @@ Dictionary nvim_complete_set(Integer index, Dict(complete_set) *opts, Arena *are
     }
   }
   return rv;
+}
+
+static void redraw_status(win_T *wp, Dict(redraw) *opts, bool *flush)
+{
+  if (opts->statuscolumn && *wp->w_p_stc != NUL) {
+    wp->w_nrwidth_line_count = 0;
+    changed_window_setting(wp);
+  }
+  win_grid_alloc(wp);
+
+  // Flush later in case winbar was just hidden or shown for the first time, or
+  // statuscolumn is being drawn.
+  if (wp->w_lines_valid == 0) {
+    *flush = true;
+  }
+
+  // Mark for redraw in case flush will happen, otherwise redraw now.
+  if (*flush && (opts->statusline || opts->winbar)) {
+    wp->w_redr_status = true;
+  } else if (opts->statusline || opts->winbar) {
+    win_check_ns_hl(wp);
+    if (opts->winbar) {
+      win_redr_winbar(wp);
+    }
+    if (opts->statusline) {
+      win_redr_status(wp);
+    }
+    win_check_ns_hl(NULL);
+  }
+}
+
+/// EXPERIMENTAL: this API may change in the future.
+///
+/// Instruct Nvim to redraw various components.
+///
+/// @see |:redraw|
+///
+/// @param opts  Optional parameters.
+///               - win: Target a specific |window-ID| as described below.
+///               - buf: Target a specific buffer number as described below.
+///               - flush: Update the screen with pending updates.
+///               - valid: When present mark `win`, `buf`, or all windows for
+///                 redraw. When `true`, only redraw changed lines (useful for
+///                 decoration providers). When `false`, forcefully redraw.
+///               - range: Redraw a range in `buf`, the buffer in `win` or the
+///                 current buffer (useful for decoration providers). Expects a
+///                 tuple `[first, last]` with the first and last line number
+///                 of the range, 0-based end-exclusive |api-indexing|.
+///               - cursor: Immediately update cursor position on the screen in
+///                 `win` or the current window.
+///               - statuscolumn: Redraw the 'statuscolumn' in `buf`, `win` or
+///                 all windows.
+///               - statusline: Redraw the 'statusline' in `buf`, `win` or all
+///                 windows.
+///               - winbar: Redraw the 'winbar' in `buf`, `win` or all windows.
+///               - tabline: Redraw the 'tabline'.
+void nvim__redraw(Dict(redraw) *opts, Error *err)
+  FUNC_API_SINCE(12)
+{
+  win_T *win = NULL;
+  buf_T *buf = NULL;
+
+  if (HAS_KEY(opts, redraw, win)) {
+    win = find_window_by_handle(opts->win, err);
+    if (ERROR_SET(err)) {
+      return;
+    }
+  }
+
+  if (HAS_KEY(opts, redraw, buf)) {
+    VALIDATE(win == NULL, "%s", "cannot use both 'buf' and 'win'", {
+      return;
+    });
+    buf = find_buffer_by_handle(opts->buf, err);
+    if (ERROR_SET(err)) {
+      return;
+    }
+  }
+
+  int count = (win != NULL) + (buf != NULL);
+  VALIDATE(popcount(opts->is_set__redraw_) > count, "%s", "at least one action required", {
+    return;
+  });
+
+  if (HAS_KEY(opts, redraw, valid)) {
+    // UPD_VALID redraw type does not actually do anything on it's own. Setting
+    // it here without scrolling or changing buffer text seems pointless but
+    // the expectation is that this may be called by decoration providers whose
+    // "on_win" callback may set "w_redr_top/bot".
+    int type = opts->valid ? UPD_VALID : UPD_NOT_VALID;
+    if (win != NULL) {
+      redraw_later(win, type);
+    } else if (buf != NULL) {
+      redraw_buf_later(buf, type);
+    } else {
+      redraw_all_later(type);
+    }
+  }
+
+  if (HAS_KEY(opts, redraw, range)) {
+    VALIDATE(kv_size(opts->range) == 2
+             && kv_A(opts->range, 0).type == kObjectTypeInteger
+             && kv_A(opts->range, 1).type == kObjectTypeInteger
+             && kv_A(opts->range, 0).data.integer >= 0
+             && kv_A(opts->range, 1).data.integer >= -1,
+             "%s", "Invalid 'range': Expected 2-tuple of Integers", {
+      return;
+    });
+    linenr_T first = (linenr_T)kv_A(opts->range, 0).data.integer + 1;
+    linenr_T last = (linenr_T)kv_A(opts->range, 1).data.integer;
+    buf_T *rbuf = win ? win->w_buffer : (buf ? buf : curbuf);
+    if (last == -1) {
+      last = rbuf->b_ml.ml_line_count;
+    }
+    redraw_buf_range_later(rbuf, first, last);
+  }
+
+  if (opts->cursor) {
+    setcursor_mayforce(win ? win : curwin, true);
+  }
+
+  bool flush = opts->flush;
+  if (opts->tabline) {
+    // Flush later in case tabline was just hidden or shown for the first time.
+    if (redraw_tabline && firstwin->w_lines_valid == 0) {
+      flush = true;
+    } else {
+      draw_tabline();
+    }
+  }
+
+  bool save_lz = p_lz;
+  int save_rd = RedrawingDisabled;
+  RedrawingDisabled = 0;
+  p_lz = false;
+  if (opts->statuscolumn || opts->statusline || opts->winbar) {
+    if (win == NULL) {
+      FOR_ALL_WINDOWS_IN_TAB(wp, curtab) {
+        if (buf == NULL || wp->w_buffer == buf) {
+          redraw_status(wp, opts, &flush);
+        }
+      }
+    } else {
+      redraw_status(win, opts, &flush);
+    }
+  }
+
+  // Flush pending screen updates if "flush" or "clear" is true, or when
+  // redrawing a status component may have changed the grid dimensions.
+  if (flush && !cmdpreview) {
+    update_screen();
+  }
+  ui_flush();
+
+  RedrawingDisabled = save_rd;
+  p_lz = save_lz;
 }

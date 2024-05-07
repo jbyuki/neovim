@@ -1,13 +1,15 @@
-local helpers = require('test.functional.helpers')(after_each)
-local assert_alive = helpers.assert_alive
-local clear, source = helpers.clear, helpers.source
-local api = helpers.api
-local insert = helpers.insert
-local eq, next_msg = helpers.eq, helpers.next_msg
-local exc_exec = helpers.exc_exec
-local exec_lua = helpers.exec_lua
-local command = helpers.command
-local eval = helpers.eval
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local assert_alive = n.assert_alive
+local clear, source = n.clear, n.source
+local api = n.api
+local insert = n.insert
+local eq, next_msg = t.eq, n.next_msg
+local exc_exec = n.exc_exec
+local exec_lua = n.exec_lua
+local command = n.command
+local eval = n.eval
 
 describe('Vimscript dictionary notifications', function()
   local channel

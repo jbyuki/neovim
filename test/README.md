@@ -37,6 +37,7 @@ Layout
 - `/test/benchmark` : benchmarks
 - `/test/functional` : functional tests
 - `/test/unit` : unit tests
+- `/test/old/testdir` : old tests (from Vim)
 - `/test/config` : contains `*.in` files which are transformed into `*.lua`
   files using `configure_file` CMake command: this is for accessing CMake
   variables in lua tests.
@@ -44,11 +45,13 @@ Layout
   parser: normally used to make macros not accessible via this mechanism
   accessible the other way.
 - `/test/*/preload.lua` : modules preloaded by busted `--helper` option
-- `/test/**/helpers.lua` : common utility functions for test code
+- `/test/**/testutil.lua` : common utility functions in the context of the test
+  runner
+- `/test/**/testnvim.lua` : common utility functions in the context of the
+  test session (RPC channel to the Nvim child process created by clear() for each test)
 - `/test/*/**/*_spec.lua` : actual tests. Files that do not end with
-  `_spec.lua` are libraries like `/test/**/helpers.lua`, except that they have
+  `_spec.lua` are libraries like `/test/**/testutil.lua`, except that they have
   some common topic.
-- `/test/old/testdir` : old tests (from Vim)
 
 
 Running tests
@@ -119,7 +122,7 @@ Debugging tests
   If `$VALGRIND` is also set it will pass `--vgdb=yes` to valgrind instead of
   starting gdbserver directly.
 
-  See [test/functional/helpers.lua](https://github.com/neovim/neovim/blob/9cadbf1d36b63f53f0de48c8c5ff6c752ff05d70/test/functional/helpers.lua#L52-L69) for details.
+  See `nvim_argv` in https://github.com/neovim/neovim/blob/master/test/functional/testnvim.lua.
 
 - Hanging tests can happen due to unexpected "press-enter" prompts. The
   default screen width is 50 columns. Commands that try to print lines longer
@@ -218,7 +221,7 @@ Guidelines
 
 - Luajit needs to know about type and constant declarations used in function
   prototypes. The
-  [helpers.lua](https://github.com/neovim/neovim/blob/master/test/unit/helpers.lua)
+  [testutil.lua](https://github.com/neovim/neovim/blob/master/test/unit/testutil.lua)
   file automatically parses `types.h`, so types used in the tested functions
   could be moved to it to avoid having to rewrite the declarations in the test
   files.
@@ -252,7 +255,7 @@ by the semantic component they are testing.
 - _Functional tests_
   ([test/functional](https://github.com/neovim/neovim/tree/master/test/functional))
   are higher-level (plugins and user input) than unit tests; they are organized
-  by concept. 
+  by concept.
     - Try to find an existing `test/functional/*/*_spec.lua` group that makes
       sense, before creating a new one.
 
@@ -276,9 +279,9 @@ the file).
 Configuration
 =============
 
-Test behaviour is affected by environment variables. Currently supported 
-(Functional, Unit, Benchmarks) (when Defined; when set to _1_; when defined, 
-treated as Integer; when defined, treated as String; when defined, treated as 
+Test behaviour is affected by environment variables. Currently supported
+(Functional, Unit, Benchmarks) (when Defined; when set to _1_; when defined,
+treated as Integer; when defined, treated as String; when defined, treated as
 Number; !must be defined to function properly):
 
 - `BUSTED_ARGS` (F) (U): arguments forwarded to `busted`.
@@ -297,7 +300,7 @@ Number; !must be defined to function properly):
 - `VALGRIND` (F) (D): makes nvim instances to be run under `valgrind`. Log
   files are named `valgrind-%p.log` in this case. Note that non-empty valgrind
   log may fail tests. Valgrind arguments may be seen in
-  `/test/functional/helpers.lua`. May be used in conjunction with `GDB`.
+  `/test/functional/testnvim.lua`. May be used in conjunction with `GDB`.
 
 - `VALGRIND_LOG` (F) (S): overrides valgrind log file name used for `VALGRIND`.
 

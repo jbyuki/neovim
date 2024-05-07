@@ -1,14 +1,15 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local eq = helpers.eq
-local fn = helpers.fn
-local neq = helpers.neq
-local nvim_argv = helpers.nvim_argv
-local request = helpers.request
-local retry = helpers.retry
+local clear = n.clear
+local eq = t.eq
+local fn = n.fn
+local neq = t.neq
+local nvim_argv = n.nvim_argv
+local request = n.request
+local retry = t.retry
 local NIL = vim.NIL
-local is_os = helpers.is_os
+local is_os = t.is_os
 
 describe('API', function()
   before_each(clear)

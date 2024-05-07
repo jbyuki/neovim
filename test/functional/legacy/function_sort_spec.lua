@@ -1,11 +1,12 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local eq = helpers.eq
-local neq = helpers.neq
-local eval = helpers.eval
-local clear = helpers.clear
-local source = helpers.source
-local exc_exec = helpers.exc_exec
+local eq = t.eq
+local neq = t.neq
+local eval = n.eval
+local clear = n.clear
+local source = n.source
+local exc_exec = n.exc_exec
 
 describe('sort', function()
   before_each(clear)

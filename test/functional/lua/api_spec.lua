@@ -1,15 +1,16 @@
 -- Test suite for testing interactions with API bindings
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local exc_exec = helpers.exc_exec
-local remove_trace = helpers.remove_trace
-local fn = helpers.fn
-local clear = helpers.clear
-local eval = helpers.eval
+local exc_exec = n.exc_exec
+local remove_trace = t.remove_trace
+local fn = n.fn
+local clear = n.clear
+local eval = n.eval
 local NIL = vim.NIL
-local eq = helpers.eq
-local exec_lua = helpers.exec_lua
-local pcall_err = helpers.pcall_err
+local eq = t.eq
+local exec_lua = n.exec_lua
+local pcall_err = t.pcall_err
 
 before_each(clear)
 

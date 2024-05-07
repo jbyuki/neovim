@@ -1,8 +1,10 @@
-local helpers = require('test.functional.helpers')(after_each)
-local exec_lua = helpers.exec_lua
-local eq = helpers.eq
-local eval = helpers.eval
-local clear = helpers.clear
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local exec_lua = n.exec_lua
+local eq = t.eq
+local eval = n.eval
+local clear = n.clear
 
 describe('vim.inspect_pos', function()
   before_each(function()

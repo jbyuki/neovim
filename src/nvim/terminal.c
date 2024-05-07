@@ -543,6 +543,9 @@ bool terminal_enter(void)
   } else {
     curwin->w_p_cul = false;
   }
+  if (curwin->w_p_cuc) {
+    redraw_later(curwin, UPD_SOME_VALID);
+  }
   curwin->w_p_cuc = false;
   curwin->w_p_so = 0;
   curwin->w_p_siso = 0;
@@ -1628,7 +1631,10 @@ end:
     return false;
   }
 
-  ins_char_typebuf(vgetc_char, vgetc_mod_mask);
+  int len = ins_char_typebuf(vgetc_char, vgetc_mod_mask, true);
+  if (KeyTyped) {
+    ungetchars(len);
+  }
   return true;
 }
 

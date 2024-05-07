@@ -44,6 +44,8 @@
 /// @param col
 ///
 /// @return Number of cells.
+///
+/// @see charsize_nowrap()
 int win_chartabsize(win_T *wp, char *p, colnr_T col)
 {
   buf_T *buf = wp->w_buffer;
@@ -234,7 +236,7 @@ CharSize charsize_regular(CharsizeArg *csarg, char *const cur, colnr_T const vco
       wcol += col_off_prev;
     }
 
-    if (wcol + size > wp->w_width) {
+    if (wcol + size > wp->w_width_inner) {
       // cells taken by 'showbreak'/'breakindent' halfway current char
       int head_mid = csarg->indent_width;
       if (head_mid == INT_MIN) {
@@ -247,7 +249,7 @@ CharSize charsize_regular(CharsizeArg *csarg, char *const cur, colnr_T const vco
         }
         csarg->indent_width = head_mid;
       }
-      if (head_mid > 0 && wcol + size > wp->w_width_inner) {
+      if (head_mid > 0) {
         // Calculate effective window width.
         int prev_rem = wp->w_width_inner - wcol;
         int width = width2 - head_mid;
@@ -373,6 +375,20 @@ CharSize charsize_fast(CharsizeArg *csarg, colnr_T const vcol, int32_t const cur
   FUNC_ATTR_PURE
 {
   return charsize_fast_impl(csarg->win, csarg->use_tabstop, vcol, cur_char);
+}
+
+/// Get the number of cells taken up on the screen at given virtual column.
+///
+/// @see win_chartabsize()
+int charsize_nowrap(buf_T *buf, bool use_tabstop, colnr_T vcol, int32_t cur_char)
+{
+  if (cur_char == TAB && use_tabstop) {
+    return tabstop_padding(vcol, buf->b_p_ts, buf->b_p_vts_array);
+  } else if (cur_char < 0) {
+    return kInvalidByteCells;
+  } else {
+    return char2cells(cur_char);
+  }
 }
 
 /// Check that virtual column "vcol" is in the rightmost column of window "wp".
@@ -850,26 +866,29 @@ int plines_win_full(win_T *wp, linenr_T lnum, linenr_T *const nextp, bool *const
           (lnum == wp->w_topline ? wp->w_topfill : win_get_fill(wp, lnum)));
 }
 
-/// Get the number of screen lines a range of buffer lines will take in window "wp".
-/// This takes care of both folds and topfill.
+/// Return number of window lines a physical line range will occupy in window "wp".
+/// Takes into account folding, 'wrap', topfill and filler lines beyond the end of the buffer.
 ///
 /// XXX: Because of topfill, this only makes sense when first >= wp->w_topline.
 ///
-/// @param first            first line number
-/// @param last             last line number
-/// @param limit_winheight  when true limit each line to window height
+/// @param first  first line number
+/// @param last   last line number
+/// @param max    number of lines to limit the height to
 ///
 /// @see win_text_height
-int plines_m_win(win_T *wp, linenr_T first, linenr_T last, bool limit_winheight)
+int plines_m_win(win_T *wp, linenr_T first, linenr_T last, int max)
 {
   int count = 0;
 
-  while (first <= last) {
+  while (first <= last && count < max) {
     linenr_T next = first;
-    count += plines_win_full(wp, first, &next, NULL, false, limit_winheight);
+    count += plines_win_full(wp, first, &next, NULL, false, false);
     first = next + 1;
   }
-  return count;
+  if (first == wp->w_buffer->b_ml.ml_line_count + 1) {
+    count += win_get_fill(wp, first);
+  }
+  return MIN(max, count);
 }
 
 /// Get the number of screen lines a range of text will take in window "wp".

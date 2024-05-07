@@ -1,10 +1,12 @@
-local helpers = require('test.functional.helpers')(after_each)
-local command = helpers.command
-local eq = helpers.eq
-local clear = helpers.clear
-local fn = helpers.fn
-local pcall_err = helpers.pcall_err
-local assert_alive = helpers.assert_alive
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local command = n.command
+local eq = t.eq
+local clear = n.clear
+local fn = n.fn
+local pcall_err = t.pcall_err
+local assert_alive = n.assert_alive
 
 describe('Ex cmds', function()
   before_each(function()

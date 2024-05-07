@@ -1,12 +1,14 @@
-local helpers = require('test.functional.helpers')(after_each)
-local setpos = helpers.fn.setpos
-local getpos = helpers.fn.getpos
-local insert = helpers.insert
-local clear = helpers.clear
-local command = helpers.command
-local eval = helpers.eval
-local eq = helpers.eq
-local exc_exec = helpers.exc_exec
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local setpos = n.fn.setpos
+local getpos = n.fn.getpos
+local insert = n.insert
+local clear = n.clear
+local command = n.command
+local eval = n.eval
+local eq = t.eq
+local exc_exec = n.exc_exec
 
 describe('setpos() function', function()
   before_each(function()

@@ -1,11 +1,12 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local eq = helpers.eq
-local eval = helpers.eval
-local api = helpers.api
-local source = helpers.source
-local command = helpers.command
+local clear = n.clear
+local eq = t.eq
+local eval = n.eval
+local api = n.api
+local source = n.source
+local command = n.command
 
 describe('CursorMoved', function()
   before_each(clear)

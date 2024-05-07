@@ -1,7 +1,9 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear, source = helpers.clear, helpers.source
-local eq, eval, command = helpers.eq, helpers.eval, helpers.command
-local exc_exec = helpers.exc_exec
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, source = n.clear, n.source
+local eq, eval, command = t.eq, n.eval, n.command
+local exc_exec = n.exc_exec
 
 describe('Test for delete()', function()
   before_each(clear)
@@ -48,7 +50,7 @@ describe('Test for delete()', function()
 
   it('symlink directory delete', function()
     command("call mkdir('Xdir1')")
-    if helpers.is_os('win') then
+    if t.is_os('win') then
       command('silent !mklink /j Xlink Xdir1')
     else
       command('silent !ln -s Xdir1 Xlink')

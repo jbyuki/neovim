@@ -467,7 +467,7 @@ bool do_mouse(oparg_T *oap, int c, int dir, int count, bool fixindent)
       if (regname == '.') {
         insert_reg(regname, true);
       } else {
-        if (regname == 0 && eval_has_provider("clipboard")) {
+        if (regname == 0 && eval_has_provider("clipboard", false)) {
           regname = '*';
         }
         if ((State & REPLACE_FLAG) && !yank_register_mline(regname)) {
@@ -819,7 +819,7 @@ popupexit:
   // Middle mouse click: Put text before cursor.
   if (which_button == MOUSE_MIDDLE) {
     int c2;
-    if (regname == 0 && eval_has_provider("clipboard")) {
+    if (regname == 0 && eval_has_provider("clipboard", false)) {
       regname = '*';
     }
     if (yank_register_mline(regname)) {
@@ -1024,7 +1024,7 @@ void do_mousescroll(cmdarg_T *cap)
     // Vertical scrolling
     if ((State & MODE_NORMAL) && shift_or_ctrl) {
       // whole page up or down
-      onepage(cap->arg ? FORWARD : BACKWARD, 1);
+      pagescroll(cap->arg ? FORWARD : BACKWARD, 1, false);
     } else {
       if (shift_or_ctrl) {
         // whole page up or down
@@ -1883,33 +1883,7 @@ static void mouse_check_grid(colnr_T *vcolp, int *flagsp)
   const size_t off = gp->line_offset[click_row] + (size_t)click_col;
   colnr_T col_from_screen = gp->vcols[off];
 
-  if (col_from_screen == MAXCOL) {
-    // When clicking after end of line, still need to set correct curswant
-    size_t off_l = gp->line_offset[click_row] + (size_t)start_col;
-    if (gp->vcols[off_l] < MAXCOL) {
-      // Binary search to find last char in line
-      size_t off_r = off;
-      while (off_l < off_r) {
-        size_t off_m = (off_l + off_r + 1) / 2;
-        if (gp->vcols[off_m] < MAXCOL) {
-          off_l = off_m;
-        } else {
-          off_r = off_m - 1;
-        }
-      }
-      colnr_T eol_vcol = gp->vcols[off_r];
-      assert(eol_vcol < MAXCOL);
-      if (eol_vcol < 0) {
-        // Empty line or whole line before w_leftcol,
-        // with columns before buffer text
-        eol_vcol = curwin->w_leftcol - 1;
-      }
-      *vcolp = eol_vcol + (int)(off - off_r);
-    } else {
-      // Empty line or whole line before w_leftcol
-      *vcolp = click_col - start_col + curwin->w_leftcol;
-    }
-  } else if (col_from_screen >= 0) {
+  if (col_from_screen >= 0) {
     // Use the virtual column from vcols[], it is accurate also after
     // concealed characters.
     *vcolp = col_from_screen;

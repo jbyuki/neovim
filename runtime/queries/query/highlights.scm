@@ -53,35 +53,33 @@
   .
   (comment)*
   .
-  (comment) @keyword.import)
+  (comment) @keyword.import @nospell)
   (#lua-match? @keyword.import "^;+ *inherits *:"))
 
 ((program
   .
   (comment)*
   .
-  (comment) @keyword.directive)
+  (comment) @keyword.directive @nospell)
   (#lua-match? @keyword.directive "^;+ *extends *$"))
 
-((comment) @keyword.directive
+((comment) @keyword.directive @nospell
   (#lua-match? @keyword.directive "^;+%s*format%-ignore%s*$"))
 
 ((predicate
   name: (identifier) @_name
-  parameters:
-    (parameters
-      (string
-        "\"" @string
-        "\"" @string) @string.regexp))
+  parameters: (parameters
+    (string
+      "\"" @string
+      "\"" @string) @string.regexp))
   (#any-of? @_name "match" "not-match" "vim-match" "not-vim-match" "lua-match" "not-lua-match"))
 
 ((predicate
   name: (identifier) @_name
-  parameters:
-    (parameters
-      (string
-        "\"" @string
-        "\"" @string) @string.regexp
-      .
-      (string) .))
+  parameters: (parameters
+    (string
+      "\"" @string
+      "\"" @string) @string.regexp
+    .
+    (string) .))
   (#any-of? @_name "gsub" "not-gsub"))

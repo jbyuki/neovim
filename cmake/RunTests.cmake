@@ -4,6 +4,7 @@ set(ENV{VIMRUNTIME} ${WORKING_DIR}/runtime)
 set(ENV{NVIM_RPLUGIN_MANIFEST} ${BUILD_DIR}/Xtest_rplugin_manifest)
 set(ENV{XDG_CONFIG_HOME} ${BUILD_DIR}/Xtest_xdg/config)
 set(ENV{XDG_DATA_HOME} ${BUILD_DIR}/Xtest_xdg/share)
+set(ENV{XDG_STATE_HOME} ${BUILD_DIR}/Xtest_xdg/state)
 unset(ENV{XDG_DATA_DIRS})
 unset(ENV{NVIM})  # Clear $NVIM in case tests are running from Nvim. #11009
 
@@ -46,7 +47,7 @@ if(DEFINED ENV{TEST_FILTER_OUT} AND NOT "$ENV{TEST_FILTER_OUT}" STREQUAL "")
   list(APPEND BUSTED_ARGS --filter-out $ENV{TEST_FILTER_OUT})
 endif()
 
-# TMPDIR: for helpers.tmpname() and Nvim tempname().
+# TMPDIR: for testutil.tmpname() and Nvim tempname().
 set(ENV{TMPDIR} "${BUILD_DIR}/Xtest_tmpdir")
 execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory $ENV{TMPDIR})
 
@@ -57,7 +58,7 @@ if(NOT DEFINED ENV{TEST_TIMEOUT} OR "$ENV{TEST_TIMEOUT}" STREQUAL "")
   set(ENV{TEST_TIMEOUT} 1200)
 endif()
 
-set(ENV{SYSTEM_NAME} ${CMAKE_HOST_SYSTEM_NAME})  # used by test/helpers.lua.
+set(ENV{SYSTEM_NAME} ${CMAKE_HOST_SYSTEM_NAME})  # used by test/testutil.lua.
 
 if(NOT WIN32)
   # Tests assume POSIX "sh" and may fail if SHELL=fish. #24941 #6172

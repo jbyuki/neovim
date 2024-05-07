@@ -1,13 +1,14 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local command = helpers.command
-local dedent = helpers.dedent
-local eval = helpers.eval
-local eq = helpers.eq
-local feed = helpers.feed
-local api = helpers.api
-local exec_capture = helpers.exec_capture
+local clear = n.clear
+local command = n.command
+local dedent = t.dedent
+local eval = n.eval
+local eq = t.eq
+local feed = n.feed
+local api = n.api
+local exec_capture = n.exec_capture
 
 describe('TabNewEntered', function()
   describe('au TabNewEntered', function()

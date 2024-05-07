@@ -165,12 +165,14 @@ These dependencies are "vendored" (inlined), we must update the sources manually
 * `runtime/lua/coxpcall.lua`: coxpcall (only needed for PUC lua, builtin to luajit)
 * `src/termkey`: [libtermkey](https://github.com/neovim/libtermkey)
 
-Non-technical dependencies
+Other dependencies
 --------------------------
 
 * GitHub users:
     * https://github.com/marvim
     * https://github.com/nvim-winget
+* Org secrets/tokens:
+    * `CODECOV_TOKEN`
 * Domain names (held in https://namecheap.com):
     * neovim.org
     * neovim.io
@@ -229,9 +231,10 @@ https://github.com/neovim/neovim-backup
 
 Some github labels are used to trigger certain jobs:
 
-* `backport release-x.y` - backport to release branch
+* `ci:backport release-x.y` - backport to branch `release-x.y`
 * `ci:s390x` - enable s390x CI
 * `ci:skip-news` - skip news.yml workflows
+* `ci:windows-asan` - test windows with ASAN enabled
 * `needs:response` - close PR after a certain amount of time if author doesn't
   respond
 

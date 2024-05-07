@@ -1,14 +1,15 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local clear = helpers.clear
-local command = helpers.command
-local api = helpers.api
-local feed = helpers.feed
-local eq = helpers.eq
+local clear = n.clear
+local command = n.command
+local api = n.api
+local feed = n.feed
+local eq = t.eq
 
 describe('matchparen', function()
-  local screen
+  local screen --- @type test.functional.ui.screen
 
   before_each(function()
     clear { args = { '-u', 'NORC' } }

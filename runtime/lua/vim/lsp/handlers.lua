@@ -12,7 +12,7 @@ local M = {}
 --- Writes to error buffer.
 ---@param ... string Will be concatenated before being written
 local function err_message(...)
-  vim.notify(table.concat(vim.tbl_flatten({ ... })), vim.log.levels.ERROR)
+  vim.notify(table.concat(vim.iter({ ... }):flatten():totable()), vim.log.levels.ERROR)
   api.nvim_command('redraw')
 end
 
@@ -22,16 +22,16 @@ M[ms.workspace_executeCommand] = function(_, _, _, _)
 end
 
 --- @see # https://microsoft.github.io/language-server-protocol/specifications/specification-current/#progress
----@param result lsp.ProgressParams
+---@param params lsp.ProgressParams
 ---@param ctx lsp.HandlerContext
-M[ms.dollar_progress] = function(_, result, ctx)
+M[ms.dollar_progress] = function(_, params, ctx)
   local client = vim.lsp.get_client_by_id(ctx.client_id)
   if not client then
     err_message('LSP[id=', tostring(ctx.client_id), '] client has shut down during progress update')
     return vim.NIL
   end
   local kind = nil
-  local value = result.value
+  local value = params.value
 
   if type(value) == 'table' then
     kind = value.kind
@@ -39,21 +39,21 @@ M[ms.dollar_progress] = function(_, result, ctx)
     -- So that consumers always have it available, even if they consume a
     -- subset of the full sequence
     if kind == 'begin' then
-      client.progress.pending[result.token] = value.title
+      client.progress.pending[params.token] = value.title
     else
-      value.title = client.progress.pending[result.token]
+      value.title = client.progress.pending[params.token]
       if kind == 'end' then
-        client.progress.pending[result.token] = nil
+        client.progress.pending[params.token] = nil
       end
     end
   end
 
-  client.progress:push(result)
+  client.progress:push(params)
 
   api.nvim_exec_autocmds('LspProgress', {
     pattern = kind,
     modeline = false,
-    data = { client_id = ctx.client_id, result = result },
+    data = { client_id = ctx.client_id, params = params },
   })
 end
 
@@ -428,7 +428,7 @@ local function location_handler(_, result, ctx, config)
 
   -- textDocument/definition can return Location or Location[]
   -- https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_definition
-  if not vim.tbl_islist(result) then
+  if not vim.islist(result) then
     result = { result }
   end
 
@@ -565,6 +565,45 @@ M[ms.callHierarchy_incomingCalls] = make_call_hierarchy_handler('from')
 --- @see # https://microsoft.github.io/language-server-protocol/specifications/specification-current/#callHierarchy_outgoingCalls
 M[ms.callHierarchy_outgoingCalls] = make_call_hierarchy_handler('to')
 
+--- Displays type hierarchy in the quickfix window.
+local function make_type_hierarchy_handler()
+  --- @param result lsp.TypeHierarchyItem[]
+  return function(_, result, ctx, _)
+    if not result then
+      return
+    end
+    local function format_item(item)
+      if not item.detail or #item.detail == 0 then
+        return item.name
+      end
+      return string.format('%s %s', item.name, item.detail)
+    end
+    local client = assert(vim.lsp.get_client_by_id(ctx.client_id))
+    local items = {}
+    for _, type_hierarchy_item in pairs(result) do
+      local col = util._get_line_byte_from_position(
+        ctx.bufnr,
+        type_hierarchy_item.range.start,
+        client.offset_encoding
+      )
+      table.insert(items, {
+        filename = assert(vim.uri_to_fname(type_hierarchy_item.uri)),
+        text = format_item(type_hierarchy_item),
+        lnum = type_hierarchy_item.range.start.line + 1,
+        col = col + 1,
+      })
+    end
+    vim.fn.setqflist({}, ' ', { title = 'LSP type hierarchy', items = items })
+    api.nvim_command('botright copen')
+  end
+end
+
+--- @see # https://microsoft.github.io/language-server-protocol/specifications/specification-current/#typeHierarchy_incomingCalls
+M[ms.typeHierarchy_subtypes] = make_type_hierarchy_handler()
+
+--- @see # https://microsoft.github.io/language-server-protocol/specifications/specification-current/#typeHierarchy_outgoingCalls
+M[ms.typeHierarchy_supertypes] = make_type_hierarchy_handler()
+
 --- @see: https://microsoft.github.io/language-server-protocol/specifications/specification-current/#window_logMessage
 --- @param result lsp.LogMessageParams
 M[ms.window_logMessage] = function(_, result, ctx, _)
@@ -615,7 +654,8 @@ M[ms.window_showDocument] = function(_, result, ctx, _)
 
   if result.external then
     -- TODO(lvimuser): ask the user for confirmation
-    local ret, err = vim.ui.open(uri)
+    local cmd, err = vim.ui.open(uri)
+    local ret = cmd and cmd:wait(2000) or nil
 
     if ret == nil or ret.code ~= 0 then
       return {

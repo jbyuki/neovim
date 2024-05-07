@@ -1,8 +1,10 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local pcall_err = helpers.pcall_err
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local pcall_err = t.pcall_err
 
 describe('gf', function()
   before_each(clear)

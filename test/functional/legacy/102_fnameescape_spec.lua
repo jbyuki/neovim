@@ -1,8 +1,9 @@
 -- Test if fnameescape is correct for special chars like!
 
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local command, expect = helpers.command, helpers.expect
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local command, expect = n.command, n.expect
 
 describe('fnameescape', function()
   setup(clear)

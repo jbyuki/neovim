@@ -1,7 +1,9 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear, eq, assert_alive = helpers.clear, helpers.eq, helpers.assert_alive
-local command = helpers.command
-local api = helpers.api
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, eq, assert_alive = n.clear, t.eq, n.assert_alive
+local command = n.command
+local api = n.api
 
 describe('sign', function()
   before_each(clear)

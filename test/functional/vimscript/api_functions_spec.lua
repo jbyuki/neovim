@@ -1,13 +1,15 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local neq, eq, command = helpers.neq, helpers.eq, helpers.command
-local clear = helpers.clear
-local exc_exec, expect, eval = helpers.exc_exec, helpers.expect, helpers.eval
-local exec_lua = helpers.exec_lua
-local insert, pcall_err = helpers.insert, helpers.pcall_err
-local matches = helpers.matches
-local api = helpers.api
-local feed = helpers.feed
+
+local neq, eq, command = t.neq, t.eq, n.command
+local clear = n.clear
+local exc_exec, expect, eval = n.exc_exec, n.expect, n.eval
+local exec_lua = n.exec_lua
+local insert, pcall_err = n.insert, t.pcall_err
+local matches = t.matches
+local api = n.api
+local feed = n.feed
 
 describe('eval-API', function()
   before_each(clear)

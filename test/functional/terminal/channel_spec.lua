@@ -1,17 +1,19 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local clear = helpers.clear
-local eq = helpers.eq
-local eval = helpers.eval
-local command = helpers.command
-local pcall_err = helpers.pcall_err
-local feed = helpers.feed
-local poke_eventloop = helpers.poke_eventloop
-local is_os = helpers.is_os
-local api = helpers.api
-local async_meths = helpers.async_meths
-local testprg = helpers.testprg
-local assert_alive = helpers.assert_alive
+
+local clear = n.clear
+local eq = t.eq
+local eval = n.eval
+local command = n.command
+local pcall_err = t.pcall_err
+local feed = n.feed
+local poke_eventloop = n.poke_eventloop
+local is_os = t.is_os
+local api = n.api
+local async_meths = n.async_meths
+local testprg = n.testprg
+local assert_alive = n.assert_alive
 
 describe('terminal channel is closed and later released if', function()
   local screen
@@ -121,6 +123,7 @@ it('chansend sends lines to terminal channel in proper order', function()
   clear({ args = { '--cmd', 'set laststatus=2' } })
   local screen = Screen.new(100, 20)
   screen:attach()
+  screen._default_attr_ids = nil
   local shells = is_os('win') and { 'cmd.exe', 'pwsh.exe -nop', 'powershell.exe -nop' } or { 'sh' }
   for _, sh in ipairs(shells) do
     command([[let id = termopen(']] .. sh .. [[')]])

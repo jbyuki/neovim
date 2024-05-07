@@ -1,8 +1,10 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local command = helpers.command
-local fn = helpers.fn
-local eq = helpers.eq
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local command = n.command
+local fn = n.fn
+local eq = t.eq
 
 describe('mksession', function()
   before_each(clear)

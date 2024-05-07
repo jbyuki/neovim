@@ -42,9 +42,8 @@
   function: (identifier) @function.call)
 
 (call_expression
-  function:
-    (scoped_identifier
-      (identifier) @function.call))
+  function: (scoped_identifier
+    (identifier) @function.call))
 
 (parameters
   (identifier) @variable.parameter)
@@ -127,10 +126,13 @@
   "view"
   "eval"
   "sign"
+  "abort"
 ] @keyword
 
 (map_statement
   cmd: _ @keyword)
+
+(keycode) @character.special
 
 (command_name) @function.macro
 
@@ -204,10 +206,9 @@
 
 (command_attribute
   name: _ @property
-  val:
-    (behavior
-      name: _ @constant
-      val: (identifier)? @function)?)
+  val: (behavior
+    name: _ @constant
+    val: (identifier)? @function)?)
 
 ; Edit command
 (plus_plus_opt
@@ -277,8 +278,6 @@
   "/"
   "%"
   ".."
-  "is"
-  "isnot"
   "=="
   "!="
   ">"
@@ -297,8 +296,14 @@
   "..="
   "<<"
   "=<<"
+  "->"
   (match_case)
 ] @operator
+
+[
+  "is"
+  "isnot"
+] @keyword.operator
 
 ; Some characters have different meanings based on the context
 (unary_operation

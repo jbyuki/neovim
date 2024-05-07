@@ -1,6 +1,8 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear, command, eval, eq = helpers.clear, helpers.command, helpers.eval, helpers.eq
-local mkdir = helpers.mkdir
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, command, eval, eq = n.clear, n.command, n.eval, t.eq
+local mkdir = t.mkdir
 
 before_each(function()
   clear()

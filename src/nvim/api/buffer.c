@@ -39,6 +39,7 @@
 #include "nvim/memory_defs.h"
 #include "nvim/move.h"
 #include "nvim/ops.h"
+#include "nvim/option_vars.h"
 #include "nvim/pos_defs.h"
 #include "nvim/state_defs.h"
 #include "nvim/types_defs.h"
@@ -227,20 +228,6 @@ Boolean nvim_buf_detach(uint64_t channel_id, Buffer buffer, Error *err)
 
   buf_updates_unregister(buf, channel_id);
   return true;
-}
-
-/// @nodoc
-void nvim__buf_redraw_range(Buffer buffer, Integer first, Integer last, Error *err)
-{
-  buf_T *buf = find_buffer_by_handle(buffer, err);
-  if (!buf) {
-    return;
-  }
-  if (last < 0) {
-    last = buf->b_ml.ml_line_count;
-  }
-
-  redraw_buf_range_later(buf, (linenr_T)first + 1, (linenr_T)last);
 }
 
 /// Gets a line-range from the buffer.
@@ -1125,7 +1112,7 @@ String nvim_buf_get_name(Buffer buffer, Error *err)
   return cstr_as_string(buf->b_ffname);
 }
 
-/// Sets the full file name for a buffer
+/// Sets the full file name for a buffer, like |:file_f|
 ///
 /// @param buffer     Buffer handle, or 0 for current buffer
 /// @param name       Buffer name
@@ -1141,11 +1128,22 @@ void nvim_buf_set_name(Buffer buffer, String name, Error *err)
 
   try_start();
 
+  const bool is_curbuf = buf == curbuf;
+  const int save_acd = p_acd;
+  if (!is_curbuf) {
+    // Temporarily disable 'autochdir' when setting file name for another buffer.
+    p_acd = false;
+  }
+
   // Using aucmd_*: autocommands will be executed by rename_buffer
   aco_save_T aco;
   aucmd_prepbuf(&aco, buf);
   int ren_ret = rename_buffer(name.data);
   aucmd_restbuf(&aco);
+
+  if (!is_curbuf) {
+    p_acd = save_acd;
+  }
 
   if (try_end(err)) {
     return;

@@ -1,15 +1,17 @@
-local helpers = require('test.functional.helpers')(after_each)
-local call = helpers.call
-local clear = helpers.clear
-local command = helpers.command
-local eval = helpers.eval
-local eq = helpers.eq
-local feed = helpers.feed
-local feed_command = helpers.feed_command
-local next_msg = helpers.next_msg
-local api = helpers.api
-local source = helpers.source
-local pcall_err = helpers.pcall_err
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local call = n.call
+local clear = n.clear
+local command = n.command
+local eval = n.eval
+local eq = t.eq
+local feed = n.feed
+local feed_command = n.feed_command
+local next_msg = n.next_msg
+local api = n.api
+local source = n.source
+local pcall_err = t.pcall_err
 
 before_each(function()
   clear()
@@ -60,7 +62,7 @@ describe('wait()', function()
     ]])
 
     -- XXX: flaky (#11137)
-    helpers.retry(nil, nil, function()
+    t.retry(nil, nil, function()
       api.nvim_set_var('counter', 0)
       eq(-1, call('wait', 20, 'Count() >= 5', 99999))
     end)

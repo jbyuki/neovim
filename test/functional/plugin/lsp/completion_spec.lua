@@ -1,7 +1,9 @@
 ---@diagnostic disable: no-unknown
-local helpers = require('test.functional.helpers')(after_each)
-local eq = helpers.eq
-local exec_lua = helpers.exec_lua
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local eq = t.eq
+local exec_lua = n.exec_lua
 
 --- Convert completion results.
 ---
@@ -41,7 +43,7 @@ local function complete(line, candidates, lnum)
 end
 
 describe('vim.lsp._completion', function()
-  before_each(helpers.clear)
+  before_each(n.clear)
 
   -- https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_completion
   it('prefers textEdit over label as word', function()

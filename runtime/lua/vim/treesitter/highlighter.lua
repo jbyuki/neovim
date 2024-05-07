@@ -4,7 +4,7 @@ local Range = require('vim.treesitter._range')
 
 local ns = api.nvim_create_namespace('treesitter/highlighter')
 
----@alias vim.treesitter.highlighter.Iter fun(): integer, table<integer, TSNode[]>, vim.treesitter.query.TSMetadata
+---@alias vim.treesitter.highlighter.Iter fun(end_line: integer|nil): integer, TSNode, vim.treesitter.query.TSMetadata, TSQueryMatch
 
 ---@class (private) vim.treesitter.highlighter.Query
 ---@field private _query vim.treesitter.Query?
@@ -57,7 +57,6 @@ end
 ---@field next_row integer
 ---@field iter vim.treesitter.highlighter.Iter?
 ---@field highlighter_query vim.treesitter.highlighter.Query
----@field level integer Injection level
 
 ---@nodoc
 ---@class vim.treesitter.highlighter
@@ -193,20 +192,12 @@ function TSHighlighter:prepare_highlight_states(srow, erow)
       return
     end
 
-    local level = 0
-    local t = tree
-    while t do
-      t = t:parent()
-      level = level + 1
-    end
-
     -- _highlight_states should be a list so that the highlights are added in the same order as
     -- for_each_tree traversal. This ensures that parents' highlight don't override children's.
     table.insert(self._highlight_states, {
       tstree = tstree,
       next_row = 0,
       iter = nil,
-      level = level,
       highlighter_query = highlighter_query,
     })
   end)
@@ -224,7 +215,7 @@ end
 ---@param start_row integer
 ---@param new_end integer
 function TSHighlighter:on_bytes(_, _, start_row, _, _, _, _, _, new_end)
-  api.nvim__buf_redraw_range(self.bufnr, start_row, start_row + new_end + 1)
+  api.nvim__redraw({ buf = self.bufnr, range = { start_row, start_row + new_end + 1 } })
 end
 
 ---@package
@@ -236,7 +227,7 @@ end
 ---@param changes Range6[]
 function TSHighlighter:on_changedtree(changes)
   for _, ch in ipairs(changes) do
-    api.nvim__buf_redraw_range(self.bufnr, ch[1], ch[4] + 1)
+    api.nvim__redraw({ buf = self.bufnr, range = { ch[1], ch[4] + 1 } })
   end
 end
 
@@ -252,7 +243,7 @@ function TSHighlighter:get_query(lang)
   return self._queries[lang]
 end
 
---- @param match table<integer,TSNode[]>
+--- @param match TSQueryMatch
 --- @param bufnr integer
 --- @param capture integer
 --- @param metadata vim.treesitter.query.TSMetadata
@@ -265,13 +256,15 @@ local function get_url(match, bufnr, capture, metadata)
     return url
   end
 
-  if not match or not match[url] then
+  local captures = match:captures()
+
+  if not captures[url] then
     return
   end
 
   -- Assume there is only one matching node. If there is more than one, take the URL
   -- from the first.
-  local other_node = match[url][1]
+  local other_node = captures[url][1]
 
   return vim.treesitter.get_node_text(other_node, bufnr, {
     metadata = metadata[url],
@@ -313,9 +306,6 @@ local function on_line_impl(self, buf, line, is_spell_nav)
   end
 
   self:for_each_highlight_state(function(state)
-    -- Use the injection level to offset the subpriority passed to nvim_buf_set_extmark
-    -- so injections always appear over base highlights.
-    local pattern_offset = state.level * 1000
     local root_node = state.tstree:root()
     local root_start_row, _, root_end_row, _ = root_node:range()
 
@@ -325,26 +315,28 @@ local function on_line_impl(self, buf, line, is_spell_nav)
       return
     end
 
-    state.iter = state.highlighter_query
-      :query()
-      :iter_matches(root_node, bufnr, line, root_end_row + 1, { all = true })
+    state.iter =
+        state.highlighter_query:query():iter_captures(root_node, self.bufnr, line, root_end_row + 1)
 
     if tangled then
       state.next_row = line
     end
 
     while line >= state.next_row do
-      local pattern, match, metadata = state.iter()
+      local capture, node, metadata, match = state.iter(line)
 
-      if not match then
-        state.next_row = root_end_row + 1
+      local range = { root_end_row + 1, 0, root_end_row + 1, 0 }
+      if node then
+        range = vim.treesitter.get_range(node, buf, metadata and metadata[capture])
       end
+      local start_row, start_col, end_row, end_col = Range.unpack4(range)
 
-      for capture, nodes in pairs(match or {}) do
-        local capture_name = state.highlighter_query:query().captures[capture]
-        local spell, spell_pri_offset = get_spell(capture_name)
-
+      if capture then
         local hl = state.highlighter_query:get_hl_from_capture(capture)
+
+        local capture_name = state.highlighter_query:query().captures[capture]
+
+        local spell, spell_pri_offset = get_spell(capture_name)
 
         -- The "priority" attribute can be set at the pattern level or on a particular capture
         local priority = (
@@ -352,10 +344,11 @@ local function on_line_impl(self, buf, line, is_spell_nav)
           or vim.highlight.priorities.treesitter
         ) + spell_pri_offset
 
+        local conceal = metadata.conceal or metadata[capture] and metadata[capture].conceal
         local url = get_url(match, bufnr, capture, metadata)
 
         -- The "conceal" attribute can be set at the pattern level or on a particular capture
-        local conceal = metadata.conceal or metadata[capture] and metadata[capture].conceal
+
 
         for _, node in ipairs(nodes) do
           local range = vim.treesitter.get_range(node, bufnr, metadata[capture])
@@ -389,16 +382,15 @@ local function on_line_impl(self, buf, line, is_spell_nav)
           else
             if hl and end_row >= line and (not is_spell_nav or spell ~= nil) then
               api.nvim_buf_set_extmark(buf, ns, start_row, start_col, {
-                end_line = end_row,
-                end_col = end_col,
-                hl_group = hl,
-                ephemeral = true,
-                priority = priority,
-                _subpriority = pattern_offset + pattern,
-                conceal = conceal,
-                spell = spell,
-                url = url,
-              })
+	            end_line = end_row,
+	            end_col = end_col,
+	            hl_group = hl,
+	            ephemeral = true,
+	            priority = priority,
+	            conceal = conceal,
+	            spell = spell,
+	            url = url,
+	          })
             end
 
             if start_row > line then
@@ -406,6 +398,10 @@ local function on_line_impl(self, buf, line, is_spell_nav)
             end
           end
         end
+      end
+
+      if start_row > line then
+        state.next_row = start_row
       end
     end
   end)

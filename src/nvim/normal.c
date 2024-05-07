@@ -32,6 +32,7 @@
 #include "nvim/ex_cmds.h"
 #include "nvim/ex_cmds2.h"
 #include "nvim/ex_docmd.h"
+#include "nvim/ex_eval.h"
 #include "nvim/ex_getln.h"
 #include "nvim/fileio.h"
 #include "nvim/fold.h"
@@ -47,6 +48,7 @@
 #include "nvim/mapping.h"
 #include "nvim/mark.h"
 #include "nvim/mark_defs.h"
+#include "nvim/math.h"
 #include "nvim/mbyte.h"
 #include "nvim/memline.h"
 #include "nvim/memline_defs.h"
@@ -748,7 +750,7 @@ static void normal_get_additional_char(NormalState *s)
     bool langmap_active = false;  // using :lmap mappings
     if (repl) {
       State = MODE_REPLACE;                // pretend Replace mode
-      ui_cursor_shape();              // show different cursor shape
+      ui_cursor_shape_no_check_conceal();  // show different cursor shape
     }
     if (lang && curbuf->b_p_iminsert == B_IMODE_LMAP) {
       // Allow mappings defined with ":lmap".
@@ -891,8 +893,8 @@ static bool normal_get_command_count(NormalState *s)
   // Handle a count before a command and compute ca.count0.
   // Note that '0' is a command and not the start of a count, but it's
   // part of a count after other digits.
-  while ((s->c >= '1' && s->c <= '9') || (s->ca.count0 != 0
-                                          && (s->c == K_DEL || s->c == K_KDEL || s->c == '0'))) {
+  while ((s->c >= '1' && s->c <= '9')
+         || (s->ca.count0 != 0 && (s->c == K_DEL || s->c == K_KDEL || s->c == '0'))) {
     if (s->c == K_DEL || s->c == K_KDEL) {
       s->ca.count0 /= 10;
       del_from_showcmd(4);            // delete the digit and ~@%
@@ -1078,7 +1080,7 @@ static int normal_execute(VimState *state, int key)
     // When "restart_edit" is set fake a "d"elete command, Insert mode will restart automatically.
     // Insert the typed character in the typeahead buffer, so that it can
     // be mapped in Insert mode.  Required for ":lmap" to work.
-    int len = ins_char_typebuf(vgetc_char, vgetc_mod_mask);
+    int len = ins_char_typebuf(vgetc_char, vgetc_mod_mask, true);
 
     // When recording and gotchars() was called the character will be
     // recorded again, remove the previous recording.
@@ -1402,6 +1404,12 @@ static int normal_check(VimState *state)
   NormalState *s = (NormalState *)state;
   normal_check_stuff_buffer(s);
   normal_check_interrupt(s);
+
+  // At the toplevel there is no exception handling.  Discard any that
+  // may be hanging around (e.g. from "interrupt" at the debug prompt).
+  if (did_throw && !ex_normal_busy) {
+    discard_current_exception();
+  }
 
   if (!exmode_active) {
     msg_scroll = false;
@@ -1960,9 +1968,16 @@ bool add_to_showcmd(int c)
     }
   }
 
-  char *p = transchar(c);
-  if (*p == ' ') {
-    STRCPY(p, "<20>");
+  char *p;
+  char mbyte_buf[MB_MAXCHAR + 1];
+  if (c <= 0x7f || !vim_isprintc(c)) {
+    p = transchar(c);
+    if (*p == ' ') {
+      STRCPY(p, "<20>");
+    }
+  } else {
+    mbyte_buf[utf_char2bytes(c, mbyte_buf)] = NUL;
+    p = mbyte_buf;
   }
   size_t old_len = strlen(showcmd_buf);
   size_t extra_len = strlen(p);
@@ -2028,8 +2043,7 @@ void pop_showcmd(void)
 
 static void display_showcmd(void)
 {
-  int len = (int)strlen(showcmd_buf);
-  showcmd_is_clear = (len == 0);
+  showcmd_is_clear = (showcmd_buf[0] == NUL);
 
   if (*p_sloc == 's') {
     if (showcmd_is_clear) {
@@ -2050,14 +2064,11 @@ static void display_showcmd(void)
     return;
   }
   // 'showcmdloc' is "last" or empty
-  if (p_ch == 0 && !ui_has(kUIMessages)) {
-    return;
-  }
 
   if (ui_has(kUIMessages)) {
     MAXSIZE_TEMP_ARRAY(content, 1);
     MAXSIZE_TEMP_ARRAY(chunk, 2);
-    if (len > 0) {
+    if (!showcmd_is_clear) {
       // placeholder for future highlight support
       ADD_C(chunk, INTEGER_OBJ(0));
       ADD_C(chunk, CSTR_AS_OBJ(showcmd_buf));
@@ -2066,13 +2077,17 @@ static void display_showcmd(void)
     ui_call_msg_showcmd(content);
     return;
   }
+  if (p_ch == 0) {
+    return;
+  }
 
   msg_grid_validate();
   int showcmd_row = Rows - 1;
   grid_line_start(&msg_grid_adj, showcmd_row);
 
+  int len = 0;
   if (!showcmd_is_clear) {
-    grid_line_puts(sc_col, showcmd_buf, -1, HL_ATTR(HLF_MSG));
+    len = grid_line_puts(sc_col, showcmd_buf, -1, HL_ATTR(HLF_MSG));
   }
 
   // clear the rest of an old message by outputting up to SHOWCMD_COLS spaces
@@ -2258,7 +2273,7 @@ static void nv_page(cmdarg_T *cap)
       goto_tabpage(cap->count0);
     }
   } else {
-    onepage(cap->arg, cap->count1);
+    pagescroll(cap->arg, cap->count1, false);
   }
 }
 
@@ -2453,7 +2468,7 @@ bool find_decl(char *ptr, size_t len, bool locally, bool thisblock, int flags_ar
 /// 'dist' must be positive.
 ///
 /// @return  true if able to move cursor, false otherwise.
-static bool nv_screengo(oparg_T *oap, int dir, int dist)
+bool nv_screengo(oparg_T *oap, int dir, int dist)
 {
   int linelen = linetabsize(curwin, curwin->w_cursor.lnum);
   bool retval = true;
@@ -2607,58 +2622,6 @@ void nv_scroll_line(cmdarg_T *cap)
   }
 }
 
-/// Scroll "count" lines up or down, and redraw.
-void scroll_redraw(bool up, linenr_T count)
-{
-  linenr_T prev_topline = curwin->w_topline;
-  int prev_skipcol = curwin->w_skipcol;
-  int prev_topfill = curwin->w_topfill;
-  linenr_T prev_lnum = curwin->w_cursor.lnum;
-
-  bool moved = up
-               ? scrollup(curwin, count, true)
-               : scrolldown(curwin, count, true);
-
-  if (get_scrolloff_value(curwin) > 0) {
-    // Adjust the cursor position for 'scrolloff'.  Mark w_topline as
-    // valid, otherwise the screen jumps back at the end of the file.
-    cursor_correct(curwin);
-    check_cursor_moved(curwin);
-    curwin->w_valid |= VALID_TOPLINE;
-
-    // If moved back to where we were, at least move the cursor, otherwise
-    // we get stuck at one position.  Don't move the cursor up if the
-    // first line of the buffer is already on the screen
-    while (curwin->w_topline == prev_topline
-           && curwin->w_skipcol == prev_skipcol
-           && curwin->w_topfill == prev_topfill) {
-      if (up) {
-        if (curwin->w_cursor.lnum > prev_lnum
-            || cursor_down(1, false) == false) {
-          break;
-        }
-      } else {
-        if (curwin->w_cursor.lnum < prev_lnum
-            || prev_topline == 1
-            || cursor_up(1, false) == false) {
-          break;
-        }
-      }
-      // Mark w_topline as valid, otherwise the screen jumps back at the
-      // end of the file.
-      check_cursor_moved(curwin);
-      curwin->w_valid |= VALID_TOPLINE;
-    }
-  }
-  if (curwin->w_cursor.lnum != prev_lnum) {
-    coladvance(curwin, curwin->w_curswant);
-  }
-  if (moved) {
-    curwin->w_viewport_invalid = true;
-  }
-  redraw_later(curwin, UPD_VALID);
-}
-
 /// Get the count specified after a 'z' command. Only the 'z<CR>', 'zl', 'zh',
 /// 'z<Left>', and 'z<Right>' commands accept a count after 'z'.
 /// @return  true to process the 'z' command and false to skip it.
@@ -2684,11 +2647,10 @@ static bool nv_z_get_count(cmdarg_T *cap, int *nchar_arg)
     if (nchar == K_DEL || nchar == K_KDEL) {
       n /= 10;
     } else if (ascii_isdigit(nchar)) {
-      if (n > INT_MAX / 10) {
+      if (vim_append_digit_int(&n, nchar - '0') == FAIL) {
         clearopbeep(cap->oap);
         break;
       }
-      n = n * 10 + (nchar - '0');
     } else if (nchar == CAR) {
       win_setheight(n);
       break;
@@ -5216,7 +5178,7 @@ static void nv_gv_cmd(cmdarg_T *cap)
 
 /// "g0", "g^" : Like "0" and "^" but for screen lines.
 /// "gm": middle of "g0" and "g$".
-static void nv_g_home_m_cmd(cmdarg_T *cap)
+void nv_g_home_m_cmd(cmdarg_T *cap)
 {
   int i;
   const bool flag = cap->nchar == '^';
@@ -5231,6 +5193,15 @@ static void nv_g_home_m_cmd(cmdarg_T *cap)
     i = 0;
     if (curwin->w_virtcol >= (colnr_T)width1 && width2 > 0) {
       i = (curwin->w_virtcol - width1) / width2 * width2 + width1;
+    }
+
+    // When ending up below 'smoothscroll' marker, move just beyond it so
+    // that skipcol is not adjusted later.
+    if (curwin->w_skipcol > 0 && curwin->w_cursor.lnum == curwin->w_topline) {
+      int overlap = sms_marker_overlap(curwin, -1);
+      if (overlap > 0 && i == curwin->w_skipcol) {
+        i += overlap;
+      }
     }
   } else {
     i = curwin->w_leftcol;
@@ -6394,12 +6365,8 @@ static void nv_at(cmdarg_T *cap)
 /// Handle the CTRL-U and CTRL-D commands.
 static void nv_halfpage(cmdarg_T *cap)
 {
-  if ((cap->cmdchar == Ctrl_U && curwin->w_cursor.lnum == 1)
-      || (cap->cmdchar == Ctrl_D
-          && curwin->w_cursor.lnum == curbuf->b_ml.ml_line_count)) {
-    clearopbeep(cap->oap);
-  } else if (!checkclearop(cap->oap)) {
-    halfpage(cap->cmdchar == Ctrl_D, cap->count0);
+  if (!checkclearop(cap->oap)) {
+    pagescroll(cap->cmdchar == Ctrl_D ? FORWARD : BACKWARD, cap->count0, true);
   }
 }
 

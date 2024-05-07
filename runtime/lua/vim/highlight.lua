@@ -1,26 +1,3 @@
----@brief
----
---- Nvim includes a function for highlighting a selection on yank.
----
---- To enable it, add the following to your `init.vim`:
----
---- ```vim
---- au TextYankPost * silent! lua vim.highlight.on_yank()
---- ```
----
---- You can customize the highlight group and the duration of the highlight via:
----
---- ```vim
---- au TextYankPost * silent! lua vim.highlight.on_yank {higroup="IncSearch", timeout=150}
---- ```
----
---- If you want to exclude visual selections from highlighting on yank, use:
----
---- ```vim
---- au TextYankPost * silent! lua vim.highlight.on_yank {on_visual=false}
---- ```
----
-
 local api = vim.api
 
 local M = {}
@@ -40,6 +17,23 @@ M.priorities = {
   user = 200,
 }
 
+--- @class vim.highlight.range.Opts
+--- @inlinedoc
+---
+--- Type of range. See [setreg()]
+--- (default: `'charwise'`)
+--- @field regtype? string
+---
+--- Indicates whether the range is end-inclusive
+--- (default: `false`)
+--- @field inclusive? boolean
+---
+--- Indicates priority of highlight
+--- (default: `vim.highlight.priorities.user`)
+--- @field priority? integer
+---
+--- @field package _scoped? boolean
+
 --- Apply highlight group to range of text.
 ---
 ---@param bufnr integer Buffer number to apply highlighting to
@@ -47,10 +41,7 @@ M.priorities = {
 ---@param higroup string Highlight group to use for highlighting
 ---@param start integer[]|string Start of region as a (line, column) tuple or string accepted by |getpos()|
 ---@param finish integer[]|string End of region as a (line, column) tuple or string accepted by |getpos()|
----@param opts table|nil Optional parameters
----            - regtype type of range (see |setreg()|, default charwise)
----            - inclusive boolean indicating whether the range is end-inclusive (default false)
----            - priority number indicating priority of highlight (default priorities.user)
+---@param opts? vim.highlight.range.Opts
 function M.range(bufnr, ns, higroup, start, finish, opts)
   opts = opts or {}
   local regtype = opts.regtype or 'v'
@@ -80,10 +71,16 @@ function M.range(bufnr, ns, higroup, start, finish, opts)
 end
 
 local yank_ns = api.nvim_create_namespace('hlyank')
-local yank_timer
-local yank_cancel
+local yank_timer --- @type uv.uv_timer_t?
+local yank_cancel --- @type fun()?
 
---- Highlight the yanked text
+--- Highlight the yanked text during a |TextYankPost| event.
+---
+--- Add the following to your `init.vim`:
+---
+--- ```vim
+--- autocmd TextYankPost * silent! lua vim.highlight.on_yank {higroup='Visual', timeout=300}
+--- ```
 ---
 --- @param opts table|nil Optional parameters
 ---              - higroup   highlight group for yanked region (default "IncSearch")
@@ -128,16 +125,17 @@ function M.on_yank(opts)
   local winid = vim.api.nvim_get_current_win()
   if yank_timer then
     yank_timer:close()
+    assert(yank_cancel)
     yank_cancel()
   end
 
+  vim.api.nvim_win_add_ns(winid, yank_ns)
   M.range(bufnr, yank_ns, higroup, "'[", "']", {
     regtype = event.regtype,
     inclusive = event.inclusive,
     priority = opts.priority or M.priorities.user,
     _scoped = true,
   })
-  vim.api.nvim_win_add_ns(winid, yank_ns)
 
   yank_cancel = function()
     yank_timer = nil

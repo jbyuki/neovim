@@ -1,21 +1,23 @@
-local helpers = require('test.functional.helpers')(after_each)
-local command = helpers.command
-local clear = helpers.clear
-local eval = helpers.eval
-local eq = helpers.eq
-local exc_exec = helpers.exc_exec
-local feed = helpers.feed
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local command = n.command
+local clear = n.clear
+local eval = n.eval
+local eq = t.eq
+local exc_exec = n.exc_exec
+local feed = n.feed
 
 local scroll = function(direction)
-  return helpers.request('nvim_input_mouse', 'wheel', direction, '', 0, 2, 2)
+  return n.request('nvim_input_mouse', 'wheel', direction, '', 0, 2, 2)
 end
 
 local screenrow = function()
-  return helpers.call('screenrow')
+  return n.call('screenrow')
 end
 
 local screencol = function()
-  return helpers.call('screencol')
+  return n.call('screencol')
 end
 
 describe("'mousescroll'", function()

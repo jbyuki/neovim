@@ -199,9 +199,8 @@
 ///   - footer_pos: Footer position. Must be set with `footer` option.
 ///     Value can be one of "left", "center", or "right".
 ///     Default is `"left"`.
-///   - noautocmd: If true then autocommands triggered from setting the
-///     `buffer` to display are blocked (e.g: |BufEnter|, |BufLeave|,
-///     |BufWinEnter|).
+///   - noautocmd: If true then all autocommands are blocked for the duration of
+///     the call.
 ///   - fixed: If true when anchor is NW or SW, the float window
 ///            would be kept fixed even if the window would be truncated.
 ///   - hide: If true the floating window will be hidden.
@@ -225,29 +224,33 @@ Window nvim_open_win(Buffer buffer, Boolean enter, Dict(win_config) *config, Err
   }
 
   WinConfig fconfig = WIN_CONFIG_INIT;
-  if (!parse_float_config(config, &fconfig, false, true, err)) {
+  if (!parse_win_config(NULL, config, &fconfig, false, err)) {
     return 0;
   }
 
   bool is_split = HAS_KEY_X(config, split) || HAS_KEY_X(config, vertical);
+  Window rv = 0;
+  if (fconfig.noautocmd) {
+    block_autocmds();
+  }
 
   win_T *wp = NULL;
   tabpage_T *tp = curtab;
-  if (is_split) {
-    win_T *parent = NULL;
-    if (config->win != -1) {
-      parent = find_window_by_handle(fconfig.window, err);
-      if (!parent) {
-        // find_window_by_handle has already set the error
-        return 0;
-      } else if (parent->w_floating) {
-        api_set_error(err, kErrorTypeException, "Cannot split a floating window");
-        return 0;
-      }
+  win_T *parent = NULL;
+  if (config->win != -1) {
+    parent = find_window_by_handle(fconfig.window, err);
+    if (!parent) {
+      // find_window_by_handle has already set the error
+      goto cleanup;
+    } else if (is_split && parent->w_floating) {
+      api_set_error(err, kErrorTypeException, "Cannot split a floating window");
+      goto cleanup;
     }
-
+    tp = win_find_tabpage(parent);
+  }
+  if (is_split) {
     if (!check_split_disallowed_err(parent ? parent : curwin, err)) {
-      return 0;  // error already set
+      goto cleanup;  // error already set
     }
 
     if (HAS_KEY_X(config, vertical) && !HAS_KEY_X(config, split)) {
@@ -260,16 +263,16 @@ Window nvim_open_win(Buffer buffer, Boolean enter, Dict(win_config) *config, Err
     int flags = win_split_flags(fconfig.split, parent == NULL) | WSP_NOENTER;
 
     TRY_WRAP(err, {
+      int size = (flags & WSP_VERT) ? fconfig.width : fconfig.height;
       if (parent == NULL || parent == curwin) {
-        wp = win_split_ins(0, flags, NULL, 0, NULL);
+        wp = win_split_ins(size, flags, NULL, 0, NULL);
       } else {
-        tp = win_find_tabpage(parent);
         switchwin_T switchwin;
         // `parent` is valid in `tp`, so switch_win should not fail.
         const int result = switch_win(&switchwin, parent, tp, true);
         assert(result == OK);
         (void)result;
-        wp = win_split_ins(0, flags, NULL, 0, NULL);
+        wp = win_split_ins(size, flags, NULL, 0, NULL);
         restore_win(&switchwin, true);
       }
     });
@@ -283,7 +286,7 @@ Window nvim_open_win(Buffer buffer, Boolean enter, Dict(win_config) *config, Err
     if (!ERROR_SET(err)) {
       api_set_error(err, kErrorTypeException, "Failed to create window");
     }
-    return 0;
+    goto cleanup;
   }
 
   // Autocommands may close `wp` or move it to another tabpage, so update and check `tp` after each
@@ -291,8 +294,8 @@ Window nvim_open_win(Buffer buffer, Boolean enter, Dict(win_config) *config, Err
   // Also, autocommands may free the `buf` to switch to, so store a bufref to check.
   bufref_T bufref;
   set_bufref(&bufref, buf);
-  switchwin_T switchwin;
-  {
+  if (!fconfig.noautocmd) {
+    switchwin_T switchwin;
     const int result = switch_win_noblock(&switchwin, wp, tp, true);
     assert(result == OK);
     (void)result;
@@ -313,7 +316,7 @@ Window nvim_open_win(Buffer buffer, Boolean enter, Dict(win_config) *config, Err
       autocmd_no_enter++;
       autocmd_no_leave++;
     }
-    win_set_buf(wp, buf, fconfig.noautocmd, err);
+    win_set_buf(wp, buf, err);
     if (!fconfig.noautocmd) {
       tp = win_find_tabpage(wp);
     }
@@ -324,14 +327,20 @@ Window nvim_open_win(Buffer buffer, Boolean enter, Dict(win_config) *config, Err
   }
   if (!tp) {
     api_set_error(err, kErrorTypeException, "Window was closed immediately");
-    return 0;
+    goto cleanup;
   }
 
   if (fconfig.style == kWinStyleMinimal) {
     win_set_minimal_style(wp);
     didset_window_options(wp, true);
   }
-  return wp->handle;
+  rv = wp->handle;
+
+cleanup:
+  if (fconfig.noautocmd) {
+    unblock_autocmds();
+  }
+  return rv;
 #undef HAS_KEY_X
 }
 
@@ -385,6 +394,7 @@ void nvim_win_set_config(Window window, Dict(win_config) *config, Error *err)
   if (!win) {
     return;
   }
+
   tabpage_T *win_tp = win_find_tabpage(win);
   bool was_split = !win->w_floating;
   bool has_split = HAS_KEY_X(config, split);
@@ -396,8 +406,24 @@ void nvim_win_set_config(Window window, Dict(win_config) *config, Error *err)
                   && !(HAS_KEY_X(config, external) ? config->external : fconfig.external)
                   && (has_split || has_vertical || was_split);
 
-  if (!parse_float_config(config, &fconfig, !was_split || to_split, false, err)) {
+  if (!parse_win_config(win, config, &fconfig, !was_split || to_split, err)) {
     return;
+  }
+  win_T *parent = NULL;
+  if (config->win != -1) {
+    parent = find_window_by_handle(fconfig.window, err);
+    if (!parent) {
+      return;
+    } else if (to_split && parent->w_floating) {
+      api_set_error(err, kErrorTypeException, "Cannot split a floating window");
+      return;
+    }
+
+    // Prevent autocmd window from being moved into another tabpage
+    if (is_aucmd_win(win) && win_find_tabpage(win) != win_find_tabpage(parent)) {
+      api_set_error(err, kErrorTypeException, "Cannot move autocmd win to another tabpage");
+      return;
+    }
   }
   if (was_split && !to_split) {
     if (!win_new_float(win, false, fconfig, err)) {
@@ -405,17 +431,6 @@ void nvim_win_set_config(Window window, Dict(win_config) *config, Error *err)
     }
     redraw_later(win, UPD_NOT_VALID);
   } else if (to_split) {
-    win_T *parent = NULL;
-    if (config->win != -1) {
-      parent = find_window_by_handle(fconfig.window, err);
-      if (!parent) {
-        return;
-      } else if (parent->w_floating) {
-        api_set_error(err, kErrorTypeException, "Cannot split a floating window");
-        return;
-      }
-    }
-
     WinSplit old_split = win_split_dir(win);
     if (has_vertical && !has_split) {
       if (config->vertical) {
@@ -1023,8 +1038,19 @@ static void parse_border_style(Object style, WinConfig *fconfig, Error *err)
   }
 }
 
-static bool parse_float_config(Dict(win_config) *config, WinConfig *fconfig, bool reconf,
-                               bool new_win, Error *err)
+static void generate_api_error(win_T *wp, const char *attribute, Error *err)
+{
+  if (wp->w_floating) {
+    api_set_error(err, kErrorTypeValidation,
+                  "Missing 'relative' field when reconfiguring floating window %d",
+                  wp->handle);
+  } else {
+    api_set_error(err, kErrorTypeValidation, "non-float cannot have '%s'", attribute);
+  }
+}
+
+static bool parse_win_config(win_T *wp, Dict(win_config) *config, WinConfig *fconfig, bool reconf,
+                             Error *err)
 {
 #define HAS_KEY_X(d, key) HAS_KEY(d, win_config, key)
   bool has_relative = false, relative_is_win = false, is_split = false;
@@ -1049,7 +1075,7 @@ static bool parse_float_config(Dict(win_config) *config, WinConfig *fconfig, boo
   } else if (!config->external) {
     if (HAS_KEY_X(config, vertical) || HAS_KEY_X(config, split)) {
       is_split = true;
-    } else if (new_win) {
+    } else if (wp == NULL) {  // new win
       api_set_error(err, kErrorTypeValidation,
                     "Must specify 'relative' or 'external' when creating a float");
       return false;
@@ -1083,7 +1109,7 @@ static bool parse_float_config(Dict(win_config) *config, WinConfig *fconfig, boo
 
   if (HAS_KEY_X(config, row)) {
     if (!has_relative || is_split) {
-      api_set_error(err, kErrorTypeValidation, "non-float cannot have 'row'");
+      generate_api_error(wp, "row", err);
       return false;
     }
     fconfig->row = config->row;
@@ -1091,7 +1117,7 @@ static bool parse_float_config(Dict(win_config) *config, WinConfig *fconfig, boo
 
   if (HAS_KEY_X(config, col)) {
     if (!has_relative || is_split) {
-      api_set_error(err, kErrorTypeValidation, "non-float cannot have 'col'");
+      generate_api_error(wp, "col", err);
       return false;
     }
     fconfig->col = config->col;
@@ -1099,7 +1125,7 @@ static bool parse_float_config(Dict(win_config) *config, WinConfig *fconfig, boo
 
   if (HAS_KEY_X(config, bufpos)) {
     if (!has_relative || is_split) {
-      api_set_error(err, kErrorTypeValidation, "non-float cannot have 'bufpos'");
+      generate_api_error(wp, "bufpos", err);
       return false;
     } else {
       if (!parse_float_bufpos(config->bufpos, &fconfig->bufpos)) {
@@ -1141,6 +1167,17 @@ static bool parse_float_config(Dict(win_config) *config, WinConfig *fconfig, boo
   }
 
   if (relative_is_win || is_split) {
+    if (reconf && relative_is_win) {
+      win_T *target_win = find_window_by_handle(config->win, err);
+      if (!target_win) {
+        return false;
+      }
+
+      if (target_win == wp) {
+        api_set_error(err, kErrorTypeException, "floating window cannot be relative to itself");
+        return false;
+      }
+    }
     fconfig->window = curwin->handle;
     if (HAS_KEY_X(config, win)) {
       if (config->win > 0) {
@@ -1266,8 +1303,8 @@ static bool parse_float_config(Dict(win_config) *config, WinConfig *fconfig, boo
   }
 
   if (HAS_KEY_X(config, noautocmd)) {
-    if (!new_win) {
-      api_set_error(err, kErrorTypeValidation, "Invalid key: 'noautocmd'");
+    if (wp) {
+      api_set_error(err, kErrorTypeValidation, "'noautocmd' cannot be used with existing windows");
       return false;
     }
     fconfig->noautocmd = config->noautocmd;

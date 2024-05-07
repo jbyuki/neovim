@@ -1,8 +1,8 @@
-local helpers = require('test.functional.helpers')(after_each)
+local n = require('test.functional.testnvim')()
 
-local assert_alive = helpers.assert_alive
-local clear = helpers.clear
-local feed = helpers.feed
+local assert_alive = n.assert_alive
+local clear = n.clear
+local feed = n.feed
 
 describe("'tabstop' option", function()
   before_each(function()

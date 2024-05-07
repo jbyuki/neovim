@@ -1,19 +1,20 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local call = helpers.call
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local eval = helpers.eval
-local feed = helpers.feed
+local call = n.call
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local eval = n.eval
+local feed = n.feed
 local map = vim.tbl_map
-local api = helpers.api
-local parse_context = helpers.parse_context
-local exec_capture = helpers.exec_capture
-local source = helpers.source
+local api = n.api
+local parse_context = n.parse_context
+local exec_capture = n.exec_capture
+local source = n.source
 local trim = vim.trim
-local write_file = helpers.write_file
-local pcall_err = helpers.pcall_err
+local write_file = t.write_file
+local pcall_err = t.pcall_err
 
 describe('context functions', function()
   local fname1 = 'Xtest-functional-eval-ctx1'

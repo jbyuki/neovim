@@ -1,8 +1,10 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local eq = helpers.eq
-local fn = helpers.fn
-local command = helpers.command
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local eq = t.eq
+local fn = n.fn
+local command = n.command
 
 it(':wincmd accepts a count', function()
   clear()

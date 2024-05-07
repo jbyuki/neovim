@@ -1,5 +1,6 @@
-local helpers = require('test.functional.helpers')(after_each)
-local eq = helpers.eq
+local t = require('test.testutil')
+
+local eq = t.eq
 
 local parser = require('scripts/luacats_parser')
 

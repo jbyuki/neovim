@@ -1,8 +1,10 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local clear, api = helpers.clear, helpers.api
-local eq = helpers.eq
-local command = helpers.command
+
+local clear, api = n.clear, n.api
+local eq = t.eq
+local command = n.command
 
 describe('ui/cursor', function()
   local screen
@@ -204,7 +206,7 @@ describe('ui/cursor', function()
     screen:expect {
       grid = [[
       ^                         |
-      ~                        |*3
+      {1:~                        }|*3
       test                     |
     ]],
       condition = function()
@@ -213,8 +215,8 @@ describe('ui/cursor', function()
     }
 
     -- Change the cursor style.
-    helpers.command('hi Cursor guibg=DarkGray')
-    helpers.command(
+    n.command('hi Cursor guibg=DarkGray')
+    n.command(
       'set guicursor=n-v-c:block,i-ci-ve:ver25,r-cr-o:hor20'
         .. ',a:blinkwait700-blinkoff400-blinkon250-Cursor/lCursor'
         .. ',sm:block-blinkwait175-blinkoff150-blinkon175'
@@ -260,8 +262,8 @@ describe('ui/cursor', function()
     end)
 
     -- Change hl groups only, should update the styles
-    helpers.command('hi Cursor guibg=Red')
-    helpers.command('hi lCursor guibg=Green')
+    n.command('hi Cursor guibg=Red')
+    n.command('hi lCursor guibg=Green')
 
     -- Update the expected values.
     for _, m in ipairs(expected_mode_info) do
@@ -280,7 +282,7 @@ describe('ui/cursor', function()
     end)
 
     -- update the highlight again to hide cursor
-    helpers.command('hi Cursor blend=100')
+    n.command('hi Cursor blend=100')
 
     for _, m in ipairs(expected_mode_info) do
       if m.hl_id then
@@ -290,7 +292,7 @@ describe('ui/cursor', function()
     screen:expect {
       grid = [[
       ^                         |
-      ~                        |*3
+      {1:~                        }|*3
       test                     |
     ]],
       condition = function()

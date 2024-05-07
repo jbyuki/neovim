@@ -1,12 +1,13 @@
 -- To test tui/input.c, this module spawns `nvim` inside :terminal and sends
--- bytes via jobsend().  Note: the functional/helpers.lua test-session methods
+-- bytes via jobsend().  Note: the functional/testutil.lua test-session methods
 -- operate on the _host_ session, _not_ the child session.
-local helpers = require('test.functional.helpers')(nil)
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local testprg = helpers.testprg
-local exec_lua = helpers.exec_lua
-local api = helpers.api
-local nvim_prog = helpers.nvim_prog
+
+local testprg = n.testprg
+local exec_lua = n.exec_lua
+local api = n.api
+local nvim_prog = n.nvim_prog
 
 local function feed_data(data)
   if type(data) == 'table' then
@@ -30,7 +31,7 @@ local function make_lua_executor(session)
   end
 end
 
--- some helpers for controlling the terminal. the codes were taken from
+-- some t for controlling the terminal. the codes were taken from
 -- infocmp xterm-256color which is less what libvterm understands
 -- civis/cnorm
 local function hide_cursor()

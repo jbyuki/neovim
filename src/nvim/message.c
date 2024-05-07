@@ -134,7 +134,7 @@ bool keep_msg_more = false;    // keep_msg was set by msgmore()
 
 // Extended msg state, currently used for external UIs with ext_messages
 static const char *msg_ext_kind = NULL;
-static Array msg_ext_chunks = ARRAY_DICT_INIT;
+static Array *msg_ext_chunks = NULL;
 static garray_T msg_ext_last_chunk = GA_INIT(sizeof(char), 40);
 static sattr_T msg_ext_last_attr = -1;
 static size_t msg_ext_cur_len = 0;
@@ -1191,7 +1191,15 @@ void wait_return(int redraw)
       check_timestamps(false);
     }
 
-    hit_return_msg();
+    // if cmdheight=0, we need to scroll in the first line of msg_grid upon the screen
+    if (p_ch == 0 && !ui_has(kUIMessages) && !msg_scrolled) {
+      msg_grid_validate();
+      msg_scroll_up(false, true);
+      msg_scrolled++;
+      cmdline_row = Rows - 1;
+    }
+
+    hit_return_msg(true);
 
     do {
       // Remember "got_int", if it is set vgetc() probably returns a
@@ -1240,7 +1248,7 @@ void wait_return(int redraw)
             got_int = false;
           } else if (c != K_IGNORE) {
             c = K_IGNORE;
-            hit_return_msg();
+            hit_return_msg(false);
           }
         } else if (msg_scrolled > Rows - 2
                    && (c == 'j' || c == 'd' || c == 'f'
@@ -1265,7 +1273,7 @@ void wait_return(int redraw)
     } else if (vim_strchr("\r\n ", c) == NULL && c != Ctrl_C) {
       // Put the character back in the typeahead buffer.  Don't use the
       // stuff buffer, because lmaps wouldn't work.
-      ins_char_typebuf(vgetc_char, vgetc_mod_mask);
+      ins_char_typebuf(vgetc_char, vgetc_mod_mask, true);
       do_redraw = true;             // need a redraw even though there is
                                     // typeahead
     }
@@ -1313,14 +1321,19 @@ void wait_return(int redraw)
 }
 
 /// Write the hit-return prompt.
-static void hit_return_msg(void)
+///
+/// @param newline_sb  if starting a new line, add it to the scrollback.
+static void hit_return_msg(bool newline_sb)
 {
   int save_p_more = p_more;
 
-  p_more = false;       // don't want to see this message when scrolling back
+  if (!newline_sb) {
+    p_more = false;
+  }
   if (msg_didout) {     // start on a new line
     msg_putchar('\n');
   }
+  p_more = false;       // don't want to see this message when scrolling back
   msg_ext_set_kind("return_prompt");
   if (got_int) {
     msg_puts(_("Interrupt: "));
@@ -2118,6 +2131,9 @@ void msg_printf_attr(const int attr, const char *const fmt, ...)
 
 static void msg_ext_emit_chunk(void)
 {
+  if (msg_ext_chunks == NULL) {
+    msg_ext_init_chunks();
+  }
   // Color was changed or a message flushed, end current chunk.
   if (msg_ext_last_attr == -1) {
     return;  // no chunk
@@ -2127,7 +2143,7 @@ static void msg_ext_emit_chunk(void)
   msg_ext_last_attr = -1;
   String text = ga_take_string(&msg_ext_last_chunk);
   ADD(chunk, STRING_OBJ(text));
-  ADD(msg_ext_chunks, ARRAY_OBJ(chunk));
+  ADD(*msg_ext_chunks, ARRAY_OBJ(chunk));
 }
 
 /// The display part of msg_puts_len().
@@ -2281,7 +2297,7 @@ static void msg_puts_display(const char *str, int maxlen, int attr, int recurse)
   }
   msg_cursor_goto(msg_row, msg_col);
 
-  if (p_more && !recurse && !(s == sb_str + 1 && *sb_str == '\n')) {
+  if (p_more && !recurse) {
     store_sb_text(&sb_str, s, attr, &sb_col, false);
   }
 
@@ -2713,7 +2729,7 @@ static bool do_more_prompt(int typed_char)
   // If headless mode is enabled and no input is required, this variable
   // will be true. However If server mode is enabled, the message "--more--"
   // should be displayed.
-  bool no_need_more = headless_mode && !embedded_mode;
+  bool no_need_more = headless_mode && !embedded_mode && !ui_active();
 
   // We get called recursively when a timer callback outputs a message. In
   // that case don't show another prompt. Also when at the hit-Enter prompt
@@ -2968,7 +2984,7 @@ void repeat_message(void)
       msg_col = 0;
       msg_clr_eos();
     }
-    hit_return_msg();
+    hit_return_msg(false);
     msg_row = Rows - 1;
   }
 }
@@ -3043,6 +3059,16 @@ bool msg_end(void)
   return true;
 }
 
+/// Clear "msg_ext_chunks" before flushing so that ui_flush() does not re-emit
+/// the same message recursively.
+static Array *msg_ext_init_chunks(void)
+{
+  Array *tofree = msg_ext_chunks;
+  msg_ext_chunks = xcalloc(1, sizeof(*msg_ext_chunks));
+  msg_ext_cur_len = 0;
+  return tofree;
+}
+
 void msg_ext_ui_flush(void)
 {
   if (!ui_has(kUIMessages)) {
@@ -3051,17 +3077,16 @@ void msg_ext_ui_flush(void)
   }
 
   msg_ext_emit_chunk();
-  if (msg_ext_chunks.size > 0) {
-    ui_call_msg_show(cstr_as_string(msg_ext_kind),
-                     msg_ext_chunks, msg_ext_overwrite);
+  if (msg_ext_chunks->size > 0) {
+    Array *tofree = msg_ext_init_chunks();
+    ui_call_msg_show(cstr_as_string(msg_ext_kind), *tofree, msg_ext_overwrite);
+    api_free_array(*tofree);
+    xfree(tofree);
     if (!msg_ext_overwrite) {
       msg_ext_visible++;
     }
-    msg_ext_kind = NULL;
-    api_free_array(msg_ext_chunks);
-    msg_ext_chunks = (Array)ARRAY_DICT_INIT;
-    msg_ext_cur_len = 0;
     msg_ext_overwrite = false;
+    msg_ext_kind = NULL;
   }
 }
 
@@ -3071,10 +3096,10 @@ void msg_ext_flush_showmode(void)
   // separate event. Still reuse the same chunking logic, for simplicity.
   if (ui_has(kUIMessages)) {
     msg_ext_emit_chunk();
-    ui_call_msg_showmode(msg_ext_chunks);
-    api_free_array(msg_ext_chunks);
-    msg_ext_chunks = (Array)ARRAY_DICT_INIT;
-    msg_ext_cur_len = 0;
+    Array *tofree = msg_ext_init_chunks();
+    ui_call_msg_showmode(*tofree);
+    api_free_array(*tofree);
+    xfree(tofree);
   }
 }
 
@@ -3390,9 +3415,7 @@ int do_dialog(int type, const char *title, const char *message, const char *butt
   int retval = 0;
   int i;
 
-  if (silent_mode      // No dialogs in silent mode ("ex -s")
-      || !ui_active()  // Without a UI Nvim waits for input forever.
-      ) {
+  if (silent_mode) {  // No dialogs in silent mode ("ex -s")
     return dfltbutton;  // return default option
   }
 
@@ -3409,6 +3432,12 @@ int do_dialog(int type, const char *title, const char *message, const char *butt
   char *hotkeys = msg_show_console_dialog(message, buttons, dfltbutton);
 
   while (true) {
+    // Without a UI Nvim waits for input forever.
+    if (!ui_active() && !input_available()) {
+      retval = dfltbutton;
+      break;
+    }
+
     // Get a typed character directly from the user.
     int c = get_keystroke(NULL);
     switch (c) {
@@ -3426,7 +3455,7 @@ int do_dialog(int type, const char *title, const char *message, const char *butt
       }
       if (c == ':' && ex_cmd) {
         retval = dfltbutton;
-        ins_char_typebuf(':', 0);
+        ins_char_typebuf(':', 0, false);
         break;
       }
 

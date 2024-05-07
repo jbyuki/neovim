@@ -1,14 +1,15 @@
-local helpers = require('test.functional.helpers')(after_each)
-
-local eq = helpers.eq
-local dedent = helpers.dedent
-local exec = helpers.exec
-local feed = helpers.feed
-local clear = helpers.clear
-local fn = helpers.fn
-local command = helpers.command
-local api = helpers.api
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
+
+local eq = t.eq
+local dedent = t.dedent
+local exec = n.exec
+local feed = n.feed
+local clear = n.clear
+local fn = n.fn
+local command = n.command
+local api = n.api
 
 local cmdtest = function(cmd, prep, ret1)
   describe(':' .. cmd, function()

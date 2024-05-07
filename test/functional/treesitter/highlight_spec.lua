@@ -1,13 +1,14 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local clear = helpers.clear
-local insert = helpers.insert
-local exec_lua = helpers.exec_lua
-local feed = helpers.feed
-local command = helpers.command
-local api = helpers.api
-local eq = helpers.eq
+local clear = n.clear
+local insert = n.insert
+local exec_lua = n.exec_lua
+local feed = n.feed
+local command = n.command
+local api = n.api
+local eq = t.eq
 
 before_each(clear)
 
@@ -483,7 +484,7 @@ describe('treesitter highlighting (C)', function()
     exec_lua [[
       vim.treesitter.language.register("c", "foo")
       local parser = vim.treesitter.get_parser(0, "c", {
-        injections = {c = '(preproc_def (preproc_arg) @injection.content (#set! injection.language "fOO")) (preproc_function_def value: (preproc_arg) @injection.content (#set! injection.language "fOO"))'}
+        injections = {c = '(preproc_def (preproc_arg) @injection.content (#set! injection.language "foo")) (preproc_function_def value: (preproc_arg) @injection.content (#set! injection.language "foo"))'}
       })
       local highlighter = vim.treesitter.highlighter
       test_hl = highlighter.new(parser, {queries = {c = hl_query}})
@@ -762,6 +763,37 @@ describe('treesitter highlighting (C)', function()
     ]],
     }
   end)
+
+  it('gives higher priority to more specific captures #27895', function()
+    insert([[
+      void foo(int *bar);
+    ]])
+
+    local query = [[
+      "*" @operator
+
+      (parameter_declaration
+        declarator: (pointer_declarator) @variable.parameter)
+    ]]
+
+    exec_lua(
+      [[
+      local query = ...
+      vim.treesitter.query.set('c', 'highlights', query)
+      vim.treesitter.highlighter.new(vim.treesitter.get_parser(0, 'c'))
+    ]],
+      query
+    )
+
+    screen:expect {
+      grid = [[
+        void foo(int {4:*}{11:bar});                                            |
+      ^                                                                 |
+      {1:~                                                                }|*15
+                                                                       |
+    ]],
+    }
+  end)
 end)
 
 describe('treesitter highlighting (lua)', function()
@@ -832,7 +864,7 @@ describe('treesitter highlighting (help)', function()
 
     screen:expect {
       grid = [[
-      {1:>ruby}                                   |
+      {1:>}{3:ruby}                                   |
       {1:  -- comment}                            |
       {1:  local this_is = 'actually_lua'}        |
       {1:<}                                       |
@@ -841,11 +873,11 @@ describe('treesitter highlighting (help)', function()
     ]],
     }
 
-    helpers.api.nvim_buf_set_text(0, 0, 1, 0, 5, { 'lua' })
+    n.api.nvim_buf_set_text(0, 0, 1, 0, 5, { 'lua' })
 
     screen:expect {
       grid = [[
-      {1:>lua}                                    |
+      {1:>}{3:lua}                                    |
       {1:  -- comment}                            |
       {1:  }{3:local}{1: }{4:this_is}{1: }{3:=}{1: }{5:'actually_lua'}        |
       {1:<}                                       |
@@ -854,11 +886,11 @@ describe('treesitter highlighting (help)', function()
     ]],
     }
 
-    helpers.api.nvim_buf_set_text(0, 0, 1, 0, 4, { 'ruby' })
+    n.api.nvim_buf_set_text(0, 0, 1, 0, 4, { 'ruby' })
 
     screen:expect {
       grid = [[
-      {1:>ruby}                                   |
+      {1:>}{3:ruby}                                   |
       {1:  -- comment}                            |
       {1:  local this_is = 'actually_lua'}        |
       {1:<}                                       |

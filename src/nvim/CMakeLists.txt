@@ -327,7 +327,7 @@ set(GENERATED_UI_EVENTS_CALL ${GENERATED_DIR}/ui_events_call.generated.h)
 set(GENERATED_UI_EVENTS_CLIENT ${GENERATED_DIR}/ui_events_client.generated.h)
 set(GENERATED_UI_EVENTS_REMOTE ${GENERATED_DIR}/ui_events_remote.generated.h)
 set(GENERATED_UNICODE_TABLES ${GENERATED_DIR}/unicode_tables.generated.h)
-set(LUA_API_C_BINDINGS ${GENERATED_DIR}/lua_api_c_bindings.generated.c)
+set(LUA_API_C_BINDINGS ${GENERATED_DIR}/lua_api_c_bindings.generated.h)
 set(VIM_MODULE_FILE ${GENERATED_DIR}/lua/vim_module.generated.h)
 
 # NVIM_RUNTIME_DIR
@@ -505,7 +505,6 @@ set(LUA_GEN_DEPS ${GENERATOR_PRELOAD} $<TARGET_FILE:nlua0>)
 
 # NVIM_GENERATED_FOR_HEADERS: generated headers to be included in headers
 # NVIM_GENERATED_FOR_SOURCES: generated headers to be included in sources
-# NVIM_GENERATED_SOURCES: generated source files
 # These lists must be mutually exclusive.
 foreach(sfile ${NVIM_SOURCES}
               ${GENERATED_API_DISPATCH}
@@ -620,10 +619,6 @@ add_custom_command(
   VERBATIM
 )
 
-list(APPEND NVIM_GENERATED_SOURCES
-  "${LUA_API_C_BINDINGS}"
-)
-
 add_custom_command(
   OUTPUT ${GENERATED_UI_EVENTS_CALL}
          ${GENERATED_UI_EVENTS_REMOTE}
@@ -657,10 +652,7 @@ list(APPEND NVIM_GENERATED_FOR_SOURCES
   "${GENERATED_OPTIONS_MAP}"
   "${GENERATED_UNICODE_TABLES}"
   "${VIM_MODULE_FILE}"
-)
-
-list(APPEND NVIM_GENERATED_SOURCES
-  "${PROJECT_BINARY_DIR}/cmake.config/auto/pathdef.c"
+  "${PROJECT_BINARY_DIR}/cmake.config/auto/pathdef.h"
 )
 
 add_custom_command(OUTPUT ${GENERATED_EX_CMDS_ENUM} ${GENERATED_EX_CMDS_DEFS}
@@ -709,7 +701,6 @@ endif()
 target_sources(main_lib INTERFACE
   ${NVIM_GENERATED_FOR_SOURCES}
   ${NVIM_GENERATED_FOR_HEADERS}
-  ${NVIM_GENERATED_SOURCES}
   ${NVIM_SOURCES}
   ${NVIM_HEADERS}
   ${EXTERNAL_SOURCES}
@@ -833,9 +824,12 @@ add_glob_target(
   FLAGS --quiet
   EXCLUDE ${EXCLUDE_CLANG_TIDY})
 
-# These are the same warnings as https://neovim.io/doc/reports/clang/. The
-# checks we ignore are meant to be removed eventually, but we can only do so
-# after we properly fix the problems without breaking CI.
+# The checks we ignore are meant to be removed eventually, but we can only
+# enable each warning after we fix all instances of that specific warning as to
+# not break CI.
+if(APPLE)
+  string(APPEND CLANG_ANALYZER_IGNORE "-clang-analyzer-core.NonNullParamChecker,")
+endif()
 add_glob_target(
   TARGET clang-analyzer
   COMMAND ${CLANG_TIDY_PRG}
@@ -844,12 +838,12 @@ add_glob_target(
   --checks='
   -*,
   clang-analyzer-*,
-  -clang-analyzer-core.NonNullParamChecker,
   -clang-analyzer-core.NullDereference,
   -clang-analyzer-core.UndefinedBinaryOperatorResult,
   -clang-analyzer-core.uninitialized.Assign,
   -clang-analyzer-optin.performance.Padding,
   -clang-analyzer-security.insecureAPI.strcpy,
+  ${CLANG_ANALYZER_IGNORE}
   '
   EXCLUDE ${EXCLUDE_CLANG_TIDY})
 
@@ -906,15 +900,6 @@ add_subdirectory(po)
 add_custom_target(generated-sources DEPENDS
   ${NVIM_GENERATED_FOR_HEADERS}
   ${NVIM_GENERATED_FOR_SOURCES}
-  ${NVIM_GENERATED_SOURCES}
-)
-
-set(VIMDOC_FILES
-  ${NVIM_RUNTIME_DIR}/doc/api.txt
-  ${NVIM_RUNTIME_DIR}/doc/diagnostic.txt
-  ${NVIM_RUNTIME_DIR}/doc/lsp.txt
-  ${NVIM_RUNTIME_DIR}/doc/lua.txt
-  ${NVIM_RUNTIME_DIR}/doc/treesitter.txt
 )
 
 file(GLOB API_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/src/nvim/api/*.c)
@@ -927,23 +912,22 @@ file(GLOB LUA_SOURCES CONFIGURE_DEPENDS
   ${NVIM_RUNTIME_DIR}/lua/vim/treesitter/*.lua
 )
 
-add_custom_command(
-  OUTPUT ${VIMDOC_FILES}
-  COMMAND ${CMAKE_COMMAND} -E env "VIMRUNTIME=${NVIM_RUNTIME_DIR}"
-    $<TARGET_FILE:nvim_bin> -l scripts/gen_vimdoc.lua
+add_target(doc-vim
+  COMMAND $<TARGET_FILE:nvim_bin> -u NONE -l scripts/gen_vimdoc.lua
   DEPENDS
     nvim
     ${API_SOURCES}
     ${LUA_SOURCES}
     ${PROJECT_SOURCE_DIR}/scripts/gen_vimdoc.lua
-  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-)
+    ${NVIM_RUNTIME_DIR}/doc/api.txt
+    ${NVIM_RUNTIME_DIR}/doc/diagnostic.txt
+    ${NVIM_RUNTIME_DIR}/doc/lsp.txt
+    ${NVIM_RUNTIME_DIR}/doc/lua.txt
+    ${NVIM_RUNTIME_DIR}/doc/treesitter.txt
+  )
 
-add_custom_command(
-  OUTPUT ${GEN_EVAL_TOUCH}
-  COMMAND ${CMAKE_COMMAND} -E touch ${GEN_EVAL_TOUCH}
-  COMMAND ${CMAKE_COMMAND} -E env "VIMRUNTIME=${NVIM_RUNTIME_DIR}"
-    $<TARGET_FILE:nvim_bin> -l ${PROJECT_SOURCE_DIR}/scripts/gen_eval_files.lua
+add_target(doc-eval
+  COMMAND $<TARGET_FILE:nvim_bin> -u NONE -l ${PROJECT_SOURCE_DIR}/scripts/gen_eval_files.lua
   DEPENDS
     nvim
     ${FUNCS_METADATA}
@@ -951,22 +935,14 @@ add_custom_command(
     ${PROJECT_SOURCE_DIR}/src/nvim/eval.lua
     ${PROJECT_SOURCE_DIR}/src/nvim/options.lua
     ${PROJECT_SOURCE_DIR}/src/nvim/vvars.lua
-  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-)
+    ${NVIM_RUNTIME_DIR}/doc/builtin.txt
+  )
 
-add_custom_target(doc-eval DEPENDS ${GEN_EVAL_TOUCH})
-add_custom_target(doc-vim DEPENDS ${VIMDOC_FILES})
 add_custom_target(doc)
 add_dependencies(doc doc-vim doc-eval)
 
-set(lintdoc_touch ${TOUCHES_DIR}/lintdoc)
-add_custom_command(
-  OUTPUT ${lintdoc_touch}
-  COMMAND ${CMAKE_COMMAND} -E touch ${lintdoc_touch}
-  COMMAND ${CMAKE_COMMAND} -E env "VIMRUNTIME=${NVIM_RUNTIME_DIR}"
-    $<TARGET_FILE:nvim_bin> --clean -l scripts/lintdoc.lua
-  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+add_target(lintdoc
+  COMMAND $<TARGET_FILE:nvim_bin> -u NONE -l scripts/lintdoc.lua
   DEPENDS ${DOCFILES}
-  USES_TERMINAL)
-add_custom_target(lintdoc DEPENDS ${lintdoc_touch})
+  CUSTOM_COMMAND_ARGS USES_TERMINAL)
 add_dependencies(lintdoc nvim)

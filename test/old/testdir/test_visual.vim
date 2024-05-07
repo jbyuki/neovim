@@ -1151,7 +1151,7 @@ func Test_visual_inner_block()
   " try to select non-existing inner block
   call cursor(5, 1)
   call assert_beeps('normal ViBiBiB')
-  " try to select a unclosed inner block
+  " try to select an unclosed inner block
   8,9d
   call cursor(5, 1)
   call assert_beeps('normal ViBiB')
@@ -1702,6 +1702,9 @@ func Test_visual_getregion()
           \ "'a"->getpos()->getregion(getpos("'a"), {'type': 'V' }))
     call assert_equal(['one', 'two'],
           \ "."->getpos()->getregion(getpos("'a"), {'type': "\<c-v>" }))
+    call feedkeys("\<ESC>jVj\<ESC>", 'tx')
+    call assert_equal(['two', 'three'], getregion(getpos("'<"), getpos("'>")))
+    call assert_equal(['two', 'three'], getregion(getpos("'>"), getpos("'<")))
 
     #" Using List
     call cursor(1, 1)

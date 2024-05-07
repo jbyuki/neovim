@@ -1,5 +1,7 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear, eq, command, fn = helpers.clear, helpers.eq, helpers.command, helpers.fn
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, eq, command, fn = n.clear, t.eq, n.command, n.fn
 
 describe(':z^', function()
   before_each(clear)

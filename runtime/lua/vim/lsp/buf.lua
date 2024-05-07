@@ -461,7 +461,14 @@ local function call_hierarchy(method)
       vim.notify(err.message, vim.log.levels.WARN)
       return
     end
+    if not result then
+      vim.notify('No item resolved', vim.log.levels.WARN)
+      return
+    end
     local call_hierarchy_item = pick_call_hierarchy_item(result)
+    if not call_hierarchy_item then
+      return
+    end
     local client = vim.lsp.get_client_by_id(ctx.client_id)
     if client then
       client.request(method, { item = call_hierarchy_item }, nil, ctx.bufnr)
@@ -486,6 +493,80 @@ end
 --- multiple items, the user can pick one in the |inputlist()|.
 function M.outgoing_calls()
   call_hierarchy(ms.callHierarchy_outgoingCalls)
+end
+
+--- Lists all the subtypes or supertypes of the symbol under the
+--- cursor in the |quickfix| window. If the symbol can resolve to
+--- multiple items, the user can pick one using |vim.ui.select()|.
+---@param kind "subtypes"|"supertypes"
+function M.typehierarchy(kind)
+  local method = kind == 'subtypes' and ms.typeHierarchy_subtypes or ms.typeHierarchy_supertypes
+
+  --- Merge results from multiple clients into a single table. Client-ID is preserved.
+  ---
+  --- @param results table<integer, {error: lsp.ResponseError, result: lsp.TypeHierarchyItem[]?}>
+  --- @return [integer, lsp.TypeHierarchyItem][]
+  local function merge_results(results)
+    local merged_results = {}
+    for client_id, client_result in pairs(results) do
+      if client_result.error then
+        vim.notify(client_result.error.message, vim.log.levels.WARN)
+      elseif client_result.result then
+        for _, item in pairs(client_result.result) do
+          table.insert(merged_results, { client_id, item })
+        end
+      end
+    end
+    return merged_results
+  end
+
+  local bufnr = api.nvim_get_current_buf()
+  local params = util.make_position_params()
+  --- @param results table<integer, {error: lsp.ResponseError, result: lsp.TypeHierarchyItem[]?}>
+  vim.lsp.buf_request_all(bufnr, ms.textDocument_prepareTypeHierarchy, params, function(results)
+    local merged_results = merge_results(results)
+    if #merged_results == 0 then
+      vim.notify('No items resolved', vim.log.levels.INFO)
+      return
+    end
+
+    if #merged_results == 1 then
+      local item = merged_results[1]
+      local client = vim.lsp.get_client_by_id(item[1])
+      if client then
+        client.request(method, { item = item[2] }, nil, bufnr)
+      else
+        vim.notify(
+          string.format('Client with id=%d disappeared during call hierarchy request', item[1]),
+          vim.log.levels.WARN
+        )
+      end
+    else
+      local opts = {
+        prompt = 'Select a type hierarchy item:',
+        kind = 'typehierarchy',
+        format_item = function(item)
+          if not item[2].detail or #item[2].detail == 0 then
+            return item[2].name
+          end
+          return string.format('%s %s', item[2].name, item[2].detail)
+        end,
+      }
+
+      vim.ui.select(merged_results, opts, function(item)
+        local client = vim.lsp.get_client_by_id(item[1])
+        if client then
+          --- @type lsp.TypeHierarchyItem
+          client.request(method, { item = item[2] }, nil, bufnr)
+        else
+          vim.notify(
+            string.format('Client with id=%d disappeared during call hierarchy request', item[1]),
+            vim.log.levels.WARN
+          )
+        end
+      end)
+    end
+  end)
 end
 
 --- List workspace folders.
@@ -514,28 +595,9 @@ function M.add_workspace_folder(workspace_folder)
     print(workspace_folder, ' is not a valid directory')
     return
   end
-  local new_workspace = {
-    uri = vim.uri_from_fname(workspace_folder),
-    name = workspace_folder,
-  }
-  local params = { event = { added = { new_workspace }, removed = {} } }
-  local bufnr = vim.api.nvim_get_current_buf()
+  local bufnr = api.nvim_get_current_buf()
   for _, client in pairs(vim.lsp.get_clients({ bufnr = bufnr })) do
-    local found = false
-    for _, folder in pairs(client.workspace_folders or {}) do
-      if folder.name == workspace_folder then
-        found = true
-        print(workspace_folder, 'is already part of this workspace')
-        break
-      end
-    end
-    if not found then
-      client.notify(ms.workspace_didChangeWorkspaceFolders, params)
-      if not client.workspace_folders then
-        client.workspace_folders = {}
-      end
-      table.insert(client.workspace_folders, new_workspace)
-    end
+    client:_add_workspace_folder(workspace_folder)
   end
 end
 
@@ -547,23 +609,12 @@ function M.remove_workspace_folder(workspace_folder)
   workspace_folder = workspace_folder
     or npcall(vim.fn.input, 'Workspace Folder: ', vim.fn.expand('%:p:h'))
   api.nvim_command('redraw')
-  if not (workspace_folder and #workspace_folder > 0) then
+  if not workspace_folder or #workspace_folder == 0 then
     return
   end
-  local workspace = {
-    uri = vim.uri_from_fname(workspace_folder),
-    name = workspace_folder,
-  }
-  local params = { event = { added = {}, removed = { workspace } } }
-  local bufnr = vim.api.nvim_get_current_buf()
+  local bufnr = api.nvim_get_current_buf()
   for _, client in pairs(vim.lsp.get_clients({ bufnr = bufnr })) do
-    for idx, folder in pairs(client.workspace_folders) do
-      if folder.name == workspace_folder then
-        client.notify(ms.workspace_didChangeWorkspaceFolders, params)
-        client.workspace_folders[idx] = nil
-        return
-      end
-    end
+    client:_remove_workspace_folder(workspace_folder)
   end
   print(workspace_folder, 'is not currently part of the workspace')
 end

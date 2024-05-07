@@ -1,14 +1,15 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local clear = helpers.clear
-local command = helpers.command
-local dedent = helpers.dedent
-local eq = helpers.eq
-local fn = helpers.fn
-local eval = helpers.eval
-local exec = helpers.exec
-local feed = helpers.feed
+local clear = n.clear
+local command = n.command
+local dedent = t.dedent
+local eq = t.eq
+local fn = n.fn
+local eval = n.eval
+local exec = n.exec
+local feed = n.feed
 
 describe(':autocmd', function()
   before_each(function()

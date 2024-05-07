@@ -2,42 +2,7 @@ local M = {}
 
 local s_output = {} ---@type string[]
 
---- Returns the fold text of the current healthcheck section
-function M.foldtext()
-  local foldtext = vim.fn.foldtext()
-
-  if vim.bo.filetype ~= 'checkhealth' then
-    return foldtext
-  end
-
-  if vim.b.failedchecks == nil then
-    vim.b.failedchecks = vim.empty_dict()
-  end
-
-  if vim.b.failedchecks[foldtext] == nil then
-    local warning = '- WARNING '
-    local warninglen = string.len(warning)
-    local err = '- ERROR '
-    local errlen = string.len(err)
-    local failedchecks = vim.b.failedchecks
-    failedchecks[foldtext] = false
-
-    local foldcontent = vim.api.nvim_buf_get_lines(0, vim.v.foldstart - 1, vim.v.foldend, false)
-    for _, line in ipairs(foldcontent) do
-      if string.sub(line, 1, warninglen) == warning or string.sub(line, 1, errlen) == err then
-        failedchecks[foldtext] = true
-        break
-      end
-    end
-
-    vim.b.failedchecks = failedchecks
-  end
-
-  return vim.b.failedchecks[foldtext] and '+WE' .. foldtext:sub(4) or foldtext
-end
-
---- @param path string path to search for the healthcheck
---- @return string[] { name, func, type } representing a healthcheck
+-- From a path return a list [{name}, {func}, {type}] representing a healthcheck
 local function filepath_to_healthcheck(path)
   path = vim.fs.normalize(path)
   local name --- @type string
@@ -386,7 +351,7 @@ local path2name = function(path)
     path = path:gsub('^.*/lua/', '')
 
     -- Remove the filename (health.lua)
-    path = vim.fn.fnamemodify(path, ':h')
+    path = vim.fs.dirname(path)
 
     -- Change slashes to dots
     path = path:gsub('/', '.')
@@ -401,17 +366,20 @@ end
 local PATTERNS = { '/autoload/health/*.vim', '/lua/**/**/health.lua', '/lua/**/**/health/init.lua' }
 --- :checkhealth completion function used by cmdexpand.c get_healthcheck_names()
 M._complete = function()
-  local names = vim.tbl_flatten(vim.tbl_map(function(pattern)
-    return vim.tbl_map(path2name, vim.api.nvim_get_runtime_file(pattern, true))
-  end, PATTERNS))
-  -- Remove duplicates
-  local unique = {}
-  vim.tbl_map(function(f)
-    unique[f] = true
-  end, names)
+  local unique = vim
+    .iter(vim.tbl_map(function(pattern)
+      return vim.tbl_map(path2name, vim.api.nvim_get_runtime_file(pattern, true))
+    end, PATTERNS))
+    :flatten()
+    :fold({}, function(t, name)
+      t[name] = true -- Remove duplicates
+      return t
+    end)
   -- vim.health is this file, which is not a healthcheck
   unique['vim'] = nil
-  return vim.tbl_keys(unique)
+  local rv = vim.tbl_keys(unique)
+  table.sort(rv)
+  return rv
 end
 
 --- Runs the specified healthchecks.
@@ -496,12 +464,5 @@ function M._check(mods, plugin_names)
   vim.cmd.redraw()
   vim.print('')
 end
-
-local fn_bool = function(key)
-  return function(...)
-    return vim.fn[key](...) == 1
-  end
-end
-M.executable = fn_bool('executable')
 
 return M

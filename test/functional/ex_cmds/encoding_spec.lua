@@ -1,6 +1,8 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear, feed_command, feed = helpers.clear, helpers.feed_command, helpers.feed
-local eq, neq, eval = helpers.eq, helpers.neq, helpers.eval
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, feed_command, feed = n.clear, n.feed_command, n.feed
+local eq, neq, eval = t.eq, t.neq, n.eval
 
 describe('&encoding', function()
   before_each(function()

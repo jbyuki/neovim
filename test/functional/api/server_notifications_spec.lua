@@ -1,11 +1,13 @@
-local helpers = require('test.functional.helpers')(after_each)
-local assert_log = helpers.assert_log
-local eq, clear, eval, command, next_msg =
-  helpers.eq, helpers.clear, helpers.eval, helpers.command, helpers.next_msg
-local api = helpers.api
-local exec_lua = helpers.exec_lua
-local retry = helpers.retry
-local assert_alive = helpers.assert_alive
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local assert_log = t.assert_log
+local eq, clear, eval, command, next_msg = t.eq, n.clear, n.eval, n.command, n.next_msg
+local api = n.api
+local exec_lua = n.exec_lua
+local retry = t.retry
+local assert_alive = n.assert_alive
+local check_close = n.check_close
 
 local testlog = 'Xtest-server-notify-log'
 
@@ -18,6 +20,7 @@ describe('notify', function()
   end)
 
   after_each(function()
+    check_close()
     os.remove(testlog)
   end)
 

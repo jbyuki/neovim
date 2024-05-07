@@ -1,8 +1,9 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local eq = helpers.eq
-local exec_lua = helpers.exec_lua
+local clear = n.clear
+local eq = t.eq
+local exec_lua = n.exec_lua
 
 local get_completions = function(input, env)
   return exec_lua('return {vim._expand_pat(...)}', input, env)

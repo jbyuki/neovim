@@ -1,12 +1,14 @@
 -- ShaDa marks saving/reading support
-local helpers = require('test.functional.helpers')(after_each)
-local api, nvim_command, fn, eq = helpers.api, helpers.command, helpers.fn, helpers.eq
-local feed = helpers.feed
-local exc_exec, exec_capture = helpers.exc_exec, helpers.exec_capture
-local expect_exit = helpers.expect_exit
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+local t_shada = require('test.functional.shada.testutil')
 
-local shada_helpers = require('test.functional.shada.helpers')
-local reset, clear = shada_helpers.reset, shada_helpers.clear
+local api, nvim_command, fn, eq = n.api, n.command, n.fn, t.eq
+local feed = n.feed
+local exc_exec, exec_capture = n.exc_exec, n.exec_capture
+local expect_exit = n.expect_exit
+
+local reset, clear = t_shada.reset, t_shada.clear
 
 local nvim_current_line = function()
   return api.nvim_win_get_cursor(0)[1]
@@ -163,17 +165,17 @@ describe('ShaDa support code', function()
     eq({ 2, 0 }, api.nvim_win_get_cursor(0))
   end)
 
-  it('is able to dump and restore jump list with different times (slow!)', function()
+  it('is able to dump and restore jump list with different times', function()
     nvim_command('edit ' .. testfilename_2)
-    nvim_command('sleep 2')
+    nvim_command('sleep 10m')
     nvim_command('normal! G')
-    nvim_command('sleep 2')
+    nvim_command('sleep 10m')
     nvim_command('normal! gg')
-    nvim_command('sleep 2')
+    nvim_command('sleep 10m')
     nvim_command('edit ' .. testfilename)
-    nvim_command('sleep 2')
+    nvim_command('sleep 10m')
     nvim_command('normal! G')
-    nvim_command('sleep 2')
+    nvim_command('sleep 10m')
     nvim_command('normal! gg')
     expect_exit(nvim_command, 'qall')
     reset()
@@ -216,7 +218,7 @@ describe('ShaDa support code', function()
   -- -c temporary sets lnum to zero to make `+/pat` work, so calling setpcmark()
   -- during -c used to add item with zero lnum to jump list.
   it('does not create incorrect file for non-existent buffers when writing from -c', function()
-    local argv = helpers.new_argv {
+    local argv = n.new_argv {
       args_rm = {
         '-i',
         '--embed', -- no --embed
@@ -235,7 +237,7 @@ describe('ShaDa support code', function()
   end)
 
   it('does not create incorrect file for non-existent buffers opened from -c', function()
-    local argv = helpers.new_argv {
+    local argv = n.new_argv {
       args_rm = {
         '-i',
         '--embed', -- no --embed

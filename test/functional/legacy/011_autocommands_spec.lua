@@ -12,19 +12,14 @@
 -- Use a FileChangedShell autocommand to avoid a prompt for "Xtestfile.gz"
 -- being modified outside of Vim (noticed on Solaris).
 
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
 local clear, feed_command, expect, eq, neq, dedent, write_file, feed =
-  helpers.clear,
-  helpers.feed_command,
-  helpers.expect,
-  helpers.eq,
-  helpers.neq,
-  helpers.dedent,
-  helpers.write_file,
-  helpers.feed
-local command = helpers.command
-local read_file = helpers.read_file
-local is_os = helpers.is_os
+  n.clear, n.feed_command, n.expect, t.eq, t.neq, t.dedent, t.write_file, n.feed
+local command = n.command
+local read_file = t.read_file
+local is_os = t.is_os
 
 local function has_gzip()
   local null = is_os('win') and 'nul' or '/dev/null'

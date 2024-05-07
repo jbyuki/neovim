@@ -1,9 +1,10 @@
-local helpers = require('test.functional.helpers')(after_each)
-local eq, clear, call, write_file, command =
-  helpers.eq, helpers.clear, helpers.call, helpers.write_file, helpers.command
-local exc_exec = helpers.exc_exec
-local eval = helpers.eval
-local is_os = helpers.is_os
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local eq, clear, call, write_file, command = t.eq, n.clear, n.call, t.write_file, n.command
+local exc_exec = n.exc_exec
+local eval = n.eval
+local is_os = t.is_os
 
 describe('executable()', function()
   before_each(clear)

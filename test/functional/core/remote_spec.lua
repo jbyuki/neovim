@@ -1,20 +1,21 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local exec_capture = helpers.exec_capture
-local exec_lua = helpers.exec_lua
-local expect = helpers.expect
-local fn = helpers.fn
-local insert = helpers.insert
-local nvim_prog = helpers.nvim_prog
-local new_argv = helpers.new_argv
-local neq = helpers.neq
-local set_session = helpers.set_session
-local spawn = helpers.spawn
-local tmpname = helpers.tmpname
-local write_file = helpers.write_file
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local exec_capture = n.exec_capture
+local exec_lua = n.exec_lua
+local expect = n.expect
+local fn = n.fn
+local insert = n.insert
+local nvim_prog = n.nvim_prog
+local new_argv = n.new_argv
+local neq = t.neq
+local set_session = n.set_session
+local spawn = n.spawn
+local tmpname = t.tmpname
+local write_file = t.write_file
 
 describe('Remote', function()
   local fname, other_fname

@@ -1,13 +1,15 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear, eq, ok = helpers.clear, helpers.eq, helpers.ok
-local exec = helpers.exec
-local feed = helpers.feed
-local api = helpers.api
-local fn = helpers.fn
-local request = helpers.request
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, eq, ok = n.clear, t.eq, t.ok
+local exec = n.exec
+local feed = n.feed
+local api = n.api
+local fn = n.fn
+local request = n.request
 local NIL = vim.NIL
-local pcall_err = helpers.pcall_err
-local command = helpers.command
+local pcall_err = t.pcall_err
+local command = n.command
 
 describe('api/tabpage', function()
   before_each(clear)

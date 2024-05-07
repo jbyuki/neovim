@@ -1,7 +1,9 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear, eq = helpers.clear, helpers.eq
-local api = helpers.api
-local command = helpers.command
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, eq = n.clear, t.eq
+local api = n.api
+local command = n.command
 
 describe('TabClosed', function()
   before_each(clear)

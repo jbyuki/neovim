@@ -1,12 +1,14 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
-local command = helpers.command
-local feed_command = helpers.feed_command
-local eq = helpers.eq
-local eval = helpers.eval
-local fn = helpers.fn
-local testprg = helpers.testprg
+
+local clear, feed, insert = n.clear, n.feed, n.insert
+local command = n.command
+local feed_command = n.feed_command
+local eq = t.eq
+local eval = n.eval
+local fn = n.fn
+local testprg = n.testprg
 
 describe('search highlighting', function()
   local screen
@@ -53,7 +55,7 @@ describe('search highlighting', function()
           topline = 0,
           botline = 3,
           curline = 0,
-          curcol = 8,
+          curcol = 9,
           linecount = 2,
           sum_scroll_delta = 0,
         },
@@ -673,5 +675,19 @@ describe('search highlighting', function()
       {1:~                                       }|*5
       :%g@a/b^                                 |
     ]])
+  end)
+
+  it('incsearch is still visible after :redraw from K_EVENT', function()
+    fn.setline(1, { 'foo', 'bar' })
+    feed('/foo<CR>/bar')
+    screen:expect([[
+      foo                                     |
+      {3:bar}                                     |
+      {1:~                                       }|*4
+      /bar^                                    |
+    ]])
+    command('redraw!')
+    -- There is an intermediate state where :redraw! removes 'incsearch' highlight.
+    screen:expect_unchanged(true)
   end)
 end)

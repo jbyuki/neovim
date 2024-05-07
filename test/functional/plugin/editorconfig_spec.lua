@@ -1,14 +1,18 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local pathsep = helpers.get_pathsep()
-local fn = helpers.fn
-local api = helpers.api
-local exec_lua = helpers.exec_lua
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local pathsep = n.get_pathsep()
+local fn = n.fn
+local api = n.api
+local exec_lua = n.exec_lua
 
 local testdir = 'Xtest-editorconfig'
 
+--- @param name string
+--- @param expected table<string,any>
 local function test_case(name, expected)
   local filename = testdir .. pathsep .. name
   command('edit ' .. filename)
@@ -18,8 +22,8 @@ local function test_case(name, expected)
 end
 
 setup(function()
-  helpers.mkdir_p(testdir)
-  helpers.write_file(
+  n.mkdir_p(testdir)
+  t.write_file(
     testdir .. pathsep .. '.editorconfig',
     [[
     root = true
@@ -94,7 +98,7 @@ setup(function()
 end)
 
 teardown(function()
-  helpers.rmdir(testdir)
+  n.rmdir(testdir)
 end)
 
 describe('editorconfig', function()
@@ -176,18 +180,18 @@ But not this one
     -- luacheck: pop
     local trimmed = untrimmed:gsub('%s+\n', '\n')
 
-    helpers.write_file(filename, untrimmed)
+    t.write_file(filename, untrimmed)
     command('edit ' .. filename)
     command('write')
     command('bdelete')
-    eq(trimmed, helpers.read_file(filename))
+    eq(trimmed, t.read_file(filename))
 
     filename = testdir .. pathsep .. 'no_trim.txt'
-    helpers.write_file(filename, untrimmed)
+    t.write_file(filename, untrimmed)
     command('edit ' .. filename)
     command('write')
     command('bdelete')
-    eq(untrimmed, helpers.read_file(filename))
+    eq(untrimmed, t.read_file(filename))
   end)
 
   it('sets textwidth', function()

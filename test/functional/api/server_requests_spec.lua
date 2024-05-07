@@ -1,17 +1,18 @@
 -- Test server -> client RPC scenarios. Note: unlike `rpcnotify`, to evaluate
 -- `rpcrequest` calls we need the client event loop to be running.
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear, eval = helpers.clear, helpers.eval
-local eq, neq, run, stop = helpers.eq, helpers.neq, helpers.run, helpers.stop
-local nvim_prog, command, fn = helpers.nvim_prog, helpers.command, helpers.fn
-local source, next_msg = helpers.source, helpers.next_msg
-local ok = helpers.ok
-local api = helpers.api
-local spawn, merge_args = helpers.spawn, helpers.merge_args
-local set_session = helpers.set_session
-local pcall_err = helpers.pcall_err
-local assert_alive = helpers.assert_alive
+local clear, eval = n.clear, n.eval
+local eq, neq, run, stop = t.eq, t.neq, n.run, n.stop
+local nvim_prog, command, fn = n.nvim_prog, n.command, n.fn
+local source, next_msg = n.source, n.next_msg
+local ok = t.ok
+local api = n.api
+local spawn, merge_args = n.spawn, n.merge_args
+local set_session = n.set_session
+local pcall_err = t.pcall_err
+local assert_alive = n.assert_alive
 
 describe('server -> client', function()
   local cid
@@ -91,19 +92,19 @@ describe('server -> client', function()
 
       local function on_request(method, args)
         eq('rcall', method)
-        local n = unpack(args) * 2
-        if n <= 16 then
+        local _n = unpack(args) * 2
+        if _n <= 16 then
           local cmd
-          if n == 4 then
-            cmd = 'let g:result2 = rpcrequest(' .. cid .. ', "rcall", ' .. n .. ')'
-          elseif n == 8 then
-            cmd = 'let g:result3 = rpcrequest(' .. cid .. ', "rcall", ' .. n .. ')'
-          elseif n == 16 then
-            cmd = 'let g:result4 = rpcrequest(' .. cid .. ', "rcall", ' .. n .. ')'
+          if _n == 4 then
+            cmd = 'let g:result2 = rpcrequest(' .. cid .. ', "rcall", ' .. _n .. ')'
+          elseif _n == 8 then
+            cmd = 'let g:result3 = rpcrequest(' .. cid .. ', "rcall", ' .. _n .. ')'
+          elseif _n == 16 then
+            cmd = 'let g:result4 = rpcrequest(' .. cid .. ', "rcall", ' .. _n .. ')'
           end
           command(cmd)
         end
-        return n
+        return _n
       end
       run(on_request, nil, on_setup)
     end)
@@ -259,7 +260,7 @@ describe('server -> client', function()
       pcall(fn.jobstop, jobid)
     end)
 
-    if helpers.skip(helpers.is_os('win')) then
+    if t.skip(t.is_os('win')) then
       return
     end
 
@@ -280,7 +281,7 @@ describe('server -> client', function()
   end)
 
   describe('connecting to another (peer) nvim', function()
-    local nvim_argv = merge_args(helpers.nvim_argv, { '--headless' })
+    local nvim_argv = merge_args(n.nvim_argv, { '--headless' })
     local function connect_test(server, mode, address)
       local serverpid = fn.getpid()
       local client = spawn(nvim_argv, false, nil, true)
@@ -362,6 +363,24 @@ describe('server -> client', function()
 
       server:close()
       client:close()
+    end)
+
+    it('via stdio, with many small flushes does not crash #23781', function()
+      source([[
+      let chan = jobstart([v:progpath, '--embed', '--headless', '-n', '-u', 'NONE', '-i', 'NONE'], { 'rpc':v:false })
+      call chansend(chan, 0Z94)
+      sleep 50m
+      call chansend(chan, 0Z00)
+      call chansend(chan, 0Z01)
+      call chansend(chan, 0ZAC)
+      call chansend(chan, 0Z6E76696D5F636F6D6D616E64)
+      call chansend(chan, 0Z91)
+      call chansend(chan, 0ZA5)
+      call chansend(chan, 0Z71616C6C21)
+      let g:statuses = jobwait([chan])
+      ]])
+      eq(eval('g:statuses'), { 0 })
+      assert_alive()
     end)
   end)
 

@@ -1,9 +1,11 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local eq = helpers.eq
-local fn = helpers.fn
-local command = helpers.command
-local mkdir = helpers.mkdir
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local eq = t.eq
+local fn = n.fn
+local command = n.command
+local mkdir = t.mkdir
 
 describe("'autochdir'", function()
   it('given on the shell gets processed properly', function()
@@ -16,7 +18,7 @@ describe("'autochdir'", function()
 
     -- With 'autochdir' on, we should get the directory of tty-test.c.
     clear('--cmd', 'set autochdir', targetdir .. '/tty-test.c')
-    eq(helpers.is_os('win') and expected:gsub('/', '\\') or expected, fn.getcwd())
+    eq(t.is_os('win') and expected:gsub('/', '\\') or expected, fn.getcwd())
   end)
 
   it('is not overwritten by getwinvar() call #17609', function()
@@ -38,7 +40,7 @@ describe("'autochdir'", function()
     eq(dir_a, fn.getcwd())
     fn.getwinvar(2, 'foo')
     eq(dir_a, fn.getcwd())
-    helpers.rmdir(dir_a)
-    helpers.rmdir(dir_b)
+    n.rmdir(dir_a)
+    n.rmdir(dir_b)
   end)
 end)

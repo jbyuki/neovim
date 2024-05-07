@@ -1,11 +1,13 @@
-local helpers = require('test.functional.helpers')(after_each)
-local exc_exec = helpers.exc_exec
-local command = helpers.command
-local fn = helpers.fn
-local clear = helpers.clear
-local eval = helpers.eval
-local eq = helpers.eq
-local api = helpers.api
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local exc_exec = n.exc_exec
+local command = n.command
+local fn = n.fn
+local clear = n.clear
+local eval = n.eval
+local eq = t.eq
+local api = n.api
 local NIL = vim.NIL
 
 describe('Special values', function()

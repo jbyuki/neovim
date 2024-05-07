@@ -1,13 +1,14 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local exc_exec = helpers.exc_exec
-local get_win_var = helpers.api.nvim_win_get_var
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local exc_exec = n.exc_exec
+local get_win_var = n.api.nvim_win_get_var
 
 describe('setqflist()', function()
-  local setqflist = helpers.fn.setqflist
+  local setqflist = n.fn.setqflist
 
   before_each(clear)
 
@@ -46,7 +47,7 @@ describe('setqflist()', function()
 end)
 
 describe('setloclist()', function()
-  local setloclist = helpers.fn.setloclist
+  local setloclist = n.fn.setloclist
 
   before_each(clear)
 
@@ -73,7 +74,7 @@ describe('setloclist()', function()
   end)
 
   it("doesn't crash when when window is closed in the middle #13721", function()
-    helpers.insert([[
+    n.insert([[
     hello world]])
 
     command('vsplit')
@@ -82,6 +83,6 @@ describe('setloclist()', function()
     command('call setloclist(0, [])')
     command('lopen')
 
-    helpers.assert_alive()
+    n.assert_alive()
   end)
 end)

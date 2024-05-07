@@ -1,24 +1,25 @@
 -- Test suite for checking :lua* commands
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local eq = helpers.eq
+local eq = t.eq
 local NIL = vim.NIL
-local eval = helpers.eval
-local feed = helpers.feed
-local clear = helpers.clear
-local matches = helpers.matches
-local api = helpers.api
-local exec_lua = helpers.exec_lua
-local exec_capture = helpers.exec_capture
-local fn = helpers.fn
-local source = helpers.source
-local dedent = helpers.dedent
-local command = helpers.command
-local exc_exec = helpers.exc_exec
-local pcall_err = helpers.pcall_err
-local write_file = helpers.write_file
-local remove_trace = helpers.remove_trace
+local eval = n.eval
+local feed = n.feed
+local clear = n.clear
+local matches = t.matches
+local api = n.api
+local exec_lua = n.exec_lua
+local exec_capture = n.exec_capture
+local fn = n.fn
+local source = n.source
+local dedent = t.dedent
+local command = n.command
+local exc_exec = n.exc_exec
+local pcall_err = t.pcall_err
+local write_file = t.write_file
+local remove_trace = t.remove_trace
 
 before_each(clear)
 

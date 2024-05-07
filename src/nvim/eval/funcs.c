@@ -1185,9 +1185,10 @@ static void set_cursorpos(typval_T *argvars, typval_T *rettv, bool charcol)
   if (lnum > 0) {
     curwin->w_cursor.lnum = lnum;
   }
-  if (col > 0) {
-    curwin->w_cursor.col = col - 1;
+  if (col != MAXCOL && --col < 0) {
+    col = 0;
   }
+  curwin->w_cursor.col = col;
   curwin->w_cursor.coladd = coladd;
 
   // Make sure the cursor is in a valid position.
@@ -1361,7 +1362,7 @@ static void f_dictwatcherdel(typval_T *argvars, typval_T *rettv, EvalFuncData fp
 /// "did_filetype()" function
 static void f_did_filetype(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 {
-  rettv->vval.v_number = did_filetype;
+  rettv->vval.v_number = curbuf->b_did_filetype;
 }
 
 /// "diff_filler()" function
@@ -2019,6 +2020,9 @@ static void extend_dict(typval_T *argvars, const char *arg_errmsg, bool is_new, 
 
     action = tv_get_string_chk(&argvars[2]);
     if (action == NULL) {
+      if (is_new) {
+        tv_dict_unref(d1);
+      }
       return;  // Type error; error message already given.
     }
     size_t i;
@@ -2028,6 +2032,9 @@ static void extend_dict(typval_T *argvars, const char *arg_errmsg, bool is_new, 
       }
     }
     if (i == 3) {
+      if (is_new) {
+        tv_dict_unref(d1);
+      }
       semsg(_(e_invarg2), action);
       return;
     }
@@ -2873,15 +2880,20 @@ static void f_getregion(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     semsg(_(e_invalid_line_number_nr), p1.lnum);
     return;
   }
-  if (p1.col < 1 || p1.col > ml_get_buf_len(findbuf, p1.lnum) + 1) {
+  if (p1.col == MAXCOL) {
+    p1.col = ml_get_buf_len(findbuf, p1.lnum) + 1;
+  } else if (p1.col < 1 || p1.col > ml_get_buf_len(findbuf, p1.lnum) + 1) {
     semsg(_(e_invalid_column_number_nr), p1.col);
     return;
   }
+
   if (p2.lnum < 1 || p2.lnum > findbuf->b_ml.ml_line_count) {
     semsg(_(e_invalid_line_number_nr), p2.lnum);
     return;
   }
-  if (p2.col < 1 || p2.col > ml_get_buf_len(findbuf, p2.lnum) + 1) {
+  if (p2.col == MAXCOL) {
+    p2.col = ml_get_buf_len(findbuf, p2.lnum) + 1;
+  } else if (p2.col < 1 || p2.col > ml_get_buf_len(findbuf, p2.lnum) + 1) {
     semsg(_(e_invalid_column_number_nr), p2.col);
     return;
   }
@@ -3429,19 +3441,19 @@ static void f_has(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     } else if (STRICMP(name, "syntax_items") == 0) {
       n = syntax_present(curwin);
     } else if (STRICMP(name, "clipboard_working") == 0) {
-      n = eval_has_provider("clipboard");
+      n = eval_has_provider("clipboard", true);
     } else if (STRICMP(name, "pythonx") == 0) {
-      n = eval_has_provider("python3");
+      n = eval_has_provider("python3", true);
     } else if (STRICMP(name, "wsl") == 0) {
       n = has_wsl();
 #ifdef UNIX
     } else if (STRICMP(name, "unnamedplus") == 0) {
-      n = eval_has_provider("clipboard");
+      n = eval_has_provider("clipboard", true);
 #endif
     }
   }
 
-  if (!n && eval_has_provider(name)) {
+  if (!n && eval_has_provider(name, true)) {
     n = true;
   }
 

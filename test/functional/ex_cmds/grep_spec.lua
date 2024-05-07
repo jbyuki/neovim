@@ -1,6 +1,7 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear, feed_command, feed, ok, eval =
-  helpers.clear, helpers.feed_command, helpers.feed, helpers.ok, helpers.eval
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, feed_command, feed, ok, eval = n.clear, n.feed_command, n.feed, t.ok, n.eval
 
 describe(':grep', function()
   before_each(clear)

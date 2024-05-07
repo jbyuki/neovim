@@ -1,8 +1,10 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local command, eq, neq, write_file = helpers.command, helpers.eq, helpers.neq, helpers.write_file
-local read_file = helpers.read_file
-local is_os = helpers.is_os
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local command, eq, neq, write_file = n.command, t.eq, t.neq, t.write_file
+local read_file = t.read_file
+local is_os = t.is_os
 
 describe(':wshada', function()
   local shada_file = 'wshada_test'

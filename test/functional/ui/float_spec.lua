@@ -1,24 +1,26 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 local os = require('os')
-local clear, feed = helpers.clear, helpers.feed
-local assert_alive = helpers.assert_alive
-local command, feed_command = helpers.command, helpers.feed_command
-local eval = helpers.eval
-local eq = helpers.eq
-local neq = helpers.neq
-local expect = helpers.expect
-local exec = helpers.exec
-local exec_lua = helpers.exec_lua
-local insert = helpers.insert
-local api = helpers.api
-local fn = helpers.fn
-local run = helpers.run
-local pcall_err = helpers.pcall_err
+
+local clear, feed = n.clear, n.feed
+local assert_alive = n.assert_alive
+local command, feed_command = n.command, n.feed_command
+local eval = n.eval
+local eq = t.eq
+local neq = t.neq
+local expect = n.expect
+local exec = n.exec
+local exec_lua = n.exec_lua
+local insert = n.insert
+local api = n.api
+local fn = n.fn
+local run = n.run
+local pcall_err = t.pcall_err
 local tbl_contains = vim.tbl_contains
-local curbuf = helpers.api.nvim_get_current_buf
-local curwin = helpers.api.nvim_get_current_win
-local curtab = helpers.api.nvim_get_current_tabpage
+local curbuf = n.api.nvim_get_current_buf
+local curwin = n.api.nvim_get_current_win
+local curtab = n.api.nvim_get_current_tabpage
 local NIL = vim.NIL
 
 describe('float window', function()
@@ -325,6 +327,27 @@ describe('float window', function()
     eq(12, pos[2])
   end)
 
+  it('error message when reconfig missing relative field', function()
+    local bufnr = api.nvim_create_buf(false, true)
+    local opts = {
+      width = 10,
+      height = 10,
+      col = 5,
+      row = 5,
+      relative = 'editor',
+      style = 'minimal',
+    }
+    local win_id = api.nvim_open_win(bufnr, true, opts)
+    eq(
+    "Missing 'relative' field when reconfiguring floating window 1001",
+    pcall_err(api.nvim_win_set_config, win_id, {
+      width = 3,
+      height = 3,
+      row = 10,
+      col = 10,
+    }))
+  end)
+
   it('is not operated on by windo when non-focusable #15374', function()
     command([[
       let winids = []
@@ -413,6 +436,25 @@ describe('float window', function()
     eq(winid, eval('win_getid()'))
   end)
 
+  it('is not active after closing window when non-focusable #28454', function()
+    command('copen')
+    local winid = exec_lua([[
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      local opts = {
+        relative = 'editor',
+        focusable = false,
+        height = 5,
+        width = 5,
+        col = 5,
+        row = 5,
+      }
+      return vim.api.nvim_open_win(bufnr, false, opts)
+    ]])
+    command('wincmd t')
+    command('wincmd q')
+    neq(winid, curwin())
+  end)
+
   it('supports windo with focusable and non-focusable floats', function()
     local winids = exec_lua([[
       local result = {vim.api.nvim_get_current_win()}
@@ -490,7 +532,10 @@ describe('float window', function()
     local closed_win = api.nvim_get_current_win()
     command('close')
     local buf = api.nvim_create_buf(false,false)
-    api.nvim_open_win(buf, true, {relative='win', win=closed_win, width=1, height=1, bufpos={0,0}})
+    eq(
+      'Invalid window id: ' .. closed_win,
+      pcall_err(api.nvim_open_win, buf, true, {relative='win', win=closed_win, width=1, height=1, bufpos={0,0}})
+    )
     assert_alive()
   end)
 
@@ -1536,7 +1581,12 @@ describe('float window', function()
         }, win_viewport={
           [2] = {win = 1000, topline = 0, botline = 2, curline = 0, curcol = 0, linecount = 1, sum_scroll_delta = 0};
           [4] = {win = 1001, topline = 0, botline = 2, curline = 0, curcol = 0, linecount = 2, sum_scroll_delta = 0};
-        }}
+        },
+        win_viewport_margins={
+          [2] = {win = 1000, top = 0, bottom = 0, left = 0, right = 0};
+          [4] = {win = 1001, top = 1, bottom = 1, left = 1, right = 1};
+        }
+      }
       else
         screen:expect{grid=[[
           ^                                        |
@@ -1736,7 +1786,12 @@ describe('float window', function()
         }, win_viewport={
           [2] = {win = 1000, topline = 0, botline = 2, curline = 0, curcol = 0, linecount = 1, sum_scroll_delta = 0};
           [4] = {win = 1001, topline = 0, botline = 2, curline = 0, curcol = 0, linecount = 2, sum_scroll_delta = 0};
-        }}
+        },
+        win_viewport_margins={
+          [2] = {win = 1000, top = 0, bottom = 0, left = 0, right = 0};
+          [4] = {win = 1001, top = 0, bottom = 0, left = 1, right = 1};
+        }
+      }
       else
         screen:expect{grid=[[
           ^                                        |
@@ -1769,6 +1824,10 @@ describe('float window', function()
         }, win_viewport={
           [2] = {win = 1000, topline = 0, botline = 2, curline = 0, curcol = 0, linecount = 1, sum_scroll_delta = 0};
           [4] = {win = 1001, topline = 0, botline = 2, curline = 0, curcol = 0, linecount = 2, sum_scroll_delta = 0};
+        },
+        win_viewport_margins={
+          [2] = {win = 1000, top = 0, bottom = 0, left = 0, right = 0};
+          [4] = {win = 1001, top = 1, bottom = 1, left = 0, right = 0};
         }}
       else
         screen:expect{grid=[[
@@ -1814,6 +1873,10 @@ describe('float window', function()
         }, win_viewport={
           [2] = {win = 1000, topline = 0, botline = 6, curline = 5, curcol = 0, linecount = 6, sum_scroll_delta = 0};
           [4] = {win = 1001, topline = 0, botline = 2, curline = 0, curcol = 0, linecount = 2, sum_scroll_delta = 0};
+        },
+        win_viewport_margins={
+          [2] = {win = 1000, top = 0, bottom = 0, left = 0, right = 0};
+          [4] = {win = 1001, top = 0, bottom = 1, left = 0, right = 1};
         }}
       else
         screen:expect{grid=[[
@@ -4062,7 +4125,7 @@ describe('float window', function()
 
     if multigrid then
       pending("supports second UI without multigrid", function()
-        local session2 = helpers.connect(eval('v:servername'))
+        local session2 = n.connect(eval('v:servername'))
         print(session2:request("nvim_eval", "2+2"))
         local screen2 = Screen.new(40,7)
         screen2:attach(nil, session2)
@@ -7960,7 +8023,7 @@ describe('float window', function()
     end)
 
     it("correctly redraws when overlaid windows are resized #13991", function()
-	  helpers.source([[
+	  n.source([[
         let popup_config = {"relative" : "editor",
                     \ "width" : 7,
                     \ "height" : 3,
@@ -8024,7 +8087,7 @@ describe('float window', function()
         ]])
       end
 
-      helpers.source([[
+      n.source([[
         let new_popup_config = {"width" : 1, "height" : 3}
         let new_border_config = {"width" : 3, "height" : 5}
 
@@ -8039,7 +8102,7 @@ describe('float window', function()
         nnoremap zz <cmd>call Resize()<cr>
       ]])
 
-      helpers.feed("zz")
+      n.feed("zz")
       if multigrid then
         screen:expect{grid=[[
         ## grid 1
@@ -8361,6 +8424,10 @@ describe('float window', function()
         }, win_viewport={
           [2] = {win = 1000, topline = 0, botline = 2, curline = 0, curcol = 0, linecount = 1, sum_scroll_delta = 0};
           [4] = {win = 1001, topline = 0, botline = 2, curline = 0, curcol = 0, linecount = 1, sum_scroll_delta = 0};
+        },
+        win_viewport_margins={
+          [2] = {win = 1000, top = 0, bottom = 0, left = 0, right = 0};
+          [4] = {win = 1001, top = 2, bottom = 1, left = 1, right = 1};
         }}
       else
         screen:expect{grid=[[
@@ -9204,6 +9271,51 @@ describe('float window', function()
       eq(layout, fn.winlayout())
       eq(restcmd, fn.winrestcmd())
       eq(config, api.nvim_win_get_config(0))
+    end)
+
+    it("error when relative to itself", function()
+      local buf = api.nvim_create_buf(false, true)
+      local config = { relative='win', width=5, height=2, row=3, col=3 }
+      local winid = api.nvim_open_win(buf, false, config)
+      api.nvim_set_current_win(winid)
+      eq("floating window cannot be relative to itself", pcall_err(api.nvim_win_set_config, winid, config))
+    end)
+
+    it("bufpos out of range", function()
+      local buf = api.nvim_create_buf(false, true)
+      api.nvim_buf_set_lines(0, 0, -1, false, {})
+      local config = { relative='win', width=5, height=2, row=0, col=0, bufpos = { 3, 3 } }
+      api.nvim_open_win(buf, false, config)
+      if multigrid then
+        screen:expect({
+          grid = [[
+          ## grid 1
+            [2:----------------------------------------]|*6
+            [3:----------------------------------------]|
+          ## grid 2
+            ^                                        |
+            {0:~                                       }|*5
+          ## grid 3
+                                                    |
+          ## grid 4
+            {1:     }|
+            {2:~    }|
+          ]], float_pos={
+          [4] = {1001, "NW", 2, 0, 0, true, 50};
+        }, win_viewport={
+          [2] = {win = 1000, topline = 0, botline = 2, curline = 0, curcol = 0, linecount = 1, sum_scroll_delta = 0};
+          [4] = {win = 1001, topline = 0, botline = 2, curline = 0, curcol = 0, linecount = 1, sum_scroll_delta = 0};
+        }})
+      else
+        screen:expect({
+          grid = [[
+            {1:^     }                                   |
+            {2:~    }{0:                                   }|
+            {0:~                                       }|*4
+                                                    |
+          ]]
+        })
+      end
     end)
   end
 

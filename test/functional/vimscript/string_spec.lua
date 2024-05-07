@@ -1,14 +1,16 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
-local eq = helpers.eq
-local command = helpers.command
-local api = helpers.api
-local eval = helpers.eval
-local exc_exec = helpers.exc_exec
-local pcall_err = helpers.pcall_err
-local fn = helpers.fn
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear = n.clear
+local eq = t.eq
+local command = n.command
+local api = n.api
+local eval = n.eval
+local exc_exec = n.exc_exec
+local pcall_err = t.pcall_err
+local fn = n.fn
 local NIL = vim.NIL
-local source = helpers.source
+local source = n.source
 
 describe('string() function', function()
   before_each(clear)
@@ -190,7 +192,7 @@ describe('string() function', function()
       eval('add(l, l)')
       -- Regression: the below line used to crash (add returns original list and
       -- there was error in dumping partials). Tested explicitly in
-      -- test/unit/api/private_helpers_spec.lua.
+      -- test/unit/api/private_t_spec.lua.
       eval('add(l, function("Test1", l))')
       eq(
         [=[Vim(echo):E724: unable to correctly dump variable with self-referencing container]=],

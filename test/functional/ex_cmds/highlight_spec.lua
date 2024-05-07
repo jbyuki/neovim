@@ -1,11 +1,13 @@
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local helpers = require('test.functional.helpers')(after_each)
-local eq, command = helpers.eq, helpers.command
-local clear = helpers.clear
-local eval, exc_exec = helpers.eval, helpers.exc_exec
-local exec = helpers.exec
-local fn = helpers.fn
-local api = helpers.api
+
+local eq, command = t.eq, n.command
+local clear = n.clear
+local eval, exc_exec = n.eval, n.exc_exec
+local exec = n.exec
+local fn = n.fn
+local api = n.api
 
 describe(':highlight', function()
   local screen

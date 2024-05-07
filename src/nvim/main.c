@@ -14,7 +14,9 @@
 #include <string.h>
 #ifdef ENABLE_ASAN_UBSAN
 # include <sanitizer/asan_interface.h>
-# include <sanitizer/ubsan_interface.h>
+# ifndef MSWIN
+#  include <sanitizer/ubsan_interface.h>
+# endif
 #endif
 
 #include "auto/config.h"  // IWYU pragma: keep
@@ -61,6 +63,7 @@
 #include "nvim/log.h"
 #include "nvim/lua/executor.h"
 #include "nvim/lua/secure.h"
+#include "nvim/lua/treesitter.h"
 #include "nvim/macros_defs.h"
 #include "nvim/main.h"
 #include "nvim/mark.h"
@@ -353,6 +356,12 @@ int main(int argc, char **argv)
     ui_client_channel_id = rv;
   }
 
+  if (ui_client_channel_id) {
+    time_finish();
+    ui_client_run(remote_ui);  // NORETURN
+  }
+  assert(!ui_client_channel_id && !use_builtin_ui);
+
   TIME_MSG("expanding arguments");
 
   if (params.diff_mode && params.window_count == -1) {
@@ -394,12 +403,6 @@ int main(int argc, char **argv)
   if (!stdin_isatty && !params.input_istext && silent_mode && exmode_active) {
     input_start();
   }
-
-  if (ui_client_channel_id) {
-    time_finish();
-    ui_client_run(remote_ui);  // NORETURN
-  }
-  assert(!ui_client_channel_id && !use_builtin_ui);
 
   // Wait for UIs to set up Nvim or show early messages
   // and prompts (--cmd, swapfile dialog, …).
@@ -639,7 +642,7 @@ int main(int argc, char **argv)
 
   // WORKAROUND(mhi): #3023
   if (cb_flags & CB_UNNAMEDMASK) {
-    eval_has_provider("clipboard");
+    eval_has_provider("clipboard", false);
   }
 
   if (params.luaf != NULL) {
@@ -1573,7 +1576,7 @@ static void handle_quickfix(mparm_T *paramp)
 {
   if (paramp->edit_type == EDIT_QF) {
     if (paramp->use_ef != NULL) {
-      set_string_option_direct(kOptErrorfile, paramp->use_ef, 0, SID_CARG);
+      set_option_direct(kOptErrorfile, CSTR_AS_OPTVAL(paramp->use_ef), 0, SID_CARG);
     }
     vim_snprintf(IObuff, IOSIZE, "cfile %s", p_ef);
     if (qf_init(NULL, p_ef, p_efm, true, IObuff, p_menc) < 0) {

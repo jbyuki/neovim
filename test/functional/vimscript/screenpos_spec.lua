@@ -1,7 +1,9 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear, eq, api = helpers.clear, helpers.eq, helpers.api
-local command, fn = helpers.command, helpers.fn
-local feed = helpers.feed
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local clear, eq, api = n.clear, t.eq, n.api
+local command, fn = n.command, n.fn
+local feed = n.feed
 
 before_each(clear)
 

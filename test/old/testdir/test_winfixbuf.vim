@@ -1,6 +1,7 @@
 " Test 'winfixbuf'
 
 source check.vim
+source shared.vim
 
 " Find the number of open windows in the current tab
 func s:get_windows_count()
@@ -199,10 +200,7 @@ func s:reset_all_buffers()
   set nowinfixbuf
 
   call setqflist([])
-
-  for l:window_info in getwininfo()
-    call setloclist(l:window_info["winid"], [])
-  endfor
+  call setloclist(0, [], 'f')
 
   delmarks A-Z0-9
 endfunc
@@ -641,7 +639,7 @@ func Test_caddexpr()
   call s:reset_all_buffers()
 
   let l:file_path = tempname()
-  call writefile(["Error - bad-thing-found"], l:file_path)
+  call writefile(["Error - bad-thing-found"], l:file_path, 'D')
   execute "edit " . l:file_path
   let l:file_buffer = bufnr()
   let l:current = bufnr()
@@ -657,8 +655,6 @@ func Test_caddexpr()
 
   execute 'caddexpr expand("%") .. ":" .. line(".") .. ":" .. getline(".")'
   call assert_equal(l:current, bufnr())
-
-  call delete(l:file_path)
 endfunc
 
 " Fail :cbuffer but :cbuffer! is allowed
@@ -667,7 +663,7 @@ func Test_cbuffer()
   call s:reset_all_buffers()
 
   let l:file_path = tempname()
-  call writefile(["first.unittest:1:Error - bad-thing-found"], l:file_path)
+  call writefile(["first.unittest:1:Error - bad-thing-found"], l:file_path, 'D')
   execute "edit " . l:file_path
   let l:file_buffer = bufnr()
   let l:current = bufnr()
@@ -686,8 +682,6 @@ func Test_cbuffer()
 
   execute "cbuffer! " . l:file_buffer
   call assert_equal("first.unittest", expand("%:t"))
-
-  call delete(l:file_path)
 endfunc
 
 " Allow :cc but the 'nowinfixbuf' window is selected, instead
@@ -1125,6 +1119,150 @@ func Test_edit()
   call assert_equal(l:other, bufnr())
 endfunc
 
+" Fail :e when selecting a buffer from a relative path if in a different folder
+"
+" In this tests there's 2 buffers
+"
+" foo - lives on disk, in some folder. e.g. /tmp/foo
+" foo - an in-memory buffer that has not been saved to disk. If saved, it
+"       would live in a different folder, /other/foo.
+"
+" The 'winfixbuf' is looking at the in-memory buffer and trying to switch to
+" the buffer on-disk (and fails, because it's a different buffer)
+func Test_edit_different_buffer_on_disk_and_relative_path_to_disk()
+  call s:reset_all_buffers()
+
+  let l:file_on_disk = tempname()
+  let l:directory_on_disk1 = fnamemodify(l:file_on_disk, ":p:h")
+  let l:name = fnamemodify(l:file_on_disk, ":t")
+  execute "edit " . l:file_on_disk
+  write!
+
+  let l:directory_on_disk2 = l:directory_on_disk1 . "_something_else"
+
+  if !isdirectory(l:directory_on_disk2)
+    call mkdir(l:directory_on_disk2)
+  endif
+
+  execute "cd " . l:directory_on_disk2
+  execute "edit " l:name
+
+  let l:current = bufnr()
+
+  call assert_equal(l:current, bufnr())
+  set winfixbuf
+  call assert_fails("edit " . l:file_on_disk, "E1513:")
+  call assert_equal(l:current, bufnr())
+
+  call delete(l:directory_on_disk1)
+  call delete(l:directory_on_disk2)
+endfunc
+
+" Fail :e when selecting a buffer from a relative path if in a different folder
+"
+" In this tests there's 2 buffers
+"
+" foo - lives on disk, in some folder. e.g. /tmp/foo
+" foo - an in-memory buffer that has not been saved to disk. If saved, it
+"       would live in a different folder, /other/foo.
+"
+" The 'winfixbuf' is looking at the on-disk buffer and trying to switch to
+" the in-memory buffer (and fails, because it's a different buffer)
+func Test_edit_different_buffer_on_disk_and_relative_path_to_memory()
+  call s:reset_all_buffers()
+
+  let l:file_on_disk = tempname()
+  let l:directory_on_disk1 = fnamemodify(l:file_on_disk, ":p:h")
+  let l:name = fnamemodify(l:file_on_disk, ":t")
+  execute "edit " . l:file_on_disk
+  write!
+
+  let l:directory_on_disk2 = l:directory_on_disk1 . "_something_else"
+
+  if !isdirectory(l:directory_on_disk2)
+    call mkdir(l:directory_on_disk2)
+  endif
+
+  execute "cd " . l:directory_on_disk2
+  execute "edit " l:name
+  execute "cd " . l:directory_on_disk1
+  execute "edit " l:file_on_disk
+  execute "cd " . l:directory_on_disk2
+
+  let l:current = bufnr()
+
+  call assert_equal(l:current, bufnr())
+  set winfixbuf
+  call assert_fails("edit " . l:name, "E1513:")
+  call assert_equal(l:current, bufnr())
+
+  call delete(l:directory_on_disk1)
+  call delete(l:directory_on_disk2)
+endfunc
+
+" Fail to call `:e first` if called from a starting, in-memory buffer
+func Test_edit_first_buffer()
+  call s:reset_all_buffers()
+
+  set winfixbuf
+  let l:current = bufnr()
+
+  call assert_fails("edit first", "E1513:")
+  call assert_equal(l:current, bufnr())
+
+  edit! first
+  call assert_equal(l:current, bufnr())
+  edit! somewhere_else
+  call assert_notequal(l:current, bufnr())
+endfunc
+
+" Allow reloading a buffer using :e
+func Test_edit_no_arguments()
+  call s:reset_all_buffers()
+
+  let l:current = bufnr()
+  file some_buffer
+
+  call assert_equal(l:current, bufnr())
+  set winfixbuf
+  edit
+  call assert_equal(l:current, bufnr())
+endfunc
+
+" Allow :e selecting the current buffer
+func Test_edit_same_buffer_in_memory()
+  call s:reset_all_buffers()
+
+  let current = bufnr()
+  file same_buffer
+
+  call assert_equal(current, bufnr())
+  set winfixbuf
+  edit same_buffer
+  call assert_equal(current, bufnr())
+  set nowinfixbuf
+endfunc
+
+" Allow :e selecting the current buffer as a full path
+func Test_edit_same_buffer_on_disk_absolute_path()
+  call s:reset_all_buffers()
+
+  let file = tempname()
+  " file must exist for expansion of 8.3 paths to succeed
+  call writefile([], file, 'D')
+  let file = fnamemodify(file, ':p')
+  let current = bufnr()
+  execute "edit " . file
+  write!
+
+  call assert_equal(current, bufnr())
+  set winfixbuf
+  execute "edit " file
+  call assert_equal(current, bufnr())
+
+  set nowinfixbuf
+endfunc
+
 " Fail :enew but :enew! is allowed
 func Test_enew()
   call s:reset_all_buffers()
@@ -1160,7 +1298,7 @@ func Test_find()
 
   let l:current = bufnr()
   let l:file = tempname()
-  call writefile([], l:file)
+  call writefile([], l:file, 'D')
   let l:file = fnamemodify(l:file, ':p')  " In case it's Windows 8.3-style.
   let l:directory = fnamemodify(l:file, ":p:h")
   let l:name = fnamemodify(l:file, ":p:t")
@@ -1177,7 +1315,6 @@ func Test_find()
   call assert_equal(l:file, expand("%:p"))
 
   execute "set path=" . l:original_path
-  call delete(l:file)
 endfunc
 
 " Fail :first but :first! is allowed
@@ -1238,8 +1375,8 @@ func Test_ijump()
   call writefile([
         \ '#include "' . l:include_file . '"'
         \ ],
-        \ "main.c")
-  call writefile(["#define min(X, Y)  ((X) < (Y) ? (X) : (Y))"], l:include_file)
+        \ "main.c", 'D')
+  call writefile(["#define min(X, Y)  ((X) < (Y) ? (X) : (Y))"], l:include_file, 'D')
   edit main.c
 
   set winfixbuf
@@ -1261,8 +1398,6 @@ func Test_ijump()
   set define&
   set include&
   set path&
-  call delete("main.c")
-  call delete(l:include_file)
 endfunc
 
 " Fail :lNext but :lNext! is allowed
@@ -1327,7 +1462,7 @@ func Test_laddexpr()
   call s:reset_all_buffers()
 
   let l:file_path = tempname()
-  call writefile(["Error - bad-thing-found"], l:file_path)
+  call writefile(["Error - bad-thing-found"], l:file_path, 'D')
   execute "edit " . l:file_path
   let l:file_buffer = bufnr()
   let l:current = bufnr()
@@ -1343,8 +1478,6 @@ func Test_laddexpr()
 
   execute 'laddexpr expand("%") .. ":" .. line(".") .. ":" .. getline(".")'
   call assert_equal(l:current, bufnr())
-
-  call delete(l:file_path)
 endfunc
 
 " Fail :last but :last! is allowed
@@ -1367,7 +1500,7 @@ func Test_lbuffer()
   call s:reset_all_buffers()
 
   let l:file_path = tempname()
-  call writefile(["first.unittest:1:Error - bad-thing-found"], l:file_path)
+  call writefile(["first.unittest:1:Error - bad-thing-found"], l:file_path, 'D')
   execute "edit " . l:file_path
   let l:file_buffer = bufnr()
   let l:current = bufnr()
@@ -1386,8 +1519,6 @@ func Test_lbuffer()
 
   execute "lbuffer! " . l:file_buffer
   call assert_equal("first.unittest", expand("%:t"))
-
-  call delete(l:file_path)
 endfunc
 
 " Fail :ldo but :ldo! is allowed
@@ -1451,7 +1582,7 @@ func Test_lfile()
   write
 
   let l:file = tempname()
-  call writefile(["first.unittest:1:Error - bad-thing-found was detected"], l:file)
+  call writefile(["first.unittest:1:Error - bad-thing-found was detected"], l:file, 'D')
 
   let l:current = bufnr()
 
@@ -1463,7 +1594,6 @@ func Test_lfile()
   execute ":lfile! " . l:file
   call assert_equal(l:first, bufnr())
 
-  call delete(l:file)
   call delete("first.unittest")
   call delete("second.unittest")
 endfunc
@@ -1603,9 +1733,9 @@ func Test_ltag()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
   execute "normal \<C-]>"
 
@@ -1618,9 +1748,6 @@ func Test_ltag()
   ltag! one
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Fail vim.cmd if we try to change buffers while 'winfixbuf' is set
@@ -1826,9 +1953,9 @@ func Test_normal_g_ctrl_square_bracket_right()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
 
   set winfixbuf
@@ -1839,9 +1966,6 @@ func Test_normal_g_ctrl_square_bracket_right()
   call assert_equal(l:current, bufnr())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Fail to jump to a tag with g<RightMouse> if 'winfixbuf' is enabled
@@ -1854,9 +1978,9 @@ func Test_normal_g_rightmouse()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
   execute "normal \<C-]>"
 
@@ -1869,9 +1993,6 @@ func Test_normal_g_rightmouse()
 
   set tags&
   set mouse&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Fail to jump to a tag with g] if 'winfixbuf' is enabled
@@ -1883,9 +2004,9 @@ func Test_normal_g_square_bracket_right()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
 
   set winfixbuf
@@ -1896,9 +2017,6 @@ func Test_normal_g_square_bracket_right()
   call assert_equal(l:current, bufnr())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Fail to jump to a tag with <C-RightMouse> if 'winfixbuf' is enabled
@@ -1911,9 +2029,9 @@ func Test_normal_ctrl_rightmouse()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
   execute "normal \<C-]>"
 
@@ -1926,9 +2044,6 @@ func Test_normal_ctrl_rightmouse()
 
   set tags&
   set mouse&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Fail to jump to a tag with <C-t> if 'winfixbuf' is enabled
@@ -1940,9 +2055,9 @@ func Test_normal_ctrl_t()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
   execute "normal \<C-]>"
 
@@ -1954,9 +2069,6 @@ func Test_normal_ctrl_t()
   call assert_equal(l:current, bufnr())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Disallow <C-^> in 'winfixbuf' windows
@@ -2058,9 +2170,9 @@ func Test_normal_ctrl_square_bracket_right()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
 
   set winfixbuf
@@ -2071,9 +2183,6 @@ func Test_normal_ctrl_square_bracket_right()
   call assert_equal(l:current, bufnr())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Allow <C-w><C-]> with 'winfixbuf' enabled because it runs in a new, split window
@@ -2085,9 +2194,9 @@ func Test_normal_ctrl_w_ctrl_square_bracket_right()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
 
   set winfixbuf
@@ -2097,9 +2206,6 @@ func Test_normal_ctrl_w_ctrl_square_bracket_right()
   call assert_equal(l:current_windows + 1, s:get_windows_count())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Allow <C-w>g<C-]> with 'winfixbuf' enabled because it runs in a new, split window
@@ -2111,9 +2217,9 @@ func Test_normal_ctrl_w_g_ctrl_square_bracket_right()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
 
   set winfixbuf
@@ -2123,9 +2229,6 @@ func Test_normal_ctrl_w_g_ctrl_square_bracket_right()
   call assert_equal(l:current_windows + 1, s:get_windows_count())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Fail to jump to a tag with <C-]> if 'winfixbuf' is enabled
@@ -2137,9 +2240,9 @@ func Test_normal_gt()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one", "two", "three"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one", "two", "three"], "Xother", 'D')
   edit Xother
 
   set winfixbuf
@@ -2150,9 +2253,6 @@ func Test_normal_gt()
   call assert_equal(l:current, bufnr())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Prevent gF from switching a 'winfixbuf' window's buffer
@@ -2161,7 +2261,7 @@ func Test_normal_gF()
 
   let l:file = tempname()
   call append(0, [l:file])
-  call writefile([], l:file)
+  call writefile([], l:file, 'D')
   " Place the cursor onto the line that has `l:file`
   normal gg
   " Prevent Vim from erroring with "No write since last change @ command
@@ -2180,7 +2280,7 @@ func Test_normal_gF()
   normal gF
   call assert_notequal(l:buffer, bufnr())
 
-  call delete(l:file)
+  set nohidden
 endfunc
 
 " Prevent gf from switching a 'winfixbuf' window's buffer
@@ -2189,7 +2289,7 @@ func Test_normal_gf()
 
   let l:file = tempname()
   call append(0, [l:file])
-  call writefile([], l:file)
+  call writefile([], l:file, 'D')
   " Place the cursor onto the line that has `l:file`
   normal gg
   " Prevent Vim from erroring with "No write since last change @ command
@@ -2208,7 +2308,7 @@ func Test_normal_gf()
   normal gf
   call assert_notequal(l:buffer, bufnr())
 
-  call delete(l:file)
+  set nohidden
 endfunc
 
 " Fail "goto file under the cursor" (using [f, which is the same as `:normal gf`)
@@ -2217,7 +2317,7 @@ func Test_normal_square_bracket_left_f()
 
   let l:file = tempname()
   call append(0, [l:file])
-  call writefile([], l:file)
+  call writefile([], l:file, 'D')
   " Place the cursor onto the line that has `l:file`
   normal gg
   " Prevent Vim from erroring with "No write since last change @ command
@@ -2236,7 +2336,7 @@ func Test_normal_square_bracket_left_f()
   normal [f
   call assert_notequal(l:buffer, bufnr())
 
-  call delete(l:file)
+  set nohidden
 endfunc
 
 " Fail to go to a C macro with [<C-d> if 'winfixbuf' is enabled
@@ -2247,8 +2347,8 @@ func Test_normal_square_bracket_left_ctrl_d()
   call writefile(["min(1, 12);",
         \ '#include "' . l:include_file . '"'
         \ ],
-        \ "main.c")
-  call writefile(["#define min(X, Y)  ((X) < (Y) ? (X) : (Y))"], l:include_file)
+        \ "main.c", 'D')
+  call writefile(["#define min(X, Y)  ((X) < (Y) ? (X) : (Y))"], l:include_file, 'D')
   edit main.c
   normal ]\<C-d>
 
@@ -2263,9 +2363,6 @@ func Test_normal_square_bracket_left_ctrl_d()
 
   execute "normal [\<C-d>"
   call assert_notequal(l:current, bufnr())
-
-  call delete("main.c")
-  call delete(l:include_file)
 endfunc
 
 " Fail to go to a C macro with ]<C-d> if 'winfixbuf' is enabled
@@ -2276,8 +2373,8 @@ func Test_normal_square_bracket_right_ctrl_d()
   call writefile(["min(1, 12);",
         \ '#include "' . l:include_file . '"'
         \ ],
-        \ "main.c")
-  call writefile(["#define min(X, Y)  ((X) < (Y) ? (X) : (Y))"], l:include_file)
+        \ "main.c", 'D')
+  call writefile(["#define min(X, Y)  ((X) < (Y) ? (X) : (Y))"], l:include_file, 'D')
   edit main.c
 
   set winfixbuf
@@ -2291,9 +2388,6 @@ func Test_normal_square_bracket_right_ctrl_d()
 
   execute "normal ]\<C-d>"
   call assert_notequal(l:current, bufnr())
-
-  call delete("main.c")
-  call delete(l:include_file)
 endfunc
 
 " Fail to go to a C macro with [<C-i> if 'winfixbuf' is enabled
@@ -2304,8 +2398,8 @@ func Test_normal_square_bracket_left_ctrl_i()
   call writefile(['#include "' . l:include_file . '"',
         \ "min(1, 12);",
         \ ],
-        \ "main.c")
-  call writefile(["#define min(X, Y)  ((X) < (Y) ? (X) : (Y))"], l:include_file)
+        \ "main.c", 'D')
+  call writefile(["#define min(X, Y)  ((X) < (Y) ? (X) : (Y))"], l:include_file, 'D')
   edit main.c
   " Move to the line with `min(1, 12);` on it"
   normal j
@@ -2328,8 +2422,6 @@ func Test_normal_square_bracket_left_ctrl_i()
   set define&
   set include&
   set path&
-  call delete("main.c")
-  call delete(l:include_file)
 endfunc
 
 " Fail to go to a C macro with ]<C-i> if 'winfixbuf' is enabled
@@ -2340,8 +2432,8 @@ func Test_normal_square_bracket_right_ctrl_i()
   call writefile(["min(1, 12);",
         \ '#include "' . l:include_file . '"'
         \ ],
-        \ "main.c")
-  call writefile(["#define min(X, Y)  ((X) < (Y) ? (X) : (Y))"], l:include_file)
+        \ "main.c", 'D')
+  call writefile(["#define min(X, Y)  ((X) < (Y) ? (X) : (Y))"], l:include_file, 'D')
   edit main.c
 
   set winfixbuf
@@ -2363,8 +2455,6 @@ func Test_normal_square_bracket_right_ctrl_i()
   set define&
   set include&
   set path&
-  call delete("main.c")
-  call delete(l:include_file)
 endfunc
 
 " Fail "goto file under the cursor" (using ]f, which is the same as `:normal gf`)
@@ -2373,7 +2463,7 @@ func Test_normal_square_bracket_right_f()
 
   let l:file = tempname()
   call append(0, [l:file])
-  call writefile([], l:file)
+  call writefile([], l:file, 'D')
   " Place the cursor onto the line that has `l:file`
   normal gg
   " Prevent Vim from erroring with "No write since last change @ command
@@ -2392,7 +2482,7 @@ func Test_normal_square_bracket_right_f()
   normal ]f
   call assert_notequal(l:buffer, bufnr())
 
-  call delete(l:file)
+  set nohidden
 endfunc
 
 " Fail to jump to a tag with v<C-]> if 'winfixbuf' is enabled
@@ -2404,9 +2494,9 @@ func Test_normal_v_ctrl_square_bracket_right()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
 
   set winfixbuf
@@ -2417,9 +2507,6 @@ func Test_normal_v_ctrl_square_bracket_right()
   call assert_equal(l:current, bufnr())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Fail to jump to a tag with vg<C-]> if 'winfixbuf' is enabled
@@ -2431,9 +2518,9 @@ func Test_normal_v_g_ctrl_square_bracket_right()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
 
   set winfixbuf
@@ -2444,9 +2531,6 @@ func Test_normal_v_g_ctrl_square_bracket_right()
   call assert_equal(l:current, bufnr())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Allow :pedit because, unlike :edit, it uses a separate window
@@ -2471,9 +2555,9 @@ func Test_pop()
         \ "thesame\tXfile\t2;\"\td\tfile:",
         \ "thesame\tXfile\t3;\"\td\tfile:",
         \ ],
-        \ "Xtags")
-  call writefile(["thesame one", "thesame two", "thesame three"], "Xfile")
-  call writefile(["thesame one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["thesame one", "thesame two", "thesame three"], "Xfile", 'D')
+  call writefile(["thesame one"], "Xother", 'D')
   edit Xother
 
   tag thesame
@@ -2489,9 +2573,6 @@ func Test_pop()
   call assert_notequal(l:current, bufnr())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Fail :previous but :previous! is allowed
@@ -2559,7 +2640,7 @@ func Test_pythonx_pyxfile()
         \ "buffer = vim.vars['_previous_buffer']",
         \ "vim.current.buffer = vim.buffers[buffer]",
         \ ],
-        \ "file.py")
+        \ "file.py", 'D')
 
   try
     pyxfile file.py
@@ -2569,7 +2650,6 @@ func Test_pythonx_pyxfile()
 
   call assert_equal(1, l:caught)
 
-  call delete("file.py")
   unlet g:_previous_buffer
 endfunc
 
@@ -2696,11 +2776,11 @@ func Test_short_option()
   call s:make_buffer_pairs()
 
   set winfixbuf
-  call assert_fails("edit something_else", "E1513")
+  call assert_fails("edit something_else", "E1513:")
 
   set nowinfixbuf
   set wfb
-  call assert_fails("edit another_place", "E1513")
+  call assert_fails("edit another_place", "E1513:")
 
   set nowfb
   edit last_place
@@ -2747,9 +2827,9 @@ func Test_tNext()
         \ "thesame\tXfile\t2;\"\td\tfile:",
         \ "thesame\tXfile\t3;\"\td\tfile:",
         \ ],
-        \ "Xtags")
-  call writefile(["thesame one", "thesame two", "thesame three"], "Xfile")
-  call writefile(["thesame one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["thesame one", "thesame two", "thesame three"], "Xfile", 'D')
+  call writefile(["thesame one"], "Xother", 'D')
   edit Xother
 
   tag thesame
@@ -2766,9 +2846,6 @@ func Test_tNext()
   tNext!
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Call :tabdo and choose the next available 'nowinfixbuf' window.
@@ -2826,9 +2903,9 @@ func Test_tag()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
 
   set winfixbuf
@@ -2842,9 +2919,6 @@ func Test_tag()
   call assert_notequal(l:current, bufnr())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 
@@ -2857,9 +2931,9 @@ func Test_tfirst()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
 
   set winfixbuf
@@ -2873,9 +2947,6 @@ func Test_tfirst()
   call assert_notequal(l:current, bufnr())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Fail :tjump but :tjump! is allowed
@@ -2887,9 +2958,9 @@ func Test_tjump()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
-  call writefile(["one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
+  call writefile(["one"], "Xother", 'D')
   edit Xother
 
   set winfixbuf
@@ -2903,9 +2974,6 @@ func Test_tjump()
   call assert_notequal(l:current, bufnr())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Fail :tlast but :tlast! is allowed
@@ -2917,8 +2985,8 @@ func Test_tlast()
         \ "one\tXfile\t1",
         \ "three\tXfile\t3",
         \ "two\tXfile\t2"],
-        \ "Xtags")
-  call writefile(["one", "two", "three"], "Xfile")
+        \ "Xtags", 'D')
+  call writefile(["one", "two", "three"], "Xfile", 'D')
   edit Xfile
   tjump one
   edit Xfile
@@ -2934,8 +3002,6 @@ func Test_tlast()
   call assert_equal(l:current, bufnr())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
 endfunc
 
 " Fail :tnext but :tnext! is allowed
@@ -2948,9 +3014,9 @@ func Test_tnext()
         \ "thesame\tXfile\t2;\"\td\tfile:",
         \ "thesame\tXfile\t3;\"\td\tfile:",
         \ ],
-        \ "Xtags")
-  call writefile(["thesame one", "thesame two", "thesame three"], "Xfile")
-  call writefile(["thesame one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["thesame one", "thesame two", "thesame three"], "Xfile", 'D')
+  call writefile(["thesame one"], "Xother", 'D')
   edit Xother
 
   tag thesame
@@ -2967,9 +3033,6 @@ func Test_tnext()
   call assert_notequal(l:current, bufnr())
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Fail :tprevious but :tprevious! is allowed
@@ -2982,9 +3045,9 @@ func Test_tprevious()
         \ "thesame\tXfile\t2;\"\td\tfile:",
         \ "thesame\tXfile\t3;\"\td\tfile:",
         \ ],
-        \ "Xtags")
-  call writefile(["thesame one", "thesame two", "thesame three"], "Xfile")
-  call writefile(["thesame one"], "Xother")
+        \ "Xtags", 'D')
+  call writefile(["thesame one", "thesame two", "thesame three"], "Xfile", 'D')
+  call writefile(["thesame one"], "Xother", 'D')
   edit Xother
 
   tag thesame
@@ -3001,9 +3064,6 @@ func Test_tprevious()
   tprevious!
 
   set tags&
-  call delete("Xtags")
-  call delete("Xfile")
-  call delete("Xother")
 endfunc
 
 " Fail :view but :view! is allowed
@@ -3281,6 +3341,18 @@ func Test_bufdo_cnext_splitwin_fails()
   " Ensure the entry didn't change.
   call assert_equal(1, getqflist(#{idx: 0}).idx)
   set winminheight&vim winheight&vim
+endfunc
+
+" Test that exiting with 'winfixbuf' and EXITFREE doesn't cause an error.
+func Test_exitfree_no_error()
+  let lines =<< trim END
+    set winfixbuf
+    qall!
+  END
+  call writefile(lines, 'Xwfb_exitfree', 'D')
+  call assert_notmatch('E1513:',
+        "\ system(GetVimCommandClean() .. ' --not-a-term -X -S Xwfb_exitfree'))
+        \ system(GetVimCommandClean() .. ' -X -S Xwfb_exitfree'))
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

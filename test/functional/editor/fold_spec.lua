@@ -1,14 +1,15 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local insert = helpers.insert
-local exec = helpers.exec
-local feed = helpers.feed
-local expect = helpers.expect
-local command = helpers.command
-local fn = helpers.fn
-local eq = helpers.eq
-local neq = helpers.neq
+local clear = n.clear
+local insert = n.insert
+local exec = n.exec
+local feed = n.feed
+local expect = n.expect
+local command = n.command
+local fn = n.fn
+local eq = t.eq
+local neq = t.neq
 
 describe('Folding', function()
   local tempfname = 'Xtest-fold.txt'
@@ -301,7 +302,7 @@ a]],
 
   it('updates correctly on :read', function()
     -- luacheck: ignore 621
-    helpers.write_file(
+    t.write_file(
       tempfname,
       [[
     a
@@ -376,7 +377,7 @@ a]],
   end)
 
   it('splits folds according to >N and <N with foldexpr', function()
-    helpers.source([[
+    n.source([[
     function TestFoldExpr(lnum)
       let thisline = getline(a:lnum)
       if thisline == 'a'
@@ -391,7 +392,7 @@ a]],
       return 0
     endfunction
     ]])
-    helpers.write_file(
+    t.write_file(
       tempfname,
       [[
     b

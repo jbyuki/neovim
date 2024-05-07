@@ -1,13 +1,15 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local clear, feed, eq = helpers.clear, helpers.feed, helpers.eq
-local command = helpers.command
-local feed_command = helpers.feed_command
-local insert = helpers.insert
-local fn = helpers.fn
-local api = helpers.api
-local exec = helpers.exec
-local assert_alive = helpers.assert_alive
+
+local clear, feed, eq = n.clear, n.feed, t.eq
+local command = n.command
+local feed_command = n.feed_command
+local insert = n.insert
+local fn = n.fn
+local api = n.api
+local exec = n.exec
+local assert_alive = n.assert_alive
 
 local content1 = [[
         This is a

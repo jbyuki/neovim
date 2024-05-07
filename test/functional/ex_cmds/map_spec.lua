@@ -1,16 +1,17 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local eq = helpers.eq
-local exec = helpers.exec
-local exec_capture = helpers.exec_capture
-local feed = helpers.feed
-local api = helpers.api
-local clear = helpers.clear
-local command = helpers.command
-local expect = helpers.expect
-local insert = helpers.insert
-local eval = helpers.eval
+local eq = t.eq
+local exec = n.exec
+local exec_capture = n.exec_capture
+local feed = n.feed
+local api = n.api
+local clear = n.clear
+local command = n.command
+local expect = n.expect
+local insert = n.insert
+local eval = n.eval
 
 describe(':*map', function()
   before_each(clear)
@@ -109,19 +110,19 @@ describe('Screen', function()
     command('map <expr> x input("> ")')
     screen:expect([[
       ^                    |
-      ~                   |*3
+      {1:~                   }|*3
                           |
     ]])
     feed('x')
     screen:expect([[
                           |
-      ~                   |*3
+      {1:~                   }|*3
       > ^                  |
     ]])
     feed('\n')
     screen:expect([[
       ^                    |
-      ~                   |*3
+      {1:~                   }|*3
       >                   |
     ]])
   end)
@@ -131,20 +132,20 @@ describe('Screen', function()
     feed('i')
     screen:expect([[
       ^                    |
-      ~                   |*3
-      -- INSERT --        |
+      {1:~                   }|*3
+      {5:-- INSERT --}        |
     ]])
     feed('x')
     screen:expect([[
                           |
-      ~                   |*3
+      {1:~                   }|*3
       > ^                  |
     ]])
     feed('\n')
     screen:expect([[
       ^                    |
-      ~                   |*3
-      -- INSERT --        |
+      {1:~                   }|*3
+      {5:-- INSERT --}        |
     ]])
   end)
 
@@ -153,7 +154,7 @@ describe('Screen', function()
     feed(':<F2>')
     screen:expect([[
                           |
-      ~                   |*3
+      {1:~                   }|*3
       :^                   |
     ]])
   end)
@@ -181,7 +182,7 @@ describe('Screen', function()
       one                 |
       ^two                 |
       three               |
-      [on]                |
+      {9:[on]                }|
                           |
     ]])
   end)
@@ -191,15 +192,16 @@ describe('Screen', function()
     command('nmap <expr> <F2> execute("throw 42")')
     feed('<F2>')
     screen:expect([[
-                                              |*2
-      Error detected while processing :       |
-      E605: Exception not caught: 42          |
-      Press ENTER or type command to continue^ |
+                                              |
+      {3:                                        }|
+      {9:Error detected while processing :}       |
+      {9:E605: Exception not caught: 42}          |
+      {6:Press ENTER or type command to continue}^ |
     ]])
     feed('<CR>')
     screen:expect([[
       ^                                        |
-      ~                                       |*3
+      {1:~                                       }|*3
                                               |
     ]])
   end)
@@ -210,32 +212,32 @@ describe('Screen', function()
     feed(':echo "foo')
     screen:expect([[
                                               |
-      ~                                       |*3
+      {1:~                                       }|*3
       :echo "foo^                              |
     ]])
     feed('<F2>')
     screen:expect([[
-                                              |
+      {3:                                        }|
       :echo "foo                              |
-      Error detected while processing :       |
-      E605: Exception not caught: 42          |
+      {9:Error detected while processing :}       |
+      {9:E605: Exception not caught: 42}          |
       :echo "foo^                              |
     ]])
     feed('"')
     screen:expect([[
-                                              |
+      {3:                                        }|
       :echo "foo                              |
-      Error detected while processing :       |
-      E605: Exception not caught: 42          |
+      {9:Error detected while processing :}       |
+      {9:E605: Exception not caught: 42}          |
       :echo "foo"^                             |
     ]])
     feed('\n')
     screen:expect([[
       :echo "foo                              |
-      Error detected while processing :       |
-      E605: Exception not caught: 42          |
+      {9:Error detected while processing :}       |
+      {9:E605: Exception not caught: 42}          |
       foo                                     |
-      Press ENTER or type command to continue^ |
+      {6:Press ENTER or type command to continue}^ |
     ]])
   end)
 
@@ -246,7 +248,7 @@ describe('Screen', function()
     feed(':                      nmap a<CR>')
     screen:expect([[
       ^                                        |
-      ~                                       |*3
+      {1:~                                       }|*3
       n  a             b                      |
     ]])
   end)

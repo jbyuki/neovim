@@ -44,11 +44,15 @@ if exists('s:did_load')
 endif
 let s:did_load = 1
 
-" Clear Nvim default mappings and menus.
+" Clear Nvim default user commands, mappings and menus.
+comclear
 mapclear
 mapclear!
 aunmenu *
 tlunmenu *
+
+" Undo the 'grepprg' and 'grepformat' setting in _defaults.lua.
+set grepprg& grepformat&
 
 " roughly equivalent to test_setmouse() in Vim
 func Ntest_setmouse(row, col)

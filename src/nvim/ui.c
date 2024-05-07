@@ -71,8 +71,6 @@ static bool has_mouse = false;
 static int pending_has_mouse = -1;
 static bool pending_default_colors = false;
 
-static Array call_buf = ARRAY_DICT_INIT;
-
 #ifdef NVIM_LOG_DEBUG
 static size_t uilog_seen = 0;
 static const char *uilog_last_event = NULL;
@@ -128,14 +126,11 @@ void ui_init(void)
   default_grid.handle = 1;
   msg_grid_adj.target = &default_grid;
   ui_comp_init();
-  kv_ensure_space(call_buf, 16);
 }
 
 #ifdef EXITFREE
 void ui_free_all_mem(void)
 {
-  kv_destroy(call_buf);
-
   UIEventCallback *event_cb;
   map_foreach_value(&ui_event_cbs, event_cb, {
     free_ui_event_callback(event_cb);
@@ -194,23 +189,12 @@ void ui_refresh(void)
     abort();
   }
 
-  if (!ui_active()) {
-    return;
-  }
-
-  if (updating_screen) {
-    ui_schedule_refresh();
-    return;
-  }
-
   int width = INT_MAX;
   int height = INT_MAX;
   bool ext_widgets[kUIExtCount];
-  for (UIExtension i = 0; (int)i < kUIExtCount; i++) {
-    ext_widgets[i] = true;
-  }
-
   bool inclusive = ui_override();
+  memset(ext_widgets, ui_active(), ARRAY_SIZE(ext_widgets));
+
   for (size_t i = 0; i < ui_count; i++) {
     RemoteUI *ui = uis[i];
     width = MIN(ui->width, width);
@@ -227,11 +211,27 @@ void ui_refresh(void)
     if (i < kUIGlobalCount) {
       ext_widgets[i] |= ui_cb_ext[i];
     }
+    // Set 'cmdheight' to zero for all tabpages when ext_messages becomes active.
+    if (i == kUIMessages && !ui_ext[i] && ext_widgets[i]) {
+      set_option_value(kOptCmdheight, NUMBER_OPTVAL(0), 0);
+      command_height();
+      FOR_ALL_TABS(tp) {
+        tp->tp_ch_used = 0;
+      }
+    }
     ui_ext[i] = ext_widgets[i];
     if (i < kUIGlobalCount) {
-      ui_call_option_set(cstr_as_string(ui_ext_names[i]),
-                         BOOLEAN_OBJ(ext_widgets[i]));
+      ui_call_option_set(cstr_as_string(ui_ext_names[i]), BOOLEAN_OBJ(ext_widgets[i]));
     }
+  }
+
+  if (!ui_active()) {
+    return;
+  }
+
+  if (updating_screen) {
+    ui_schedule_refresh();
+    return;
   }
 
   ui_default_colors_set();
@@ -241,10 +241,6 @@ void ui_refresh(void)
   screen_resize(width, height);
   p_lz = save_p_lz;
 
-  if (ext_widgets[kUIMessages]) {
-    set_option_value(kOptCmdheight, NUMBER_OPTVAL(0), 0);
-    command_height();
-  }
   ui_mode_info_set();
   pending_mode_update = true;
   ui_cursor_shape();
@@ -624,7 +620,7 @@ void ui_check_mouse(void)
 /// Check if current mode has changed.
 ///
 /// May update the shape of the cursor.
-void ui_cursor_shape(void)
+void ui_cursor_shape_no_check_conceal(void)
 {
   if (!full_screen) {
     return;
@@ -635,6 +631,15 @@ void ui_cursor_shape(void)
     ui_mode_idx = new_mode_idx;
     pending_mode_update = true;
   }
+}
+
+/// Check if current mode has changed.
+///
+/// May update the shape of the cursor.
+/// With concealing on, may conceal or unconceal the cursor line.
+void ui_cursor_shape(void)
+{
+  ui_cursor_shape_no_check_conceal();
   conceal_check_cursor_line();
 }
 
@@ -710,11 +715,14 @@ void ui_call_event(char *name, Array args)
   map_foreach_value(&ui_event_cbs, event_cb, {
     Error err = ERROR_INIT;
     Object res = nlua_call_ref(event_cb->cb, name, args, kRetNilBool, NULL, &err);
+    // TODO(bfredl/luukvbaal): should this be documented or reconsidered?
+    // Why does truthy return from Lua callback mean remote UI should not receive
+    // the event.
     if (LUARET_TRUTHY(res)) {
       handled = true;
     }
     if (ERROR_SET(&err)) {
-      ELOG("Error while executing ui_comp_event callback: %s", err.msg);
+      ELOG("Error executing UI event callback: %s", err.msg);
     }
     api_clear_error(&err);
   })

@@ -2,12 +2,14 @@
 -- Test for submatch() on substitute().
 -- Test for *:s%* on :substitute.
 
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local feed, insert = helpers.feed, helpers.insert
-local exec = helpers.exec
-local clear, feed_command, expect = helpers.clear, helpers.feed_command, helpers.expect
-local eq, eval = helpers.eq, helpers.eval
+
+local feed, insert = n.feed, n.insert
+local exec = n.exec
+local clear, feed_command, expect = n.clear, n.feed_command, n.expect
+local eq, eval = t.eq, n.eval
 
 describe('substitute()', function()
   before_each(clear)
@@ -209,11 +211,6 @@ describe(':substitute', function()
 
   it('first char is highlighted with confirmation dialog and empty match', function()
     local screen = Screen.new(60, 8)
-    screen:set_default_attr_ids({
-      [0] = { bold = true, foreground = Screen.colors.Blue }, -- NonText
-      [1] = { reverse = true }, -- IncSearch
-      [2] = { bold = true, foreground = Screen.colors.SeaGreen }, -- MoreMsg
-    })
     screen:attach()
     exec([[
       set nohlsearch noincsearch
@@ -221,11 +218,11 @@ describe(':substitute', function()
     ]])
     feed(':%s/^/   /c<CR>')
     screen:expect([[
-      {1:o}ne                                                         |
+      {2:o}ne                                                         |
       two                                                         |
       three                                                       |
-      {0:~                                                           }|*4
-      {2:replace with     (y/n/a/q/l/^E/^Y)?}^                         |
+      {1:~                                                           }|*4
+      {6:replace with     (y/n/a/q/l/^E/^Y)?}^                         |
     ]])
   end)
 end)

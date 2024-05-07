@@ -1,11 +1,12 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 
-local clear = helpers.clear
-local command = helpers.command
-local api = helpers.api
-local eq = helpers.eq
-local eval = helpers.eval
-local feed = helpers.feed
+local clear = n.clear
+local command = n.command
+local api = n.api
+local eq = t.eq
+local eval = n.eval
+local feed = n.feed
 
 describe('autocmd SearchWrapped', function()
   before_each(function()

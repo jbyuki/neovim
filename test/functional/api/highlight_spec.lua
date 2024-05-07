@@ -1,14 +1,16 @@
-local helpers = require('test.functional.helpers')(after_each)
-local clear = helpers.clear
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local eq, eval = helpers.eq, helpers.eval
-local command = helpers.command
-local exec_capture = helpers.exec_capture
-local api = helpers.api
-local fn = helpers.fn
-local pcall_err = helpers.pcall_err
-local ok = helpers.ok
-local assert_alive = helpers.assert_alive
+
+local clear = n.clear
+local eq, eval = t.eq, n.eval
+local command = n.command
+local exec_capture = n.exec_capture
+local api = n.api
+local fn = n.fn
+local pcall_err = t.pcall_err
+local ok = t.ok
+local assert_alive = n.assert_alive
 
 describe('API: highlight', function()
   clear()

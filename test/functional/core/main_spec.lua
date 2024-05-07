@@ -1,17 +1,18 @@
-local uv = vim.uv
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
+local uv = vim.uv
 
-local eq = helpers.eq
-local matches = helpers.matches
-local feed = helpers.feed
-local eval = helpers.eval
-local clear = helpers.clear
-local fn = helpers.fn
-local nvim_prog_abs = helpers.nvim_prog_abs
-local write_file = helpers.write_file
-local is_os = helpers.is_os
-local skip = helpers.skip
+local eq = t.eq
+local matches = t.matches
+local feed = n.feed
+local eval = n.eval
+local clear = n.clear
+local fn = n.fn
+local nvim_prog_abs = n.nvim_prog_abs
+local write_file = t.write_file
+local is_os = t.is_os
+local skip = t.skip
 
 describe('command-line option', function()
   describe('-s', function()
@@ -120,9 +121,9 @@ describe('command-line option', function()
       feed('i:cq<CR>')
       screen:expect([[
                                                 |
-        [Process exited 1]                      |
+        [Process exited 1]{2: }                     |
                                                 |*5
-        -- TERMINAL --                          |
+        {5:-- TERMINAL --}                          |
       ]])
       --[=[ Example of incorrect output:
       screen:expect([[

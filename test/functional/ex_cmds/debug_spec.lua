@@ -1,7 +1,8 @@
-local helpers = require('test.functional.helpers')(after_each)
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local feed = helpers.feed
-local clear = helpers.clear
+
+local feed = n.feed
+local clear = n.clear
 
 describe(':debug', function()
   local screen

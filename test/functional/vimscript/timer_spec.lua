@@ -1,12 +1,14 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local feed, eq, eval, ok = helpers.feed, helpers.eq, helpers.eval, helpers.ok
-local source, async_meths, run = helpers.source, helpers.async_meths, helpers.run
-local clear, command, fn = helpers.clear, helpers.command, helpers.fn
-local exc_exec = helpers.exc_exec
-local api = helpers.api
-local load_adjust = helpers.load_adjust
-local retry = helpers.retry
+
+local feed, eq, eval, ok = n.feed, t.eq, n.eval, t.ok
+local source, async_meths, run = n.source, n.async_meths, n.run
+local clear, command, fn = n.clear, n.command, n.fn
+local exc_exec = n.exc_exec
+local api = n.api
+local load_adjust = n.load_adjust
+local retry = t.retry
 
 describe('timers', function()
   before_each(function()

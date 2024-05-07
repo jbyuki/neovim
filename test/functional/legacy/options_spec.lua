@@ -1,10 +1,12 @@
 -- See also: test/old/testdir/test_options.vim
-local helpers = require('test.functional.helpers')(after_each)
-local command, clear = helpers.command, helpers.clear
-local source, expect = helpers.source, helpers.expect
-local exc_exec = helpers.exc_exec
-local matches = helpers.matches
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
+
+local command, clear = n.command, n.clear
+local source, expect = n.source, n.expect
+local exc_exec = n.exc_exec
+local matches = t.matches
 
 describe('options', function()
   setup(clear)
@@ -66,11 +68,11 @@ describe('set', function()
     command('verbose set scroll?')
     screen:expect([[
                                                 |
-      ~                                         |*11
-                                                |
+      {1:~                                         }|*11
+      {3:                                          }|
         scroll=7                                |
               Last set from changed window size |
-      Press ENTER or type command to continue^   |
+      {6:Press ENTER or type command to continue}^   |
     ]])
   end)
 

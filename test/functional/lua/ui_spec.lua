@@ -1,13 +1,15 @@
-local helpers = require('test.functional.helpers')(after_each)
-local eq = helpers.eq
-local matches = helpers.matches
-local exec_lua = helpers.exec_lua
-local clear = helpers.clear
-local feed = helpers.feed
-local eval = helpers.eval
-local is_ci = helpers.is_ci
-local is_os = helpers.is_os
-local poke_eventloop = helpers.poke_eventloop
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local eq = t.eq
+local ok = t.ok
+local exec_lua = n.exec_lua
+local clear = n.clear
+local feed = n.feed
+local eval = n.eval
+local is_ci = t.is_ci
+local is_os = t.is_os
+local poke_eventloop = n.poke_eventloop
 
 describe('vim.ui', function()
   before_each(function()
@@ -138,13 +140,12 @@ describe('vim.ui', function()
   describe('open()', function()
     it('validation', function()
       if is_os('win') or not is_ci('github') then
-        exec_lua [[vim.system = function() return { wait=function() return { code=3} end } end]]
+        exec_lua [[vim.system = function() return { wait=function() return { code=3 } end } end]]
       end
       if not is_os('bsd') then
-        matches(
-          'vim.ui.open: command failed %(%d%): { "[^"]+", .*"non%-existent%-file" }',
-          exec_lua [[local _, err = vim.ui.open('non-existent-file') ; return err]]
-        )
+        local rv =
+          exec_lua [[local cmd = vim.ui.open('non-existent-file'); return cmd:wait(100).code]]
+        ok(type(rv) == 'number' and rv ~= 0, 'nonzero exit code', rv)
       end
 
       exec_lua [[
@@ -152,7 +153,7 @@ describe('vim.ui', function()
         vim.fn.executable = function() return 0 end
       ]]
       eq(
-        'vim.ui.open: no handler found (tried: explorer.exe, xdg-open)',
+        'vim.ui.open: no handler found (tried: wslview, explorer.exe, xdg-open)',
         exec_lua [[local _, err = vim.ui.open('foo') ; return err]]
       )
     end)

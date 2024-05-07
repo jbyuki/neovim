@@ -1,17 +1,18 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local clear = helpers.clear
-local command = helpers.command
-local eq = helpers.eq
-local neq = helpers.neq
-local feed = helpers.feed
-local eval = helpers.eval
-local exec = helpers.exec
-local fn = helpers.fn
-local api = helpers.api
-local curwin = helpers.api.nvim_get_current_win
-local assert_alive = helpers.assert_alive
+local clear = n.clear
+local command = n.command
+local eq = t.eq
+local neq = t.neq
+local feed = n.feed
+local eval = n.eval
+local exec = n.exec
+local fn = n.fn
+local api = n.api
+local curwin = n.api.nvim_get_current_win
+local assert_alive = n.assert_alive
 
 describe('tabpage', function()
   before_each(clear)

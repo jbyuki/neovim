@@ -1,8 +1,9 @@
 -- Test Virtual replace mode.
 
-local helpers = require('test.functional.helpers')(after_each)
-local feed = helpers.feed
-local clear, feed_command, expect = helpers.clear, helpers.feed_command, helpers.expect
+local n = require('test.functional.testnvim')()
+
+local feed = n.feed
+local clear, feed_command, expect = n.clear, n.feed_command, n.expect
 
 describe('Virtual replace mode', function()
   setup(clear)

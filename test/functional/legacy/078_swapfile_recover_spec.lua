@@ -3,8 +3,9 @@
 -- restored. We need about 10000 lines of 100 characters to get two levels of
 -- pointer blocks.
 
-local helpers = require('test.functional.helpers')(after_each)
-local clear, expect, source = helpers.clear, helpers.expect, helpers.source
+local n = require('test.functional.testnvim')()
+
+local clear, expect, source = n.clear, n.expect, n.source
 
 describe('78', function()
   setup(clear)

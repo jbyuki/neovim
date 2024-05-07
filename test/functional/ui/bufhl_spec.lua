@@ -1,11 +1,12 @@
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
-local command, neq = helpers.command, helpers.neq
-local api = helpers.api
-local eq = helpers.eq
-local pcall_err = helpers.pcall_err
+local clear, feed, insert = n.clear, n.feed, n.insert
+local command, neq = n.command, t.neq
+local api = n.api
+local eq = t.eq
+local pcall_err = t.pcall_err
 local set_virtual_text = api.nvim_buf_set_virtual_text
 
 describe('Buffer highlighting', function()

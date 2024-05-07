@@ -1,12 +1,13 @@
 -- Test clipboard provider support
 
-local helpers = require('test.functional.helpers')(after_each)
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local clear, feed, insert = helpers.clear, helpers.feed, helpers.insert
-local feed_command, expect, eq, eval, source =
-  helpers.feed_command, helpers.expect, helpers.eq, helpers.eval, helpers.source
-local command = helpers.command
-local api = helpers.api
+
+local clear, feed, insert = n.clear, n.feed, n.insert
+local feed_command, expect, eq, eval, source = n.feed_command, n.expect, t.eq, n.eval, n.source
+local command = n.command
+local api = n.api
 
 local function basic_register_test(noblock)
   insert('some words')

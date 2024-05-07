@@ -1,10 +1,12 @@
-local helpers = require('test.functional.helpers')(after_each)
-local eq, clear = helpers.eq, helpers.clear
-local missing_provider = helpers.missing_provider
-local command = helpers.command
-local write_file = helpers.write_file
-local eval = helpers.eval
-local retry = helpers.retry
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local eq, clear = t.eq, n.clear
+local missing_provider = n.missing_provider
+local command = n.command
+local write_file = t.write_file
+local eval = n.eval
+local retry = t.retry
 
 do
   clear()

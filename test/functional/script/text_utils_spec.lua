@@ -1,6 +1,8 @@
-local helpers = require('test.functional.helpers')(after_each)
-local exec_lua = helpers.exec_lua
-local eq = helpers.eq
+local t = require('test.testutil')
+local n = require('test.functional.testnvim')()
+
+local exec_lua = n.exec_lua
+local eq = t.eq
 
 local function md_to_vimdoc(text, start_indent, indent, text_width)
   return exec_lua(
@@ -28,7 +30,7 @@ end
 
 describe('md_to_vimdoc', function()
   before_each(function()
-    helpers.clear()
+    n.clear()
   end)
 
   test('can render para after fenced code', {
