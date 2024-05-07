@@ -350,52 +350,46 @@ local function on_line_impl(self, buf, line, is_spell_nav)
         -- The "conceal" attribute can be set at the pattern level or on a particular capture
 
 
-        for _, node in ipairs(nodes) do
-          local range = vim.treesitter.get_range(node, bufnr, metadata[capture])
-          local start_row, start_col, end_row, end_col = Range.unpack4(range)
+        if tangled then
+          if hl and end_row >= line and (not is_spell_nav or spell ~= nil) then
+            local sr = self.tree._tangle_buffer:TtoNT(start_row) 
+            local er = self.tree._tangle_buffer:TtoNT(end_row) 
 
-          if tangled then
-            if hl and end_row >= line and (not is_spell_nav or spell ~= nil) then
-              local sr = self.tree._tangle_buffer:TtoNT(start_row) 
-              local er = self.tree._tangle_buffer:TtoNT(end_row) 
+            -- FIX COL
+            -- FIX MULTI LINE
 
-              -- FIX COL
-              -- FIX MULTI LINE
+            api.nvim_buf_set_extmark(buf, ns, sr, start_col, {
+              end_line = er,
+              end_col = end_col,
+              hl_group = hl,
+              ephemeral = true,
+              priority = priority,
+              conceal = conceal,
+              spell = spell,
+              url = url,
+            })
+          end
 
-              api.nvim_buf_set_extmark(buf, ns, sr, start_col, {
-                end_line = er,
-                end_col = end_col,
-                hl_group = hl,
-                ephemeral = true,
-                priority = priority,
-                _subpriority = pattern_offset + pattern,
-                conceal = conceal,
-                spell = spell,
-                url = url,
-              })
-            end
+          if start_row > line then
+            -- FIX THIS
+            state.next_row = start_row
+          end
+        else
+          if hl and end_row >= line and (not is_spell_nav or spell ~= nil) then
+            api.nvim_buf_set_extmark(buf, ns, start_row, start_col, {
+                  end_line = end_row,
+                  end_col = end_col,
+                  hl_group = hl,
+                  ephemeral = true,
+                  priority = priority,
+                  conceal = conceal,
+                  spell = spell,
+                  url = url,
+                })
+          end
 
-            if start_row > line then
-              -- FIX THIS
-              state.next_row = start_row
-            end
-          else
-            if hl and end_row >= line and (not is_spell_nav or spell ~= nil) then
-              api.nvim_buf_set_extmark(buf, ns, start_row, start_col, {
-	            end_line = end_row,
-	            end_col = end_col,
-	            hl_group = hl,
-	            ephemeral = true,
-	            priority = priority,
-	            conceal = conceal,
-	            spell = spell,
-	            url = url,
-	          })
-            end
-
-            if start_row > line then
-              state.next_row = start_row
-            end
+          if start_row > line then
+            state.next_row = start_row
           end
         end
       end
