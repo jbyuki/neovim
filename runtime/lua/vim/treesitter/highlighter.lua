@@ -181,8 +181,10 @@ function TSHighlighter:prepare_highlight_states(srow, erow)
     local root_start_row, _, root_end_row, _ = root_node:range()
 
     -- Only consider trees within the visible range
-    if root_start_row > erow or root_end_row < srow then
-      return
+    if not self.tree._tangle_buffer then
+      if root_start_row > erow or root_end_row < srow then
+        return
+      end
     end
 
     local highlighter_query = self:get_query(tree:lang())
@@ -288,7 +290,6 @@ end
 ---@param line integer
 ---@param is_spell_nav boolean
 local function on_line_impl(self, buf, line, is_spell_nav)
-  print(line)
   local tangled = false
   local bufnr = self.bufnr
   if self.tree._tangle_buffer then
