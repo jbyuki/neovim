@@ -292,10 +292,12 @@ end
 local function on_line_impl(self, buf, line, is_spell_nav)
   local tangled = false
   local bufnr = self.bufnr
+  local col_off
   if self.tree._tangle_buffer then
     local offs = self.tree._tangle_buffer:NTtoT(line)
     for _, off in ipairs(offs) do
       line = off[1]
+      col_off = #off[3]
       break
     end
 
@@ -356,19 +358,20 @@ local function on_line_impl(self, buf, line, is_spell_nav)
             local sr = self.tree._tangle_buffer:TtoNT(start_row) 
             local er = self.tree._tangle_buffer:TtoNT(end_row) 
 
-            -- FIX COL
             -- FIX MULTI LINE
 
-            api.nvim_buf_set_extmark(buf, ns, sr, start_col, {
-              end_line = er,
-              end_col = end_col,
-              hl_group = hl,
-              ephemeral = true,
-              priority = priority,
-              conceal = conceal,
-              spell = spell,
-              url = url,
-            })
+            if start_row == line then -- FIX THIS
+              api.nvim_buf_set_extmark(buf, ns, sr, start_col - col_off, {
+                end_line = er,
+                end_col = end_col - col_off,
+                hl_group = hl,
+                ephemeral = true,
+                priority = priority,
+                conceal = conceal,
+                spell = spell,
+                url = url,
+              })
+            end
           end
 
           if start_row > line then
