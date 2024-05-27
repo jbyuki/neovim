@@ -1279,9 +1279,7 @@ M.handlers.signs = {
           vim.deprecate(
             'Defining diagnostic signs with :sign-define or sign_define()',
             'vim.diagnostic.config()',
-            '0.12',
-            nil,
-            false
+            '0.12'
           )
 
           if not opts.signs.text then
@@ -1596,7 +1594,7 @@ end
 
 --- @deprecated use `vim.diagnostic.is_enabled()`
 function M.is_disabled(bufnr, namespace)
-  vim.deprecate('vim.diagnostic.is_disabled()', 'vim.diagnostic.is_enabled()', '0.12', nil, false)
+  vim.deprecate('vim.diagnostic.is_disabled()', 'vim.diagnostic.is_enabled()', '0.12')
   return not M.is_enabled { bufnr = bufnr or 0, ns_id = namespace }
 end
 
@@ -1985,15 +1983,9 @@ function M.setloclist(opts)
   set_list(true, opts)
 end
 
---- @deprecated use `vim.diagnostic.enabled(…, false)`
+--- @deprecated use `vim.diagnostic.enable(false, …)`
 function M.disable(bufnr, namespace)
-  vim.deprecate(
-    'vim.diagnostic.disable()',
-    'vim.diagnostic.enabled(false, …)',
-    '0.12',
-    nil,
-    false
-  )
+  vim.deprecate('vim.diagnostic.disable()', 'vim.diagnostic.enable(false, …)', '0.12')
   M.enable(false, { bufnr = bufnr, ns_id = namespace })
 end
 
@@ -2017,9 +2009,7 @@ function M.enable(enable, filter)
     vim.deprecate(
       'vim.diagnostic.enable(buf:number, namespace:number)',
       'vim.diagnostic.enable(enable:boolean, filter:table)',
-      '0.12',
-      nil,
-      false
+      '0.12'
     )
 
     vim.validate({

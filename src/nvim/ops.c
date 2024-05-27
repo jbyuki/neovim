@@ -4253,11 +4253,13 @@ void charwise_block_prep(pos_T start, pos_T end, struct block_def *bdp, linenr_T
 {
   colnr_T startcol = 0;
   colnr_T endcol = MAXCOL;
-  bool is_oneChar = false;
   colnr_T cs, ce;
   char *p = ml_get(lnum);
+
   bdp->startspaces = 0;
   bdp->endspaces = 0;
+  bdp->is_oneChar = false;
+  bdp->start_char_vcols = 0;
 
   if (lnum == start.lnum) {
     startcol = start.col;
@@ -4265,7 +4267,8 @@ void charwise_block_prep(pos_T start, pos_T end, struct block_def *bdp, linenr_T
       getvcol(curwin, &start, &cs, NULL, &ce);
       if (ce != cs && start.coladd > 0) {
         // Part of a tab selected -- but don't double-count it.
-        bdp->startspaces = (ce - cs + 1) - start.coladd;
+        bdp->start_char_vcols = ce - cs + 1;
+        bdp->startspaces = bdp->start_char_vcols - start.coladd;
         if (bdp->startspaces < 0) {
           bdp->startspaces = 0;
         }
@@ -4285,7 +4288,7 @@ void charwise_block_prep(pos_T start, pos_T end, struct block_def *bdp, linenr_T
                                && utf_head_off(p, p + endcol) == 0)) {
         if (start.lnum == end.lnum && start.col == end.col) {
           // Special case: inside a single char
-          is_oneChar = true;
+          bdp->is_oneChar = true;
           bdp->startspaces = end.coladd - start.coladd + inclusive;
           endcol = startcol;
         } else {
@@ -4298,11 +4301,12 @@ void charwise_block_prep(pos_T start, pos_T end, struct block_def *bdp, linenr_T
   if (endcol == MAXCOL) {
     endcol = ml_get_len(lnum);
   }
-  if (startcol > endcol || is_oneChar) {
+  if (startcol > endcol || bdp->is_oneChar) {
     bdp->textlen = 0;
   } else {
     bdp->textlen = endcol - startcol + inclusive;
   }
+  bdp->textcol = startcol;
   bdp->textstart = p + startcol;
 }
 

@@ -129,63 +129,57 @@ describe('lua stdlib', function()
     eq(1, fn.luaeval('vim.stricmp("\\0C\\0", "\\0B\\0")'))
   end)
 
-  local function test_vim_deprecate(current_version)
+  --- @param prerel string | nil
+  local function test_vim_deprecate(prerel)
     -- vim.deprecate(name, alternative, version, plugin, backtrace)
     -- See MAINTAIN.md for the soft/hard deprecation policy
 
-    describe(('vim.deprecate [current_version = %s]'):format(current_version), function()
-      before_each(function()
-        -- mock vim.version() behavior, should be pinned for consistent testing
-        exec_lua(
-          [[
-            local current_version_mock = vim.version.parse(...)
-            getmetatable(vim.version).__call = function()
-              return current_version_mock
-            end
-          ]],
-          current_version
+    describe(('vim.deprecate prerel=%s,'):format(prerel or 'nil'), function()
+      local curver = exec_lua('return vim.version()') --[[@as {major:number, minor:number}]]
+      -- "0.10" or "0.10-dev+xxx"
+      local curstr = ('%s.%s%s'):format(curver.major, curver.minor, prerel or '')
+      -- "0.10" or "0.11"
+      local nextver = ('%s.%s'):format(curver.major, curver.minor + (prerel and 0 or 1))
+      local was_removed = prerel and 'was removed' or 'will be removed'
+
+      it('plugin=nil, same message skipped', function()
+        eq(
+          dedent(
+            [[
+            foo.bar() is deprecated. Run ":checkhealth vim.deprecated" for more information]]
+          ):format(curstr),
+          exec_lua('return vim.deprecate(...)', 'foo.bar()', 'zub.wooo{ok=yay}', curstr)
+        )
+        -- Same message as above; skipped this time.
+        eq(vim.NIL, exec_lua('return vim.deprecate(...)', 'foo.bar()', 'zub.wooo{ok=yay}', curstr))
+      end)
+
+      it('plugin=nil, no error if soft-deprecated', function()
+        eq(
+          vim.NIL,
+          exec_lua('return vim.deprecate(...)', 'foo.baz()', 'foo.better_baz()', '0.99.0')
         )
       end)
 
-      it('when plugin = nil', function()
-        local cur = vim.version.parse(current_version)
-        local cur_to_compare = cur.major .. '.' .. cur.minor
-        local was_removed = (
-          vim.version.ge(cur_to_compare, '0.10') and 'was removed' or 'will be removed'
-        )
+      it('plugin=nil, show error if hard-deprecated', function()
         eq(
-          dedent([[
-            foo.bar() is deprecated, use zub.wooo{ok=yay} instead. :help deprecated
-            Feature %s in Nvim 0.10]]):format(was_removed),
-          exec_lua('return vim.deprecate(...)', 'foo.bar()', 'zub.wooo{ok=yay}', '0.10')
+          dedent(
+            [[
+            foo.hard_dep() is deprecated. Run ":checkhealth vim.deprecated" for more information]]
+          ):format(was_removed, nextver),
+          exec_lua('return vim.deprecate(...)', 'foo.hard_dep()', 'vim.new_api()', nextver)
         )
-        -- Same message, skipped.
-        eq(vim.NIL, exec_lua('return vim.deprecate(...)', 'foo.bar()', 'zub.wooo{ok=yay}', '0.10'))
+      end)
 
-        -- Don't show error if not hard-deprecated (only soft-deprecated)
-        eq(
-          vim.NIL,
-          exec_lua('return vim.deprecate(...)', 'foo.baz()', 'foo.better_baz()', '0.12.0')
-        )
-
-        -- Show error if hard-deprecated
+      it('plugin=nil, to be deleted in the next major version (1.0)', function()
         eq(
           dedent [[
-            foo.hard_dep() is deprecated, use vim.new_api() instead. :help deprecated
-            Feature will be removed in Nvim 0.11]],
-          exec_lua('return vim.deprecate(...)', 'foo.hard_dep()', 'vim.new_api()', '0.11')
-        )
-
-        -- To be deleted in the next major version (1.0)
-        eq(
-          dedent [[
-            foo.baz() is deprecated. :help deprecated
-            Feature will be removed in Nvim 1.0]],
+            foo.baz() is deprecated. Run ":checkhealth vim.deprecated" for more information]],
           exec_lua [[ return vim.deprecate('foo.baz()', nil, '1.0') ]]
         )
       end)
 
-      it('when plugin is specified', function()
+      it('plugin specified', function()
         -- When `plugin` is specified, don't show ":help deprecated". #22235
         eq(
           dedent [[
@@ -219,8 +213,8 @@ describe('lua stdlib', function()
     end)
   end
 
-  test_vim_deprecate('0.10')
-  test_vim_deprecate('0.10-dev+g0000000')
+  test_vim_deprecate()
+  test_vim_deprecate('-dev+g0000000')
 
   it('vim.startswith', function()
     eq(true, fn.luaeval('vim.startswith("123", "1")'))
@@ -1414,7 +1408,25 @@ describe('lua stdlib', function()
     exec_lua("vim.validate{arg1={{}, 't' }, arg2={ 'foo', 's' }}")
     exec_lua("vim.validate{arg1={2, function(a) return (a % 2) == 0  end, 'even number' }}")
     exec_lua("vim.validate{arg1={5, {'n', 's'} }, arg2={ 'foo', {'n', 's'} }}")
+    vim.validate('arg1', 5, 'number')
+    vim.validate('arg1', '5', 'string')
+    vim.validate('arg1', { 5 }, 'table')
+    vim.validate('arg1', function()
+      return 5
+    end, 'function')
+    vim.validate('arg1', nil, 'number', true)
+    vim.validate('arg1', nil, 'string', true)
+    vim.validate('arg1', nil, 'table', true)
+    vim.validate('arg1', nil, 'function', true)
 
+    matches('arg1: expected number, got nil', pcall_err(vim.validate, 'arg1', nil, 'number'))
+    matches('arg1: expected string, got nil', pcall_err(vim.validate, 'arg1', nil, 'string'))
+    matches('arg1: expected table, got nil', pcall_err(vim.validate, 'arg1', nil, 'table'))
+    matches('arg1: expected function, got nil', pcall_err(vim.validate, 'arg1', nil, 'function'))
+    matches('arg1: expected string, got number', pcall_err(vim.validate, 'arg1', 5, 'string'))
+    matches('arg1: expected table, got number', pcall_err(vim.validate, 'arg1', 5, 'table'))
+    matches('arg1: expected function, got number', pcall_err(vim.validate, 'arg1', 5, 'function'))
+    matches('arg1: expected number, got string', pcall_err(vim.validate, 'arg1', '5', 'number'))
     matches('expected table, got number', pcall_err(exec_lua, "vim.validate{ 1, 'x' }"))
     matches('invalid type name: x', pcall_err(exec_lua, "vim.validate{ arg1={ 1, 'x' }}"))
     matches('invalid type name: 1', pcall_err(exec_lua, 'vim.validate{ arg1={ 1, 1 }}'))

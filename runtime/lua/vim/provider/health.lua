@@ -1,13 +1,341 @@
 local health = vim.health
-local iswin = vim.loop.os_uname().sysname == 'Windows_NT'
+local iswin = vim.uv.os_uname().sysname == 'Windows_NT'
 
 local M = {}
+
+local function cmd_ok(cmd)
+  local out = vim.fn.system(cmd)
+  return vim.v.shell_error == 0, out
+end
+
+-- Attempts to construct a shell command from an args list.
+-- Only for display, to help users debug a failed command.
+local function shellify(cmd)
+  if type(cmd) ~= 'table' then
+    return cmd
+  end
+  local escaped = {}
+  for i, v in ipairs(cmd) do
+    if v:match('[^A-Za-z_/.-]') then
+      escaped[i] = vim.fn.shellescape(v)
+    else
+      escaped[i] = v
+    end
+  end
+  return table.concat(escaped, ' ')
+end
+
+-- Handler for s:system() function.
+local function system_handler(self, _, data, event)
+  if event == 'stderr' then
+    if self.add_stderr_to_output then
+      self.output = self.output .. table.concat(data, '')
+    else
+      self.stderr = self.stderr .. table.concat(data, '')
+    end
+  elseif event == 'stdout' then
+    self.output = self.output .. table.concat(data, '')
+  end
+end
+
+--- @param cmd table List of command arguments to execute
+--- @param args? table Optional arguments:
+---                   - stdin (string): Data to write to the job's stdin
+---                   - stderr (boolean): Append stderr to stdout
+---                   - ignore_error (boolean): If true, ignore error output
+---                   - timeout (number): Number of seconds to wait before timing out (default 30)
+local function system(cmd, args)
+  args = args or {}
+  local stdin = args.stdin or ''
+  local stderr = vim.F.if_nil(args.stderr, false)
+  local ignore_error = vim.F.if_nil(args.ignore_error, false)
+
+  local shell_error_code = 0
+  local opts = {
+    add_stderr_to_output = stderr,
+    output = '',
+    stderr = '',
+    on_stdout = system_handler,
+    on_stderr = system_handler,
+    on_exit = function(_, data)
+      shell_error_code = data
+    end,
+  }
+  local jobid = vim.fn.jobstart(cmd, opts)
+
+  if jobid < 1 then
+    local message =
+      string.format('Command error (job=%d): %s (in %s)', jobid, shellify(cmd), vim.uv.cwd())
+    error(message)
+    return opts.output, 1
+  end
+
+  if stdin:find('^%s$') then
+    vim.fn.chansend(jobid, stdin)
+  end
+
+  local res = vim.fn.jobwait({ jobid }, vim.F.if_nil(args.timeout, 30) * 1000)
+  if res[1] == -1 then
+    error('Command timed out: ' .. shellify(cmd))
+    vim.fn.jobstop(jobid)
+  elseif shell_error_code ~= 0 and not ignore_error then
+    local emsg = string.format(
+      'Command error (job=%d, exit code %d): %s (in %s)',
+      jobid,
+      shell_error_code,
+      shellify(cmd),
+      vim.uv.cwd()
+    )
+    if opts.output:find('%S') then
+      emsg = string.format('%s\noutput: %s', emsg, opts.output)
+    end
+    if opts.stderr:find('%S') then
+      emsg = string.format('%s\nstderr: %s', emsg, opts.stderr)
+    end
+    error(emsg)
+  end
+
+  -- return opts.output
+  return vim.trim(vim.fn.system(cmd)), shell_error_code
+end
+
+local function provider_disabled(provider)
+  local loaded_var = 'loaded_' .. provider .. '_provider'
+  local v = vim.g[loaded_var]
+  if v == 0 then
+    health.info('Disabled (' .. loaded_var .. '=' .. v .. ').')
+    return true
+  end
+  return false
+end
+
+local function clipboard()
+  health.start('Clipboard (optional)')
+
+  if
+    os.getenv('TMUX')
+    and vim.fn.executable('tmux') == 1
+    and vim.fn.executable('pbpaste') == 1
+    and not cmd_ok('pbpaste')
+  then
+    local tmux_version = string.match(vim.fn.system('tmux -V'), '%d+%.%d+')
+    local advice = {
+      'Install tmux 2.6+.  https://superuser.com/q/231130',
+      'or use tmux with reattach-to-user-namespace.  https://superuser.com/a/413233',
+    }
+    health.error('pbcopy does not work with tmux version: ' .. tmux_version, advice)
+  end
+
+  local clipboard_tool = vim.fn['provider#clipboard#Executable']()
+  if vim.g.clipboard ~= nil and clipboard_tool == '' then
+    local error_message = vim.fn['provider#clipboard#Error']()
+    health.error(
+      error_message,
+      "Use the example in :help g:clipboard as a template, or don't set g:clipboard at all."
+    )
+  elseif clipboard_tool:find('^%s*$') then
+    health.warn(
+      'No clipboard tool found. Clipboard registers (`"+` and `"*`) will not work.',
+      ':help clipboard'
+    )
+  else
+    health.ok('Clipboard tool found: ' .. clipboard_tool)
+  end
+end
+
+local function node()
+  health.start('Node.js provider (optional)')
+
+  if provider_disabled('node') then
+    return
+  end
+
+  if
+    vim.fn.executable('node') == 0
+    or (
+      vim.fn.executable('npm') == 0
+      and vim.fn.executable('yarn') == 0
+      and vim.fn.executable('pnpm') == 0
+    )
+  then
+    health.warn(
+      '`node` and `npm` (or `yarn`, `pnpm`) must be in $PATH.',
+      'Install Node.js and verify that `node` and `npm` (or `yarn`, `pnpm`) commands work.'
+    )
+    return
+  end
+
+  -- local node_v = vim.fn.split(system({'node', '-v'}), "\n")[1] or ''
+  local ok, node_v = cmd_ok({ 'node', '-v' })
+  health.info('Node.js: ' .. node_v)
+  if not ok or vim.version.lt(node_v, '6.0.0') then
+    health.warn('Nvim node.js host does not support Node ' .. node_v)
+    -- Skip further checks, they are nonsense if nodejs is too old.
+    return
+  end
+  if vim.fn['provider#node#can_inspect']() == 0 then
+    health.warn(
+      'node.js on this system does not support --inspect-brk so $NVIM_NODE_HOST_DEBUG is ignored.'
+    )
+  end
+
+  local node_detect_table = vim.fn['provider#node#Detect']()
+  local host = node_detect_table[1]
+  if host:find('^%s*$') then
+    health.warn('Missing "neovim" npm (or yarn, pnpm) package.', {
+      'Run in shell: npm install -g neovim',
+      'Run in shell (if you use yarn): yarn global add neovim',
+      'Run in shell (if you use pnpm): pnpm install -g neovim',
+      'You may disable this provider (and warning) by adding `let g:loaded_node_provider = 0` to your init.vim',
+    })
+    return
+  end
+  health.info('Nvim node.js host: ' .. host)
+
+  local manager = 'npm'
+  if vim.fn.executable('yarn') == 1 then
+    manager = 'yarn'
+  elseif vim.fn.executable('pnpm') == 1 then
+    manager = 'pnpm'
+  end
+
+  local latest_npm_cmd = (
+    iswin and 'cmd /c ' .. manager .. ' info neovim --json' or manager .. ' info neovim --json'
+  )
+  local latest_npm
+  ok, latest_npm = cmd_ok(vim.split(latest_npm_cmd, ' '))
+  if not ok or latest_npm:find('^%s$') then
+    health.error(
+      'Failed to run: ' .. latest_npm_cmd,
+      { "Make sure you're connected to the internet.", 'Are you behind a firewall or proxy?' }
+    )
+    return
+  end
+
+  local pcall_ok, pkg_data = pcall(vim.json.decode, latest_npm)
+  if not pcall_ok then
+    return 'error: ' .. latest_npm
+  end
+  local latest_npm_subtable = pkg_data['dist-tags'] or {}
+  latest_npm = latest_npm_subtable['latest'] or 'unable to parse'
+
+  local current_npm_cmd = { 'node', host, '--version' }
+  local current_npm
+  ok, current_npm = cmd_ok(current_npm_cmd)
+  if not ok then
+    health.error(
+      'Failed to run: ' .. table.concat(current_npm_cmd, ' '),
+      { 'Report this issue with the output of: ', table.concat(current_npm_cmd, ' ') }
+    )
+    return
+  end
+
+  if latest_npm ~= 'unable to parse' and vim.version.lt(current_npm, latest_npm) then
+    local message = 'Package "neovim" is out-of-date. Installed: '
+      .. current_npm:gsub('%\n$', '')
+      .. ', latest: '
+      .. latest_npm:gsub('%\n$', '')
+
+    health.warn(message, {
+      'Run in shell: npm install -g neovim',
+      'Run in shell (if you use yarn): yarn global add neovim',
+      'Run in shell (if you use pnpm): pnpm install -g neovim',
+    })
+  else
+    health.ok('Latest "neovim" npm/yarn/pnpm package is installed: ' .. current_npm)
+  end
+end
+
+local function perl()
+  health.start('Perl provider (optional)')
+
+  if provider_disabled('perl') then
+    return
+  end
+
+  local perl_exec, perl_warnings = vim.provider.perl.detect()
+
+  if not perl_exec then
+    health.warn(assert(perl_warnings), {
+      'See :help provider-perl for more information.',
+      'You may disable this provider (and warning) by adding `let g:loaded_perl_provider = 0` to your init.vim',
+    })
+    health.warn('No usable perl executable found')
+    return
+  end
+
+  health.info('perl executable: ' .. perl_exec)
+
+  -- we cannot use cpanm that is on the path, as it may not be for the perl
+  -- set with g:perl_host_prog
+  local ok = cmd_ok({ perl_exec, '-W', '-MApp::cpanminus', '-e', '' })
+  if not ok then
+    return { perl_exec, '"App::cpanminus" module is not installed' }
+  end
+
+  local latest_cpan_cmd = {
+    perl_exec,
+    '-MApp::cpanminus::fatscript',
+    '-e',
+    'my $app = App::cpanminus::script->new; $app->parse_options ("--info", "-q", "Neovim::Ext"); exit $app->doit',
+  }
+  local latest_cpan
+  ok, latest_cpan = cmd_ok(latest_cpan_cmd)
+  if not ok or latest_cpan:find('^%s*$') then
+    health.error(
+      'Failed to run: ' .. table.concat(latest_cpan_cmd, ' '),
+      { "Make sure you're connected to the internet.", 'Are you behind a firewall or proxy?' }
+    )
+    return
+  elseif latest_cpan[1] == '!' then
+    local cpanm_errs = vim.split(latest_cpan, '!')
+    if cpanm_errs[1]:find("Can't write to ") then
+      local advice = {}
+      for i = 2, #cpanm_errs do
+        advice[#advice + 1] = cpanm_errs[i]
+      end
+
+      health.warn(cpanm_errs[1], advice)
+      -- Last line is the package info
+      latest_cpan = cpanm_errs[#cpanm_errs]
+    else
+      health.error('Unknown warning from command: ' .. latest_cpan_cmd, cpanm_errs)
+      return
+    end
+  end
+  latest_cpan = vim.fn.matchstr(latest_cpan, [[\(\.\?\d\)\+]])
+  if latest_cpan:find('^%s*$') then
+    health.error('Cannot parse version number from cpanm output: ' .. latest_cpan)
+    return
+  end
+
+  local current_cpan_cmd = { perl_exec, '-W', '-MNeovim::Ext', '-e', 'print $Neovim::Ext::VERSION' }
+  local current_cpan
+  ok, current_cpan = cmd_ok(current_cpan_cmd)
+  if not ok then
+    health.error(
+      'Failed to run: ' .. table.concat(current_cpan_cmd, ' '),
+      { 'Report this issue with the output of: ', table.concat(current_cpan_cmd, ' ') }
+    )
+    return
+  end
+
+  if vim.version.lt(current_cpan, latest_cpan) then
+    local message = 'Module "Neovim::Ext" is out-of-date. Installed: '
+      .. current_cpan
+      .. ', latest: '
+      .. latest_cpan
+    health.warn(message, 'Run in shell: cpanm -n Neovim::Ext')
+  else
+    health.ok('Latest "Neovim::Ext" cpan module is installed: ' .. current_cpan)
+  end
+end
 
 local function is(path, ty)
   if not path then
     return false
   end
-  local stat = vim.loop.fs_stat(path)
+  local stat = vim.uv.fs_stat(path)
   if not stat then
     return false
   end
@@ -70,7 +398,7 @@ end
 local function download(url)
   local has_curl = vim.fn.executable('curl') == 1
   if has_curl and vim.fn.system({ 'curl', '-V' }):find('Protocols:.*https') then
-    local out, rc = health.system({ 'curl', '-sL', url }, { stderr = true, ignore_error = true })
+    local out, rc = system({ 'curl', '-sL', url }, { stderr = true, ignore_error = true })
     if rc ~= 0 then
       return 'curl error with ' .. url .. ': ' .. rc
     else
@@ -83,7 +411,7 @@ local function download(url)
           from urllib2 import urlopen\n\
           response = urlopen('" .. url .. "')\n\
           print(response.read().decode('utf8'))\n"
-    local out, rc = health.system({ 'python', '-c', script })
+    local out, rc = system({ 'python', '-c', script })
     if out == '' and rc ~= 0 then
       return 'python urllib.request error: ' .. rc
     else
@@ -140,7 +468,7 @@ end
 local function version_info(python)
   local pypi_version = latest_pypi_version()
 
-  local python_version, rc = health.system({
+  local python_version, rc = system({
     python,
     '-c',
     'import sys; print(".".join(str(x) for x in sys.version_info[:3]))',
@@ -151,7 +479,7 @@ local function version_info(python)
   end
 
   local nvim_path
-  nvim_path, rc = health.system({
+  nvim_path, rc = system({
     python,
     '-c',
     'import sys; sys.path = [p for p in sys.path if p != ""]; import neovim; print(neovim.__file__)',
@@ -176,7 +504,7 @@ local function version_info(python)
 
   -- Try to get neovim.VERSION (added in 0.1.11dev).
   local nvim_version
-  nvim_version, rc = health.system({
+  nvim_version, rc = system({
     python,
     '-c',
     'from neovim import VERSION as v; print("{}.{}.{}{}".format(v.major, v.minor, v.patch, v.prerelease))',
@@ -213,7 +541,7 @@ local function version_info(python)
   return { python_version, nvim_version, pypi_version, version_status }
 end
 
-function M.check()
+local function python()
   health.start('Python 3 provider (optional)')
 
   local pyname = 'python3' ---@type string?
@@ -223,7 +551,7 @@ function M.check()
   local host_prog_var = pyname .. '_host_prog'
   local python_multiple = {}
 
-  if health.provider_disabled(pyname) then
+  if provider_disabled(pyname) then
     return
   end
 
@@ -265,7 +593,7 @@ function M.check()
     end
 
     if pyenv ~= '' then
-      python_exe = health.system({ pyenv, 'which', pyname }, { stderr = true })
+      python_exe = system({ pyenv, 'which', pyname }, { stderr = true })
       if python_exe == '' then
         health.warn('pyenv could not find ' .. pyname .. '.')
       end
@@ -488,12 +816,81 @@ function M.check()
     health.info(msg)
     health.info(
       'Python version: '
-        .. health.system(
-          'python -c "import platform, sys; sys.stdout.write(platform.python_version())"'
-        )
+        .. system('python -c "import platform, sys; sys.stdout.write(platform.python_version())"')
     )
     health.ok('$VIRTUAL_ENV provides :!python.')
   end
+end
+
+local function ruby()
+  health.start('Ruby provider (optional)')
+
+  if provider_disabled('ruby') then
+    return
+  end
+
+  if vim.fn.executable('ruby') == 0 or vim.fn.executable('gem') == 0 then
+    health.warn(
+      '`ruby` and `gem` must be in $PATH.',
+      'Install Ruby and verify that `ruby` and `gem` commands work.'
+    )
+    return
+  end
+  health.info('Ruby: ' .. system({ 'ruby', '-v' }))
+
+  local host, _ = vim.provider.ruby.detect()
+  if (not host) or host:find('^%s*$') then
+    health.warn('`neovim-ruby-host` not found.', {
+      'Run `gem install neovim` to ensure the neovim RubyGem is installed.',
+      'Run `gem environment` to ensure the gem bin directory is in $PATH.',
+      'If you are using rvm/rbenv/chruby, try "rehashing".',
+      'See :help g:ruby_host_prog for non-standard gem installations.',
+      'You may disable this provider (and warning) by adding `let g:loaded_ruby_provider = 0` to your init.vim',
+    })
+    return
+  end
+  health.info('Host: ' .. host)
+
+  local latest_gem_cmd = (iswin and 'cmd /c gem list -ra "^^neovim$"' or 'gem list -ra ^neovim$')
+  local ok, latest_gem = cmd_ok(vim.split(latest_gem_cmd, ' '))
+  if not ok or latest_gem:find('^%s*$') then
+    health.error(
+      'Failed to run: ' .. latest_gem_cmd,
+      { "Make sure you're connected to the internet.", 'Are you behind a firewall or proxy?' }
+    )
+    return
+  end
+  local gem_split = vim.split(latest_gem, [[neovim (\|, \|)$]])
+  latest_gem = gem_split[1] or 'not found'
+
+  local current_gem_cmd = { host, '--version' }
+  local current_gem
+  ok, current_gem = cmd_ok(current_gem_cmd)
+  if not ok then
+    health.error(
+      'Failed to run: ' .. table.concat(current_gem_cmd, ' '),
+      { 'Report this issue with the output of: ', table.concat(current_gem_cmd, ' ') }
+    )
+    return
+  end
+
+  if vim.version.lt(current_gem, latest_gem) then
+    local message = 'Gem "neovim" is out-of-date. Installed: '
+      .. current_gem
+      .. ', latest: '
+      .. latest_gem
+    health.warn(message, 'Run in shell: gem update neovim')
+  else
+    health.ok('Latest "neovim" gem is installed: ' .. current_gem)
+  end
+end
+
+function M.check()
+  clipboard()
+  node()
+  perl()
+  python()
+  ruby()
 end
 
 return M

@@ -70,8 +70,8 @@ before_each(function()
         inlayHintProvider = true,
       },
       handlers = {
-        ['textDocument/inlayHint'] = function()
-          return vim.json.decode(response)
+        ['textDocument/inlayHint'] = function(_, _, callback)
+          callback(nil, vim.json.decode(response))
         end,
       }
     })
@@ -106,8 +106,8 @@ describe('vim.lsp.inlay_hint', function()
           inlayHintProvider = true,
         },
         handlers = {
-          ['textDocument/inlayHint'] = function()
-            return {}
+          ['textDocument/inlayHint'] = function(_, _, callback)
+            callback(nil, {})
           end,
         }
       })
@@ -126,14 +126,12 @@ describe('vim.lsp.inlay_hint', function()
         t.pcall_err(exec_lua, [[vim.lsp.inlay_hint.enable({}, { bufnr = bufnr })]])
       )
       t.matches(
+        'enable: expected boolean, got number',
+        t.pcall_err(exec_lua, [[vim.lsp.inlay_hint.enable(42)]])
+      )
+      t.matches(
         'filter: expected table, got number',
         t.pcall_err(exec_lua, [[vim.lsp.inlay_hint.enable(true, 42)]])
-      )
-
-      exec_lua [[vim.notify = function() end]]
-      t.matches(
-        'see %:help vim%.lsp%.inlay_hint%.enable',
-        t.pcall_err(exec_lua, [[vim.lsp.inlay_hint.enable(42)]])
       )
     end)
 
@@ -208,8 +206,8 @@ describe('vim.lsp.inlay_hint', function()
             inlayHintProvider = true,
           },
           handlers = {
-            ['textDocument/inlayHint'] = function()
-              return { expected2 }
+            ['textDocument/inlayHint'] = function(_, _, callback)
+              callback(nil, { expected2 })
             end,
           }
         })

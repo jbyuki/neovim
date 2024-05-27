@@ -361,6 +361,21 @@ local config = {
       fun.name = vim.split(fun.name, '.', { plain = true })[2]
     end,
   },
+  health = {
+    filename = 'health.txt',
+    files = {
+      'runtime/lua/vim/health.lua',
+    },
+    section_order = {
+      'health.lua',
+    },
+    section_fmt = function(_name)
+      return 'Checkhealth'
+    end,
+    helptag_fmt = function(name)
+      return name:lower()
+    end,
+  },
 }
 
 --- @param ty string
@@ -613,6 +628,12 @@ local function render_fun_header(fun, cfg)
   local nm = fun.name
   if fun.classvar then
     nm = fmt('%s:%s', fun.classvar, nm)
+  end
+  if nm == 'vim.bo' then
+    nm = 'vim.bo[{bufnr}]'
+  end
+  if nm == 'vim.wo' then
+    nm = 'vim.wo[{winid}][{bufnr}]'
   end
 
   local proto = fun.table and nm or nm .. '(' .. table.concat(args, ', ') .. ')'
