@@ -83,37 +83,33 @@ TSHighlighter.__index = TSHighlighter
 ---@param opts (table|nil) Configuration of the highlighter:
 ---           - queries table overwrite queries used by the highlighter
 ---@return vim.treesitter.highlighter Created highlighter object
-function TSHighlighter.new(tree, opts)
+function TSHighlighter.new(source, trees, opts)
   local self = setmetatable({}, TSHighlighter)
 
-  if type(tree:source()) ~= 'number' then
-    error('TSHighlighter can not be used with a string parser source.')
-  end
-
   opts = opts or {} ---@type { queries: table<string,string> }
-  self.tree = tree
-  tree:register_cbs({
-    on_bytes = function(...)
-      self:on_bytes(...)
-    end,
-    on_detach = function()
-      self:on_detach()
-    end,
-  })
+  self.trees = trees
 
-  tree:register_cbs({
-    on_changedtree = function(...)
-      self:on_changedtree(...)
-    end,
-    on_child_removed = function(child)
-      child:for_each_tree(function(t)
-        self:on_changedtree(t:included_ranges(true))
-      end)
-    end,
-  }, true)
+  for _, tree in ipairs(trees) do
+    tree:register_cbs({
+      on_bytes = function(...)
+        self:on_bytes(...)
+      end,
+      on_detach = function()
+        self:on_detach()
+      end,
+    })
 
-  local source = tree:source()
-  assert(type(source) == 'number')
+    tree:register_cbs({
+      on_changedtree = function(...)
+        self:on_changedtree(...)
+      end,
+      on_child_removed = function(child)
+        child:for_each_tree(function(t)
+          self:on_changedtree(t:included_ranges(true))
+        end)
+      end,
+    }, true)
+  end
 
   self.bufnr = source
   self.redraw_count = 0
@@ -147,7 +143,10 @@ function TSHighlighter.new(tree, opts)
     vim.opt_local.spelloptions:append('noplainbuffer')
   end)
 
-  self.tree:parse()
+
+  for _, tree in ipairs(self.trees) do
+    tree:parse()
+  end
 
   return self
 end
@@ -172,37 +171,39 @@ end
 function TSHighlighter:prepare_highlight_states(srow, erow)
   self._highlight_states = {}
 
-  self.tree:for_each_tree(function(tstree, tree)
-    if not tstree then
-      return
-    end
-
-    local root_node = tstree:root()
-    local root_start_row, _, root_end_row, _ = root_node:range()
-
-    -- Only consider trees within the visible range
-    if not self.tree._tangle_buffer then
-      if root_start_row > erow or root_end_row < srow then
+  for _, ltree in ipairs(self.trees) do
+    ltree:for_each_tree(function(tstree, tree)
+      if not tstree then
         return
       end
-    end
 
-    local highlighter_query = self:get_query(tree:lang())
+      local root_node = tstree:root()
+      local root_start_row, _, root_end_row, _ = root_node:range()
 
-    -- Some injected languages may not have highlight queries.
-    if not highlighter_query:query() then
-      return
-    end
+      -- Only consider trees within the visible range
+      if not tree._tangle_buf then
+        if root_start_row > erow or root_end_row < srow then
+          return
+        end
+      end
 
-    -- _highlight_states should be a list so that the highlights are added in the same order as
-    -- for_each_tree traversal. This ensures that parents' highlight don't override children's.
-    table.insert(self._highlight_states, {
-      tstree = tstree,
-      next_row = 0,
-      iter = nil,
-      highlighter_query = highlighter_query,
-    })
-  end)
+      local highlighter_query = self:get_query(tree:lang())
+
+      -- Some injected languages may not have highlight queries.
+      if not highlighter_query:query() then
+        return
+      end
+
+      -- _highlight_states should be a list so that the highlights are added in the same order as
+      -- for_each_tree traversal. This ensures that parents' highlight don't override children's.
+      table.insert(self._highlight_states, {
+        tstree = tstree,
+        next_row = 0,
+        iter = nil,
+        highlighter_query = highlighter_query,
+      })
+    end)
+  end
 end
 
 ---@param fn fun(state: vim.treesitter.highlighter.State)
@@ -290,28 +291,30 @@ end
 ---@param line integer
 ---@param is_spell_nav boolean
 local function on_line_impl(self, buf, line, is_spell_nav)
-  local tangled = false
+  local tanglebuf = nil
   local bufnr = self.bufnr
   local col_off
-  if self.tree._tangle_buffer then
-    local offs = self.tree._tangle_buffer:NTtoT(line)
+
+  if self.trees[1]._tangle_buf then
+    tanglebuf = self.trees[1]._tangle_buf
+    local offs = tanglebuf:TtoNT(line)
     for _, off in ipairs(offs) do
-      line = off[1]
-      col_off = #off[3]
-      break
+      if off[2] then
+        line = off[1]
+        bufnr = tanglebuf.tangle_buf[off[2].name]
+        col_off = #off[3]
+        break
+      end
     end
 
-    if #offs == 0 then
+    if #offs == 0 or not bufnr then
       return
     end
-    tangled = true
-    bufnr = self.tree._tangle_buffer.tangle_buf
   end
 
   self:for_each_highlight_state(function(state)
     local root_node = state.tstree:root()
     local root_start_row, _, root_end_row, _ = root_node:range()
-
 
     -- Only consider trees that contain this line
     if root_start_row > line or root_end_row < line then
@@ -319,9 +322,9 @@ local function on_line_impl(self, buf, line, is_spell_nav)
     end
 
     state.iter =
-        state.highlighter_query:query():iter_captures(root_node, self.bufnr, line, root_end_row + 1)
+        state.highlighter_query:query():iter_captures(root_node, bufnr, line, root_end_row + 1)
 
-    if tangled then
+    if tanglebuf then
       state.next_row = line
     end
 
@@ -330,7 +333,7 @@ local function on_line_impl(self, buf, line, is_spell_nav)
 
       local range = { root_end_row + 1, 0, root_end_row + 1, 0 }
       if node then
-        range = vim.treesitter.get_range(node, buf, metadata and metadata[capture])
+        range = vim.treesitter.get_range(node, bufnr, metadata and metadata[capture])
       end
       local start_row, start_col, end_row, end_col = Range.unpack4(range)
 
@@ -352,11 +355,10 @@ local function on_line_impl(self, buf, line, is_spell_nav)
 
         -- The "conceal" attribute can be set at the pattern level or on a particular capture
 
-
-        if tangled then
+        if tanglebuf then
           if hl and end_row >= line and (not is_spell_nav or spell ~= nil) then
-            local sr = self.tree._tangle_buffer:TtoNT(start_row) 
-            local er = self.tree._tangle_buffer:TtoNT(end_row) 
+            local sr = tanglebuf:NTtoT(start_row) 
+            local er = tanglebuf:NTtoT(end_row) 
 
             -- FIX MULTI LINE
 
@@ -445,7 +447,23 @@ function TSHighlighter._on_win(_, _win, buf, topline, botline)
   if not self then
     return false
   end
-  self.tree:parse({ topline, botline + 1 })
+
+  local tanglebuf = self.trees[1]._tangle_buf
+  if tanglebuf then
+    local offs_range = tanglebuf:TtoNT_range(topline, botline)
+
+    for _, offs in ipairs(offs_range) do
+      for _, off in ipairs(offs) do
+        if off[2] then
+          local line = off[1]
+          self.trees[1]:parse({line, line+1})
+        end
+      end
+    end
+  else
+    self.trees[1]:parse({ topline, botline + 1 })
+  end
+
   self:prepare_highlight_states(topline, botline + 1)
   self.redraw_count = self.redraw_count + 1
   return true

@@ -11,10 +11,12 @@ local M = vim._defer_require('vim.treesitter', {
   highlighter = ..., --- @module 'vim.treesitter.highlighter'
   language = ..., --- @module 'vim.treesitter.language'
   languagetree = ..., --- @module 'vim.treesitter.languagetree'
+  tangle = ..., --- @module 'vim.treesitter.languagetree'
   query = ..., --- @module 'vim.treesitter.query'
 })
 
 local LanguageTree = M.languagetree
+local Tangle = M.tangle
 
 --- @nodoc
 M.language_version = vim._ts_get_language_version()
@@ -56,10 +58,6 @@ function M._create_parser(bufnr, lang, opts)
   end
 
   local source = self:source() --[[@as integer]]
-
-  if self._tangle_buffer then
-    source = self._tangle_buffer.tangle_buf
-  end
 
   api.nvim_buf_attach(
     source,
@@ -107,12 +105,27 @@ function M.get_parser(bufnr, lang, opts)
         )
       )
     end
-  elseif parsers[bufnr] == nil or parsers[bufnr]:lang() ~= lang then
+  elseif parsers[bufnr] == nil then
     assert(lang, 'lang should be valid')
-    parsers[bufnr] = M._create_parser(bufnr, lang, opts)
+    local tanglebuf = nil
+    if Tangle.get_ntangle() then
+      tanglebuf = Tangle.get_tangleBuf(bufnr)
+    end
+
+    if tanglebuf then
+      parsers[bufnr] = {}
+      for _, tbuf in pairs(tanglebuf.tangle_buf) do
+        table.insert(parsers[bufnr], M._create_parser(tbuf, lang, opts))
+      end
+    else
+      parsers[bufnr] = { M._create_parser(bufnr, lang, opts) }
+    end
   end
 
-  parsers[bufnr]:register_cbs(opts.buf_attach_cbs)
+
+  for _, parser in ipairs(parsers[bufnr]) do
+    parser:register_cbs(opts.buf_attach_cbs)
+  end
 
   return parsers[bufnr]
 end
@@ -417,8 +430,8 @@ end
 ---@param lang (string|nil) Language of the parser (default: from buffer filetype)
 function M.start(bufnr, lang)
   bufnr = bufnr or api.nvim_get_current_buf()
-  local parser = M.get_parser(bufnr, lang)
-  M.highlighter.new(parser)
+  local parsers = M.get_parser(bufnr, lang)
+  M.highlighter.new(bufnr, parsers)
 end
 
 --- Stops treesitter highlighting for a buffer

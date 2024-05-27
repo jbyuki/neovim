@@ -120,7 +120,7 @@ function LanguageTree.new(source, lang, opts)
 
   --- @type vim.treesitter.LanguageTree
   local self = {
-    _tangle_buffer = tangle.get_tangleBuf_from_attached(source),
+    _tangle_buf = tangle.get_tangleBuf_from_attached(source),
     _source = source,
     _lang = lang,
     _children = {},
