@@ -34,5 +34,15 @@ function M.get_tangleBuf(buf)
   end
 end
 
+function M.get_rootElem(tanglebuf, buf)
+  if tanglebuf then
+    for head, ntbuf in pairs(tanglebuf.ntbuf) do
+      if ntbuf == buf then
+        return head
+      end
+    end
+  end
+end
+
 return M
 

@@ -176,7 +176,7 @@ end
 function TSHighlighter:prepare_highlight_states(srow, erow)
   self._highlight_states = {}
 
-  for _, ltree in pairs(self.trees) do
+  for ntbuf, ltree in pairs(self.trees) do
     ltree:for_each_tree(function(tstree, tree)
       if not tstree then
         return
@@ -205,6 +205,7 @@ function TSHighlighter:prepare_highlight_states(srow, erow)
         tstree = tstree,
         next_row = 0,
         iter = nil,
+        root_elem = tangle.get_rootElem(self._tangle_buf, ntbuf),
         highlighter_query = highlighter_query,
       })
     end)
@@ -303,12 +304,14 @@ local function on_line_impl(self, buf, line, is_spell_nav)
   local tanglebuf = self._tangle_buf
   local bufnr = self.bufnr
   local col_off
+  local root_elem
 
   if tanglebuf then
     local offs = tanglebuf:TtoNT(line)
     for _, off in ipairs(offs) do
       if off[2] then
         line = off[1]
+        root_elem = off[2]
         bufnr = tanglebuf.ntbuf[off[2]]
         col_off = #off[3]
         break
@@ -321,6 +324,10 @@ local function on_line_impl(self, buf, line, is_spell_nav)
   end
 
   self:for_each_highlight_state(function(state)
+    if state.root_elem and state.root_elem ~= root_elem then
+      return
+    end
+
     local root_node = state.tstree:root()
     local root_start_row, _, root_end_row, _ = root_node:range()
 
@@ -365,8 +372,8 @@ local function on_line_impl(self, buf, line, is_spell_nav)
 
         if tanglebuf then
           if hl and end_row >= line and (not is_spell_nav or spell ~= nil) then
-            local sr = tanglebuf:NTtoT(start_row) 
-            local er = tanglebuf:NTtoT(end_row) 
+            local sr = tanglebuf:NTtoT(start_row, root_elem) 
+            local er = tanglebuf:NTtoT(end_row, root_elem) 
 
             -- FIX MULTI LINE
 
@@ -464,7 +471,7 @@ function TSHighlighter._on_win(_, _win, buf, topline, botline)
       for _, off in ipairs(offs) do
         if off[2] then
           local ntbuf = tanglebuf.ntbuf[off[2]]
-          if ntbuf then
+          if ntbuf and self.trees[ntbuf] then
             local line = off[1]
             self.trees[ntbuf]:parse({line, line+1})
           end
