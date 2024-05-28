@@ -107,26 +107,10 @@ function M.get_parser(bufnr, lang, opts)
     end
   elseif parsers[bufnr] == nil then
     assert(lang, 'lang should be valid')
-    local tanglebuf = nil
-    if Tangle.get_ntangle() then
-      tanglebuf = Tangle.get_tangleBuf(bufnr)
-    end
-
-    if tanglebuf then
-      parsers[bufnr] = {}
-      for _, tbuf in pairs(tanglebuf.tangle_buf) do
-        table.insert(parsers[bufnr], M._create_parser(tbuf, lang, opts))
-      end
-    else
-      parsers[bufnr] = { M._create_parser(bufnr, lang, opts) }
-    end
+    parsers[bufnr] = M._create_parser(bufnr, lang, opts)
   end
 
-
-  for _, parser in ipairs(parsers[bufnr]) do
-    parser:register_cbs(opts.buf_attach_cbs)
-  end
-
+  parsers[bufnr]:register_cbs(opts.buf_attach_cbs)
   return parsers[bufnr]
 end
 
@@ -430,7 +414,21 @@ end
 ---@param lang (string|nil) Language of the parser (default: from buffer filetype)
 function M.start(bufnr, lang)
   bufnr = bufnr or api.nvim_get_current_buf()
-  local parsers = M.get_parser(bufnr, lang)
+
+  local tanglebuf = nil
+  if Tangle.get_ntangle() then
+    tanglebuf = Tangle.get_tangleBuf(bufnr)
+  end
+
+  local parsers = {}
+  if tanglebuf then
+    for _, ntbuf in pairs(tanglebuf.ntbuf) do
+      parsers[ntbuf] = M.get_parser(ntbuf, lang)
+    end
+  else
+    parsers[bufnr] = M.get_parser(bufnr, lang)
+  end
+
   M.highlighter.new(bufnr, parsers)
 end
 

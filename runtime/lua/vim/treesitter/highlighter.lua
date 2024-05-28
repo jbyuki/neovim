@@ -1,6 +1,7 @@
 local api = vim.api
 local query = vim.treesitter.query
 local Range = require('vim.treesitter._range')
+local tangle = require('vim.treesitter.tangle')
 
 local ns = api.nvim_create_namespace('treesitter/highlighter')
 
@@ -89,7 +90,11 @@ function TSHighlighter.new(source, trees, opts)
   opts = opts or {} ---@type { queries: table<string,string> }
   self.trees = trees
 
-  for _, tree in ipairs(trees) do
+  if tangle.get_ntangle() then
+    self._tangle_buf = tangle.get_tangleBuf(source)
+  end
+
+  for _, tree in pairs(trees) do
     tree:register_cbs({
       on_bytes = function(...)
         self:on_bytes(...)
@@ -144,7 +149,7 @@ function TSHighlighter.new(source, trees, opts)
   end)
 
 
-  for _, tree in ipairs(self.trees) do
+  for _, tree in pairs(self.trees) do
     tree:parse()
   end
 
@@ -171,7 +176,7 @@ end
 function TSHighlighter:prepare_highlight_states(srow, erow)
   self._highlight_states = {}
 
-  for _, ltree in ipairs(self.trees) do
+  for _, ltree in pairs(self.trees) do
     ltree:for_each_tree(function(tstree, tree)
       if not tstree then
         return
@@ -291,17 +296,20 @@ end
 ---@param line integer
 ---@param is_spell_nav boolean
 local function on_line_impl(self, buf, line, is_spell_nav)
-  local tanglebuf = nil
+  if vim.tbl_count(self.trees) == 0 then
+    return
+  end
+
+  local tanglebuf = self._tangle_buf
   local bufnr = self.bufnr
   local col_off
 
-  if self.trees[1]._tangle_buf then
-    tanglebuf = self.trees[1]._tangle_buf
+  if tanglebuf then
     local offs = tanglebuf:TtoNT(line)
     for _, off in ipairs(offs) do
       if off[2] then
         line = off[1]
-        bufnr = tanglebuf.tangle_buf[off[2].name]
+        bufnr = tanglebuf.ntbuf[off[2]]
         col_off = #off[3]
         break
       end
@@ -448,20 +456,23 @@ function TSHighlighter._on_win(_, _win, buf, topline, botline)
     return false
   end
 
-  local tanglebuf = self.trees[1]._tangle_buf
+  local tanglebuf = self._tangle_buf
   if tanglebuf then
     local offs_range = tanglebuf:TtoNT_range(topline, botline)
 
     for _, offs in ipairs(offs_range) do
       for _, off in ipairs(offs) do
         if off[2] then
-          local line = off[1]
-          self.trees[1]:parse({line, line+1})
+          local ntbuf = tanglebuf.ntbuf[off[2]]
+          if ntbuf then
+            local line = off[1]
+            self.trees[ntbuf]:parse({line, line+1})
+          end
         end
       end
     end
   else
-    self.trees[1]:parse({ topline, botline + 1 })
+    self.trees[buf]:parse({ topline, botline + 1 })
   end
 
   self:prepare_highlight_states(topline, botline + 1)

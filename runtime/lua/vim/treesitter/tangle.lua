@@ -18,8 +18,8 @@ function M.get_tangleBuf_from_attached(source)
   if M.get_ntangle() then
     local activated = M.get_ntangle().activated
     for _, tanglebuf in pairs(activated) do
-      for _, tbuf in pairs(tanglebuf.tangle_buf) do
-        if tbuf == source then
+      for _, ntbuf in pairs(tanglebuf.ntbuf) do
+        if ntbuf == source then
           return tanglebuf
         end
       end
