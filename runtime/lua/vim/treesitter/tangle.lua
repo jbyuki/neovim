@@ -1,46 +1,48 @@
 local M = {}
 
-local ntangle_compact = nil
+local ntangle_inc = nil
 
 function M.get_ntangle()
-  if ntangle_compact == nil then
-    local found, ntangle  = pcall(require, "ntangle-compact")
+  if ntangle_inc == nil then
+    local found, ntangle  = pcall(require, "ntangle-inc")
     if not found then
-      ntangle_compact = found
+      ntangle_inc = found
     else
-      ntangle_compact = ntangle
+      ntangle_inc = ntangle
     end
   end
-  return ntangle_compact
+  return ntangle_inc
 end
 
-function M.get_tangleBuf_from_attached(source)
+function M.get_hl_from_attached(source)
   if M.get_ntangle() then
-    local activated = M.get_ntangle().activated
-    for _, tanglebuf in pairs(activated) do
-      for _, ntbuf in pairs(tanglebuf.ntbuf) do
-        if ntbuf == source then
-          return tanglebuf
-        end
+    source = source == 0 and vim.api.nvim_get_current_buf() or source
+
+    local ntangle = M.get_ntangle()
+    local ll = ntangle.lls[source]
+    if ll then
+      return ntangle.ll_to_hl[ll]
+    end
+  end
+end
+
+function M.get_bufs_from_hl(hl)
+  local bufs = {}
+  if M.get_ntangle() then
+    local ntangle = M.get_ntangle()
+    for buf,hli in pairs(ntangle.buf_to_hl) do
+      if hl == hli then
+        table.insert(bufs, buf)
       end
     end
   end
+  return bufs
 end
 
-function M.get_tangleBuf(buf)
+function M.get_root_section_from_buf(buf)
   if M.get_ntangle() then
-    local activated = M.get_ntangle().activated
-    return activated[buf]
-  end
-end
-
-function M.get_rootElem(tanglebuf, buf)
-  if tanglebuf then
-    for head, ntbuf in pairs(tanglebuf.ntbuf) do
-      if ntbuf == buf then
-        return head
-      end
-    end
+    local ntangle = M.get_ntangle()
+    return ntangle.mirror_buf_to_root[buf]
   end
 end
 

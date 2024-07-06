@@ -415,15 +415,16 @@ end
 function M.start(bufnr, lang)
   bufnr = bufnr or api.nvim_get_current_buf()
 
-  local tanglebuf = nil
+  local hl = nil
   if Tangle.get_ntangle() then
-    tanglebuf = Tangle.get_tangleBuf(bufnr)
+    hl = Tangle.get_hl_from_attached(bufnr)
   end
 
   local parsers = {}
-  if tanglebuf then
-    for _, ntbuf in pairs(tanglebuf.ntbuf) do
-      parsers[ntbuf] = M.get_parser(ntbuf, lang)
+  if hl then
+    local bufs = Tangle.get_bufs_from_hl(hl)
+    for _, buf in pairs(bufs) do
+      parsers[buf] = M.get_parser(buf, lang)
     end
   else
     parsers[bufnr] = M.get_parser(bufnr, lang)

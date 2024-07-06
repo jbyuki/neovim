@@ -91,6 +91,7 @@ share
 *.dll
 hello.cpp.t2
 /init.lua
+.ntangle/
 
 /test.cpp
 /CMakeSettings.json

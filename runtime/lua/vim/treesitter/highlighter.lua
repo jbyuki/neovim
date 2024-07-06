@@ -1,7 +1,8 @@
 local api = vim.api
 local query = vim.treesitter.query
 local Range = require('vim.treesitter._range')
-local tangle = require('vim.treesitter.tangle')
+local Tangle = require('vim.treesitter.tangle')
+local ntangle = Tangle.get_ntangle()
 
 local ns = api.nvim_create_namespace('treesitter/highlighter')
 
@@ -90,10 +91,6 @@ function TSHighlighter.new(source, trees, opts)
   opts = opts or {} ---@type { queries: table<string,string> }
   self.trees = trees
 
-  if tangle.get_ntangle() then
-    self._tangle_buf = tangle.get_tangleBuf(source)
-  end
-
   for _, tree in pairs(trees) do
     tree:register_cbs({
       on_bytes = function(...)
@@ -117,6 +114,7 @@ function TSHighlighter.new(source, trees, opts)
   end
 
   self.bufnr = source
+  self._ntangle_hl = Tangle.get_hl_from_attached(source)
   self.redraw_count = 0
   self._highlight_states = {}
   self._queries = {}
@@ -205,7 +203,7 @@ function TSHighlighter:prepare_highlight_states(srow, erow)
         tstree = tstree,
         next_row = 0,
         iter = nil,
-        root_elem = tangle.get_rootElem(self._tangle_buf, ntbuf),
+        root_section = Tangle.get_root_section_from_buf(ntbuf),
         highlighter_query = highlighter_query,
       })
     end)
@@ -301,30 +299,27 @@ local function on_line_impl(self, buf, line, is_spell_nav)
     return
   end
 
-  local tanglebuf = self._tangle_buf
-  local bufnr = self.bufnr
+  local bufnr = buf
   local col_off
-  local root_elem
+  local root_section
+  local HL = self._ntangle_hl
 
-  if tanglebuf then
-    local offs = tanglebuf:TtoNT(line)
-    for _, off in ipairs(offs) do
-      if off[2] then
-        line = off[1]
-        root_elem = off[2]
-        bufnr = tanglebuf.ntbuf[off[2]]
-        col_off = #off[3]
-        break
-      end
+  if ntangle and HL then
+    local nt_infos = ntangle.TtoNT(bufnr, line)
+    for _, nt_info in ipairs(nt_infos) do
+      root_section = nt_info[2]
+      line = nt_info[3]
+      col_off = #nt_info[4]
+      break
     end
 
-    if #offs == 0 or not bufnr then
+    if #nt_infos == 0 or not bufnr then
       return
     end
   end
 
   self:for_each_highlight_state(function(state)
-    if state.root_elem and state.root_elem ~= root_elem then
+    if state.root_section and state.root_section ~= root_section then
       return
     end
 
@@ -339,7 +334,7 @@ local function on_line_impl(self, buf, line, is_spell_nav)
     state.iter =
         state.highlighter_query:query():iter_captures(root_node, bufnr, line, root_end_row + 1)
 
-    if tanglebuf then
+    if HL then
       state.next_row = line
     end
 
@@ -370,10 +365,10 @@ local function on_line_impl(self, buf, line, is_spell_nav)
 
         -- The "conceal" attribute can be set at the pattern level or on a particular capture
 
-        if tanglebuf then
+        if HL then
           if hl and end_row >= line and (not is_spell_nav or spell ~= nil) then
-            local sr = tanglebuf:NTtoT(start_row, root_elem) 
-            local er = tanglebuf:NTtoT(end_row, root_elem) 
+            local _, sr = unpack(ntangle.NTtoT(HL, root_section, start_row))
+            local _, er = unpack(ntangle.NTtoT(HL, root_section, end_row))
 
             -- FIX MULTI LINE
 
@@ -463,18 +458,15 @@ function TSHighlighter._on_win(_, _win, buf, topline, botline)
     return false
   end
 
-  local tanglebuf = self._tangle_buf
-  if tanglebuf then
-    local offs_range = tanglebuf:TtoNT_range(topline, botline)
-
-    for _, offs in ipairs(offs_range) do
-      for _, off in ipairs(offs) do
-        if off[2] then
-          local ntbuf = tanglebuf.ntbuf[off[2]]
-          if ntbuf and self.trees[ntbuf] then
-            local line = off[1]
-            self.trees[ntbuf]:parse({line, line+1})
-          end
+  local HL = self._ntangle_hl
+  if HL then
+    for lnum=topline,botline do
+      local nt_infos = ntangle.TtoNT(buf, lnum)
+      for _, nt_info in ipairs(nt_infos) do
+        local ntbuf = ntangle.root_to_mirror_buf[nt_info[2]]
+        if ntbuf and self.trees[ntbuf] then
+          local line = nt_info[3]
+          self.trees[ntbuf]:parse({line, line+1})
         end
       end
     end
