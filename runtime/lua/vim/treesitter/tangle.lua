@@ -14,12 +14,19 @@ function M.get_ntangle()
   return ntangle_inc
 end
 
-function M.get_hl_from_attached(source)
+function M.get_ll_from_buf(source)
   if M.get_ntangle() then
     source = source == 0 and vim.api.nvim_get_current_buf() or source
 
     local ntangle = M.get_ntangle()
     local ll = ntangle.lls[source]
+    return ll
+  end
+end
+
+function M.get_hl_from_ll(ll)
+  if M.get_ntangle() then
+    local ntangle = M.get_ntangle()
     if ll then
       return ntangle.ll_to_hl[ll]
     end

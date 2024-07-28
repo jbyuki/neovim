@@ -95,6 +95,13 @@ function M.get_parser(bufnr, lang, opts)
   end
 
   if not valid_lang(lang) then
+    local ntangle = Tangle.get_ntangle()
+    if ntangle then
+      lang = ntangle.buf_filetype[bufnr]
+    end
+  end
+
+  if not valid_lang(lang) then
     if not parsers[bufnr] then
       error(
         string.format(
@@ -417,14 +424,17 @@ function M.start(bufnr, lang)
 
   local hl = nil
   if Tangle.get_ntangle() then
-    hl = Tangle.get_hl_from_attached(bufnr)
+    local ll = Tangle.get_ll_from_buf(bufnr)
+    hl = Tangle.get_hl_from_ll(ll)
   end
 
   local parsers = {}
-  if hl then
-    local bufs = Tangle.get_bufs_from_hl(hl)
-    for _, buf in pairs(bufs) do
-      parsers[buf] = M.get_parser(buf, lang)
+  if Tangle.get_ntangle() then
+    if hl then
+      local bufs = Tangle.get_bufs_from_hl(hl)
+      for _, buf in pairs(bufs) do
+        parsers[buf] = M.get_parser(buf, lang)
+      end
     end
   else
     parsers[bufnr] = M.get_parser(bufnr, lang)
