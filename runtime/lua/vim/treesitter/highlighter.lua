@@ -97,7 +97,9 @@ function TSHighlighter.new(source, trees, opts)
         self:on_bytes(...)
       end,
       on_detach = function()
-        self:on_detach()
+        if not self._ntangle_ll then
+          self:on_detach()
+        end
       end,
     })
 
@@ -302,6 +304,7 @@ local function on_line_impl(self, buf, line, is_spell_nav)
   local bufnr = buf
   local col_off
   local root_section
+  local line_type
   local HL
 
   if self._ntangle_ll then
@@ -314,12 +317,26 @@ local function on_line_impl(self, buf, line, is_spell_nav)
       break
     end
 
-    if #nt_infos == 0 or not bufnr then
-      return
+    if #nt_infos == 0 then
+      line_type = ntangle.get_line_type(bufnr, line)
+      if not line_type then
+        return
+      end
     end
   end
 
   self:for_each_highlight_state(function(state)
+    if line_type then
+      local hl = Tangle.hl_group[line_type]
+      api.nvim_buf_set_extmark(buf, ns, line, 0, {
+        end_line = line+1,
+        end_col = 0,
+        hl_group = hl,
+        ephemeral = true,
+      })
+      return
+    end
+
     if state.root_section and state.root_section ~= root_section then
       return
     end

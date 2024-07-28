@@ -14,6 +14,17 @@ function M.get_ntangle()
   return ntangle_inc
 end
 
+if M.get_ntangle() then
+  M.hl_group = {
+    [ntangle_inc.HL_ELEM_TYPE.TEXT] = "NTangleText",
+    [ntangle_inc.HL_ELEM_TYPE.SECTION_PART] = "NTangleSectionPart",
+    [ntangle_inc.HL_ELEM_TYPE.REFERENCE] = "NTangleReference",
+    [ntangle_inc.HL_ELEM_TYPE.META_SECTION] = "NTangleMetaSection",
+    [ntangle_inc.HL_ELEM_TYPE.FILLER] = "NTangleFiller",
+  }
+end
+
+
 function M.get_ll_from_buf(source)
   if M.get_ntangle() then
     source = source == 0 and vim.api.nvim_get_current_buf() or source
