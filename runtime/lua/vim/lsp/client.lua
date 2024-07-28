@@ -436,7 +436,7 @@ local function ensure_list(x)
   return { x }
 end
 
---- @package
+--- @nodoc
 --- @param config vim.lsp.ClientConfig
 --- @return vim.lsp.Client?
 function Client.create(config)
@@ -535,7 +535,7 @@ function Client:_run_callbacks(cbs, error_id, ...)
   end
 end
 
---- @package
+--- @nodoc
 function Client:initialize()
   local config = self.config
 
@@ -656,7 +656,7 @@ end
 --- @param method string LSP method name.
 --- @param params? table LSP request params.
 --- @param handler? lsp.Handler Response |lsp-handler| for this method.
---- @param bufnr? integer Buffer handle (0 for current).
+--- @param bufnr integer Buffer handle (0 for current).
 --- @return boolean status, integer? request_id {status} is a bool indicating
 --- whether the request was successful. If it is `false`, then it will
 --- always be `false` (the client has shutdown). If it was
@@ -861,14 +861,14 @@ function Client:_is_stopped()
   return self.rpc.is_closing()
 end
 
---- @package
 --- Execute a lsp command, either via client command function (if available)
 --- or via workspace/executeCommand (if supported by the server)
 ---
 --- @param command lsp.Command
 --- @param context? {bufnr: integer}
 --- @param handler? lsp.Handler only called if a server command
-function Client:_exec_cmd(command, context, handler)
+--- @param on_unsupported? function handler invoked when the command is not supported by the client.
+function Client:_exec_cmd(command, context, handler, on_unsupported)
   context = vim.deepcopy(context or {}, true) --[[@as lsp.HandlerContext]]
   context.bufnr = context.bufnr or api.nvim_get_current_buf()
   context.client_id = self.id
@@ -882,14 +882,18 @@ function Client:_exec_cmd(command, context, handler)
   local command_provider = self.server_capabilities.executeCommandProvider
   local commands = type(command_provider) == 'table' and command_provider.commands or {}
   if not vim.list_contains(commands, cmdname) then
-    vim.notify_once(
-      string.format(
-        'Language server `%s` does not support command `%s`. This command may require a client extension.',
-        self.name,
-        cmdname
-      ),
-      vim.log.levels.WARN
-    )
+    if on_unsupported then
+      on_unsupported()
+    else
+      vim.notify_once(
+        string.format(
+          'Language server `%s` does not support command `%s`. This command may require a client extension.',
+          self.name,
+          cmdname
+        ),
+        vim.log.levels.WARN
+      )
+    end
     return
   end
   -- Not using command directly to exclude extra properties,
@@ -901,7 +905,6 @@ function Client:_exec_cmd(command, context, handler)
   self.request(ms.workspace_executeCommand, params, handler, context.bufnr)
 end
 
---- @package
 --- Default handler for the 'textDocument/didOpen' LSP notification.
 ---
 --- @param bufnr integer Number of the buffer, or 0 for current
@@ -913,18 +916,16 @@ function Client:_text_document_did_open_handler(bufnr)
   if not api.nvim_buf_is_loaded(bufnr) then
     return
   end
-  local filetype = vim.bo[bufnr].filetype
 
-  local params = {
+  local filetype = vim.bo[bufnr].filetype
+  self.notify(ms.textDocument_didOpen, {
     textDocument = {
-      version = 0,
+      version = lsp.util.buf_versions[bufnr],
       uri = vim.uri_from_bufnr(bufnr),
       languageId = self.get_language_id(bufnr, filetype),
       text = lsp._buf_get_full_text(bufnr),
     },
-  }
-  self.notify(ms.textDocument_didOpen, params)
-  lsp.util.buf_versions[bufnr] = params.textDocument.version
+  })
 
   -- Next chance we get, we should re-do the diagnostics
   vim.schedule(function()
@@ -937,7 +938,6 @@ function Client:_text_document_did_open_handler(bufnr)
   end)
 end
 
---- @package
 --- Runs the on_attach function from the client's config if it was defined.
 --- @param bufnr integer Buffer number
 function Client:_on_attach(bufnr)
@@ -1060,7 +1060,6 @@ function Client:_on_exit(code, signal)
   )
 end
 
---- @package
 --- Add a directory to the workspace folders.
 --- @param dir string?
 function Client:_add_workspace_folder(dir)
@@ -1083,7 +1082,6 @@ function Client:_add_workspace_folder(dir)
   vim.list_extend(self.workspace_folders, wf)
 end
 
---- @package
 --- Remove a directory to the workspace folders.
 --- @param dir string?
 function Client:_remove_workspace_folder(dir)

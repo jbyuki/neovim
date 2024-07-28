@@ -10,6 +10,7 @@
 #include "nvim/ascii_defs.h"
 #include "nvim/assert_defs.h"
 #include "nvim/charset.h"
+#include "nvim/errors.h"
 #include "nvim/eval.h"
 #include "nvim/eval/encode.h"
 #include "nvim/eval/executor.h"
@@ -1459,10 +1460,9 @@ void f_uniq(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 /// @param[in]  l1  First list to compare.
 /// @param[in]  l2  Second list to compare.
 /// @param[in]  ic  True if case is to be ignored.
-/// @param[in]  recursive  True when used recursively.
 ///
 /// @return True if lists are equal, false otherwise.
-bool tv_list_equal(list_T *const l1, list_T *const l2, const bool ic, const bool recursive)
+bool tv_list_equal(list_T *const l1, list_T *const l2, const bool ic)
   FUNC_ATTR_WARN_UNUSED_RESULT
 {
   if (l1 == l2) {
@@ -1484,8 +1484,7 @@ bool tv_list_equal(list_T *const l1, list_T *const l2, const bool ic, const bool
   for (; item1 != NULL && item2 != NULL
        ; (item1 = TV_LIST_ITEM_NEXT(l1, item1),
           item2 = TV_LIST_ITEM_NEXT(l2, item2))) {
-    if (!tv_equal(TV_LIST_ITEM_TV(item1), TV_LIST_ITEM_TV(item2), ic,
-                  recursive)) {
+    if (!tv_equal(TV_LIST_ITEM_TV(item1), TV_LIST_ITEM_TV(item2), ic)) {
       return false;
     }
   }
@@ -1823,7 +1822,7 @@ char *callback_to_string(Callback *cb, Arena *arena)
     snprintf(msg, msglen, "<vim partial: %s>", cb->data.partial->pt_name);
     break;
   default:
-    *msg = '\0';
+    *msg = NUL;
     break;
   }
   return msg;
@@ -2678,8 +2677,9 @@ void tv_dict_extend(dict_T *const d1, dict_T *const d2, const char *const action
 /// @param[in]  d1  First dictionary.
 /// @param[in]  d2  Second dictionary.
 /// @param[in]  ic  True if case is to be ignored.
-/// @param[in]  recursive  True when used recursively.
-bool tv_dict_equal(dict_T *const d1, dict_T *const d2, const bool ic, const bool recursive)
+///
+/// @return True if dictionaries are equal, false otherwise.
+bool tv_dict_equal(dict_T *const d1, dict_T *const d2, const bool ic)
   FUNC_ATTR_WARN_UNUSED_RESULT
 {
   if (d1 == d2) {
@@ -2701,7 +2701,7 @@ bool tv_dict_equal(dict_T *const d1, dict_T *const d2, const bool ic, const bool
     if (di2 == NULL) {
       return false;
     }
-    if (!tv_equal(&di1->di_tv, &di2->di_tv, ic, recursive)) {
+    if (!tv_equal(&di1->di_tv, &di2->di_tv, ic)) {
       return false;
     }
   });
@@ -3063,8 +3063,7 @@ void f_blob2list(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 /// list2blob() function
 void f_list2blob(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 {
-  tv_blob_alloc_ret(rettv);
-  blob_T *const blob = rettv->vval.v_blob;
+  blob_T *blob = tv_blob_alloc_ret(rettv);
 
   if (tv_check_for_list_arg(argvars, 0) == FAIL) {
     return;
@@ -3251,11 +3250,12 @@ void tv_dict_remove(typval_T *argvars, typval_T *rettv, const char *arg_errmsg)
 /// Also sets reference count.
 ///
 /// @param[out]  ret_tv  Structure where blob is saved.
-void tv_blob_alloc_ret(typval_T *const ret_tv)
+blob_T *tv_blob_alloc_ret(typval_T *const ret_tv)
   FUNC_ATTR_NONNULL_ALL
 {
   blob_T *const b = tv_blob_alloc();
   tv_blob_set_ret(ret_tv, b);
+  return b;
 }
 
 /// Copy a blob typval to a different typval.
@@ -3283,6 +3283,7 @@ void tv_blob_copy(blob_T *const from, typval_T *const to)
 
 //{{{3 Clear
 #define TYPVAL_ENCODE_ALLOW_SPECIALS false
+#define TYPVAL_ENCODE_CHECK_BEFORE
 
 #define TYPVAL_ENCODE_CONV_NIL(tv) \
   do { \
@@ -3499,6 +3500,7 @@ static inline void _nothing_conv_dict_end(typval_T *const tv, dict_T **const dic
 #undef TYPVAL_ENCODE_FIRST_ARG_NAME
 
 #undef TYPVAL_ENCODE_ALLOW_SPECIALS
+#undef TYPVAL_ENCODE_CHECK_BEFORE
 #undef TYPVAL_ENCODE_CONV_NIL
 #undef TYPVAL_ENCODE_CONV_BOOL
 #undef TYPVAL_ENCODE_CONV_NUMBER
@@ -3835,10 +3837,9 @@ static int tv_equal_recurse_limit;
 /// @param[in]  tv1  First value to compare.
 /// @param[in]  tv2  Second value to compare.
 /// @param[in]  ic  True if case is to be ignored.
-/// @param[in]  recursive  True when used recursively.
 ///
 /// @return true if values are equal.
-bool tv_equal(typval_T *const tv1, typval_T *const tv2, const bool ic, const bool recursive)
+bool tv_equal(typval_T *const tv1, typval_T *const tv2, const bool ic)
   FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_NONNULL_ALL
 {
   // TODO(ZyX-I): Make this not recursive
@@ -3854,7 +3855,7 @@ bool tv_equal(typval_T *const tv1, typval_T *const tv2, const bool ic, const boo
   // Reduce the limit every time running into it. That should work fine for
   // deeply linked structures that are not recursively linked and catch
   // recursiveness quickly.
-  if (!recursive) {
+  if (recursive_cnt == 0) {
     tv_equal_recurse_limit = 1000;
   }
   if (recursive_cnt >= tv_equal_recurse_limit) {
@@ -3865,15 +3866,13 @@ bool tv_equal(typval_T *const tv1, typval_T *const tv2, const bool ic, const boo
   switch (tv1->v_type) {
   case VAR_LIST: {
     recursive_cnt++;
-    const bool r = tv_list_equal(tv1->vval.v_list, tv2->vval.v_list, ic,
-                                 true);
+    const bool r = tv_list_equal(tv1->vval.v_list, tv2->vval.v_list, ic);
     recursive_cnt--;
     return r;
   }
   case VAR_DICT: {
     recursive_cnt++;
-    const bool r = tv_dict_equal(tv1->vval.v_dict, tv2->vval.v_dict, ic,
-                                 true);
+    const bool r = tv_dict_equal(tv1->vval.v_dict, tv2->vval.v_dict, ic);
     recursive_cnt--;
     return r;
   }

@@ -490,7 +490,6 @@ local function visit_node(root, level, lang_tree, headings, opt, stats)
     or nil
   -- Parent kind (string).
   local parent = root:parent() and root:parent():type() or nil
-  local text = ''
   -- Gets leading whitespace of `node`.
   local function ws(node)
     node = node or root
@@ -508,6 +507,7 @@ local function visit_node(root, level, lang_tree, headings, opt, stats)
     return string.format('%s%s', ws_, vim.treesitter.get_node_text(node, opt.buf))
   end
 
+  local text = ''
   local trimmed ---@type string
   if root:named_child_count() == 0 or node_name == 'ERROR' then
     text = node_text()
@@ -537,12 +537,17 @@ local function visit_node(root, level, lang_tree, headings, opt, stats)
     if is_noise(text, stats.noise_lines) then
       return '' -- Discard common "noise" lines.
     end
-    -- Remove "===" and tags from ToC text.
-    local hname = (node_text():gsub('%-%-%-%-+', ''):gsub('%=%=%=%=+', ''):gsub('%*.*%*', ''))
+    -- Remove tags from ToC text.
+    local heading_node = first(root, 'heading')
+    local hname = trim(node_text(heading_node):gsub('%*.*%*', ''))
+    if not heading_node or hname == '' then
+      return '' -- Spurious "===" or "---" in the help doc.
+    end
+
     -- Use the first *tag* node as the heading anchor, if any.
-    local tagnode = first(root, 'tag')
+    local tagnode = first(heading_node, 'tag')
     -- Use the *tag* as the heading anchor id, if possible.
-    local tagname = tagnode and url_encode(node_text(tagnode:child(1), false))
+    local tagname = tagnode and url_encode(trim(node_text(tagnode:child(1), false)))
       or to_heading_tag(hname)
     if node_name == 'h1' or #headings == 0 then
       ---@type nvim.gen_help_html.heading
@@ -555,7 +560,9 @@ local function visit_node(root, level, lang_tree, headings, opt, stats)
       )
     end
     local el = node_name == 'h1' and 'h2' or 'h3'
-    return ('<%s id="%s" class="help-heading">%s</%s>\n'):format(el, tagname, text, el)
+    return ('<%s id="%s" class="help-heading">%s</%s>\n'):format(el, tagname, trimmed, el)
+  elseif node_name == 'heading' then
+    return trimmed
   elseif node_name == 'column_heading' or node_name == 'column_name' then
     if root:has_error() then
       return text
@@ -695,7 +702,7 @@ local function visit_node(root, level, lang_tree, headings, opt, stats)
       return string.format('%s</span>', s)
     end
     return s
-  elseif node_name == 'modeline' then
+  elseif node_name == 'delimiter' or node_name == 'modeline' then
     return ''
   elseif node_name == 'ERROR' then
     if ignore_parse_error(opt.fname, trimmed) then
@@ -1216,7 +1223,7 @@ end
 
 function M._test()
   tagmap = get_helptags('$VIMRUNTIME/doc')
-  helpfiles = get_helpfiles(vim.fn.expand('$VIMRUNTIME/doc'))
+  helpfiles = get_helpfiles(vim.fs.normalize('$VIMRUNTIME/doc'))
 
   ok(vim.tbl_count(tagmap) > 3000, '>3000', vim.tbl_count(tagmap))
   ok(
@@ -1278,7 +1285,7 @@ function M.gen(help_dir, to_dir, include, commit, parser_path)
     help_dir = {
       help_dir,
       function(d)
-        return vim.fn.isdirectory(vim.fn.expand(d)) == 1
+        return vim.fn.isdirectory(vim.fs.normalize(d)) == 1
       end,
       'valid directory',
     },
@@ -1288,7 +1295,7 @@ function M.gen(help_dir, to_dir, include, commit, parser_path)
     parser_path = {
       parser_path,
       function(f)
-        return f == nil or vim.fn.filereadable(vim.fn.expand(f)) == 1
+        return f == nil or vim.fn.filereadable(vim.fs.normalize(f)) == 1
       end,
       'valid vimdoc.{so,dll} filepath',
     },
@@ -1296,10 +1303,10 @@ function M.gen(help_dir, to_dir, include, commit, parser_path)
 
   local err_count = 0
   ensure_runtimepath()
-  tagmap = get_helptags(vim.fn.expand(help_dir))
+  tagmap = get_helptags(vim.fs.normalize(help_dir))
   helpfiles = get_helpfiles(help_dir, include)
-  to_dir = vim.fn.expand(to_dir)
-  parser_path = parser_path and vim.fn.expand(parser_path) or nil
+  to_dir = vim.fs.normalize(to_dir)
+  parser_path = parser_path and vim.fs.normalize(parser_path) or nil
 
   print(('output dir: %s'):format(to_dir))
   vim.fn.mkdir(to_dir, 'p')
@@ -1351,7 +1358,7 @@ function M.validate(help_dir, include, parser_path)
     help_dir = {
       help_dir,
       function(d)
-        return vim.fn.isdirectory(vim.fn.expand(d)) == 1
+        return vim.fn.isdirectory(vim.fs.normalize(d)) == 1
       end,
       'valid directory',
     },
@@ -1359,7 +1366,7 @@ function M.validate(help_dir, include, parser_path)
     parser_path = {
       parser_path,
       function(f)
-        return f == nil or vim.fn.filereadable(vim.fn.expand(f)) == 1
+        return f == nil or vim.fn.filereadable(vim.fs.normalize(f)) == 1
       end,
       'valid vimdoc.{so,dll} filepath',
     },
@@ -1367,12 +1374,12 @@ function M.validate(help_dir, include, parser_path)
   local err_count = 0 ---@type integer
   local files_to_errors = {} ---@type table<string, string[]>
   ensure_runtimepath()
-  tagmap = get_helptags(vim.fn.expand(help_dir))
+  tagmap = get_helptags(vim.fs.normalize(help_dir))
   helpfiles = get_helpfiles(help_dir, include)
-  parser_path = parser_path and vim.fn.expand(parser_path) or nil
+  parser_path = parser_path and vim.fs.normalize(parser_path) or nil
 
   for _, f in ipairs(helpfiles) do
-    local helpfile = assert(vim.fs.basename(f))
+    local helpfile = vim.fs.basename(f)
     local rv = validate_one(f, parser_path)
     print(('validated (%-4s errors): %s'):format(#rv.parse_errors, helpfile))
     if #rv.parse_errors > 0 then
@@ -1404,7 +1411,7 @@ end
 ---
 --- @param help_dir? string e.g. '$VIMRUNTIME/doc' or './runtime/doc'
 function M.run_validate(help_dir)
-  help_dir = vim.fn.expand(help_dir or '$VIMRUNTIME/doc')
+  help_dir = vim.fs.normalize(help_dir or '$VIMRUNTIME/doc')
   print('doc path = ' .. vim.uv.fs_realpath(help_dir))
 
   local rv = M.validate(help_dir)
@@ -1430,8 +1437,8 @@ end
 ---    :help files, we can be precise about the tolerances here.
 --- @param help_dir? string e.g. '$VIMRUNTIME/doc' or './runtime/doc'
 function M.test_gen(help_dir)
-  local tmpdir = assert(vim.fs.dirname(vim.fn.tempname()))
-  help_dir = vim.fn.expand(help_dir or '$VIMRUNTIME/doc')
+  local tmpdir = vim.fs.dirname(vim.fn.tempname())
+  help_dir = vim.fs.normalize(help_dir or '$VIMRUNTIME/doc')
   print('doc path = ' .. vim.uv.fs_realpath(help_dir))
 
   -- Because gen() is slow (~30s), this test is limited to a few files.

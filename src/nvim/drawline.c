@@ -465,6 +465,7 @@ static void draw_sign(bool nrcol, win_T *wp, winlinevars_T *wlv, int sign_idx, i
     int fill = nrcol ? number_width(wp) + 1 : SIGN_WIDTH;
     draw_col_fill(wlv, schar_from_ascii(' '), fill, attr);
     int sign_pos = wlv->off - SIGN_WIDTH - (int)nrcol;
+    assert(sign_pos >= 0);
     linebuf_char[sign_pos] = sattr.text[0];
     linebuf_char[sign_pos + 1] = sattr.text[1];
   } else {
@@ -586,12 +587,13 @@ static void draw_statuscol(win_T *wp, winlinevars_T *wlv, linenr_T lnum, int vir
 
   char buf[MAXPATHL];
   // When a buffer's line count has changed, make a best estimate for the full
-  // width of the status column by building with "w_nrwidth_line_count". Add
-  // potentially truncated width and rebuild before drawing anything.
+  // width of the status column by building with the largest possible line number.
+  // Add potentially truncated width and rebuild before drawing anything.
   if (wp->w_statuscol_line_count != wp->w_nrwidth_line_count) {
     wp->w_statuscol_line_count = wp->w_nrwidth_line_count;
     set_vim_var_nr(VV_VIRTNUM, 0);
-    int width = build_statuscol_str(wp, wp->w_nrwidth_line_count, 0, buf, stcp);
+    int width = build_statuscol_str(wp, wp->w_nrwidth_line_count,
+                                    wp->w_nrwidth_line_count, buf, stcp);
     if (width > stcp->width) {
       int addwidth = MIN(width - stcp->width, MAX_STCWIDTH - stcp->width);
       wp->w_nrwidth += addwidth;
@@ -1156,7 +1158,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, s
     area_highlighting = true;
   }
   VirtLines virt_lines = KV_INITIAL_VALUE;
-  wlv.n_virt_lines = decor_virt_lines(wp, lnum, &virt_lines, has_fold);
+  wlv.n_virt_lines = decor_virt_lines(wp, lnum, &virt_lines);
   wlv.filler_lines += wlv.n_virt_lines;
   if (lnum == wp->w_topline) {
     wlv.filler_lines = wp->w_topfill;
@@ -1421,7 +1423,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, s
       line = ml_get_buf(wp->w_buffer, lnum);
       ptr = line + linecol;
 
-      if (len == 0 || (int)wp->w_cursor.col > ptr - line) {
+      if (len == 0 || wp->w_cursor.col > linecol) {
         // no bad word found at line start, don't check until end of a
         // word
         spell_hlf = HLF_COUNT;
@@ -1551,7 +1553,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, int col_rows, s
 
       // When only updating the columns and that's done, stop here.
       if (col_rows > 0) {
-        wlv_put_linebuf(wp, &wlv, wlv.off, false, bg_attr, 0);
+        wlv_put_linebuf(wp, &wlv, MIN(wlv.off, grid->cols), false, bg_attr, 0);
         // Need to update more screen lines if:
         // - 'statuscolumn' needs to be drawn, or
         // - LineNrAbove or LineNrBelow is used, or

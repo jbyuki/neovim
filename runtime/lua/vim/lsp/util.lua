@@ -173,11 +173,11 @@ local _str_byteindex_enc = M._str_byteindex_enc
 --- CAUTION: Changes in-place!
 ---
 ---@deprecated
----@param lines (table) Original list of strings
----@param A (table) Start position; a 2-tuple of {line,col} numbers
----@param B (table) End position; a 2-tuple of {line,col} numbers
----@param new_lines (table) list of strings to replace the original
----@return table The modified {lines} object
+---@param lines string[] Original list of strings
+---@param A [integer, integer] Start position; a 2-tuple of {line,col} numbers
+---@param B [integer, integer] End position; a 2-tuple {line,col} numbers
+---@param new_lines string[] list of strings to replace the original
+---@return string[] The modified {lines} object
 function M.set_lines(lines, A, B, new_lines)
   vim.deprecate('vim.lsp.util.set_lines()', 'nil', '0.12')
   -- 0-indexing to 1-indexing
@@ -238,6 +238,7 @@ end
 ---@param rows integer[] zero-indexed line numbers
 ---@return table<integer, string>|string a table mapping rows to lines
 local function get_lines(bufnr, rows)
+  --- @type integer[]
   rows = type(rows) == 'table' and rows or { rows }
 
   -- This is needed for bufload and bufloaded
@@ -246,7 +247,7 @@ local function get_lines(bufnr, rows)
   end
 
   local function buf_lines()
-    local lines = {}
+    local lines = {} --- @type table<integer,string>
     for _, row in ipairs(rows) do
       lines[row] = (api.nvim_buf_get_lines(bufnr, row, row + 1, false) or { '' })[1]
     end
@@ -274,11 +275,11 @@ local function get_lines(bufnr, rows)
   if not fd then
     return ''
   end
-  local stat = uv.fs_fstat(fd)
-  local data = uv.fs_read(fd, stat.size, 0)
+  local stat = assert(uv.fs_fstat(fd))
+  local data = assert(uv.fs_read(fd, stat.size, 0))
   uv.fs_close(fd)
 
-  local lines = {} -- rows we need to retrieve
+  local lines = {} --- @type table<integer,true|string> rows we need to retrieve
   local need = 0 -- keep track of how many unique rows we need
   for _, row in pairs(rows) do
     if not lines[row] then
@@ -307,7 +308,7 @@ local function get_lines(bufnr, rows)
       lines[i] = ''
     end
   end
-  return lines
+  return lines --[[@as table<integer,string>]]
 end
 
 --- Gets the zero-indexed line from the given buffer.
@@ -322,7 +323,8 @@ local function get_line(bufnr, row)
 end
 
 --- Position is a https://microsoft.github.io/language-server-protocol/specifications/specification-current/#position
----@param offset_encoding string|nil utf-8|utf-16|utf-32
+---@param position lsp.Position
+---@param offset_encoding? string utf-8|utf-16|utf-32
 ---@return integer
 local function get_line_byte_from_position(bufnr, position, offset_encoding)
   -- LSP's line and characters are 0-indexed
@@ -343,7 +345,7 @@ local function get_line_byte_from_position(bufnr, position, offset_encoding)
 end
 
 --- Applies a list of text edits to a buffer.
----@param text_edits table list of `TextEdit` objects
+---@param text_edits lsp.TextEdit[]
 ---@param bufnr integer Buffer id
 ---@param offset_encoding string utf-8|utf-16|utf-32
 ---@see https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textEdit
@@ -366,6 +368,7 @@ function M.apply_text_edits(text_edits, bufnr, offset_encoding)
 
   -- Fix reversed range and indexing each text_edits
   local index = 0
+  --- @param text_edit lsp.TextEdit
   text_edits = vim.tbl_map(function(text_edit)
     index = index + 1
     text_edit._index = index
@@ -383,6 +386,9 @@ function M.apply_text_edits(text_edits, bufnr, offset_encoding)
   end, text_edits)
 
   -- Sort text_edits
+  ---@param a lsp.TextEdit | { _index: integer }
+  ---@param b lsp.TextEdit | { _index: integer }
+  ---@return boolean
   table.sort(text_edits, function(a, b)
     if a.range.start.line ~= b.range.start.line then
       return a.range.start.line > b.range.start.line
@@ -390,13 +396,11 @@ function M.apply_text_edits(text_edits, bufnr, offset_encoding)
     if a.range.start.character ~= b.range.start.character then
       return a.range.start.character > b.range.start.character
     end
-    if a._index ~= b._index then
-      return a._index > b._index
-    end
+    return a._index > b._index
   end)
 
   -- save and restore local marks since they get deleted by nvim_buf_set_lines
-  local marks = {}
+  local marks = {} --- @type table<string,[integer,integer]>
   for _, m in pairs(vim.fn.getmarklist(bufnr)) do
     if m.mark:match("^'[a-z]$") then
       marks[m.mark:sub(2, 2)] = { m.pos[2], m.pos[3] - 1 } -- api-indexed
@@ -481,8 +485,8 @@ end
 --- Applies a `TextDocumentEdit`, which is a list of changes to a single
 --- document.
 ---
----@param text_document_edit table: a `TextDocumentEdit` object
----@param index integer: Optional index of the edit, if from a list of edits (or nil, if not from a list)
+---@param text_document_edit lsp.TextDocumentEdit
+---@param index? integer: Optional index of the edit, if from a list of edits (or nil, if not from a list)
 ---@param offset_encoding? string
 ---@see https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocumentEdit
 function M.apply_text_document_edit(text_document_edit, index, offset_encoding)
@@ -509,7 +513,6 @@ function M.apply_text_document_edit(text_document_edit, index, offset_encoding)
     and (
       text_document.version
       and text_document.version > 0
-      and M.buf_versions[bufnr]
       and M.buf_versions[bufnr] > text_document.version
     )
   then
@@ -534,6 +537,7 @@ local function path_under_prefix(path, prefix)
 end
 
 --- Get list of buffers whose filename matches the given path prefix (normalized full path)
+---@param prefix string
 ---@return integer[]
 local function get_bufs_with_prefix(prefix)
   prefix = path_components(prefix)
@@ -616,7 +620,7 @@ function M.rename(old_fname, new_fname, opts)
     buf_rename[b] = { from = old_bname, to = new_bname }
   end
 
-  local newdir = assert(vim.fs.dirname(new_fname))
+  local newdir = vim.fs.dirname(new_fname)
   vim.fn.mkdir(newdir, 'p')
 
   local ok, err = os.rename(old_fname_full, new_fname)
@@ -625,7 +629,7 @@ function M.rename(old_fname, new_fname, opts)
   local old_undofile = vim.fn.undofile(old_fname_full)
   if uv.fs_stat(old_undofile) ~= nil then
     local new_undofile = vim.fn.undofile(new_fname)
-    vim.fn.mkdir(assert(vim.fs.dirname(new_undofile)), 'p')
+    vim.fn.mkdir(vim.fs.dirname(new_undofile), 'p')
     os.rename(old_undofile, new_undofile)
   end
 
@@ -633,7 +637,7 @@ function M.rename(old_fname, new_fname, opts)
     -- Rename with :saveas. This does two things:
     -- * Unset BF_WRITE_MASK, so that users don't get E13 when they do :write.
     -- * Send didClose and didOpen via textDocument/didSave handler.
-    api.nvim_buf_call(b, function()
+    vim._with({ buf = b }, function()
       vim.cmd('keepalt saveas! ' .. vim.fn.fnameescape(rename.to))
     end)
     -- Delete the new buffer with the old name created by :saveas. nvim_buf_delete and
@@ -678,7 +682,7 @@ end
 
 --- Applies a `WorkspaceEdit`.
 ---
----@param workspace_edit table `WorkspaceEdit`
+---@param workspace_edit lsp.WorkspaceEdit
 ---@param offset_encoding string utf-8|utf-16|utf-32 (required)
 ---@see https://microsoft.github.io/language-server-protocol/specifications/specification-current/#workspace_applyEdit
 function M.apply_workspace_edit(workspace_edit, offset_encoding)
@@ -724,8 +728,8 @@ end
 --- Note that if the input is of type `MarkupContent` and its kind is `plaintext`,
 --- then the corresponding value is returned without further modifications.
 ---
----@param input (lsp.MarkedString | lsp.MarkedString[] | lsp.MarkupContent)
----@param contents (table|nil) List of strings to extend with converted lines. Defaults to {}.
+---@param input lsp.MarkedString|lsp.MarkedString[]|lsp.MarkupContent
+---@param contents string[]|nil List of strings to extend with converted lines. Defaults to {}.
 ---@return string[] extended with lines of converted markdown.
 ---@see https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_hover
 function M.convert_input_to_markdown_lines(input, contents)
@@ -760,11 +764,11 @@ end
 
 --- Converts `textDocument/signatureHelp` response to markdown lines.
 ---
----@param signature_help table Response of `textDocument/SignatureHelp`
+---@param signature_help lsp.SignatureHelp Response of `textDocument/SignatureHelp`
 ---@param ft string|nil filetype that will be use as the `lang` for the label markdown code block
 ---@param triggers table|nil list of trigger characters from the lsp server. used to better determine parameter offsets
----@return table|nil table list of lines of converted markdown.
----@return table|nil table of active hl
+---@return string[]|nil table list of lines of converted markdown.
+---@return number[]|nil table of active hl
 ---@see https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_signatureHelp
 function M.convert_signature_help_to_markdown_lines(signature_help, ft, triggers)
   if not signature_help.signatures then
@@ -961,7 +965,7 @@ end
 
 --- Shows document and optionally jumps to the location.
 ---
----@param location table (`Location`|`LocationLink`)
+---@param location lsp.Location|lsp.LocationLink
 ---@param offset_encoding string|nil utf-8|utf-16|utf-32
 ---@param opts table|nil options
 ---        - reuse_win (boolean) Jump to existing window if buffer is already open.
@@ -1007,7 +1011,7 @@ function M.show_document(location, offset_encoding, opts)
     local row = range.start.line
     local col = get_line_byte_from_position(bufnr, range.start, offset_encoding)
     api.nvim_win_set_cursor(win, { row + 1, col })
-    api.nvim_win_call(win, function()
+    vim._with({ win = win }, function()
       -- Open folds under the cursor
       vim.cmd('normal! zv')
     end)
@@ -1018,7 +1022,7 @@ end
 
 --- Jumps to a location.
 ---
----@param location table (`Location`|`LocationLink`)
+---@param location lsp.Location|lsp.LocationLink
 ---@param offset_encoding string|nil utf-8|utf-16|utf-32
 ---@param reuse_win boolean|nil Jump to existing window if buffer is already open.
 ---@return boolean `true` if the jump succeeded
@@ -1039,7 +1043,7 @@ end
 ---   - for Location, range is shown (e.g., function definition)
 ---   - for LocationLink, targetRange is shown (e.g., body of function definition)
 ---
----@param location table a single `Location` or `LocationLink`
+---@param location lsp.Location|lsp.LocationLink
 ---@param opts table
 ---@return integer|nil buffer id of float window
 ---@return integer|nil window id of float window
@@ -1155,7 +1159,7 @@ end
 --- If you want to open a popup with fancy markdown, use `open_floating_preview` instead
 ---
 ---@param bufnr integer
----@param contents table of lines to show in window
+---@param contents string[] of lines to show in window
 ---@param opts table with optional fields
 ---  - height    of floating window
 ---  - width     of floating window
@@ -1327,7 +1331,7 @@ function M.stylize_markdown(bufnr, contents, opts)
   end
 
   -- needs to run in the buffer for the regions to work
-  api.nvim_buf_call(bufnr, function()
+  vim._with({ buf = bufnr }, function()
     -- we need to apply lsp_markdown regions speperately, since otherwise
     -- markdown regions can "bleed" through the other syntax regions
     -- and mess up the formatting
@@ -1670,7 +1674,7 @@ do --[[ References ]]
   --- Shows a list of document highlights for a certain buffer.
   ---
   ---@param bufnr integer Buffer id
-  ---@param references table List of `DocumentHighlight` objects to highlight
+  ---@param references lsp.DocumentHighlight[] objects to highlight
   ---@param offset_encoding string One of "utf-8", "utf-16", "utf-32".
   ---@see https://microsoft.github.io/language-server-protocol/specification/#textDocumentContentChangeEvent
   function M.buf_highlight_references(bufnr, references, offset_encoding)
@@ -1721,7 +1725,9 @@ end)
 ---@inlinedoc
 ---@field filename string
 ---@field lnum integer 1-indexed line number
+---@field end_lnum integer 1-indexed end line number
 ---@field col integer 1-indexed column
+---@field end_col integer 1-indexed end column
 ---@field text string
 ---@field user_data lsp.Location|lsp.LocationLink
 
@@ -1748,7 +1754,7 @@ function M.locations_to_items(locations, offset_encoding)
   end
 
   local items = {}
-  ---@type table<string, {start: lsp.Position, location: lsp.Location|lsp.LocationLink}[]>
+  ---@type table<string, {start: lsp.Position, end: lsp.Position, location: lsp.Location|lsp.LocationLink}[]>
   local grouped = setmetatable({}, {
     __index = function(t, k)
       local v = {}
@@ -1760,7 +1766,7 @@ function M.locations_to_items(locations, offset_encoding)
     -- locations may be Location or LocationLink
     local uri = d.uri or d.targetUri
     local range = d.range or d.targetSelectionRange
-    table.insert(grouped[uri], { start = range.start, location = d })
+    table.insert(grouped[uri], { start = range.start, ['end'] = range['end'], location = d })
   end
 
   ---@type string[]
@@ -1775,6 +1781,9 @@ function M.locations_to_items(locations, offset_encoding)
     local line_numbers = {}
     for _, temp in ipairs(rows) do
       table.insert(line_numbers, temp.start.line)
+      if temp.start.line ~= temp['end'].line then
+        table.insert(line_numbers, temp['end'].line)
+      end
     end
 
     -- get all the lines for this uri
@@ -1782,13 +1791,18 @@ function M.locations_to_items(locations, offset_encoding)
 
     for _, temp in ipairs(rows) do
       local pos = temp.start
+      local end_pos = temp['end']
       local row = pos.line
+      local end_row = end_pos.line
       local line = lines[row] or ''
       local col = M._str_byteindex_enc(line, pos.character, offset_encoding)
+      local end_col = M._str_byteindex_enc(lines[end_row] or '', end_pos.character, offset_encoding)
       table.insert(items, {
         filename = filename,
         lnum = row + 1,
+        end_lnum = end_row + 1,
         col = col + 1,
+        end_col = end_col + 1,
         text = line,
         user_data = temp.location,
       })
@@ -1874,7 +1888,7 @@ end
 --- CAUTION: Modifies the input in-place!
 ---
 ---@deprecated
----@param lines table list of lines
+---@param lines string[] list of lines
 ---@return string filetype or "markdown" if it was unchanged.
 function M.try_trim_markdown_code_blocks(lines)
   vim.deprecate('vim.lsp.util.try_trim_markdown_code_blocks()', 'nil', '0.12')
@@ -1899,7 +1913,7 @@ function M.try_trim_markdown_code_blocks(lines)
 end
 
 ---@param window integer|nil: window handle or 0 for current, defaults to current
----@param offset_encoding string utf-8|utf-16|utf-32|nil defaults to `offset_encoding` of first client of buffer of `window`
+---@param offset_encoding? string utf-8|utf-16|utf-32|nil defaults to `offset_encoding` of first client of buffer of `window`
 local function make_position_param(window, offset_encoding)
   window = window or 0
   local buf = api.nvim_win_get_buf(window)
@@ -1920,7 +1934,7 @@ end
 ---
 ---@param window integer|nil: window handle or 0 for current, defaults to current
 ---@param offset_encoding string|nil utf-8|utf-16|utf-32|nil defaults to `offset_encoding` of first client of buffer of `window`
----@return table `TextDocumentPositionParams` object
+---@return lsp.TextDocumentPositionParams
 ---@see https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocumentPositionParams
 function M.make_position_params(window, offset_encoding)
   window = window or 0
@@ -1933,7 +1947,7 @@ function M.make_position_params(window, offset_encoding)
 end
 
 --- Utility function for getting the encoding of the first LSP client on the given buffer.
----@param bufnr (integer) buffer handle or 0 for current, defaults to current
+---@param bufnr integer buffer handle or 0 for current, defaults to current
 ---@return string encoding first client if there is one, nil otherwise
 function M._get_offset_encoding(bufnr)
   validate({
@@ -2034,15 +2048,16 @@ end
 --- Creates a `TextDocumentIdentifier` object for the current buffer.
 ---
 ---@param bufnr integer|nil: Buffer handle, defaults to current
----@return table `TextDocumentIdentifier`
+---@return lsp.TextDocumentIdentifier
 ---@see https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocumentIdentifier
 function M.make_text_document_params(bufnr)
   return { uri = vim.uri_from_bufnr(bufnr or 0) }
 end
 
 --- Create the workspace params
----@param added table
----@param removed table
+---@param added lsp.WorkspaceFolder[]
+---@param removed lsp.WorkspaceFolder[]
+---@return lsp.WorkspaceFoldersChangeEvent
 function M.make_workspace_params(added, removed)
   return { event = { added = added, removed = removed } }
 end
@@ -2050,8 +2065,8 @@ end
 --- Returns indentation size.
 ---
 ---@see 'shiftwidth'
----@param bufnr (integer|nil): Buffer handle, defaults to current
----@return (integer) indentation size
+---@param bufnr integer|nil: Buffer handle, defaults to current
+---@return integer indentation size
 function M.get_effective_tabstop(bufnr)
   validate({ bufnr = { bufnr, 'n', true } })
   local bo = bufnr and vim.bo[bufnr] or vim.bo
@@ -2061,7 +2076,7 @@ end
 
 --- Creates a `DocumentFormattingParams` object for the current buffer and cursor position.
 ---
----@param options table|nil with valid `FormattingOptions` entries
+---@param options lsp.FormattingOptions|nil with valid `FormattingOptions` entries
 ---@return lsp.DocumentFormattingParams object
 ---@see https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_formatting
 function M.make_formatting_params(options)
@@ -2203,6 +2218,11 @@ end
 M._get_line_byte_from_position = get_line_byte_from_position
 
 ---@nodoc
-M.buf_versions = {} ---@type table<integer,integer>
+---@type table<integer,integer>
+M.buf_versions = setmetatable({}, {
+  __index = function(t, bufnr)
+    return rawget(t, bufnr) or 0
+  end,
+})
 
 return M

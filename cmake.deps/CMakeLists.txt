@@ -37,6 +37,7 @@ option(USE_BUNDLED_MSGPACK "Use the bundled msgpack." ${USE_BUNDLED})
 option(USE_BUNDLED_TS "Use the bundled treesitter runtime." ${USE_BUNDLED})
 option(USE_BUNDLED_TS_PARSERS "Use the bundled treesitter parsers." ${USE_BUNDLED})
 option(USE_BUNDLED_UNIBILIUM "Use the bundled unibilium." ${USE_BUNDLED})
+option(USE_BUNDLED_UTF8PROC "Use the bundled utf8proc library." ${USE_BUNDLED})
 if(USE_BUNDLED AND MSVC)
   option(USE_BUNDLED_GETTEXT "Use the bundled version of gettext." ON)
   option(USE_BUNDLED_LIBICONV "Use the bundled version of libiconv." ON)
@@ -73,25 +74,6 @@ if(APPLE)
   endif()
   message(STATUS "Using deployment target ${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif()
-
-set_directory_properties(PROPERTIES
-  EP_PREFIX "${DEPS_BUILD_DIR}"
-  CMAKE_CONFIGURE_DEPENDS deps.txt)
-
-file(READ deps.txt DEPENDENCIES)
-STRING(REGEX REPLACE "\n" ";" DEPENDENCIES "${DEPENDENCIES}")
-foreach(dep ${DEPENDENCIES})
-  STRING(REGEX REPLACE " " ";" dep "${dep}")
-  list(GET dep 0 name)
-  list(GET dep 1 value)
-  if(NOT ${name})
-    # _URL variables must NOT be set when USE_EXISTING_SRC_DIR is set,
-    # otherwise ExternalProject will try to re-download the sources.
-    if(NOT USE_EXISTING_SRC_DIR)
-      set(${name} ${value})
-    endif()
-  endif()
-endforeach()
 
 if(USE_BUNDLED_LUAJIT)
   set(LUA_ENGINE LuaJit)
@@ -157,6 +139,10 @@ endif()
 
 if(USE_BUNDLED_TS)
   include(BuildTreesitter)
+endif()
+
+if(USE_BUNDLED_UTF8PROC)
+  include(BuildUTF8proc)
 endif()
 
 if(WIN32)

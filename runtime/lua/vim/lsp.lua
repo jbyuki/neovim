@@ -3,7 +3,6 @@ local validate = vim.validate
 
 local lsp = vim._defer_require('vim.lsp', {
   _changetracking = ..., --- @module 'vim.lsp._changetracking'
-  _completion = ..., --- @module 'vim.lsp._completion'
   _dynamic = ..., --- @module 'vim.lsp._dynamic'
   _snippet_grammar = ..., --- @module 'vim.lsp._snippet_grammar'
   _tagfunc = ..., --- @module 'vim.lsp._tagfunc'
@@ -11,6 +10,7 @@ local lsp = vim._defer_require('vim.lsp', {
   buf = ..., --- @module 'vim.lsp.buf'
   client = ..., --- @module 'vim.lsp.client'
   codelens = ..., --- @module 'vim.lsp.codelens'
+  completion = ..., --- @module 'vim.lsp.completion'
   diagnostic = ..., --- @module 'vim.lsp.diagnostic'
   handlers = ..., --- @module 'vim.lsp.handlers'
   inlay_hint = ..., --- @module 'vim.lsp.inlay_hint'
@@ -56,6 +56,7 @@ lsp._request_name_to_capability = {
   [ms.workspace_symbol] = { 'workspaceSymbolProvider' },
   [ms.textDocument_references] = { 'referencesProvider' },
   [ms.textDocument_rangeFormatting] = { 'documentRangeFormattingProvider' },
+  [ms.textDocument_rangesFormatting] = { 'documentRangeFormattingProvider', 'rangesSupport' },
   [ms.textDocument_formatting] = { 'documentFormattingProvider' },
   [ms.textDocument_completion] = { 'completionProvider' },
   [ms.textDocument_documentHighlight] = { 'documentHighlightProvider' },
@@ -201,10 +202,10 @@ end
 --- Predicate used to decide if a client should be re-used. Used on all
 --- running clients. The default implementation re-uses a client if name and
 --- root_dir matches.
---- @field reuse_client fun(client: vim.lsp.Client, config: vim.lsp.ClientConfig): boolean
+--- @field reuse_client? fun(client: vim.lsp.Client, config: vim.lsp.ClientConfig): boolean
 ---
 --- Buffer handle to attach to if starting or re-using a client (0 for current).
---- @field bufnr integer
+--- @field bufnr? integer
 ---
 --- Suppress error reporting if the LSP server fails to start (default false).
 --- @field silent? boolean
@@ -351,7 +352,7 @@ function lsp._set_defaults(client, bufnr)
   then
     vim.bo[bufnr].formatexpr = 'v:lua.vim.lsp.formatexpr()'
   end
-  api.nvim_buf_call(bufnr, function()
+  vim._with({ buf = bufnr }, function()
     if
       client.supports_method(ms.textDocument_hover)
       and is_empty_or_default(bufnr, 'keywordprg')
@@ -377,9 +378,9 @@ local function reset_defaults(bufnr)
   if vim.bo[bufnr].formatexpr == 'v:lua.vim.lsp.formatexpr()' then
     vim.bo[bufnr].formatexpr = nil
   end
-  api.nvim_buf_call(bufnr, function()
+  vim._with({ buf = bufnr }, function()
     local keymap = vim.fn.maparg('K', 'n', false, true)
-    if keymap and keymap.callback == vim.lsp.buf.hover then
+    if keymap and keymap.callback == vim.lsp.buf.hover and keymap.buffer == 1 then
       vim.keymap.del('n', 'K', { buffer = bufnr })
     end
   end)
@@ -391,9 +392,9 @@ end
 local function on_client_exit(code, signal, client_id)
   local client = all_clients[client_id]
 
-  for bufnr in pairs(client.attached_buffers) do
-    vim.schedule(function()
-      if client and client.attached_buffers[bufnr] then
+  vim.schedule(function()
+    for bufnr in pairs(client.attached_buffers) do
+      if client and client.attached_buffers[bufnr] and api.nvim_buf_is_valid(bufnr) then
         api.nvim_exec_autocmds('LspDetach', {
           buffer = bufnr,
           modeline = false,
@@ -401,15 +402,16 @@ local function on_client_exit(code, signal, client_id)
         })
       end
 
-      local namespace = vim.lsp.diagnostic.get_namespace(client_id)
-      vim.diagnostic.reset(namespace, bufnr)
       client.attached_buffers[bufnr] = nil
 
       if #lsp.get_clients({ bufnr = bufnr, _uninitialized = true }) == 0 then
         reset_defaults(bufnr)
       end
-    end)
-  end
+    end
+
+    local namespace = vim.lsp.diagnostic.get_namespace(client_id)
+    vim.diagnostic.reset(namespace)
+  end)
 
   local name = client.name or 'unknown'
 
@@ -519,7 +521,6 @@ local function buf_detach_client(bufnr, client)
   end
 
   client.attached_buffers[bufnr] = nil
-  util.buf_versions[bufnr] = nil
 
   local namespace = lsp.diagnostic.get_namespace(client.id)
   vim.diagnostic.reset(namespace, bufnr)
@@ -604,6 +605,7 @@ local function buf_attach(bufnr)
         buf_detach_client(bufnr, client)
       end
       attached_buffers[bufnr] = nil
+      util.buf_versions[bufnr] = nil
     end,
 
     -- TODO if we know all of the potential clients ahead of time, then we
@@ -853,17 +855,20 @@ api.nvim_create_autocmd('VimLeavePre', {
 ---@param params table|nil Parameters to send to the server
 ---@param handler? lsp.Handler See |lsp-handler|
 ---       If nil, follows resolution strategy defined in |lsp-handler-configuration|
----
+---@param on_unsupported? fun()
+---       The function to call when the buffer has no clients that support the given method.
+---       Defaults to an `ERROR` level notification.
 ---@return table<integer, integer> client_request_ids Map of client-id:request-id pairs
 ---for all successful requests.
 ---@return function _cancel_all_requests Function which can be used to
 ---cancel all the requests. You could instead
 ---iterate all clients and call their `cancel_request()` methods.
-function lsp.buf_request(bufnr, method, params, handler)
+function lsp.buf_request(bufnr, method, params, handler, on_unsupported)
   validate({
     bufnr = { bufnr, 'n', true },
     method = { method, 's' },
     handler = { handler, 'f', true },
+    on_unsupported = { on_unsupported, 'f', true },
   })
 
   bufnr = resolve_bufnr(bufnr)
@@ -885,7 +890,11 @@ function lsp.buf_request(bufnr, method, params, handler)
 
   -- if has client but no clients support the given method, notify the user
   if next(clients) and not method_supported then
-    vim.notify(lsp._unsupported_method(method), vim.log.levels.ERROR)
+    if on_unsupported == nil then
+      vim.notify(lsp._unsupported_method(method), vim.log.levels.ERROR)
+    else
+      on_unsupported()
+    end
     vim.cmd.redraw()
     return {}, function() end
   end
@@ -1003,8 +1012,7 @@ end
 --- - findstart=0: column where the completion starts, or -2 or -3
 --- - findstart=1: list of matches (actually just calls |complete()|)
 function lsp.omnifunc(findstart, base)
-  log.debug('omnifunc.findstart', { findstart = findstart, base = base })
-  return vim.lsp._completion.omnifunc(findstart, base)
+  return vim.lsp.completion._omnifunc(findstart, base)
 end
 
 --- @class vim.lsp.formatexpr.Opts

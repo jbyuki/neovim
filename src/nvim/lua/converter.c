@@ -219,12 +219,7 @@ bool nlua_pop_typval(lua_State *lstate, typval_T *ret_tv)
           if (cur.special) {
             list_T *const kv_pair = tv_list_alloc(2);
 
-            typval_T s_tv = decode_string(s, len, kTrue, false, false);
-            if (s_tv.v_type == VAR_UNKNOWN) {
-              ret = false;
-              tv_list_unref(kv_pair);
-              continue;
-            }
+            typval_T s_tv = decode_string(s, len, true, false);
             tv_list_append_owned_tv(kv_pair, s_tv);
 
             // Value: not populated yet, need to create list item to push.
@@ -280,10 +275,7 @@ bool nlua_pop_typval(lua_State *lstate, typval_T *ret_tv)
     case LUA_TSTRING: {
       size_t len;
       const char *s = lua_tolstring(lstate, -1, &len);
-      *cur.tv = decode_string(s, len, kNone, true, false);
-      if (cur.tv->v_type == VAR_UNKNOWN) {
-        ret = false;
-      }
+      *cur.tv = decode_string(s, len, false, false);
       break;
     }
     case LUA_TNUMBER: {
@@ -424,6 +416,8 @@ nlua_pop_typval_table_processing_end:
 static bool typval_conv_special = false;
 
 #define TYPVAL_ENCODE_ALLOW_SPECIALS true
+
+#define TYPVAL_ENCODE_CHECK_BEFORE
 
 #define TYPVAL_ENCODE_CONV_NIL(tv) \
   do { \
@@ -574,6 +568,7 @@ static bool typval_conv_special = false;
 #undef TYPVAL_ENCODE_CONV_LIST_START
 #undef TYPVAL_ENCODE_CONV_REAL_LIST_AFTER_START
 #undef TYPVAL_ENCODE_CONV_EMPTY_DICT
+#undef TYPVAL_ENCODE_CHECK_BEFORE
 #undef TYPVAL_ENCODE_CONV_NIL
 #undef TYPVAL_ENCODE_CONV_BOOL
 #undef TYPVAL_ENCODE_CONV_UNSIGNED_NUMBER
@@ -708,14 +703,10 @@ void nlua_push_Boolean(lua_State *lstate, const Boolean b, int flags)
 void nlua_push_Dictionary(lua_State *lstate, const Dictionary dict, int flags)
   FUNC_ATTR_NONNULL_ALL
 {
-  if (dict.size == 0 && (flags & kNluaPushSpecial)) {
-    nlua_create_typed_table(lstate, 0, 0, kObjectTypeDictionary);
-  } else {
-    lua_createtable(lstate, 0, (int)dict.size);
-    if (dict.size == 0 && !(flags & kNluaPushSpecial)) {
-      nlua_pushref(lstate, nlua_global_refs->empty_dict_ref);
-      lua_setmetatable(lstate, -2);
-    }
+  lua_createtable(lstate, 0, (int)dict.size);
+  if (dict.size == 0) {
+    nlua_pushref(lstate, nlua_global_refs->empty_dict_ref);
+    lua_setmetatable(lstate, -2);
   }
   for (size_t i = 0; i < dict.size; i++) {
     nlua_push_String(lstate, dict.items[i].key, flags);

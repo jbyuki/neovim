@@ -136,7 +136,7 @@ function M.open(path)
   })
   local is_uri = path:match('%w+:')
   if not is_uri then
-    path = vim.fn.expand(path)
+    path = vim.fs.normalize(path)
   end
 
   local cmd --- @type string[]
@@ -179,7 +179,12 @@ function M._get_url()
       current_node = current_node:parent()
     end
   end
-  return vim.fn.expand('<cfile>')
+
+  local url = vim._with({ go = { isfname = vim.o.isfname .. ',@-@' } }, function()
+    return vim.fn.expand('<cfile>')
+  end)
+
+  return url
 end
 
 return M

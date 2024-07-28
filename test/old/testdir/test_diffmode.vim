@@ -276,7 +276,7 @@ func Test_diffget_diffput_empty_buffer()
 endfunc
 
 " :diffput and :diffget completes names of buffers which
-" are in diff mode and which are different then current buffer.
+" are in diff mode and which are different than current buffer.
 " No completion when the current window is not in diff mode.
 func Test_diffget_diffput_completion()
   e            Xdiff1 | diffthis
@@ -679,7 +679,7 @@ func Test_diffexpr()
   call assert_notequal(normattr, screenattr(3, 1))
   diffoff!
 
-  " Try using an non-existing function for 'diffexpr'.
+  " Try using a non-existing function for 'diffexpr'.
   set diffexpr=NewDiffFunc()
   call assert_fails('windo diffthis', ['E117:', 'E97:'])
   diffoff!
@@ -1332,12 +1332,12 @@ endfunc
 func Test_diff_and_scroll()
   " this was causing an ml_get error
   set ls=2
-  for i in range(winheight(0) * 2) 
-    call setline(i, i < winheight(0) - 10 ? i : i + 10) 
+  for i in range(winheight(0) * 2)
+    call setline(i, i < winheight(0) - 10 ? i : i + 10)
   endfor
   vnew
-  for i in range(winheight(0)*2 + 10) 
-    call setline(i, i < winheight(0) - 10 ? 0 : i) 
+  for i in range(winheight(0)*2 + 10)
+    call setline(i, i < winheight(0) - 10 ? 0 : i)
   endfor
   diffthis
   wincmd p

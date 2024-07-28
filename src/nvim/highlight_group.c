@@ -22,6 +22,7 @@
 #include "nvim/cursor_shape.h"
 #include "nvim/decoration_provider.h"
 #include "nvim/drawscreen.h"
+#include "nvim/errors.h"
 #include "nvim/eval.h"
 #include "nvim/eval/typval_defs.h"
 #include "nvim/eval/vars.h"
@@ -150,34 +151,38 @@ static const char *highlight_init_both[] = {
   "lCursor           guifg=bg      guibg=fg",
 
   // UI
-  "default link CursorIM       Cursor",
-  "default link CursorLineFold FoldColumn",
-  "default link CursorLineSign SignColumn",
-  "default link EndOfBuffer    NonText",
-  "default link FloatBorder    NormalFloat",
-  "default link FloatFooter    FloatTitle",
-  "default link FloatTitle     Title",
-  "default link FoldColumn     SignColumn",
-  "default link IncSearch      CurSearch",
-  "default link LineNrAbove    LineNr",
-  "default link LineNrBelow    LineNr",
-  "default link MsgSeparator   StatusLine",
-  "default link MsgArea        NONE",
-  "default link NormalNC       NONE",
-  "default link PmenuExtra     Pmenu",
-  "default link PmenuExtraSel  PmenuSel",
-  "default link PmenuKind      Pmenu",
-  "default link PmenuKindSel   PmenuSel",
-  "default link PmenuSbar      Pmenu",
-  "default link Substitute     Search",
-  "default link TabLine        StatusLineNC",
-  "default link TabLineFill    TabLine",
-  "default link TermCursorNC   NONE",
-  "default link VertSplit      WinSeparator",
-  "default link VisualNOS      Visual",
-  "default link Whitespace     NonText",
-  "default link WildMenu       PmenuSel",
-  "default link WinSeparator   Normal",
+  "default link CursorIM         Cursor",
+  "default link CursorLineFold   FoldColumn",
+  "default link CursorLineSign   SignColumn",
+  "default link EndOfBuffer      NonText",
+  "default link FloatBorder      NormalFloat",
+  "default link FloatFooter      FloatTitle",
+  "default link FloatTitle       Title",
+  "default link FoldColumn       SignColumn",
+  "default link IncSearch        CurSearch",
+  "default link LineNrAbove      LineNr",
+  "default link LineNrBelow      LineNr",
+  "default link MsgSeparator     StatusLine",
+  "default link MsgArea          NONE",
+  "default link NormalNC         NONE",
+  "default link PmenuExtra       Pmenu",
+  "default link PmenuExtraSel    PmenuSel",
+  "default link PmenuKind        Pmenu",
+  "default link PmenuKindSel     PmenuSel",
+  "default link PmenuMatch       Pmenu",
+  "default link PmenuMatchSel    PmenuSel",
+  "default link PmenuSbar        Pmenu",
+  "default link Substitute       Search",
+  "default link StatusLineTerm   StatusLine",
+  "default link StatusLineTermNC StatusLineNC",
+  "default link TabLine          StatusLineNC",
+  "default link TabLineFill      TabLine",
+  "default link TermCursorNC     NONE",
+  "default link VertSplit        WinSeparator",
+  "default link VisualNOS        Visual",
+  "default link Whitespace       NonText",
+  "default link WildMenu         PmenuSel",
+  "default link WinSeparator     Normal",
 
   // Syntax
   "default link Character      Constant",
@@ -848,7 +853,7 @@ static int color_numbers_8[28] = { 0, 4, 2, 6,
 // color_names[].
 // "boldp" will be set to kTrue or kFalse for a foreground color when using 8
 // colors, otherwise it will be unchanged.
-int lookup_color(const int idx, const bool foreground, TriState *const boldp)
+static int lookup_color(const int idx, const bool foreground, TriState *const boldp)
 {
   int color = color_numbers_16[idx];
 
@@ -1173,7 +1178,7 @@ void do_highlight(const char *line, const bool forceit, const bool init)
         break;
       }
       vim_memcpy_up(key, key_start, key_len);
-      key[key_len] = '\0';
+      key[key_len] = NUL;
       linep = skipwhite(linep);
 
       if (strcmp(key, "NONE") == 0) {
@@ -1966,7 +1971,7 @@ int syn_name2id_len(const char *name, size_t len)
   // Avoid using stricmp() too much, it's slow on some systems
   // Avoid alloc()/free(), these are slow too.
   vim_memcpy_up(name_u, name, len);
-  name_u[len] = '\0';
+  name_u[len] = NUL;
 
   // map_get(..., int) returns 0 when no key is present, which is
   // the expected value for missing highlight group.
@@ -2268,7 +2273,6 @@ void highlight_changed(void)
   // sentinel value. used when no highlight namespace is active
   highlight_attr[HLF_COUNT] = 0;
 
-  //
   // Setup the user highlights
   //
   // Temporarily utilize 10 more hl entries:

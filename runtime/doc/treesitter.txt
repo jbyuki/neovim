@@ -22,9 +22,11 @@ search for in the `parser` runtime directory.
 
 Nvim includes these parsers:
 
+- Bash
 - C
 - Lua
 - Markdown
+- Python
 - Vimscript
 - Vimdoc
 - Treesitter query files |ft-query-plugin|
@@ -335,7 +337,7 @@ TREESITTER QUERY DIRECTIVES                            *treesitter-directives*
 Treesitter directives store metadata for a node or match and perform side
 effects. For example, the `set!` directive sets metadata on the match or node: >query
 
-        ((identifier) @foo (#set! "type" "parameter"))
+        ((identifier) @foo (#set! type "parameter"))
 <
 The following directives are built in:
 
@@ -350,9 +352,9 @@ The following directives are built in:
             {value}
 
         Examples: >query
-            ((identifier) @foo (#set! @foo "kind" "parameter"))
-            ((node1) @left (node2) @right (#set! "type" "pair"))
-            ((codeblock) @markup.raw.block (#set! "priority" 90))
+            ((identifier) @foo (#set! @foo kind "parameter"))
+            ((node1) @left (node2) @right (#set! type "pair"))
+            ((codeblock) @markup.raw.block (#set! priority 90))
 <
     `offset!`                                      *treesitter-directive-offset!*
         Takes the range of the captured node and applies an offset. This will
@@ -636,7 +638,7 @@ higher than treesitter. It is also possible to change the priority of an
 individual query pattern manually by setting its `"priority"` metadata
 attribute: >query
 
-    ((super_important_node) @superimportant (#set! "priority" 105))
+    ((super_important_node) @superimportant (#set! priority 105))
 <
 
 ==============================================================================
@@ -764,9 +766,9 @@ get_node({opts})                                   *vim.treesitter.get_node()*
       • {opts}  (`table?`) Optional keyword arguments:
                 • {bufnr} (`integer?`) Buffer number (nil or 0 for current
                   buffer)
-                • {pos} (`{ [1]: integer, [2]: integer }?`) 0-indexed (row,
-                  col) tuple. Defaults to cursor position in the current
-                  window. Required if {bufnr} is not the current buffer
+                • {pos} (`[integer, integer]?`) 0-indexed (row, col) tuple.
+                  Defaults to cursor position in the current window. Required
+                  if {bufnr} is not the current buffer
                 • {lang} (`string?`) Parser language. (default: from buffer
                   filetype)
                 • {ignore_injections} (`boolean?`) Ignore injected languages

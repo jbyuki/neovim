@@ -135,14 +135,15 @@ describe('lua stdlib', function()
     -- See MAINTAIN.md for the soft/hard deprecation policy
 
     describe(('vim.deprecate prerel=%s,'):format(prerel or 'nil'), function()
-      local curver = exec_lua('return vim.version()') --[[@as {major:number, minor:number}]]
-      -- "0.10" or "0.10-dev+xxx"
-      local curstr = ('%s.%s%s'):format(curver.major, curver.minor, prerel or '')
-      -- "0.10" or "0.11"
-      local nextver = ('%s.%s'):format(curver.major, curver.minor + (prerel and 0 or 1))
-      local was_removed = prerel and 'was removed' or 'will be removed'
+      local curver --- @type {major:number, minor:number}
+
+      before_each(function()
+        curver = exec_lua('return vim.version()')
+      end)
 
       it('plugin=nil, same message skipped', function()
+        -- "0.10" or "0.10-dev+xxx"
+        local curstr = ('%s.%s%s'):format(curver.major, curver.minor, prerel or '')
         eq(
           dedent(
             [[
@@ -162,6 +163,10 @@ describe('lua stdlib', function()
       end)
 
       it('plugin=nil, show error if hard-deprecated', function()
+        -- "0.10" or "0.11"
+        local nextver = ('%s.%s'):format(curver.major, curver.minor + (prerel and 0 or 1))
+
+        local was_removed = prerel and 'was removed' or 'will be removed'
         eq(
           dedent(
             [[
@@ -1200,8 +1205,7 @@ describe('lua stdlib', function()
     ]])
     eq(true, exec_lua([[return next(vim.fn.FooFunc(3)) == nil ]]))
     eq(3, eval('g:test'))
-    -- compat: nvim_call_function uses "special" value for empty dict
-    eq(true, exec_lua([[return next(vim.api.nvim_call_function("FooFunc", {5})) == true ]]))
+    eq(true, exec_lua([[return vim.tbl_isempty(vim.api.nvim_call_function("FooFunc", {5}))]]))
     eq(5, eval('g:test'))
 
     eq({ 2, 'foo', true }, exec_lua([[return vim.fn.VarArg(2, "foo", true)]]))
@@ -1490,6 +1494,60 @@ describe('lua stdlib', function()
     ]])
     )
 
+    eq(
+      { false, false },
+      exec_lua([[
+      local meta = { __call = {} }
+      assert(meta.__call)
+      local function new()
+        return setmetatable({}, meta)
+      end
+      local not_callable = new()
+      return { pcall(function() not_callable() end), vim.is_callable(not_callable) }
+    ]])
+    )
+    eq(
+      { false, false },
+      exec_lua([[
+      local function new()
+        return { __call = function()end }
+      end
+      local not_callable = new()
+      assert(not_callable.__call)
+      return { pcall(function() not_callable() end), vim.is_callable(not_callable) }
+    ]])
+    )
+    eq(
+      { false, false },
+      exec_lua([[
+      local meta = setmetatable(
+        { __index = { __call = function() end } },
+        { __index = { __call = function() end } }
+      )
+      assert(meta.__call)
+      local not_callable = setmetatable({}, meta)
+      assert(not_callable.__call)
+      return { pcall(function() not_callable() end), vim.is_callable(not_callable) }
+    ]])
+    )
+    eq(
+      { false, false },
+      exec_lua([[
+      local meta = setmetatable({
+        __index = function()
+          return function() end
+        end,
+      }, {
+        __index = function()
+          return function() end
+        end,
+      })
+      assert(meta.__call)
+      local not_callable = setmetatable({}, meta)
+      assert(not_callable.__call)
+      return { pcall(function() not_callable() end), vim.is_callable(not_callable) }
+    ]])
+    )
     eq(false, exec_lua('return vim.is_callable(1)'))
     eq(false, exec_lua("return vim.is_callable('foo')"))
     eq(false, exec_lua('return vim.is_callable({})'))
@@ -2023,6 +2081,10 @@ describe('lua stdlib', function()
     vim.cmd "enew"
     ]]
     eq(100, fn.luaeval 'vim.wo.scrolloff')
+
+    matches('only bufnr=0 is supported', pcall_err(exec_lua, 'vim.wo[0][10].signcolumn = "no"'))
+
+    matches('only bufnr=0 is supported', pcall_err(exec_lua, 'local a = vim.wo[0][10].signcolumn'))
   end)
 
   describe('vim.opt', function()

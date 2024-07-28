@@ -18,6 +18,7 @@
 #include "nvim/digraph.h"
 #include "nvim/drawscreen.h"
 #include "nvim/edit.h"
+#include "nvim/errors.h"
 #include "nvim/eval.h"
 #include "nvim/eval/typval_defs.h"
 #include "nvim/ex_cmds_defs.h"
@@ -473,7 +474,8 @@ static int insert_check(VimState *state)
 
     if (curwin->w_wcol < s->mincol - tabstop_at(get_nolist_virtcol(),
                                                 curbuf->b_p_ts,
-                                                curbuf->b_p_vts_array)
+                                                curbuf->b_p_vts_array,
+                                                false)
         && curwin->w_wrow == curwin->w_height_inner - 1 - get_scrolloff_value(curwin)
         && (curwin->w_cursor.lnum != curwin->w_topline
             || curwin->w_topfill > 0)) {
@@ -2025,7 +2027,6 @@ static void insert_special(int c, int allow_modmask, int ctrlv)
 // '0' and '^' are special, because they can be followed by CTRL-D.
 #define ISSPECIAL(c)   ((c) < ' ' || (c) >= DEL || (c) == '0' || (c) == '^')
 
-///
 /// "flags": INSCHAR_FORMAT - force formatting
 ///          INSCHAR_CTRLV  - char typed just after CTRL-V
 ///          INSCHAR_NO_FEX - don't use 'formatexpr'
@@ -2649,7 +2650,6 @@ void cursor_down_inner(win_T *wp, int n)
 
     // count each sequence of folded lines as one logical line
     while (n--) {
-      // Move to last line of fold, will fail if it's the end-of-file.
       if (hasFoldingWin(wp, lnum, NULL, &last, true, NULL)) {
         lnum = last + 1;
       } else {
@@ -2672,8 +2672,10 @@ void cursor_down_inner(win_T *wp, int n)
 /// @param upd_topline  When true: update topline
 int cursor_down(int n, bool upd_topline)
 {
-  // This fails if the cursor is already in the last line.
-  if (n > 0 && curwin->w_cursor.lnum >= curwin->w_buffer->b_ml.ml_line_count) {
+  linenr_T lnum = curwin->w_cursor.lnum;
+  // This fails if the cursor is already in the last (folded) line.
+  hasFoldingWin(curwin, lnum, NULL, &lnum, true, NULL);
+  if (n > 0 && lnum >= curwin->w_buffer->b_ml.ml_line_count) {
     return FAIL;
   }
   cursor_down_inner(curwin, n);
@@ -4419,17 +4421,29 @@ static bool ins_tab(void)
       // Delete following spaces.
       int i = cursor->col - fpos.col;
       if (i > 0) {
-        STRMOVE(ptr, ptr + i);
+        if (!(State & VREPLACE_FLAG)) {
+          char *newp = xmalloc((size_t)(curbuf->b_ml.ml_line_len - i));
+          ptrdiff_t col = ptr - curbuf->b_ml.ml_line_ptr;
+          if (col > 0) {
+            memmove(newp, ptr - col, (size_t)col);
+          }
+          memmove(newp + col, ptr + i, (size_t)(curbuf->b_ml.ml_line_len - col - i));
+          if (curbuf->b_ml.ml_flags & (ML_LINE_DIRTY | ML_ALLOCATED)) {
+            xfree(curbuf->b_ml.ml_line_ptr);
+          }
+          curbuf->b_ml.ml_line_ptr = newp;
+          curbuf->b_ml.ml_line_len -= i;
+          curbuf->b_ml.ml_flags = (curbuf->b_ml.ml_flags | ML_LINE_DIRTY) & ~ML_EMPTY;
+          inserted_bytes(fpos.lnum, change_col,
+                         cursor->col - change_col, fpos.col - change_col);
+        } else {
+          STRMOVE(ptr, ptr + i);
+        }
         // correct replace stack.
         if ((State & REPLACE_FLAG) && !(State & VREPLACE_FLAG)) {
           for (temp = i; --temp >= 0;) {
             replace_join(repl_off);
           }
-        }
-        if (!(State & VREPLACE_FLAG)) {
-          curbuf->b_ml.ml_line_len -= i;
-          inserted_bytes(fpos.lnum, change_col,
-                         cursor->col - change_col, fpos.col - change_col);
         }
       }
       cursor->col -= i;

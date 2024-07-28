@@ -14,6 +14,7 @@
 #include "nvim/diff.h"
 #include "nvim/digraph.h"
 #include "nvim/drawscreen.h"
+#include "nvim/errors.h"
 #include "nvim/eval/typval_defs.h"
 #include "nvim/eval/userfunc.h"
 #include "nvim/eval/vars.h"
@@ -81,7 +82,7 @@ static char *(p_dip_values[]) = { "filler", "context:", "iblank", "icase",
                                   "closeoff", "hiddenoff", "foldcolumn:", "followwrap", "internal",
                                   "indent-heuristic", "linematch:", "algorithm:", NULL };
 static char *(p_dip_algorithm_values[]) = { "myers", "minimal", "patience", "histogram", NULL };
-static char *(p_nf_values[]) = { "bin", "octal", "hex", "alpha", "unsigned", NULL };
+static char *(p_nf_values[]) = { "bin", "octal", "hex", "alpha", "unsigned", "blank", NULL };
 static char *(p_ff_values[]) = { FF_UNIX, FF_DOS, FF_MAC, NULL };
 static char *(p_cb_values[]) = { "unnamed", "unnamedplus", NULL };
 static char *(p_cmp_values[]) = { "internal", "keepascii", NULL };
@@ -97,11 +98,13 @@ static char *(p_ssop_values[]) = { "buffers", "winpos", "resize", "winsize", "lo
                                    "options", "help", "blank", "globals", "slash", "unix", "sesdir",
                                    "curdir", "folds", "cursor", "tabpages", "terminal", "skiprtp",
                                    NULL };
-// Keep in sync with SWB_ flags in option_defs.h
+// Keep in sync with SWB_ flags in option_vars.h
 static char *(p_swb_values[]) = { "useopen", "usetab", "split", "newtab", "vsplit", "uselast",
                                   NULL };
 static char *(p_spk_values[]) = { "cursor", "screen", "topline", NULL };
 static char *(p_tc_values[]) = { "followic", "ignore", "match", "followscs", "smart", NULL };
+// Keep in sync with TCL_ flags in option_vars.h
+static char *(p_tcl_values[]) = { "left", "uselast", NULL };
 static char *(p_ve_values[]) = { "block", "insert", "all", "onemore", "none", "NONE", NULL };
 // Note: Keep this in sync with check_opt_wim()
 static char *(p_wim_values[]) = { "full", "longest", "list", "lastused", NULL };
@@ -121,8 +124,8 @@ static char *(p_bs_values[]) = { "indent", "eol", "start", "nostop", NULL };
 static char *(p_fdm_values[]) = { "manual", "expr", "marker", "indent",
                                   "syntax",  "diff", NULL };
 static char *(p_fcl_values[]) = { "all", NULL };
-static char *(p_cot_values[]) = { "menu", "menuone", "longest", "preview", "noinsert", "noselect",
-                                  "popup", NULL };
+static char *(p_cot_values[]) = { "menu", "menuone", "longest", "preview", "popup",
+                                  "noinsert", "noselect", "fuzzy", NULL };
 #ifdef BACKSLASH_IN_FILENAME
 static char *(p_csl_values[]) = { "slash", "backslash", NULL };
 #endif
@@ -136,7 +139,7 @@ static char *(p_fdc_values[]) = { "auto", "auto:1", "auto:2", "auto:3", "auto:4"
                                   "5", "6", "7", "8", "9", NULL };
 static char *(p_spo_values[]) = { "camel", "noplainbuffer", NULL };
 static char *(p_icm_values[]) = { "nosplit", "split", NULL };
-static char *(p_jop_values[]) = { "stack", "view", NULL };
+static char *(p_jop_values[]) = { "stack", "view", "unload", NULL };
 static char *(p_tpf_values[]) = { "BS", "HT", "FF", "ESC", "DEL", "C0", "C1", NULL };
 static char *(p_rdb_values[]) = { "compositor", "nothrottle", "invalid", "nodelta", "line",
                                   "flush", NULL };
@@ -157,6 +160,7 @@ void didset_string_options(void)
   opt_strings_flags(p_cmp, p_cmp_values, &cmp_flags, true);
   opt_strings_flags(p_bkc, p_bkc_values, &bkc_flags, true);
   opt_strings_flags(p_bo, p_bo_values, &bo_flags, true);
+  opt_strings_flags(p_cot, p_cot_values, &cot_flags, true);
   opt_strings_flags(p_ssop, p_ssop_values, &ssop_flags, true);
   opt_strings_flags(p_vop, p_ssop_values, &vop_flags, true);
   opt_strings_flags(p_fdo, p_fdo_values, &fdo_flags, true);
@@ -167,6 +171,7 @@ void didset_string_options(void)
   opt_strings_flags(p_tpf, p_tpf_values, &tpf_flags, true);
   opt_strings_flags(p_ve, p_ve_values, &ve_flags, true);
   opt_strings_flags(p_swb, p_swb_values, &swb_flags, true);
+  opt_strings_flags(p_tcl, p_tcl_values, &tcl_flags, true);
   opt_strings_flags(p_wop, p_wop_values, &wop_flags, true);
   opt_strings_flags(p_cb, p_cb_values, &cb_flags, true);
 }
@@ -218,6 +223,7 @@ void check_buf_options(buf_T *buf)
   check_string_option(&buf->b_p_ft);
   check_string_option(&buf->b_p_cinw);
   check_string_option(&buf->b_p_cinsd);
+  check_string_option(&buf->b_p_cot);
   check_string_option(&buf->b_p_cpt);
   check_string_option(&buf->b_p_cfu);
   check_string_option(&buf->b_p_ofu);
@@ -992,10 +998,23 @@ int expand_set_complete(optexpand_T *args, int *numMatches, char ***matches)
 /// The 'completeopt' option is changed.
 const char *did_set_completeopt(optset_T *args FUNC_ATTR_UNUSED)
 {
-  if (check_opt_strings(p_cot, p_cot_values, true) != OK) {
+  buf_T *buf = (buf_T *)args->os_buf;
+  char *cot = p_cot;
+  unsigned *flags = &cot_flags;
+
+  if (args->os_flags & OPT_LOCAL) {
+    cot = buf->b_p_cot;
+    flags = &buf->b_cot_flags;
+  }
+
+  if (check_opt_strings(cot, p_cot_values, true) != OK) {
     return e_invarg;
   }
-  completeopt_was_set();
+
+  if (opt_strings_flags(cot, p_cot_values, flags, true) != OK) {
+    return e_invarg;
+  }
+
   return NULL;
 }
 
@@ -2187,6 +2206,21 @@ int expand_set_switchbuf(optexpand_T *args, int *numMatches, char ***matches)
   return expand_set_opt_string(args,
                                p_swb_values,
                                ARRAY_SIZE(p_swb_values) - 1,
+                               numMatches,
+                               matches);
+}
+
+/// The 'tabclose' option is changed.
+const char *did_set_tabclose(optset_T *args FUNC_ATTR_UNUSED)
+{
+  return did_set_opt_flags(p_tcl, p_tcl_values, &tcl_flags, true);
+}
+
+int expand_set_tabclose(optexpand_T *args, int *numMatches, char ***matches)
+{
+  return expand_set_opt_string(args,
+                               p_tcl_values,
+                               ARRAY_SIZE(p_tcl_values) - 1,
                                numMatches,
                                matches);
 }

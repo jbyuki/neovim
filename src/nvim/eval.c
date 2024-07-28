@@ -24,6 +24,7 @@
 #include "nvim/cmdhist.h"
 #include "nvim/cursor.h"
 #include "nvim/edit.h"
+#include "nvim/errors.h"
 #include "nvim/eval.h"
 #include "nvim/eval/encode.h"
 #include "nvim/eval/executor.h"
@@ -330,7 +331,6 @@ static const char *const msgpack_type_names[] = {
   [kMPInteger] = "integer",
   [kMPFloat] = "float",
   [kMPString] = "string",
-  [kMPBinary] = "binary",
   [kMPArray] = "array",
   [kMPMap] = "map",
   [kMPExt] = "ext",
@@ -341,7 +341,6 @@ const list_T *eval_msgpack_type_lists[] = {
   [kMPInteger] = NULL,
   [kMPFloat] = NULL,
   [kMPString] = NULL,
-  [kMPBinary] = NULL,
   [kMPArray] = NULL,
   [kMPMap] = NULL,
   [kMPExt] = NULL,
@@ -4388,7 +4387,7 @@ bool func_equal(typval_T *tv1, typval_T *tv2, bool ic)
     if (d1 != d2) {
       return false;
     }
-  } else if (!tv_dict_equal(d1, d2, ic, true)) {
+  } else if (!tv_dict_equal(d1, d2, ic)) {
     return false;
   }
 
@@ -4400,7 +4399,7 @@ bool func_equal(typval_T *tv1, typval_T *tv2, bool ic)
   }
   for (int i = 0; i < a1; i++) {
     if (!tv_equal(tv1->vval.v_partial->pt_argv + i,
-                  tv2->vval.v_partial->pt_argv + i, ic, true)) {
+                  tv2->vval.v_partial->pt_argv + i, ic)) {
       return false;
     }
   }
@@ -7153,8 +7152,8 @@ static char *make_expanded_name(const char *in_start, char *expr_start, char *ex
     retval = xmalloc(strlen(temp_result) + (size_t)(expr_start - in_start)
                      + (size_t)(in_end - expr_end) + 1);
     STRCPY(retval, in_start);
-    STRCAT(retval, temp_result);
-    STRCAT(retval, expr_end + 1);
+    strcat(retval, temp_result);
+    strcat(retval, expr_end + 1);
   }
   xfree(temp_result);
 
@@ -8909,7 +8908,7 @@ bool eval_has_provider(const char *feat, bool throw_if_fast)
 
   char name[32];  // Normalized: "python3_compiled" => "python3".
   snprintf(name, sizeof(name), "%s", feat);
-  strchrsub(name, '_', '\0');  // Chop any "_xx" suffix.
+  strchrsub(name, '_', NUL);  // Chop any "_xx" suffix.
 
   char buf[256];
   typval_T tv;
@@ -9064,7 +9063,7 @@ int typval_compare(typval_T *typ1, typval_T *typ2, exprtype_T type, bool ic)
       return FAIL;
     } else {
       // Compare two Lists for being equal or unequal.
-      n1 = tv_list_equal(typ1->vval.v_list, typ2->vval.v_list, ic, false);
+      n1 = tv_list_equal(typ1->vval.v_list, typ2->vval.v_list, ic);
       if (type == EXPR_NEQUAL) {
         n1 = !n1;
       }
@@ -9087,7 +9086,7 @@ int typval_compare(typval_T *typ1, typval_T *typ2, exprtype_T type, bool ic)
       return FAIL;
     } else {
       // Compare two Dictionaries for being equal or unequal.
-      n1 = tv_dict_equal(typ1->vval.v_dict, typ2->vval.v_dict, ic, false);
+      n1 = tv_dict_equal(typ1->vval.v_dict, typ2->vval.v_dict, ic);
       if (type == EXPR_NEQUAL) {
         n1 = !n1;
       }
@@ -9108,14 +9107,14 @@ int typval_compare(typval_T *typ1, typval_T *typ2, exprtype_T type, bool ic)
       if (typ1->v_type == VAR_FUNC && typ2->v_type == VAR_FUNC) {
         // strings are considered the same if their value is
         // the same
-        n1 = tv_equal(typ1, typ2, ic, false);
+        n1 = tv_equal(typ1, typ2, ic);
       } else if (typ1->v_type == VAR_PARTIAL && typ2->v_type == VAR_PARTIAL) {
         n1 = typ1->vval.v_partial == typ2->vval.v_partial;
       } else {
         n1 = false;
       }
     } else {
-      n1 = tv_equal(typ1, typ2, ic, false);
+      n1 = tv_equal(typ1, typ2, ic);
     }
     if (type == EXPR_NEQUAL || type == EXPR_ISNOT) {
       n1 = !n1;

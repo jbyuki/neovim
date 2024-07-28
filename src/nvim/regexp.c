@@ -18,6 +18,7 @@
 #include "nvim/ascii_defs.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/charset.h"
+#include "nvim/errors.h"
 #include "nvim/eval.h"
 #include "nvim/eval/typval.h"
 #include "nvim/eval/userfunc.h"
@@ -6253,15 +6254,20 @@ static bool regmatch(uint8_t *scan, const proftime_T *tm, int *timed_out)
           }
           break;
 
-        case RE_VCOL:
-          if (!re_num_cmp((unsigned)win_linetabsize(rex.reg_win == NULL ? curwin : rex.reg_win,
-                                                    rex.reg_firstlnum + rex.lnum,
-                                                    (char *)rex.line,
-                                                    (colnr_T)(rex.input - rex.line)) + 1,
-                          scan)) {
+        case RE_VCOL: {
+          win_T *wp = rex.reg_win == NULL ? curwin : rex.reg_win;
+          linenr_T lnum = REG_MULTI ? rex.reg_firstlnum + rex.lnum : 1;
+          if (REG_MULTI && (lnum <= 0 || lnum > wp->w_buffer->b_ml.ml_line_count)) {
+            lnum = 1;
+          }
+          int vcol = win_linetabsize(wp, lnum, (char *)rex.line,
+                                     (colnr_T)(rex.input - rex.line));
+          if (!re_num_cmp((uint32_t)vcol + 1, scan)) {
             status = RA_NOMATCH;
           }
           break;
+        }
+        break;
 
         case BOW:  // \<word; rex.input points to w
           if (c == NUL) {  // Can't match at end of line
@@ -11450,7 +11456,7 @@ static void nfa_set_code(int c)
   }
 
   if (addnl == true) {
-    STRCAT(code, " + NEWLINE ");
+    strcat(code, " + NEWLINE ");
   }
 }
 
@@ -11494,7 +11500,7 @@ static void nfa_print_state(FILE *debugf, nfa_state_T *state)
   garray_T indent;
 
   ga_init(&indent, 1, 64);
-  ga_append(&indent, '\0');
+  ga_append(&indent, NUL);
   nfa_print_state2(debugf, state, &indent);
   ga_clear(&indent);
 }
@@ -14800,7 +14806,7 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start, regsubs_T *subm
       }
 
       case NFA_ANY:
-        // Any char except '\0', (end of input) does not match.
+        // Any char except NUL, (end of input) does not match.
         if (curc > 0) {
           add_state = t->state->out;
           add_off = clen;
@@ -15098,9 +15104,13 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start, regsubs_T *subm
           result = col > t->state->val * ts;
         }
         if (!result) {
-          int lts = win_linetabsize(wp, rex.reg_firstlnum + rex.lnum, (char *)rex.line, col);
+          linenr_T lnum = REG_MULTI ? rex.reg_firstlnum + rex.lnum : 1;
+          if (REG_MULTI && (lnum <= 0 || lnum > wp->w_buffer->b_ml.ml_line_count)) {
+            lnum = 1;
+          }
+          int vcol = win_linetabsize(wp, lnum, (char *)rex.line, col);
           assert(t->state->val >= 0);
-          result = nfa_re_num_cmp((uintmax_t)t->state->val, op, (uintmax_t)lts + 1);
+          result = nfa_re_num_cmp((uintmax_t)t->state->val, op, (uintmax_t)vcol + 1);
         }
         if (result) {
           add_here = true;

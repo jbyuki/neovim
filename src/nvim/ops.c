@@ -24,6 +24,7 @@
 #include "nvim/cursor.h"
 #include "nvim/drawscreen.h"
 #include "nvim/edit.h"
+#include "nvim/errors.h"
 #include "nvim/eval.h"
 #include "nvim/eval/typval.h"
 #include "nvim/ex_cmds2.h"
@@ -281,8 +282,10 @@ void op_shift(oparg_T *oap, bool curs_top, int amount)
 /// @param call_changed_bytes  call changed_bytes()
 void shift_line(bool left, bool round, int amount, int call_changed_bytes)
 {
-  const int sw_val = get_sw_value_indent(curbuf);
-
+  int sw_val = get_sw_value_indent(curbuf, left);
+  if (sw_val == 0) {
+    sw_val = 1;              // shouldn't happen, just in case
+  }
   int count = get_indent();  // get current indent
 
   if (round) {  // round off indent
@@ -327,7 +330,7 @@ static void shift_block(oparg_T *oap, int amount)
   const int oldstate = State;
   char *newp;
   const int oldcol = curwin->w_cursor.col;
-  const int sw_val = get_sw_value_indent(curbuf);
+  const int sw_val = get_sw_value_indent(curbuf, left);
   const int ts_val = (int)curbuf->b_p_ts;
   struct block_def bd;
   int incr;
@@ -2145,18 +2148,6 @@ bool swapchar(int op_type, pos_T *pos)
     return false;
   }
 
-  // ~ is OP_NOP, g~ is OP_TILDE, gU is OP_UPPER
-  if ((op_type == OP_UPPER || op_type == OP_NOP || op_type == OP_TILDE) && c == 0xdf) {
-    pos_T sp = curwin->w_cursor;
-
-    // Special handling for lowercase German sharp s (ß): convert to uppercase (ẞ).
-    curwin->w_cursor = *pos;
-    del_char(false);
-    ins_char(0x1E9E);
-    curwin->w_cursor = sp;
-    return true;
-  }
-
   int nc = c;
   if (mb_islower(c)) {
     if (op_type == OP_ROT13) {
@@ -2663,7 +2654,7 @@ static void op_yank_reg(oparg_T *oap, bool message, yankreg_T *reg, bool append)
       char *pnew = xmalloc(strlen(curr->y_array[curr->y_size - 1])
                            + strlen(reg->y_array[0]) + 1);
       STRCPY(pnew, curr->y_array[--j]);
-      STRCAT(pnew, reg->y_array[0]);
+      strcat(pnew, reg->y_array[0]);
       xfree(curr->y_array[j]);
       xfree(reg->y_array[0]);
       curr->y_array[j++] = pnew;
@@ -3428,7 +3419,7 @@ void do_put(int regname, yankreg_T *reg, int dir, int count, int flags)
           totlen = strlen(y_array[y_size - 1]);
           char *newp = xmalloc((size_t)ml_get_len(lnum) - (size_t)col + totlen + 1);
           STRCPY(newp, y_array[y_size - 1]);
-          STRCAT(newp, ptr);
+          strcat(newp, ptr);
           // insert second line
           ml_append(lnum, newp, 0, false);
           new_lnum++;
@@ -4429,6 +4420,7 @@ bool do_addsub(int op_type, pos_T *pos, int length, linenr_T Prenum1)
   int pre;  // 'X' or 'x': hex; '0': octal; 'B' or 'b': bin
   static bool hexupper = false;  // 0xABC
   uvarnumber_T n;
+  bool blank_unsigned = false;  // blank: treat as unsigned?
   bool negative = false;
   bool was_positive = true;
   bool visual = VIsual_active;
@@ -4439,12 +4431,12 @@ bool do_addsub(int op_type, pos_T *pos, int length, linenr_T Prenum1)
   pos_T endpos;
   colnr_T save_coladd = 0;
 
-  const bool do_hex = vim_strchr(curbuf->b_p_nf, 'x') != NULL;    // "heX"
-  const bool do_oct = vim_strchr(curbuf->b_p_nf, 'o') != NULL;    // "Octal"
-  const bool do_bin = vim_strchr(curbuf->b_p_nf, 'b') != NULL;    // "Bin"
-  const bool do_alpha = vim_strchr(curbuf->b_p_nf, 'p') != NULL;  // "alPha"
-  // "Unsigned"
-  const bool do_unsigned = vim_strchr(curbuf->b_p_nf, 'u') != NULL;
+  const bool do_hex = vim_strchr(curbuf->b_p_nf, 'x') != NULL;       // "heX"
+  const bool do_oct = vim_strchr(curbuf->b_p_nf, 'o') != NULL;       // "Octal"
+  const bool do_bin = vim_strchr(curbuf->b_p_nf, 'b') != NULL;       // "Bin"
+  const bool do_alpha = vim_strchr(curbuf->b_p_nf, 'p') != NULL;     // "alPha"
+  const bool do_unsigned = vim_strchr(curbuf->b_p_nf, 'u') != NULL;  // "Unsigned"
+  const bool do_blank = vim_strchr(curbuf->b_p_nf, 'k') != NULL;     // "blanK"
 
   if (virtual_active(curwin)) {
     save_coladd = pos->coladd;
@@ -4541,8 +4533,12 @@ bool do_addsub(int op_type, pos_T *pos, int length, linenr_T Prenum1)
     if (col > pos->col && ptr[col - 1] == '-'
         && !utf_head_off(ptr, ptr + col - 1)
         && !do_unsigned) {
-      negative = true;
-      was_positive = false;
+      if (do_blank && col >= 2 && !ascii_iswhite(ptr[col - 2])) {
+        blank_unsigned = true;
+      } else {
+        negative = true;
+        was_positive = false;
+      }
     }
   }
 
@@ -4588,9 +4584,13 @@ bool do_addsub(int op_type, pos_T *pos, int length, linenr_T Prenum1)
         && !utf_head_off(ptr, ptr + col - 1)
         && !visual
         && !do_unsigned) {
-      // negative number
-      col--;
-      negative = true;
+      if (do_blank && col >= 2 && !ascii_iswhite(ptr[col - 2])) {
+        blank_unsigned = true;
+      } else {
+        // negative number
+        col--;
+        negative = true;
+      }
     }
 
     // get the number value (unsigned)
@@ -4647,7 +4647,7 @@ bool do_addsub(int op_type, pos_T *pos, int length, linenr_T Prenum1)
       }
     }
 
-    if (do_unsigned && negative) {
+    if ((do_unsigned || blank_unsigned) && negative) {
       if (subtract) {
         // sticking at zero.
         n = 0;
@@ -4722,7 +4722,7 @@ bool do_addsub(int op_type, pos_T *pos, int length, linenr_T Prenum1)
         buf2[i++] = ((n >> --bits) & 0x1) ? '1' : '0';
       }
 
-      buf2[i] = '\0';
+      buf2[i] = NUL;
     } else if (pre == 0) {
       vim_snprintf(buf2, ARRAY_SIZE(buf2), "%" PRIu64, (uint64_t)n);
     } else if (pre == '0') {
@@ -4744,7 +4744,7 @@ bool do_addsub(int op_type, pos_T *pos, int length, linenr_T Prenum1)
       }
     }
     *ptr = NUL;
-    STRCAT(buf1, buf2);
+    strcat(buf1, buf2);
     ins_str(buf1);              // insert the new number
     endpos = curwin->w_cursor;
     if (curwin->w_cursor.col) {

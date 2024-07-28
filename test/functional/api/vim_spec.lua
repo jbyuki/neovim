@@ -1500,6 +1500,8 @@ describe('API', function()
       eq('Dictionary is locked', pcall_err(request, 'nvim_set_vvar', 'nosuchvar', 42))
       api.nvim_set_vvar('errmsg', 'set by API')
       eq('set by API', api.nvim_get_vvar('errmsg'))
+      api.nvim_set_vvar('completed_item', { word = 'a', user_data = vim.empty_dict() })
+      eq({}, api.nvim_get_vvar('completed_item')['user_data'])
       api.nvim_set_vvar('errmsg', 42)
       eq('42', eval('v:errmsg'))
       api.nvim_set_vvar('oldfiles', { 'one', 'two' })
@@ -1571,9 +1573,9 @@ describe('API', function()
       eq(val2, request('vim_del_var', 'lua'))
     end)
 
-    it('truncates values with NULs in them', function()
+    it('preserves values with NULs in them', function()
       api.nvim_set_var('xxx', 'ab\0cd')
-      eq('ab', api.nvim_get_var('xxx'))
+      eq('ab\000cd', api.nvim_get_var('xxx'))
     end)
   end)
 
@@ -2936,6 +2938,13 @@ describe('API', function()
         return ('%s(%s)%s'):format(typ, args, rest)
       end
     end
+
+    it('does not crash parsing invalid VimL expression #29648', function()
+      api.nvim_input(':<C-r>=')
+      api.nvim_input('1bork/')
+      assert_alive()
+    end)
+
     require('test.unit.viml.expressions.parser_tests')(it, _check_parsing, hl, fmtn)
   end)
 
@@ -3887,11 +3896,11 @@ describe('API', function()
         ))
         eq(
           {
-            str = '3 ',
-            width = 2,
+            str = '       3 ',
+            width = 9,
             highlights = {
               { group = 'LineNr', start = 0 },
-              { group = 'ErrorMsg', start = 1 },
+              { group = 'ErrorMsg', start = 8 },
             },
           },
           api.nvim_eval_statusline('%l%#ErrorMsg# ', { use_statuscol_lnum = 3, highlights = true })
@@ -4967,12 +4976,29 @@ describe('API', function()
   it('nvim__redraw', function()
     local screen = Screen.new(60, 5)
     screen:attach()
-    local win = api.nvim_get_current_win()
     eq('at least one action required', pcall_err(api.nvim__redraw, {}))
     eq('at least one action required', pcall_err(api.nvim__redraw, { buf = 0 }))
     eq('at least one action required', pcall_err(api.nvim__redraw, { win = 0 }))
     eq("cannot use both 'buf' and 'win'", pcall_err(api.nvim__redraw, { buf = 0, win = 0 }))
+    local win = api.nvim_get_current_win()
+    -- Can move cursor to recently opened window and window is flushed #28868
     feed(':echo getchar()<CR>')
+    local newwin = api.nvim_open_win(0, false, {
+      relative = 'editor',
+      width = 1,
+      height = 1,
+      row = 1,
+      col = 10,
+    })
+    api.nvim__redraw({ win = newwin, cursor = true })
+    screen:expect({
+      grid = [[
+                                                                    |
+        {1:~         }{4:^ }{1:                                                 }|
+        {1:~                                                           }|*2
+        :echo getchar()                                             |
+      ]],
+    })
     fn.setline(1, 'foobar')
     command('vnew')
     fn.setline(1, 'foobaz')
@@ -4981,11 +5007,13 @@ describe('API', function()
     screen:expect({
       grid = [[
         foobaz                        │foobar                       |
-        {1:~                             }│{1:~                            }|*2
+        {1:~         }{4:^f}{1:                   }│{1:~                            }|
+        {1:~                             }│{1:~                            }|
         {3:[No Name] [+]                  }{2:[No Name] [+]                }|
-        ^:echo getchar()                                             |
+        :echo getchar()                                             |
       ]],
     })
+    api.nvim_win_close(newwin, true)
     -- Can update the grid cursor position #20793
     api.nvim__redraw({ cursor = true })
     screen:expect({

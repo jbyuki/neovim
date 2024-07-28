@@ -99,9 +99,9 @@ local LanguageTree = {}
 
 LanguageTree.__index = LanguageTree
 
---- @package
+--- @nodoc
 ---
---- |LanguageTree| contains a tree of parsers: the root treesitter parser for {lang} and any
+--- LanguageTree contains a tree of parsers: the root treesitter parser for {lang} and any
 --- "injected" language parsers, which themselves may inject other languages, recursively.
 ---
 ---@param source (integer|string) Buffer or text string to parse
@@ -953,7 +953,7 @@ function LanguageTree:_edit(
   end
 end
 
----@package
+---@nodoc
 ---@param bufnr integer
 ---@param changed_tick integer
 ---@param start_row integer
@@ -1025,12 +1025,12 @@ function LanguageTree:_on_bytes(
   )
 end
 
----@package
+---@nodoc
 function LanguageTree:_on_reload()
   self:invalidate(true)
 end
 
----@package
+---@nodoc
 function LanguageTree:_on_detach(...)
   self:invalidate(true)
   self:_do_callback('detach', ...)

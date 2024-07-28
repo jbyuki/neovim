@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "nvim/api/extmark.h"
 #include "nvim/ascii_defs.h"
 #include "nvim/buffer.h"
 #include "nvim/buffer_defs.h"
@@ -157,8 +158,7 @@ CharSize charsize_regular(CharsizeArg *csarg, char *const cur, colnr_T const vco
       if (mark.pos.row != csarg->virt_row || mark.pos.col > col) {
         break;
       } else if (mark.pos.col == col) {
-        if (!mt_end(mark) && (mark.flags & MT_FLAG_DECOR_VIRT_TEXT_INLINE)
-            && mt_scoped_in_win(mark, wp)) {
+        if (!mt_invalid(mark) && ns_in_win(mark.ns, wp)) {
           DecorInline decor = mt_decor(mark);
           DecorVirtText *vt = decor.ext ? decor.data.ext.vt : NULL;
           while (vt) {
@@ -267,7 +267,7 @@ CharSize charsize_regular(CharsizeArg *csarg, char *const cur, colnr_T const vco
           head += (max_head_vcol - (vcol + head_prev + prev_rem)
                    + width2 - 1) / width2 * head_mid;
         } else if (max_head_vcol < 0) {
-          int off = virt_text_cursor_off(csarg, *cur == NUL);
+          int off = mb_added + virt_text_cursor_off(csarg, *cur == NUL);
           if (off >= prev_rem) {
             if (size > off) {
               head += (1 + (off - prev_rem) / width) * head_mid;
@@ -712,7 +712,7 @@ bool win_may_fill(win_T *wp)
 /// @return Number of filler lines above lnum
 int win_get_fill(win_T *wp, linenr_T lnum)
 {
-  int virt_lines = decor_virt_lines(wp, lnum, NULL, kNone);
+  int virt_lines = decor_virt_lines(wp, lnum, NULL);
 
   // be quick when there are no filler lines
   if (diffopt_filler()) {

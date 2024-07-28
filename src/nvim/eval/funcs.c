@@ -38,6 +38,7 @@
 #include "nvim/cursor.h"
 #include "nvim/diff.h"
 #include "nvim/edit.h"
+#include "nvim/errors.h"
 #include "nvim/eval.h"
 #include "nvim/eval/buffer.h"
 #include "nvim/eval/decode.h"
@@ -93,6 +94,7 @@
 #include "nvim/move.h"
 #include "nvim/msgpack_rpc/channel.h"
 #include "nvim/msgpack_rpc/channel_defs.h"
+#include "nvim/msgpack_rpc/packer.h"
 #include "nvim/msgpack_rpc/server.h"
 #include "nvim/normal.h"
 #include "nvim/normal_defs.h"
@@ -951,7 +953,7 @@ static varnumber_T count_list(list_T *l, typval_T *needle, int64_t idx, bool ic)
   varnumber_T n = 0;
 
   for (; li != NULL; li = TV_LIST_ITEM_NEXT(l, li)) {
-    if (tv_equal(TV_LIST_ITEM_TV(li), needle, ic, false)) {
+    if (tv_equal(TV_LIST_ITEM_TV(li), needle, ic)) {
       n++;
     }
   }
@@ -971,7 +973,7 @@ static varnumber_T count_dict(dict_T *d, typval_T *needle, bool ic)
   varnumber_T n = 0;
 
   TV_DICT_ITER(d, di, {
-    if (tv_equal(&di->di_tv, needle, ic, false)) {
+    if (tv_equal(&di->di_tv, needle, ic)) {
       n++;
     }
   });
@@ -2370,6 +2372,33 @@ static void f_get(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
         for (int i = 0; i < pt->pt_argc; i++) {
           tv_list_append_tv(rettv->vval.v_list, &pt->pt_argv[i]);
         }
+      } else if (strcmp(what, "arity") == 0) {
+        int required = 0;
+        int optional = 0;
+        bool varargs = false;
+        const char *name = partial_name(pt);
+
+        get_func_arity(name, &required, &optional, &varargs);
+
+        rettv->v_type = VAR_DICT;
+        tv_dict_alloc_ret(rettv);
+        dict_T *dict = rettv->vval.v_dict;
+
+        // Take into account the arguments of the partial, if any.
+        // Note that it is possible to supply more arguments than the function
+        // accepts.
+        if (pt->pt_argc >= required + optional) {
+          required = optional = 0;
+        } else if (pt->pt_argc > required) {
+          optional -= pt->pt_argc - required;
+          required = 0;
+        } else {
+          required -= pt->pt_argc;
+        }
+
+        tv_dict_add_nr(dict, S_LEN("required"), required);
+        tv_dict_add_nr(dict, S_LEN("optional"), optional);
+        tv_dict_add_bool(dict, S_LEN("varargs"), varargs);
       } else {
         semsg(_(e_invarg2), what);
       }
@@ -3768,7 +3797,7 @@ static void f_index(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
       typval_T tv;
       tv.v_type = VAR_NUMBER;
       tv.vval.v_number = tv_blob_get(b, idx);
-      if (tv_equal(&tv, &argvars[1], ic, false)) {
+      if (tv_equal(&tv, &argvars[1], ic)) {
         rettv->vval.v_number = idx;
         return;
       }
@@ -3805,7 +3834,7 @@ static void f_index(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
   }
 
   for (; item != NULL; item = TV_LIST_ITEM_NEXT(l, item), idx++) {
-    if (tv_equal(TV_LIST_ITEM_TV(item), &argvars[1], ic, false)) {
+    if (tv_equal(TV_LIST_ITEM_TV(item), &argvars[1], ic)) {
       rettv->vval.v_number = idx;
       break;
     }
@@ -4317,7 +4346,7 @@ static dict_T *create_environment(const dictitem_T *job_env, const bool clear_en
 
   // Set $NVIM (in the child process) to v:servername. #3118
   char *nvim_addr = get_vim_var_str(VV_SEND_SERVER);
-  if (nvim_addr[0] != '\0') {
+  if (nvim_addr[0] != NUL) {
     dictitem_T *dv = tv_dict_find(env, S_LEN("NVIM"));
     if (dv) {
       tv_dict_item_remove(env, dv);
@@ -5500,15 +5529,7 @@ static void f_msgpackdump(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     return;
   }
   list_T *const list = argvars[0].vval.v_list;
-  msgpack_packer *packer;
-  if (argvars[1].v_type != VAR_UNKNOWN
-      && strequal(tv_get_string(&argvars[1]), "B")) {
-    tv_blob_alloc_ret(rettv);
-    packer = msgpack_packer_new(rettv->vval.v_blob, &encode_blob_write);
-  } else {
-    packer = msgpack_packer_new(tv_list_alloc_ret(rettv, kListLenMayKnow),
-                                &encode_list_write);
-  }
+  PackerBuffer packer = packer_string_buffer();
   const char *const msg = _("msgpackdump() argument, index %i");
   // Assume that translation will not take more then 4 times more space
   char msgbuf[sizeof("msgpackdump() argument, index ") * 4 + NUMBUFLEN];
@@ -5516,11 +5537,20 @@ static void f_msgpackdump(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
   TV_LIST_ITER(list, li, {
     vim_snprintf(msgbuf, sizeof(msgbuf), msg, idx);
     idx++;
-    if (encode_vim_to_msgpack(packer, TV_LIST_ITEM_TV(li), msgbuf) == FAIL) {
+    if (encode_vim_to_msgpack(&packer, TV_LIST_ITEM_TV(li), msgbuf) == FAIL) {
       break;
     }
   });
-  msgpack_packer_free(packer);
+  String data = packer_take_string(&packer);
+  if (argvars[1].v_type != VAR_UNKNOWN && strequal(tv_get_string(&argvars[1]), "B")) {
+    blob_T *b = tv_blob_alloc_ret(rettv);
+    b->bv_ga.ga_data = data.data;
+    b->bv_ga.ga_len = (int)data.size;
+    b->bv_ga.ga_maxlen = (int)(packer.endptr - packer.startptr);
+  } else {
+    encode_list_write(tv_list_alloc_ret(rettv, kListLenMayKnow), data.data, data.size);
+    api_free_string(data);
+  }
 }
 
 static int msgpackparse_convert_item(const msgpack_object data, const msgpack_unpack_return result,
@@ -5880,42 +5910,20 @@ static void f_py3eval(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 static void init_srand(uint32_t *const x)
   FUNC_ATTR_NONNULL_ALL
 {
-#ifndef MSWIN
-  static int dev_urandom_state = NOTDONE;  // FAIL or OK once tried
+  union {
+    uint32_t number;
+    uint8_t bytes[sizeof(uint32_t)];
+  } buf;
 
-  if (dev_urandom_state != FAIL) {
-    const int fd = os_open("/dev/urandom", O_RDONLY, 0);
-    struct {
-      union {
-        uint32_t number;
-        char bytes[sizeof(uint32_t)];
-      } contents;
-    } buf;
+  if (uv_random(NULL, NULL, buf.bytes, sizeof(buf.bytes), 0, NULL) == 0) {
+    *x = buf.number;
+    return;
+  }
 
-    // Attempt reading /dev/urandom.
-    if (fd == -1) {
-      dev_urandom_state = FAIL;
-    } else {
-      buf.contents.number = 0;
-      if (read(fd, buf.contents.bytes, sizeof(uint32_t)) != sizeof(uint32_t)) {
-        dev_urandom_state = FAIL;
-      } else {
-        dev_urandom_state = OK;
-        *x = buf.contents.number;
-      }
-      os_close(fd);
-    }
-  }
-  if (dev_urandom_state != OK) {
-    // Reading /dev/urandom doesn't work, fall back to os_hrtime() XOR with process ID
-#endif
-  // uncrustify:off
-    *x = (uint32_t)os_hrtime();
-    *x ^= (uint32_t)os_get_pid();
-#ifndef MSWIN
-  }
-#endif
-  // uncrustify:on
+  // The system's random number generator doesn't work,
+  // fall back to os_hrtime() XOR with process ID
+  *x = (uint32_t)os_hrtime();
+  *x ^= (uint32_t)os_get_pid();
 }
 
 static inline uint32_t splitmix32(uint32_t *const x)
@@ -8301,7 +8309,7 @@ static void f_shiftwidth(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
     if (col < 0) {
       return;  // type error; errmsg already given
     }
-    rettv->vval.v_number = get_sw_value_col(curbuf, col);
+    rettv->vval.v_number = get_sw_value_col(curbuf, col, false);
     return;
   }
   rettv->vval.v_number = get_sw_value(curbuf);
@@ -9173,13 +9181,13 @@ static void f_termopen(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
   size_t len = home_replace(NULL, NameBuff, IObuff, sizeof(IObuff), true);
   // Trim slash.
   if (len != 1 && (IObuff[len - 1] == '\\' || IObuff[len - 1] == '/')) {
-    IObuff[len - 1] = '\0';
+    IObuff[len - 1] = NUL;
   }
 
   if (len == 1 && IObuff[0] == '/') {
     // Avoid ambiguity in the URI when CWD is root directory.
     IObuff[1] = '.';
-    IObuff[2] = '\0';
+    IObuff[2] = NUL;
   }
 
   // Terminal URI: "term://$CWD//$PID:$CMD"

@@ -96,6 +96,7 @@ func s:GetFilenameChecks() abort
     \ 'aml': ['file.aml'],
     \ 'ampl': ['file.run'],
     \ 'ant': ['build.xml'],
+    \ 'antlr4': ['parser.g4'],
     \ 'apache': ['.htaccess', '/etc/httpd/file.conf', '/etc/apache2/sites-2/file.com', '/etc/apache2/some.config', '/etc/apache2/conf.file/conf', '/etc/apache2/mods-some/file', '/etc/apache2/sites-some/file', '/etc/httpd/conf.d/file.config', '/etc/apache2/conf.file/file', '/etc/apache2/file.conf', '/etc/apache2/file.conf-file', '/etc/apache2/mods-file/file', '/etc/apache2/sites-file/file', '/etc/apache2/sites-file/file.com', '/etc/httpd/conf.d/file.conf', '/etc/httpd/conf.d/file.conf-file', 'access.conf', 'access.conf-file', 'any/etc/apache2/conf.file/file', 'any/etc/apache2/file.conf', 'any/etc/apache2/file.conf-file', 'any/etc/apache2/mods-file/file', 'any/etc/apache2/sites-file/file', 'any/etc/apache2/sites-file/file.com', 'any/etc/httpd/conf.d/file.conf', 'any/etc/httpd/conf.d/file.conf-file', 'any/etc/httpd/file.conf', 'apache.conf', 'apache.conf-file', 'apache2.conf', 'apache2.conf-file', 'httpd.conf', 'httpd.conf-file', 'srm.conf', 'srm.conf-file', '/etc/httpd/mods-some/file', '/etc/httpd/sites-some/file', '/etc/httpd/conf.file/conf'],
     \ 'apachestyle': ['/etc/proftpd/file.config,/etc/proftpd/conf.file/file', '/etc/proftpd/conf.file/file', '/etc/proftpd/file.conf', '/etc/proftpd/file.conf-file', 'any/etc/proftpd/conf.file/file', 'any/etc/proftpd/file.conf', 'any/etc/proftpd/file.conf-file', 'proftpd.conf', 'proftpd.conf-file'],
     \ 'applescript': ['file.scpt'],
@@ -107,6 +108,7 @@ func s:GetFilenameChecks() abort
     \ 'asn': ['file.asn', 'file.asn1'],
     \ 'asterisk': ['asterisk/file.conf', 'asterisk/file.conf-file', 'some-asterisk/file.conf', 'some-asterisk/file.conf-file'],
     \ 'astro': ['file.astro'],
+    \ 'asy': ['file.asy'],
     \ 'atlas': ['file.atl', 'file.as'],
     \ 'authzed': ['schema.zed'],
     \ 'autohotkey': ['file.ahk'],
@@ -122,7 +124,7 @@ func s:GetFilenameChecks() abort
     \ 'beancount': ['file.beancount'],
     \ 'bib': ['file.bib'],
     \ 'bicep': ['file.bicep', 'file.bicepparam'],
-    \ 'bindzone': ['named.root', '/bind/db.file', '/named/db.file', 'any/bind/db.file', 'any/named/db.file'],
+    \ 'bindzone': ['named.root', '/bind/db.file', '/named/db.file', 'any/bind/db.file', 'any/named/db.file', 'foobar.zone'],
     \ 'bitbake': ['file.bb', 'file.bbappend', 'file.bbclass', 'build/conf/local.conf', 'meta/conf/layer.conf', 'build/conf/bbappend.conf', 'meta-layer/conf/distro/foo.conf'],
     \ 'blade': ['file.blade.php'],
     \ 'blank': ['file.bl'],
@@ -143,6 +145,7 @@ func s:GetFilenameChecks() abort
     \ 'cdl': ['file.cdl'],
     \ 'cdrdaoconf': ['/etc/cdrdao.conf', '/etc/defaults/cdrdao', '/etc/default/cdrdao', '.cdrdao', 'any/etc/cdrdao.conf', 'any/etc/default/cdrdao', 'any/etc/defaults/cdrdao'],
     \ 'cdrtoc': ['file.toc'],
+    \ 'cedar': ['file.cedar'],
     \ 'cf': ['file.cfm', 'file.cfi', 'file.cfc'],
     \ 'cfengine': ['cfengine.conf'],
     \ 'cfg': ['file.hgrc', 'filehgrc', 'hgrc', 'some-hgrc'],
@@ -161,7 +164,7 @@ func s:GetFilenameChecks() abort
     \ 'cmakecache': ['CMakeCache.txt'],
     \ 'cmod': ['file.cmod'],
     \ 'cmusrc': ['any/.cmus/autosave', 'any/.cmus/rc', 'any/.cmus/command-history', 'any/.cmus/file.theme', 'any/cmus/rc', 'any/cmus/file.theme', '/.cmus/autosave', '/.cmus/command-history', '/.cmus/file.theme', '/.cmus/rc', '/cmus/file.theme', '/cmus/rc'],
-    \ 'cobol': ['file.cbl', 'file.cob', 'file.lib'],
+    \ 'cobol': ['file.cbl', 'file.cob'],
     \ 'coco': ['file.atg'],
     \ 'conaryrecipe': ['file.recipe'],
     \ 'conf': ['auto.master', 'file.conf', 'texdoc.cnf', '.x11vncrc', '.chktexrc', '.ripgreprc', 'ripgreprc', 'file.ctags', '.mbsyncrc'],
@@ -223,11 +226,11 @@ func s:GetFilenameChecks() abort
     \            'psprint.conf', 'sofficerc', 'any/.config/lxqt/globalkeyshortcuts.conf', 'any/.config/screengrab/screengrab.conf',
     \            'any/.local/share/flatpak/repo/config', '.notmuch-config'],
     \ 'dot': ['file.dot', 'file.gv'],
-    \ 'dracula': ['file.drac', 'file.drc', 'filelvs', 'filelpe', 'drac.file', 'lpe', 'lvs', 'some-lpe', 'some-lvs'],
+    \ 'dracula': ['file.drac', 'file.drc', 'file.lvs', 'file.lpe', 'drac.file'],
     \ 'dtd': ['file.dtd'],
     \ 'dtrace': ['/usr/lib/dtrace/io.d'],
     \ 'dts': ['file.dts', 'file.dtsi', 'file.dtso', 'file.its', 'file.keymap'],
-    \ 'dune': ['jbuild', 'dune', 'dune-project', 'dune-workspace'],
+    \ 'dune': ['jbuild', 'dune', 'dune-project', 'dune-workspace', 'dune-file'],
     \ 'dylan': ['file.dylan'],
     \ 'dylanintr': ['file.intr'],
     \ 'dylanlid': ['file.lid'],
@@ -257,6 +260,7 @@ func s:GetFilenameChecks() abort
     \ 'factor': ['file.factor'],
     \ 'falcon': ['file.fal'],
     \ 'fan': ['file.fan', 'file.fwt'],
+    \ 'faust': ['file.dsp', 'file.lib'],
     \ 'fennel': ['file.fnl'],
     \ 'fetchmail': ['.fetchmailrc'],
     \ 'fgl': ['file.4gl', 'file.4gh', 'file.m4gl'],
@@ -286,13 +290,13 @@ func s:GetFilenameChecks() abort
     \ 'gitattributes': ['file.git/info/attributes', '.gitattributes', '/.config/git/attributes', '/etc/gitattributes', '/usr/local/etc/gitattributes', 'some.git/info/attributes'] + s:WhenConfigHome('$XDG_CONFIG_HOME/git/attributes'),
     \ 'gitcommit': ['COMMIT_EDITMSG', 'MERGE_MSG', 'TAG_EDITMSG', 'NOTES_EDITMSG', 'EDIT_DESCRIPTION'],
     \ 'gitconfig': ['file.git/config', 'file.git/config.worktree', 'file.git/worktrees/x/config.worktree', '.gitconfig', '.gitmodules', 'file.git/modules//config', '/.config/git/config', '/etc/gitconfig', '/usr/local/etc/gitconfig', '/etc/gitconfig.d/file', 'any/etc/gitconfig.d/file', '/.gitconfig.d/file', 'any/.config/git/config', 'any/.gitconfig.d/file', 'some.git/config', 'some.git/modules/any/config'] + s:WhenConfigHome('$XDG_CONFIG_HOME/git/config'),
-    \ 'gitignore': ['file.git/info/exclude', '.gitignore', '/.config/git/ignore', 'some.git/info/exclude'] + s:WhenConfigHome('$XDG_CONFIG_HOME/git/ignore'),
+    \ 'gitignore': ['file.git/info/exclude', '.gitignore', '/.config/git/ignore', 'some.git/info/exclude'] + s:WhenConfigHome('$XDG_CONFIG_HOME/git/ignore') + ['.prettierignore'],
     \ 'gitolite': ['gitolite.conf', '/gitolite-admin/conf/file', 'any/gitolite-admin/conf/file'],
     \ 'gitrebase': ['git-rebase-todo'],
     \ 'gitsendemail': ['.gitsendemail.msg.xxxxxx'],
     \ 'gkrellmrc': ['gkrellmrc', 'gkrellmrc_x'],
     \ 'gleam': ['file.gleam'],
-    \ 'glsl': ['file.glsl'],
+    \ 'glsl': ['file.glsl', 'file.vert', 'file.tesc', 'file.tese', 'file.geom', 'file.frag', 'file.comp', 'file.rgen', 'file.rmiss', 'file.rchit', 'file.rahit', 'file.rint', 'file.rcall'],
     \ 'gn': ['file.gn', 'file.gni'],
     \ 'gnash': ['gnashrc', '.gnashrc', 'gnashpluginrc', '.gnashpluginrc'],
     \ 'gnuplot': ['file.gpi', '.gnuplot', 'file.gnuplot', '.gnuplot_history'],
@@ -365,7 +369,7 @@ func s:GetFilenameChecks() abort
     \ 'jq': ['file.jq'],
     \ 'jovial': ['file.jov', 'file.j73', 'file.jovial'],
     \ 'jproperties': ['file.properties', 'file.properties_xx', 'file.properties_xx_xx', 'some.properties_xx_xx_file', 'org.eclipse.xyz.prefs'],
-    \ 'json': ['file.json', 'file.jsonp', 'file.json-patch', 'file.geojson', 'file.webmanifest', 'Pipfile.lock', 'file.ipynb', 'file.jupyterlab-settings', '.prettierrc', '.firebaserc', '.stylelintrc', 'file.slnf', 'file.sublime-project', 'file.sublime-settings', 'file.sublime-workspace', 'file.bd', 'file.bda', 'file.xci', 'flake.lock'],
+    \ 'json': ['file.json', 'file.jsonp', 'file.json-patch', 'file.geojson', 'file.webmanifest', 'Pipfile.lock', 'file.ipynb', 'file.jupyterlab-settings', '.prettierrc', '.firebaserc', '.stylelintrc', '.lintstagedrc', 'file.slnf', 'file.sublime-project', 'file.sublime-settings', 'file.sublime-workspace', 'file.bd', 'file.bda', 'file.xci', 'flake.lock', 'pack.mcmeta', 'deno.lock'],
     \ 'json5': ['file.json5'],
     \ 'jsonc': ['file.jsonc', '.babelrc', '.eslintrc', '.jsfmtrc', '.jshintrc', '.jscsrc', '.vsconfig', '.hintrc', '.swrc', 'jsconfig.json', 'tsconfig.json', 'tsconfig.test.json', 'tsconfig-test.json', '.luaurc'],
     \ 'jsonl': ['file.jsonl'],
@@ -384,6 +388,7 @@ func s:GetFilenameChecks() abort
     \ 'lace': ['file.ace', 'file.ACE'],
     \ 'latte': ['file.latte', 'file.lte'],
     \ 'ld': ['file.ld', 'any/usr/lib/aarch64-xilinx-linux/ldscripts/aarch64elf32b.x'],
+    \ 'ldapconf': ['ldap.conf', '.ldaprc', 'ldaprc'],
     \ 'ldif': ['file.ldif'],
     \ 'lean': ['file.lean'],
     \ 'ledger': ['file.ldg', 'file.ledger', 'file.journal'],
@@ -421,18 +426,19 @@ func s:GetFilenameChecks() abort
     \ 'mail': ['snd.123', '.letter', '.letter.123', '.followup', '.article', '.article.123', 'pico.123', 'mutt-xx-xxx', 'muttng-xx-xxx', 'ae123.txt', 'file.eml', 'reportbug-file'],
     \ 'mailaliases': ['/etc/mail/aliases', '/etc/aliases', 'any/etc/aliases', 'any/etc/mail/aliases'],
     \ 'mailcap': ['.mailcap', 'mailcap'],
-    \ 'make': ['file.mk', 'file.mak', 'file.dsp', 'makefile', 'Makefile', 'makefile-file', 'Makefile-file', 'some-makefile', 'some-Makefile', 'Kbuild'],
+    \ 'make': ['file.mk', 'file.mak', 'makefile', 'Makefile', 'makefile-file', 'Makefile-file', 'some-makefile', 'some-Makefile', 'Kbuild'],
     \ 'mallard': ['file.page'],
     "\ 'man': ['file.man'],
     \ 'manconf': ['/etc/man.conf', 'man.config', 'any/etc/man.conf'],
     \ 'map': ['file.map'],
     \ 'maple': ['file.mv', 'file.mpl', 'file.mws'],
     \ 'markdown': ['file.markdown', 'file.mdown', 'file.mkd', 'file.mkdn', 'file.mdwn', 'file.md'],
-    \ 'mason': ['file.mason', 'file.mhtml', 'file.comp'],
+    \ 'mason': ['file.mason', 'file.mhtml'],
     \ 'master': ['file.mas', 'file.master'],
     \ 'matlab': ['file.m'],
     \ 'maxima': ['file.demo', 'file.dmt', 'file.dm1', 'file.dm2', 'file.dm3',
     \            'file.wxm', 'maxima-init.mac'],
+    \ 'mediawiki': ['file.mw', 'file.wiki'],
     \ 'mel': ['file.mel'],
     \ 'mermaid': ['file.mmd', 'file.mmdc', 'file.mermaid'],
     \ 'meson': ['meson.build', 'meson.options', 'meson_options.txt'],
@@ -467,7 +473,7 @@ func s:GetFilenameChecks() abort
     \ 'mgp': ['file.mgp'],
     \ 'mib': ['file.mib', 'file.my'],
     \ 'mix': ['file.mix', 'file.mixal'],
-    \ 'mma': ['file.nb'],
+    \ 'mma': ['file.nb', 'file.wl'],
     \ 'mmp': ['file.mmp'],
     \ 'modconf': ['/etc/modules.conf', '/etc/modules', '/etc/conf.modules', '/etc/modprobe.file', 'any/etc/conf.modules', 'any/etc/modprobe.file', 'any/etc/modules', 'any/etc/modules.conf'],
     \ 'modula3': ['file.m3', 'file.mg', 'file.i3', 'file.ig', 'file.lm3'],
@@ -523,7 +529,7 @@ func s:GetFilenameChecks() abort
     \ 'odin': ['file.odin'],
     \ 'omnimark': ['file.xom', 'file.xin'],
     \ 'ondir': ['.ondirrc'],
-    \ 'opam': ['opam', 'file.opam', 'file.opam.template'],
+    \ 'opam': ['opam', 'file.opam', 'file.opam.template', 'opam.locked', 'file.opam.locked'],
     \ 'openroad': ['file.or'],
     \ 'openscad': ['file.scad'],
     \ 'openvpn': ['file.ovpn', '/etc/openvpn/client/client.conf', '/usr/share/openvpn/examples/server.conf'],
@@ -593,6 +599,7 @@ func s:GetFilenameChecks() abort
     \ 'radiance': ['file.rad', 'file.mat'],
     \ 'raku': ['file.pm6', 'file.p6', 'file.t6', 'file.pod6', 'file.raku', 'file.rakumod', 'file.rakudoc', 'file.rakutest'],
     \ 'raml': ['file.raml'],
+    \ 'rasi': ['file.rasi'],
     \ 'ratpoison': ['.ratpoisonrc', 'ratpoisonrc'],
     \ 'rbs': ['file.rbs'],
     \ 'rc': ['file.rc', 'file.rch'],
@@ -645,7 +652,8 @@ func s:GetFilenameChecks() abort
     \ 'sh': ['.bashrc', '.bash_profile', '.bash-profile', '.bash_logout', '.bash-logout', '.bash_aliases', '.bash-aliases', '.bash_history', '.bash-history',
     \        '/tmp/bash-fc-3Ozjlw', '/tmp/bash-fc.3Ozjlw', 'PKGBUILD', 'APKBUILD', 'file.bash', '/usr/share/doc/bash-completion/filter.sh',
     \        '/etc/udev/cdsymlinks.conf', 'any/etc/udev/cdsymlinks.conf', 'file.bats', '.ash_history', 'any/etc/neofetch/config.conf', '.xprofile',
-    \        'user-dirs.defaults', 'user-dirs.dirs', 'makepkg.conf', '.makepkg.conf', 'file.mdd', 'file.cygport'],
+    \        'user-dirs.defaults', 'user-dirs.dirs', 'makepkg.conf', '.makepkg.conf', 'file.mdd', 'file.cygport', '.env', '.envrc', 'devscripts.conf',
+    \        '.devscripts'],
     \ 'sieve': ['file.siv', 'file.sieve'],
     \ 'sil': ['file.sil'],
     \ 'simula': ['file.sim'],
@@ -669,6 +677,7 @@ func s:GetFilenameChecks() abort
     \ 'smith': ['file.smt', 'file.smith'],
     \ 'smithy': ['file.smithy'],
     \ 'sml': ['file.sml'],
+    \ 'snakemake': ['file.smk', 'Snakefile'],
     \ 'snobol4': ['file.sno', 'file.spt'],
     \ 'solidity': ['file.sol'],
     \ 'solution': ['file.sln'],
@@ -758,7 +767,7 @@ func s:GetFilenameChecks() abort
     \ 'teraterm': ['file.ttl'],
     \ 'terminfo': ['file.ti'],
     \ 'terraform-vars': ['file.tfvars'],
-    \ 'tex': ['file.latex', 'file.sty', 'file.dtx', 'file.ltx', 'file.bbl', 'any/.texlive/texmf-config/tex/latex/file/file.cfg', 'file.pgf', 'file.nlo', 'file.nls', 'file.thm', 'file.eps_tex', 'file.pygtex', 'file.pygstyle', 'file.clo', 'file.aux', 'file.brf', 'file.ind', 'file.lof', 'file.loe', 'file.nav', 'file.vrb', 'file.ins', 'file.tikz', 'file.bbx', 'file.cbx', 'file.beamer'],
+    \ 'tex': ['file.latex', 'file.sty', 'file.dtx', 'file.ltx', 'file.bbl', 'any/.texlive/texmf-config/tex/latex/file/file.cfg', 'file.pgf', 'file.nlo', 'file.nls', 'file.thm', 'file.eps_tex', 'file.pygtex', 'file.pygstyle', 'file.clo', 'file.aux', 'file.brf', 'file.ind', 'file.lof', 'file.loe', 'file.nav', 'file.vrb', 'file.ins', 'file.tikz', 'file.bbx', 'file.cbx', 'file.beamer', 'file.pdf_tex'],
     \ 'texinfo': ['file.texinfo', 'file.texi', 'file.txi'],
     \ 'texmf': ['texmf.cnf'],
     \ 'text': ['file.text', 'file.txt', 'README', 'LICENSE', 'COPYING', 'AUTHORS', '/usr/share/doc/bash-completion/AUTHORS', '/etc/apt/apt.conf.d/README', '/etc/Muttrc.d/README'],
@@ -990,6 +999,7 @@ func s:GetScriptChecks() abort
       \          ['#!/path/regina']],
       \ 'janet':  [['#!/path/janet']],
       \ 'dart':   [['#!/path/dart']],
+      \ 'vim':   [['#!/path/vim']],
       \ }
 endfunc
 
@@ -1038,7 +1048,8 @@ func Test_emptybuf_ftdetect()
   call assert_equal('', &filetype)
   filetype detect
   call assert_equal('sh', &filetype)
-  close!
+  " close the swapfile
+  bw!
 endfunc
 
 " Test for ':filetype indent on' and ':filetype indent off' commands
@@ -1557,6 +1568,41 @@ func Test_hook_file()
   call writefile(['not pacman'], 'Xfile.hook')
   split Xfile.hook
   call assert_notequal('confini', &filetype)
+  bwipe!
+
+  filetype off
+endfunc
+
+func Test_html_file()
+  filetype on
+
+  " HTML Angular
+  let content = ['@for (item of items; track item.name) {', '  <li> {{ item.name }}</li>', '} @empty {', '  <li> There are no items.</li>', '}']
+  call writefile(content, 'Xfile.html', 'D')
+  split Xfile.html
+  call assert_equal('htmlangular', &filetype)
+  bwipe!
+
+  " Django Template
+  let content = ['{% if foobar %}',
+      \ '    <ul>',
+      \ '    {% for question in list %}',
+      \ '        <li><a href="/polls/{{ question.id }}/">{{ question.question_text }}</a></li>',
+      \ '    {% endfor %}',
+      \ '    </ul>',
+      \ '{% else %}',
+      \ '    <p>No polls are available.</p>',
+      \ '{% endif %}']
+  call writefile(content, 'Xfile.html', 'D')
+  split Xfile.html
+  call assert_equal('htmldjango', &filetype)
+  bwipe!
+
+  " regular HTML
+  let content = ['<!DOCTYPE html>', '<html>', '    <head>Foobar</head>', '    <body>Content', '    </body>', '</html>']
+  call writefile(content, 'Xfile.html', 'D')
+  split Xfile.html
+  call assert_equal('html', &filetype)
   bwipe!
 
   filetype off
@@ -2396,6 +2442,32 @@ func Test_typ_file()
   filetype off
 endfunc
 
+func Test_dsp_file()
+  filetype on
+
+  " Microsoft Developer Studio Project file
+
+  call writefile(['# Microsoft Developer Studio Project File'], 'Xfile.dsp', 'D')
+  split Xfile.dsp
+  call assert_equal('make', &filetype)
+  bwipe!
+
+  let g:filetype_dsp = 'make'
+  split test.dsp
+  call assert_equal('make', &filetype)
+  bwipe!
+  unlet g:filetype_dsp
+
+  " Faust
+
+  call writefile(['this is a fallback'], 'Xfile.dsp')
+  split Xfile.dsp
+  call assert_equal('faust', &filetype)
+  bwipe!
+
+  filetype off
+endfunc
+
 func Test_vba_file()
   filetype on
 
@@ -2499,6 +2571,88 @@ func Test_uci_file()
   call writefile(['# Copyright Cool Cats 1997', 'config firewall'], 'any/etc/config/firewall', 'D')
   split any/etc/config/firewall
   call assert_equal('uci', &filetype)
+  bwipe!
+
+  filetype off
+endfunc
+
+func Test_pro_file()
+  filetype on
+
+  "Prolog
+  call writefile([':-module(test/1,'], 'Xfile.pro', 'D')
+  split Xfile.pro
+  call assert_equal('prolog', &filetype)
+  bwipe!
+
+  call writefile(['% comment'], 'Xfile.pro', 'D')
+  split Xfile.pro
+  call assert_equal('prolog', &filetype)
+  bwipe!
+
+  call writefile(['/* multiline comment'], 'Xfile.pro', 'D')
+  split Xfile.pro
+  call assert_equal('prolog', &filetype)
+  bwipe!
+
+  call writefile(['rule(test, 1.7).'], 'Xfile.pro', 'D')
+  split Xfile.pro
+  call assert_equal('prolog', &filetype)
+  bwipe!
+
+  " IDL
+  call writefile(['x = findgen(100)/10'], 'Xfile.pro', 'D')
+  split Xfile.pro
+  call assert_equal('idlang', &filetype)
+
+  filetype off
+endfunc
+
+
+func Test_pl_file()
+  filetype on
+
+  "Prolog
+  call writefile([':-module(test/1,'], 'Xfile.pl', 'D')
+  split Xfile.pl
+  call assert_equal('prolog', &filetype)
+  bwipe!
+
+  call writefile(['% comment'], 'Xfile.pl', 'D')
+  split Xfile.pl
+  call assert_equal('prolog', &filetype)
+  bwipe!
+
+  call writefile(['/* multiline comment'], 'Xfile.pl', 'D')
+  split Xfile.pl
+  call assert_equal('prolog', &filetype)
+  bwipe!
+
+  call writefile(['rule(test, 1.7).'], 'Xfile.pl', 'D')
+  split Xfile.pl
+  call assert_equal('prolog', &filetype)
+  bwipe!
+
+  " Perl
+  call writefile(['%data = (1, 2, 3);'], 'Xfile.pl', 'D')
+  split Xfile.pl
+  call assert_equal('perl', &filetype)
+
+  filetype off
+endfunc
+
+func Test_make_file()
+  filetype on
+
+  " Microsoft Makefile
+  call writefile(['# Makefile for Windows', '!if "$(VIMDLL)" == "yes"'], 'XMakefile.mak', 'D')
+  split XMakefile.mak
+  call assert_equal(1, get(b:, 'make_microsoft', 0))
+  bwipe!
+
+  call writefile(['# get the list of tests', 'include testdir/Make_all.mak'], 'XMakefile.mak', 'D')
+  split XMakefile.mak
+  call assert_equal(0, get(b:, 'make_microsoft', 0))
   bwipe!
 
   filetype off

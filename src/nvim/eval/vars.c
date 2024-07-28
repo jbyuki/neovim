@@ -15,6 +15,7 @@
 #include "nvim/buffer_defs.h"
 #include "nvim/charset.h"
 #include "nvim/drawscreen.h"
+#include "nvim/errors.h"
 #include "nvim/eval.h"
 #include "nvim/eval/encode.h"
 #include "nvim/eval/funcs.h"
@@ -104,7 +105,7 @@ char *eval_one_expr_in_str(char *p, garray_T *gap, bool evaluate)
 /// string in allocated memory.  "{{" is reduced to "{" and "}}" to "}".
 /// Used for a heredoc assignment.
 /// Returns NULL for an error.
-char *eval_all_expr_in_str(char *str)
+static char *eval_all_expr_in_str(char *str)
 {
   garray_T ga;
   ga_init(&ga, 1, 80);

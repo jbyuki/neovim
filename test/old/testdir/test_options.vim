@@ -558,6 +558,9 @@ func Test_set_completion_string_values()
   " call assert_equal('sync', getcompletion('set swapsync=', 'cmdline')[1])
   call assert_equal('usetab', getcompletion('set switchbuf=', 'cmdline')[1])
   call assert_equal('ignore', getcompletion('set tagcase=', 'cmdline')[1])
+  if exists('+tabclose')
+    call assert_equal('left uselast', join(sort(getcompletion('set tabclose=', 'cmdline'))), ' ')
+  endif
   if exists('+termwintype')
     call assert_equal('conpty', getcompletion('set termwintype=', 'cmdline')[1])
   endif
@@ -1364,6 +1367,31 @@ func Test_local_scrolloff()
   set siso&
 endfunc
 
+func Test_writedelay()
+  CheckFunction reltimefloat
+
+  new
+  call setline(1, 'empty')
+  " Nvim: 'writedelay' is applied per screen line.
+  " Create 7 vertical splits first.
+  vs | vs | vs | vs | vs | vs
+  redraw
+  set writedelay=10
+  let start = reltime()
+  " call setline(1, repeat('x', 70))
+  " Nvim: enable 'writedelay' per screen line.
+  " In each of the 7 vertical splits, 10 screen lines need to be drawn.
+  set redrawdebug+=line
+  call setline(1, repeat(['x'], 10))
+  redraw
+  let elapsed = reltimefloat(reltime(start))
+  set writedelay=0
+  " With 'writedelay' set should take at least 30 * 10 msec
+  call assert_inrange(30 * 0.01, 999.0, elapsed)
+
+  bwipe!
+endfunc
+
 func Test_visualbell()
   set belloff=
   set visualbell
@@ -1377,9 +1405,10 @@ func Test_write()
   new
   call setline(1, ['L1'])
   set nowrite
-  call assert_fails('write Xfile', 'E142:')
+  call assert_fails('write Xwrfile', 'E142:')
   set write
-  close!
+  " close swapfile
+  bw!
 endfunc
 
 " Test for 'buftype' option
@@ -1398,35 +1427,6 @@ func Test_buftype()
 
   call delete('XBuftype')
   bwipe!
-endfunc
-
-" Test for the 'shell' option
-func Test_shell()
-  throw 'Skipped: Nvim does not have :shell'
-  CheckUnix
-  let save_shell = &shell
-  set shell=
-  let caught_e91 = 0
-  try
-    shell
-  catch /E91:/
-    let caught_e91 = 1
-  endtry
-  call assert_equal(1, caught_e91)
-  let &shell = save_shell
-endfunc
-
-" Test for the 'shellquote' option
-func Test_shellquote()
-  CheckUnix
-  set shellquote=#
-  set verbose=20
-  redir => v
-  silent! !echo Hello
-  redir END
-  set verbose&
-  set shellquote&
-  call assert_match(': "#echo Hello#"', v)
 endfunc
 
 " Test for the 'rightleftcmd' option
@@ -1761,7 +1761,7 @@ func Test_cmdheight()
   set cmdheight&
 endfunc
 
-" To specify a control character as a option value, '^' can be used
+" To specify a control character as an option value, '^' can be used
 func Test_opt_control_char()
   set wildchar=^v
   call assert_equal("\<C-V>", nr2char(&wildchar))

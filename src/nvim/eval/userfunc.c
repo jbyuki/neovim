@@ -15,6 +15,7 @@
 #include "nvim/charset.h"
 #include "nvim/cmdexpand_defs.h"
 #include "nvim/debugger.h"
+#include "nvim/errors.h"
 #include "nvim/eval.h"
 #include "nvim/eval/encode.h"
 #include "nvim/eval/funcs.h"
@@ -264,7 +265,7 @@ static void set_ufunc_name(ufunc_T *fp, char *name)
   if ((uint8_t)name[0] == K_SPECIAL) {
     fp->uf_name_exp = xmalloc(strlen(name) + 3);
     STRCPY(fp->uf_name_exp, "<SNR>");
-    STRCAT(fp->uf_name_exp, fp->uf_name + 3);
+    strcat(fp->uf_name_exp, fp->uf_name + 3);
   }
 }
 
@@ -639,6 +640,44 @@ static char *fname_trans_sid(const char *const name, char *const fname_buf, char
     STRCPY(fname + i, name + llen);
   }
   return fname;
+}
+
+int get_func_arity(const char *name, int *required, int *optional, bool *varargs)
+{
+  int argcount = 0;
+  int min_argcount = 0;
+
+  const EvalFuncDef *fdef = find_internal_func(name);
+  if (fdef != NULL) {
+    argcount = fdef->max_argc;
+    min_argcount = fdef->min_argc;
+    *varargs = false;
+  } else {
+    char fname_buf[FLEN_FIXED + 1];
+    char *tofree = NULL;
+    int error = FCERR_NONE;
+
+    // May need to translate <SNR>123_ to K_SNR.
+    char *fname = fname_trans_sid(name, fname_buf, &tofree, &error);
+    ufunc_T *ufunc = NULL;
+    if (error == FCERR_NONE) {
+      ufunc = find_func(fname);
+    }
+    xfree(tofree);
+
+    if (ufunc == NULL) {
+      return FAIL;
+    }
+
+    argcount = ufunc->uf_args.ga_len;
+    min_argcount = ufunc->uf_args.ga_len - ufunc->uf_def_args.ga_len;
+    *varargs = ufunc->uf_varargs;
+  }
+
+  *required = min_argcount;
+  *optional = argcount - min_argcount;
+
+  return OK;
 }
 
 /// Find a function by name, return pointer to it in ufuncs.
@@ -2061,7 +2100,7 @@ char *get_scriptlocal_funcname(char *funcname)
   const int off = *funcname == 's' ? 2 : 5;
   char *newname = xmalloc(strlen(sid_buf) + strlen(funcname + off) + 1);
   STRCPY(newname, sid_buf);
-  STRCAT(newname, funcname + off);
+  strcat(newname, funcname + off);
 
   return newname;
 }

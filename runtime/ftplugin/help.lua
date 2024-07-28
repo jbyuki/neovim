@@ -26,3 +26,10 @@ elseif vim.endswith(bufname, '/doc/lsp.txt') then
     { start = [[\*lsp-semantic-highlight\*]], stop = '^======', match = '^@[%w%p]+' },
   })
 end
+
+vim.keymap.set('n', 'gO', function()
+  require('vim.vimhelp').show_toc()
+end, { buffer = 0, silent = true })
+
+vim.b.undo_ftplugin = vim.b.undo_ftplugin .. ' | call v:lua.vim.treesitter.stop()'
+vim.b.undo_ftplugin = vim.b.undo_ftplugin .. ' | nunmap <buffer> gO'

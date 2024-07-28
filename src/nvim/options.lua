@@ -747,7 +747,7 @@ return {
         		    applying 'breakindent', even if the resulting
         		    text should normally be narrower. This prevents
         		    text indented almost to the right window border
-        		    occupying lot of vertical space when broken.
+        		    occupying lots of vertical space when broken.
         		    (default: 20)
         	shift:{n}   After applying 'breakindent', the wrapped line's
         		    beginning will be shifted by the given number of
@@ -1324,8 +1324,8 @@ return {
       defaults = { if_true = '' },
       desc = [=[
         A template for a comment.  The "%s" in the value is replaced with the
-        comment text. For example, C uses "/*%s*/". Used for |commenting| and to
-        add markers for folding, see |fold-marker|.
+        comment text, and should be padded with a space when possible.
+        Used for |commenting| and to add markers for folding, see |fold-marker|.
       ]=],
       full_name = 'commentstring',
       redraw = { 'curswant' },
@@ -1443,6 +1443,10 @@ return {
         	    completion in the preview window.  Only works in
         	    combination with "menu" or "menuone".
 
+           popup    Show extra information about the currently selected
+        	    completion in a popup window.  Only works in combination
+        	    with "menu" or "menuone".  Overrides "preview".
+
            noinsert Do not insert any text for a match until the user selects
         	    a match from the menu. Only works in combination with
         	    "menu" or "menuone". No effect if "longest" is present.
@@ -1451,14 +1455,18 @@ return {
         	    select one from the menu. Only works in combination with
         	    "menu" or "menuone".
 
-           popup    Show extra information about the currently selected
-        	    completion in a popup window.  Only works in combination
-        	    with "menu" or "menuone".  Overrides "preview".
+           fuzzy    Enable |fuzzy-matching| for completion candidates. This
+        	    allows for more flexible and intuitive matching, where
+        	    characters can be skipped and matches can be found even
+        	    if the exact sequence is not typed.  Only makes a
+        	    difference how completion candidates are reduced from the
+        	    list of alternatives, but not how the candidates are
+        	    collected (using different completion types).
       ]=],
       expand_cb = 'expand_set_completeopt',
       full_name = 'completeopt',
       list = 'onecomma',
-      scope = { 'global' },
+      scope = { 'global', 'buffer' },
       short_desc = N_('options for Insert mode completion'),
       type = 'string',
       varname = 'p_cot',
@@ -4221,7 +4229,7 @@ return {
         in Insert mode as specified with the 'indentkeys' option.
         When this option is not empty, it overrules the 'cindent' and
         'smartindent' indenting.  When 'lisp' is set, this option is
-        is only used when 'lispoptions' contains "expr:1".
+        only used when 'lispoptions' contains "expr:1".
         The expression is evaluated with |v:lnum| set to the line number for
         which the indent is to be computed.  The cursor is also in this line
         when the expression is evaluated (but it may be moved around).
@@ -4487,7 +4495,7 @@ return {
     {
       abbreviation = 'jop',
       cb = 'did_set_jumpoptions',
-      defaults = { if_true = '' },
+      defaults = { if_true = 'unload' },
       deny_duplicates = true,
       desc = [=[
         List of words that change the behavior of the |jumplist|.
@@ -4500,6 +4508,9 @@ return {
           view          When moving through the jumplist, |changelist|,
         		|alternate-file| or using |mark-motions| try to
         		restore the |mark-view| in which the action occurred.
+
+          unload        Remove unloaded buffers from the jumplist.
+        		EXPERIMENTAL: this flag may change in the future.
       ]=],
       expand_cb = 'expand_set_jumpoptions',
       full_name = 'jumpoptions',
@@ -4612,7 +4623,7 @@ return {
         part can be in one of two forms:
         1.  A list of pairs.  Each pair is a "from" character immediately
             followed by the "to" character.  Examples: "aA", "aAbBcC".
-        2.  A list of "from" characters, a semi-colon and a list of "to"
+        2.  A list of "from" characters, a semicolon and a list of "to"
             characters.  Example: "abc;ABC"
         Example: "aA,fgh;FGH,cCdDeE"
         Special characters need to be preceded with a backslash.  These are
@@ -4725,7 +4736,7 @@ return {
         update use |:redraw|.
         This may occasionally cause display errors.  It is only meant to be set
         temporarily when performing an operation where redrawing may cause
-        flickering or cause a slow down.
+        flickering or cause a slowdown.
       ]=],
       full_name = 'lazyredraw',
       scope = { 'global' },
@@ -4867,6 +4878,9 @@ return {
         non-breakable space characters as "+". Useful to see the difference
         between tabs and spaces and for trailing blanks. Further changed by
         the 'listchars' option.
+
+        When 'listchars' does not contain "tab" field, tabs are shown as "^I"
+        or "<09>", like how unprintable characters are displayed.
 
         The cursor is displayed at the start of the space a Tab character
         occupies, not at the end as usual in Normal mode.  To get this cursor
@@ -5703,6 +5717,20 @@ return {
         	    (without "unsigned" it would become "9-2019").
         	    Using CTRL-X on "0" or CTRL-A on "18446744073709551615"
         	    (2^64 - 1) has no effect, overflow is prevented.
+        blank	If included, treat numbers as signed or unsigned based on
+        	preceding whitespace. If a number with a leading dash has its
+        	dash immediately preceded by a non-whitespace character (i.e.,
+        	not a tab or a " "), the negative sign won't be considered as
+        	part of the number.  For example:
+        	    Using CTRL-A on "14" in "Carbon-14" results in "Carbon-15"
+        	    (without "blank" it would become "Carbon-13").
+        	    Using CTRL-X on "8" in "Carbon -8" results in "Carbon -9"
+        	    (because -8 is preceded by whitespace. If "unsigned" was
+        	    set, it would result in "Carbon -7").
+        	If this format is included, overflow is prevented as if
+        	"unsigned" were set. If both this format and "unsigned" are
+        	included, "unsigned" will take precedence.
+
         Numbers which simply begin with a digit in the range 1-9 are always
         considered decimal.  This also happens for numbers that are not
         recognized as octal or hex.
@@ -5984,7 +6012,7 @@ return {
         	set path+=
         <	To use an environment variable, you probably need to replace the
         separator.  Here is an example to append $INCL, in which directory
-        names are separated with a semi-colon: >vim
+        names are separated with a semicolon: >vim
         	let &path = &path .. "," .. substitute($INCL, ';', ',', 'g')
         <	Replace the ';' with a ':' or whatever separator is used.  Note that
         this doesn't work when $INCL contains a comma or white space.
@@ -7300,7 +7328,7 @@ return {
       defaults = { if_true = 'ltToOCF' },
       desc = [=[
         This option helps to avoid all the |hit-enter| prompts caused by file
-        messages, for example  with CTRL-G, and to avoid some other messages.
+        messages, for example with CTRL-G, and to avoid some other messages.
         It is a list of flags:
          flag	meaning when present	~
           l	use "999L, 888B" instead of "999 lines, 888 bytes"	*shm-l*
@@ -7317,8 +7345,8 @@ return {
         	message;  also for quickfix message (e.g., ":cn")
           s	don't give "search hit BOTTOM, continuing at TOP" or	*shm-s*
         	"search hit TOP, continuing at BOTTOM" messages; when using
-        	the search count do not show "W" after the count message (see
-        	S below)
+        	the search count do not show "W" before the count message
+        	(see |shm-S| below)
           t	truncate file message at the start if it is too long	*shm-t*
         	to fit on the command-line, "<" will appear in the left most
         	column; ignored in Ex mode
@@ -7340,7 +7368,11 @@ return {
         	`:silent` was used for the command; note that this also
         	affects messages from 'autoread' reloading
           S	do not show search count message when searching, e.g.	*shm-S*
-        	"[1/5]"
+        	"[1/5]". When the "S" flag is not present (e.g. search count
+        	is shown), the "search hit BOTTOM, continuing at TOP" and
+        	"search hit TOP, continuing at BOTTOM" messages are only
+        	indicated by a "W" (Mnemonic: Wrapped) letter before the
+        	search count statistics.
 
         This gives you the opportunity to avoid that a change between buffers
         requires you to hit <Enter>, but still gives as useful a message as
@@ -7889,7 +7921,7 @@ return {
         		minus two.
 
         timeout:{millisec}   Limit the time searching for suggestions to
-        		{millisec} milli seconds.  Applies to the following
+        		{millisec} milliseconds.  Applies to the following
         		methods.  When omitted the limit is 5000. When
         		negative there is no limit.
 
@@ -8025,8 +8057,7 @@ return {
         Some of the items from the 'statusline' format are different for
         'statuscolumn':
 
-        %l	line number of currently drawn line
-        %r	relative line number of currently drawn line
+        %l	line number column for currently drawn line
         %s	sign column for currently drawn line
         %C	fold column for currently drawn line
 
@@ -8053,11 +8084,8 @@ return {
         handler should be written with this in mind.
 
         Examples: >vim
-        	" Relative number with bar separator and click handlers:
-        	set statuscolumn=%@SignCb@%s%=%T%@NumCb@%r│%T
-
-        	" Right aligned relative cursor line number:
-        	let &stc='%=%{v:relnum?v:relnum:v:lnum} '
+        	" Line number with bar separator and click handlers:
+        	set statuscolumn=%@SignCb@%s%=%T%@NumCb@%l│%T
 
         	" Line numbers in hexadecimal for non wrapped part of lines:
         	let &stc='%=%{v:virtnum>0?"":printf("%x",v:lnum)} '
@@ -8477,6 +8505,30 @@ return {
       short_desc = N_('syntax to be loaded for current buffer'),
       type = 'string',
       varname = 'p_syn',
+    },
+    {
+      abbreviation = 'tcl',
+      cb = 'did_set_tabclose',
+      defaults = { if_true = '' },
+      deny_duplicates = true,
+      desc = [=[
+        This option controls the behavior when closing tab pages (e.g., using
+        |:tabclose|).  When empty Vim goes to the next (right) tab page.
+
+        Possible values (comma-separated list):
+           left		If included, go to the previous tab page instead of
+        		the next one.
+           uselast	If included, go to the previously used tab page if
+        		possible.  This option takes precedence over the
+        		others.
+      ]=],
+      expand_cb = 'expand_set_tabclose',
+      full_name = 'tabclose',
+      list = 'onecomma',
+      scope = { 'global' },
+      short_desc = N_('which tab page to focus when closing a tab'),
+      type = 'string',
+      varname = 'p_tcl',
     },
     {
       abbreviation = 'tal',
@@ -9851,7 +9903,6 @@ return {
       ]=],
       full_name = 'winfixbuf',
       pv_name = 'p_wfb',
-      redraw = { 'current_window' },
       scope = { 'window' },
       short_desc = N_('pin a window to a specific buffer'),
       type = 'boolean',

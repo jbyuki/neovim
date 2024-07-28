@@ -92,6 +92,8 @@ local function screen_setup(extra_rows, command, cols, env, screen_opts)
 
   api.nvim_command('highlight TermCursor cterm=reverse')
   api.nvim_command('highlight TermCursorNC ctermbg=11')
+  api.nvim_command('highlight StatusLineTerm ctermbg=2 ctermfg=0')
+  api.nvim_command('highlight StatusLineTermNC ctermbg=2 ctermfg=8')
 
   local screen = Screen.new(cols, 7 + extra_rows)
   screen:set_default_attr_ids({
@@ -111,6 +113,8 @@ local function screen_setup(extra_rows, command, cols, env, screen_opts)
     [14] = { underline = true, reverse = true, bold = true },
     [15] = { underline = true, foreground = 12 },
     [16] = { background = 248, foreground = 0 }, -- Visual in :terminal session
+    [17] = { background = 2, foreground = 0 }, -- StatusLineTerm
+    [18] = { background = 2, foreground = 8 }, -- StatusLineTermNC
   })
 
   screen:attach(screen_opts or { rgb = false })
@@ -165,7 +169,7 @@ local function setup_child_nvim(args, opts)
     env.VIMRUNTIME = os.getenv('VIMRUNTIME')
   end
 
-  return screen_setup(0, argv, opts.cols, env)
+  return screen_setup(opts.extra_rows, argv, opts.cols, env)
 end
 
 return {

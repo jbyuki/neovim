@@ -1,20 +1,23 @@
 " zip.vim: Handles browsing zipfiles
-"            AUTOLOAD PORTION
-" Date:		Mar 12, 2023
+" AUTOLOAD PORTION
+" Date:		Jul 24, 2024
 " Version:	33
 " Maintainer:	This runtime file is looking for a new maintainer.
 " Former Maintainer:	Charles E Campbell
+" Last Change:
+" 2024 Jun 16 by Vim Project: handle whitespace on Windows properly (#14998)
+" 2024 Jul 23 by Vim Project: fix 'x' command
+" 2024 Jul 24 by Vim Project: use delete() function
 " License:	Vim License  (see vim's :help license)
-" Copyright:    Copyright (C) 2005-2019 Charles E. Campbell {{{1
-"               Permission is hereby granted to use and distribute this code,
-"               with or without modifications, provided that this copyright
-"               notice is copied with it. Like anything else that's free,
-"               zip.vim and zipPlugin.vim are provided *as is* and comes with
-"               no warranty of any kind, either expressed or implied. By using
-"               this plugin, you agree that in no event will the copyright
-"               holder be liable for any damages resulting from the use
-"               of this software.
-"redraw!|call DechoSep()|call inputsave()|call input("Press <cr> to continue")|call inputrestore()
+" Copyright:	Copyright (C) 2005-2019 Charles E. Campbell {{{1
+"		Permission is hereby granted to use and distribute this code,
+"		with or without modifications, provided that this copyright
+"		notice is copied with it. Like anything else that's free,
+"		zip.vim and zipPlugin.vim are provided *as is* and comes with
+"		no warranty of any kind, either expressed or implied. By using
+"		this plugin, you agree that in no event will the copyright
+"		holder be liable for any damages resulting from the use
+"		of this software.
 
 " ---------------------------------------------------------------------
 " Load Once: {{{1
@@ -214,7 +217,6 @@ endfun
 " ---------------------------------------------------------------------
 " zip#Read: {{{2
 fun! zip#Read(fname,mode)
-"  call Dfunc("zip#Read(fname<".a:fname.">,mode=".a:mode.")")
   let repkeep= &report
   set report=10
 
@@ -226,15 +228,12 @@ fun! zip#Read(fname,mode)
    let fname   = substitute(a:fname,'^.\{-}zipfile://.\{-}::\([^\\].*\)$','\1','')
    let fname   = substitute(fname, '[', '[[]', 'g')
   endif
-"  call Decho("zipfile<".zipfile.">")
-"  call Decho("fname  <".fname.">")
   " sanity check
   if !executable(substitute(g:zip_unzipcmd,'\s\+.*$','',''))
    redraw!
    echohl Error | echo "***error*** (zip#Read) sorry, your system doesn't appear to have the ".g:zip_unzipcmd." program" | echohl None
 "   call inputsave()|call input("Press <cr> to continue")|call inputrestore()
    let &report= repkeep
-"   call Dret("zip#Write")
    return
   endif
 
@@ -242,10 +241,8 @@ fun! zip#Read(fname,mode)
   "   exe "keepj sil! r! ".g:zip_unzipcmd." -p -- ".s:Escape(zipfile,1)." ".s:Escape(fnameescape(fname),1)
   " but allows zipfile://... entries in quickfix lists
   let temp = tempname()
-"  call Decho("using temp file<".temp.">")
   let fn   = expand('%:p')
-  exe "sil! !".g:zip_unzipcmd." -p -- ".s:Escape(zipfile,1)." ".s:Escape(fnameescape(fname),1).' > '.temp
-"  call Decho("exe sil! !".g:zip_unzipcmd." -p -- ".s:Escape(zipfile,1)." ".s:Escape(fnameescape(fname),1).' > '.temp)
+  exe "sil! !".g:zip_unzipcmd." -p -- ".s:Escape(zipfile,1)." ".s:Escape(fname,1).' > '.temp
   sil exe 'keepalt file '.temp
   sil keepj e!
   sil exe 'keepalt file '.fnameescape(fn)
@@ -254,11 +251,9 @@ fun! zip#Read(fname,mode)
   filetype detect
 
   " cleanup
-  "  keepj 0d   " used to be needed for the ...r! ... method
   set nomod
 
   let &report= repkeep
-"  call Dret("zip#Read")
 endfun
 
 " ---------------------------------------------------------------------
@@ -305,7 +300,7 @@ fun! zip#Write(fname)
 
   " place temporary files under .../_ZIPVIM_/
   if isdirectory("_ZIPVIM_")
-   call s:Rmdir("_ZIPVIM_")
+   call delete("_ZIPVIM_", "rf")
   endif
   call mkdir("_ZIPVIM_")
   cd _ZIPVIM_
@@ -365,12 +360,12 @@ fun! zip#Write(fname)
    q!
    unlet s:zipfile_{winnr()}
   endif
-  
+
   " cleanup and restore current directory
   cd ..
-  call s:Rmdir("_ZIPVIM_")
+  call delete("_ZIPVIM_", "rf")
   call s:ChgDir(curdir,s:WARNING,"(zip#Write) unable to return to ".curdir."!")
-  call s:Rmdir(tmpdir)
+  call delete(tmpdir, "rf")
   setlocal nomod
 
   let &report= repkeep
@@ -402,8 +397,7 @@ fun! zip#Extract()
   endif
 
   " extract the file mentioned under the cursor
-"  call Decho("system(".g:zip_extractcmd." ".shellescape(b:zipfile)." ".shellescape(shell).")")
-  call system(g:zip_extractcmd." ".shellescape(b:zipfile)." ".shellescape(shell))
+  call system($"{g:zip_extractcmd} {shellescape(b:zipfile)} {shellescape(fname)}")
 "  call Decho("zipfile<".b:zipfile.">")
   if v:shell_error != 0
    echohl Error | echo "***error*** ".g:zip_extractcmd." ".b:zipfile." ".fname.": failed!" | echohl NONE
@@ -422,7 +416,6 @@ endfun
 " ---------------------------------------------------------------------
 " s:Escape: {{{2
 fun! s:Escape(fname,isfilt)
-"  call Dfunc("QuoteFileDir(fname<".a:fname."> isfilt=".a:isfilt.")")
   if exists("*shellescape")
    if a:isfilt
     let qnameq= shellescape(a:fname,1)
@@ -432,7 +425,10 @@ fun! s:Escape(fname,isfilt)
   else
    let qnameq= g:zip_shq.escape(a:fname,g:zip_shq).g:zip_shq
   endif
-"  call Dret("QuoteFileDir <".qnameq.">")
+  if exists("+shellslash") && &shellslash && &shell =~ "cmd.exe"
+   " renormalize directory separator on Windows
+   let qnameq=substitute(qnameq, '/', '\\', 'g')
+  endif
   return qnameq
 endfun
 
@@ -459,18 +455,6 @@ fun! s:ChgDir(newdir,errlvl,errmsg)
 
 "  call Dret("ChgDir 0")
   return 0
-endfun
-
-" ---------------------------------------------------------------------
-" s:Rmdir: {{{2
-fun! s:Rmdir(fname)
-"  call Dfunc("Rmdir(fname<".a:fname.">)")
-  if (has("win32") || has("win95") || has("win64") || has("win16")) && &shell !~? 'sh$'
-   call system("rmdir /S/Q ".s:Escape(a:fname,0))
-  else
-   call system("/bin/rm -rf ".s:Escape(a:fname,0))
-  endif
-"  call Dret("Rmdir")
 endfun
 
 " ------------------------------------------------------------------------

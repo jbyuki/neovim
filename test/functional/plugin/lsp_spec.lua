@@ -255,7 +255,7 @@ describe('LSP', function()
         return
       end
       local expected_handlers = {
-        { NIL, {}, { method = 'shutdown', bufnr = 1, client_id = 1 } },
+        { NIL, {}, { method = 'shutdown', bufnr = 1, client_id = 1, version = 0 } },
         { NIL, {}, { method = 'test', client_id = 1 } },
       }
       test_rpc_server {
@@ -371,7 +371,7 @@ describe('LSP', function()
               true,
               exec_lua [[
               local keymap
-              vim.api.nvim_buf_call(BUFFER, function()
+              vim._with({buf = BUFFER}, function()
                 keymap = vim.fn.maparg("K", "n", false, true)
               end)
               return keymap.callback == vim.lsp.buf.hover
@@ -388,7 +388,7 @@ describe('LSP', function()
             '',
             exec_lua [[
             local keymap
-            vim.api.nvim_buf_call(BUFFER, function()
+            vim._with({buf = BUFFER}, function()
               keymap = vim.fn.maparg("K", "n", false, false)
             end)
             return keymap
@@ -782,7 +782,7 @@ describe('LSP', function()
               vim.api.nvim_buf_set_name(BUFFER, oldname)
               vim.api.nvim_buf_set_lines(BUFFER, 0, -1, true, {"help me"})
               lsp.buf_attach_client(BUFFER, TEST_RPC_CLIENT_ID)
-              vim.api.nvim_buf_call(BUFFER, function() vim.cmd('saveas ' .. newname) end)
+              vim._with({buf = BUFFER}, function() vim.cmd('saveas ' .. newname) end)
             ]=],
               tmpfile_old,
               tmpfile_new
@@ -948,7 +948,11 @@ describe('LSP', function()
     it('should forward ContentModified to callback', function()
       local expected_handlers = {
         { NIL, {}, { method = 'finish', client_id = 1 } },
-        { { code = -32801 }, NIL, { method = 'error_code_test', bufnr = 1, client_id = 1 } },
+        {
+          { code = -32801 },
+          NIL,
+          { method = 'error_code_test', bufnr = 1, client_id = 1, version = 0 },
+        },
       }
       local client --- @type vim.lsp.Client
       test_rpc_server {
@@ -978,7 +982,7 @@ describe('LSP', function()
     it('should track pending requests to the language server', function()
       local expected_handlers = {
         { NIL, {}, { method = 'finish', client_id = 1 } },
-        { NIL, {}, { method = 'slow_request', bufnr = 1, client_id = 1 } },
+        { NIL, {}, { method = 'slow_request', bufnr = 1, client_id = 1, version = 0 } },
       }
       local client --- @type vim.lsp.Client
       test_rpc_server {
@@ -1045,7 +1049,7 @@ describe('LSP', function()
     it('should clear pending and cancel requests on reply', function()
       local expected_handlers = {
         { NIL, {}, { method = 'finish', client_id = 1 } },
-        { NIL, {}, { method = 'slow_request', bufnr = 1, client_id = 1 } },
+        { NIL, {}, { method = 'slow_request', bufnr = 1, client_id = 1, version = 0 } },
       }
       local client --- @type vim.lsp.Client
       test_rpc_server {
@@ -1084,7 +1088,7 @@ describe('LSP', function()
     it('should trigger LspRequest autocmd when requests table changes', function()
       local expected_handlers = {
         { NIL, {}, { method = 'finish', client_id = 1 } },
-        { NIL, {}, { method = 'slow_request', bufnr = 1, client_id = 1 } },
+        { NIL, {}, { method = 'slow_request', bufnr = 1, client_id = 1, version = 0 } },
       }
       local client --- @type vim.lsp.Client
       test_rpc_server {
@@ -1364,6 +1368,7 @@ describe('LSP', function()
             },
             bufnr = 2,
             client_id = 1,
+            version = 0,
           },
         },
         { NIL, {}, { method = 'start', client_id = 1 } },
@@ -1751,6 +1756,58 @@ describe('LSP', function()
     }
   end
 
+  describe('apply vscode text_edits', function()
+    it('single replace', function()
+      insert('012345678901234567890123456789')
+      local edits = {
+        make_edit(0, 3, 0, 6, { 'Hello' }),
+      }
+      exec_lua('vim.lsp.util.apply_text_edits(...)', edits, 1, 'utf-16')
+      eq({ '012Hello678901234567890123456789' }, buf_lines(1))
+    end)
+    it('two replaces', function()
+      insert('012345678901234567890123456789')
+      local edits = {
+        make_edit(0, 3, 0, 6, { 'Hello' }),
+        make_edit(0, 6, 0, 9, { 'World' }),
+      }
+      exec_lua('vim.lsp.util.apply_text_edits(...)', edits, 1, 'utf-16')
+      eq({ '012HelloWorld901234567890123456789' }, buf_lines(1))
+    end)
+    it('same start pos insert are kept in order', function()
+      insert('012345678901234567890123456789')
+      local edits1 = {
+        make_edit(0, 3, 0, 3, { 'World' }),
+        make_edit(0, 3, 0, 3, { 'Hello' }),
+      }
+      exec_lua('vim.lsp.util.apply_text_edits(...)', edits1, 1, 'utf-16')
+      eq({ '012WorldHello345678901234567890123456789' }, buf_lines(1))
+    end)
+    it('same start pos insert and replace are kept in order', function()
+      insert('012345678901234567890123456789')
+      local edits1 = {
+        make_edit(0, 3, 0, 3, { 'World' }),
+        make_edit(0, 3, 0, 3, { 'Hello' }),
+        make_edit(0, 3, 0, 8, { 'No' }),
+      }
+      exec_lua('vim.lsp.util.apply_text_edits(...)', edits1, 1, 'utf-16')
+      eq({ '012WorldHelloNo8901234567890123456789' }, buf_lines(1))
+    end)
+    it('multiline', function()
+      exec_lua([[
+        vim.api.nvim_buf_set_lines(1, 0, 0, true, {'  {', '    "foo": "bar"', '  }'})
+      ]])
+      eq({ '  {', '    "foo": "bar"', '  }', '' }, buf_lines(1))
+      local edits = {
+        make_edit(0, 0, 3, 0, { '' }),
+        make_edit(3, 0, 3, 0, { '{\n' }),
+        make_edit(3, 0, 3, 0, { '  "foo": "bar"\n' }),
+        make_edit(3, 0, 3, 0, { '}\n' }),
+      }
+      exec_lua('vim.lsp.util.apply_text_edits(...)', edits, 1, 'utf-16')
+      eq({ '{', '  "foo": "bar"', '}', '' }, buf_lines(1))
+    end)
+  end)
   describe('apply_text_edits', function()
     before_each(function()
       insert(dedent([[
@@ -2690,13 +2747,15 @@ describe('LSP', function()
         {
           filename = '/fake/uri',
           lnum = 1,
+          end_lnum = 2,
           col = 3,
+          end_col = 4,
           text = 'testing',
           user_data = {
             uri = 'file:///fake/uri',
             range = {
               start = { line = 0, character = 2 },
-              ['end'] = { line = 0, character = 3 },
+              ['end'] = { line = 1, character = 3 },
             },
           },
         },
@@ -2710,7 +2769,7 @@ describe('LSP', function()
             uri = 'file:///fake/uri',
             range = {
               start = { line = 0, character = 2 },
-              ['end'] = { line = 0, character = 3 },
+              ['end'] = { line = 1, character = 3 },
             }
           },
         }
@@ -2723,7 +2782,9 @@ describe('LSP', function()
         {
           filename = '/fake/uri',
           lnum = 1,
+          end_lnum = 1,
           col = 3,
+          end_col = 4,
           text = 'testing',
           user_data = {
             targetUri = 'file:///fake/uri',
@@ -4528,6 +4589,86 @@ describe('LSP', function()
         end,
       }
     end)
+    it('Sends textDocument/rangeFormatting request to format a range', function()
+      local expected_handlers = {
+        { NIL, {}, { method = 'shutdown', client_id = 1 } },
+        { NIL, {}, { method = 'start', client_id = 1 } },
+      }
+      local client
+      test_rpc_server {
+        test_name = 'range_formatting',
+        on_init = function(c)
+          client = c
+        end,
+        on_handler = function(_, _, ctx)
+          table.remove(expected_handlers)
+          if ctx.method == 'start' then
+            local notify_msg = exec_lua([[
+              local bufnr = vim.api.nvim_get_current_buf()
+              vim.api.nvim_buf_set_lines(bufnr, 0, -1, true, {'foo', 'bar'})
+              vim.lsp.buf_attach_client(bufnr, TEST_RPC_CLIENT_ID)
+              local notify_msg
+              local notify = vim.notify
+              vim.notify = function(msg, log_level)
+                notify_msg = msg
+              end
+              vim.lsp.buf.format({ bufnr = bufnr, range = {
+                start = {1, 1},
+                ['end'] = {1, 1},
+              }})
+              vim.notify = notify
+              return notify_msg
+            ]])
+            eq(NIL, notify_msg)
+          elseif ctx.method == 'shutdown' then
+            client.stop()
+          end
+        end,
+      }
+    end)
+    it('Sends textDocument/rangesFormatting request to format multiple ranges', function()
+      local expected_handlers = {
+        { NIL, {}, { method = 'shutdown', client_id = 1 } },
+        { NIL, {}, { method = 'start', client_id = 1 } },
+      }
+      local client
+      test_rpc_server {
+        test_name = 'ranges_formatting',
+        on_init = function(c)
+          client = c
+        end,
+        on_handler = function(_, _, ctx)
+          table.remove(expected_handlers)
+          if ctx.method == 'start' then
+            local notify_msg = exec_lua([[
+              local bufnr = vim.api.nvim_get_current_buf()
+              vim.api.nvim_buf_set_lines(bufnr, 0, -1, true, {'foo', 'bar', 'baz'})
+              vim.lsp.buf_attach_client(bufnr, TEST_RPC_CLIENT_ID)
+              local notify_msg
+              local notify = vim.notify
+              vim.notify = function(msg, log_level)
+                notify_msg = msg
+              end
+              vim.lsp.buf.format({ bufnr = bufnr, range = {
+                {
+                  start = {1, 1},
+                  ['end'] = {1, 1},
+                },
+                {
+                  start = {2, 2},
+                  ['end'] = {2, 2},
+                }
+              }})
+              vim.notify = notify
+              return notify_msg
+            ]])
+            eq(NIL, notify_msg)
+          elseif ctx.method == 'shutdown' then
+            client.stop()
+          end
+        end,
+      }
+    end)
     it('Can format async', function()
       local expected_handlers = {
         { NIL, {}, { method = 'shutdown', client_id = 1 } },
@@ -5039,12 +5180,12 @@ describe('LSP', function()
       it(
         string.format('sends notifications when files change (watchfunc=%s)', watchfunc),
         function()
-          if watchfunc == 'fswatch' then
+          if watchfunc == 'inotify' then
             skip(is_os('win'), 'not supported on windows')
             skip(is_os('mac'), 'flaky test on mac')
             skip(
-              not is_ci() and fn.executable('fswatch') == 0,
-              'fswatch not installed and not on CI'
+              not is_ci() and fn.executable('inotifywait') == 0,
+              'inotify-tools not installed and not on CI'
             )
           end
 
@@ -5176,7 +5317,7 @@ describe('LSP', function()
 
     test_filechanges('watch')
     test_filechanges('watchdirs')
-    test_filechanges('fswatch')
+    test_filechanges('inotify')
 
     it('correctly registers and unregisters', function()
       local root_dir = '/some_dir'

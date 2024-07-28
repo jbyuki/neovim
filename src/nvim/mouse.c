@@ -250,11 +250,17 @@ static int get_fpos_of_mouse(pos_T *mpos)
   }
 
   // winpos and height may change in win_enter()!
-  if (winrow >= wp->w_height_inner) {  // In (or below) status line
+  if (winrow >= wp->w_height_inner + wp->w_status_height) {  // Below window
+    if (mouse_grid <= 1 && mouse_row < Rows - p_ch
+        && mouse_row >= Rows - p_ch - global_stl_height()) {  // In global status line
+      return IN_STATUS_LINE;
+    }
+    return IN_UNKNOWN;
+  } else if (winrow >= wp->w_height_inner) {  // In window status line
     return IN_STATUS_LINE;
   }
 
-  if (winrow < 0 && winrow + wp->w_winbar_height >= 0) {
+  if (winrow < 0 && winrow + wp->w_winbar_height >= 0) {  // In winbar
     return MOUSE_WINBAR;
   }
 
@@ -687,6 +693,9 @@ popupexit:
 
     if (in_statuscol && wp->w_p_rl) {
       click_col = wp->w_width_inner - click_col - 1;
+    }
+    if (in_statuscol && click_col >= (int)wp->w_statuscol_click_defs_size) {
+      return false;
     }
 
     if (click_defs != NULL) {
