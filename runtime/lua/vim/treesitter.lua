@@ -429,12 +429,10 @@ function M.start(bufnr, lang)
   end
 
   local parsers = {}
-  if Tangle.get_ntangle() then
-    if hl then
-      local bufs = Tangle.get_bufs_from_hl(hl)
-      for _, buf in pairs(bufs) do
-        parsers[buf] = M.get_parser(buf, lang)
-      end
+  if Tangle.get_ntangle() and hl then
+    local bufs = Tangle.get_bufs_from_hl(hl)
+    for _, buf in pairs(bufs) do
+      parsers[buf] = M.get_parser(buf, lang)
     end
   else
     parsers[bufnr] = M.get_parser(bufnr, lang)

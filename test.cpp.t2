@@ -1,8 +1,0 @@
-:: hello.cpp
-#include <iostream>
-
-:: haha.cpp
-#include <cstdio>
-
-:: hello2.cpp
-#include <haha>
