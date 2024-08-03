@@ -38,6 +38,17 @@ function M.get_ll_from_buf(source)
   end
 end
 
+function M.get_buf_from_ll(ll)
+  if M.get_ntangle() then
+    local ntangle = M.get_ntangle()
+    for buf,_ll in pairs(ntangle.lls) do
+      if _ll == ll then
+        return buf
+      end
+    end
+  end
+end
+
 function M.get_hl_from_ll(ll)
   if M.get_ntangle() then
     local ntangle = M.get_ntangle()
@@ -45,6 +56,20 @@ function M.get_hl_from_ll(ll)
       return ntangle.ll_to_hl[ll]
     end
   end
+end
+
+function M.get_lls_from_hl(hl)
+  local lls = {}
+  if M.get_ntangle() then
+    local ntangle = M.get_ntangle()
+
+    for _ll,_hl in pairs(ntangle.ll_to_hl) do
+      if hl == _hl then
+        table.insert(lls, _ll)
+      end
+    end
+  end
+  return lls
 end
 
 function M.get_bufs_from_hl(hl)
@@ -64,6 +89,13 @@ function M.get_root_section_from_buf(buf)
   if M.get_ntangle() then
     local ntangle = M.get_ntangle()
     return ntangle.mirror_buf_to_root[buf]
+  end
+end
+
+function M.get_hl_from_buf(buf)
+  if M.get_ntangle() then
+    local ntangle = M.get_ntangle()
+    return ntangle.buf_to_hl[buf]
   end
 end
 

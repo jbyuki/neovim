@@ -388,8 +388,8 @@ local function on_line_impl(self, buf, line, is_spell_nav)
 
         if HL then
           if hl and end_row >= line and (not is_spell_nav or spell ~= nil) then
-            local _, sr = unpack(ntangle.NTtoT(HL, root_section, start_row))
-            local _, er = unpack(ntangle.NTtoT(HL, root_section, end_row))
+            local _, sr,_ = ntangle.NTtoT(HL, root_section, start_row)
+            local _, er,_ = ntangle.NTtoT(HL, root_section, end_row)
 
             -- FIX MULTI LINE
 

@@ -1,4 +1,5 @@
 local api, if_nil = vim.api, vim.F.if_nil
+local Tangle = require"vim.tangle"
 
 local M = {}
 
@@ -1069,6 +1070,11 @@ function M.set(namespace, bufnr, diagnostics, opts)
     opts = { opts, 't', true },
   })
 
+  local hl = Tangle.get_hl_from_buf(bufnr)
+  if hl then
+    bufnr = M.untangle_diagnostics(hl, bufnr, diagnostics)
+  end
+
   bufnr = get_bufnr(bufnr)
 
   if vim.tbl_isempty(diagnostics) then
@@ -1085,6 +1091,31 @@ function M.set(namespace, bufnr, diagnostics, opts)
     -- TODO(lewis6991): should this be deepcopy()'d like they are in vim.diagnostic.get()
     data = { diagnostics = diagnostics },
   })
+end
+
+function M.untangle_diagnostics(hl, bufnr, diagnostics)
+  local ntangle = Tangle.get_ntangle()
+
+  local root_section = Tangle.get_root_section_from_buf(bufnr)
+  local target_buf = bufnr
+  local lls = Tangle.get_lls_from_hl(hl)
+  if #lls > 0 then
+    target_buf =  Tangle.get_buf_from_ll(lls[1])
+  end
+
+  for _, d in ipairs(diagnostics) do
+    -- TODO: Split up multi line diagnostics
+    assert(d.lnum == d.end_lnum)
+
+    local ll, line, prefix = ntangle.NTtoT(hl, root_section, d.lnum)
+    d.lnum = line
+    d.end_lnum = line
+
+    d.col = d.col - #prefix
+    d.end_col = d.end_col - #prefix
+    target_buf = Tangle.get_buf_from_ll(ll)
+  end
+  return target_buf
 end
 
 --- Get namespace metadata.
