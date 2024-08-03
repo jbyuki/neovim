@@ -22,6 +22,7 @@ local M = {}
 ---@see |vim.lsp.buf_request()|
 local function request(buf, method, params, handler)
   validate({
+    buf = { buf, 'n' },
     method = { method, 's' },
     handler = { handler, 'f', true },
   })
@@ -35,7 +36,11 @@ function M.hover()
   request(buf, ms.textDocument_hover, params)
 end
 
-local function request_with_opts(name, params, opts)
+local function request_with_opts(buf, name, params, opts)
+  validate({
+    buf = { buf, 'n' },
+  })
+
   local req_handler --- @type function?
   if opts then
     req_handler = function(err, result, ctx, config)
@@ -44,7 +49,7 @@ local function request_with_opts(name, params, opts)
       handler(err, result, ctx, vim.tbl_extend('force', config or {}, opts))
     end
   end
-  request(name, params, req_handler)
+  request(buf, name, params, req_handler)
 end
 
 --- @class vim.lsp.ListOpts
@@ -84,37 +89,37 @@ end
 --- @note Many servers do not implement this method. Generally, see |vim.lsp.buf.definition()| instead.
 --- @param opts? vim.lsp.LocationOpts
 function M.declaration(opts)
-  local params = util.make_position_params()
-  request_with_opts(ms.textDocument_declaration, params, opts)
+  local params, buf = util.make_position_params()
+  request_with_opts(buf, ms.textDocument_declaration, params, opts)
 end
 
 --- Jumps to the definition of the symbol under the cursor.
 --- @param opts? vim.lsp.LocationOpts
 function M.definition(opts)
-  local params = util.make_position_params()
-  request_with_opts(ms.textDocument_definition, params, opts)
+  local params, buf = util.make_position_params()
+  request_with_opts(buf, ms.textDocument_definition, params, opts)
 end
 
 --- Jumps to the definition of the type of the symbol under the cursor.
 --- @param opts? vim.lsp.LocationOpts
 function M.type_definition(opts)
-  local params = util.make_position_params()
-  request_with_opts(ms.textDocument_typeDefinition, params, opts)
+  local params, buf = util.make_position_params()
+  request_with_opts(buf, ms.textDocument_typeDefinition, params, opts)
 end
 
 --- Lists all the implementations for the symbol under the cursor in the
 --- quickfix window.
 --- @param opts? vim.lsp.LocationOpts
 function M.implementation(opts)
-  local params = util.make_position_params()
-  request_with_opts(ms.textDocument_implementation, params, opts)
+  local params, buf = util.make_position_params()
+  request_with_opts(buf, ms.textDocument_implementation, params, opts)
 end
 
 --- Displays signature information about the symbol under the cursor in a
 --- floating window.
 function M.signature_help()
-  local params = util.make_position_params()
-  request(ms.textDocument_signatureHelp, params)
+  local params, buf = util.make_position_params()
+  request(buf, ms.textDocument_signatureHelp, params)
 end
 
 --- Retrieves the completion items at the current cursor position. Can only be
@@ -126,9 +131,9 @@ end
 ---
 ---@see vim.lsp.protocol.CompletionTriggerKind
 function M.completion(context)
-  local params = util.make_position_params()
+  local params, buf = util.make_position_params()
   params.context = context
-  return request(ms.textDocument_completion, params)
+  return request(buf, ms.textDocument_completion, params)
 end
 
 ---@param bufnr integer
@@ -351,19 +356,19 @@ function M.rename(new_name, opts)
 
     --- @param name string
     local function rename(name)
-      local params = util.make_position_params(win, client.offset_encoding)
+      local params, buf = util.make_position_params(win, client.offset_encoding)
       params.newName = name
       local handler = client.handlers[ms.textDocument_rename]
         or vim.lsp.handlers[ms.textDocument_rename]
-      client.request(ms.textDocument_rename, params, function(...)
+      client.request(buf, ms.textDocument_rename, params, function(...)
         handler(...)
         try_use_client(next(clients, idx))
       end, bufnr)
     end
 
     if client.supports_method(ms.textDocument_prepareRename) then
-      local params = util.make_position_params(win, client.offset_encoding)
-      client.request(ms.textDocument_prepareRename, params, function(err, result)
+      local params, buf = util.make_position_params(win, client.offset_encoding)
+      client.request(buf, ms.textDocument_prepareRename, params, function(err, result)
         if err or result == nil then
           if next(clients, idx) then
             try_use_client(next(clients, idx))
@@ -433,11 +438,11 @@ end
 ---@param opts? vim.lsp.ListOpts
 function M.references(context, opts)
   validate({ context = { context, 't', true } })
-  local params = util.make_position_params()
+  local params, buf = util.make_position_params()
   params.context = context or {
     includeDeclaration = true,
   }
-  request_with_opts(ms.textDocument_references, params, opts)
+  request_with_opts(buf, ms.textDocument_references, params, opts)
 end
 
 --- Lists all symbols in the current buffer in the quickfix window.
@@ -469,9 +474,9 @@ end
 
 --- @param method string
 local function call_hierarchy(method)
-  local params = util.make_position_params()
+  local params, buf = util.make_position_params()
   --- @param result lsp.CallHierarchyItem[]?
-  request(ms.textDocument_prepareCallHierarchy, params, function(err, result, ctx)
+  request(buf, ms.textDocument_prepareCallHierarchy, params, function(err, result, ctx)
     if err then
       vim.notify(err.message, vim.log.levels.WARN)
       return
@@ -536,9 +541,9 @@ function M.typehierarchy(kind)
   end
 
   local bufnr = api.nvim_get_current_buf()
-  local params = util.make_position_params()
+  local params, buf = util.make_position_params()
   --- @param results table<integer, {error: lsp.ResponseError?, result: lsp.TypeHierarchyItem[]?}>
-  vim.lsp.buf_request_all(bufnr, ms.textDocument_prepareTypeHierarchy, params, function(results)
+  vim.lsp.buf_request_all(buf, ms.textDocument_prepareTypeHierarchy, params, function(results)
     local merged_results = merge_results(results)
     if #merged_results == 0 then
       vim.notify('No items resolved', vim.log.levels.INFO)
@@ -667,8 +672,8 @@ end
 ---         |hl-LspReferenceRead|
 ---         |hl-LspReferenceWrite|
 function M.document_highlight()
-  local params = util.make_position_params()
-  request(ms.textDocument_documentHighlight, params)
+  local params, buf = util.make_position_params()
+  request(buf, ms.textDocument_documentHighlight, params)
 end
 
 --- Removes document highlights from current buffer.

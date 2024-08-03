@@ -247,7 +247,7 @@ local function handle_diagnostics(uri, client_id, diagnostics, is_pull, config)
       return
     end
 
-    local bufnr = vim.fn.bufadd(fname)
+    bufnr = vim.fn.bufadd(fname)
     if not bufnr then
       return
     end
