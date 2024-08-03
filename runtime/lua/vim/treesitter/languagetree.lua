@@ -41,7 +41,7 @@
 -- Log file can be found in stdpath('log')/treesitter.log
 
 local query = require('vim.treesitter.query')
-local tangle = require('vim.treesitter.tangle')
+local tangle = require('vim.tangle')
 local language = require('vim.treesitter.language')
 local Range = require('vim.treesitter._range')
 

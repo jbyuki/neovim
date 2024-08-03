@@ -1,7 +1,7 @@
 local api = vim.api
 local query = vim.treesitter.query
 local Range = require('vim.treesitter._range')
-local Tangle = require('vim.treesitter.tangle')
+local Tangle = require('vim.tangle')
 local ntangle = Tangle.get_ntangle()
 
 local ns = api.nvim_create_namespace('treesitter/highlighter')

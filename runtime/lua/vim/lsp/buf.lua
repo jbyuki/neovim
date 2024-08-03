@@ -20,19 +20,19 @@ local M = {}
 ---iterate all clients and call their `cancel_request()` methods.
 ---
 ---@see |vim.lsp.buf_request()|
-local function request(method, params, handler)
+local function request(buf, method, params, handler)
   validate({
     method = { method, 's' },
     handler = { handler, 'f', true },
   })
-  return vim.lsp.buf_request(0, method, params, handler)
+  return vim.lsp.buf_request(buf, method, params, handler)
 end
 
 --- Displays hover information about the symbol under the cursor in a floating
 --- window. Calling the function twice will jump into the floating window.
 function M.hover()
-  local params = util.make_position_params()
-  request(ms.textDocument_hover, params)
+  local params, buf = util.make_position_params()
+  request(buf, ms.textDocument_hover, params)
 end
 
 local function request_with_opts(name, params, opts)

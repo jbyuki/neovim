@@ -381,10 +381,10 @@ end
 function M.hover(_, result, ctx, config)
   config = config or {}
   config.focus_id = ctx.method
-  if api.nvim_get_current_buf() ~= ctx.bufnr then
+  -- if api.nvim_get_current_buf() ~= ctx.bufnr then
     -- Ignore result since buffer changed. This happens for slow language servers.
-    return
-  end
+    -- return
+  -- end
   if not (result and result.contents) then
     if config.silent ~= true then
       vim.notify('No information available')

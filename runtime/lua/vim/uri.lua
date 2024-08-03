@@ -21,6 +21,8 @@ local PATTERNS = {
   rfc3986 = "^A-Za-z0-9%-._~!$&'()*+,;=:@/",
 }
 
+local Tangle = require"vim.tangle"
+
 ---Converts hex to char
 ---@param hex string
 ---@return string
@@ -79,7 +81,17 @@ end
 ---@param bufnr integer
 ---@return string URI
 function M.uri_from_bufnr(bufnr)
-  local fname = vim.api.nvim_buf_get_name(bufnr)
+  local fname
+  if Tangle.get_ntangle() then
+    local ntangle = Tangle.get_ntangle()
+    local uri = ntangle.buf_to_uri[bufnr]
+    if uri then
+      return uri
+    end
+  end
+
+  fname = vim.api.nvim_buf_get_name(bufnr)
+
   local volume_path = fname:match('^([a-zA-Z]:).*')
   local is_windows = volume_path ~= nil
   local scheme ---@type string?

@@ -11,12 +11,11 @@ local M = vim._defer_require('vim.treesitter', {
   highlighter = ..., --- @module 'vim.treesitter.highlighter'
   language = ..., --- @module 'vim.treesitter.language'
   languagetree = ..., --- @module 'vim.treesitter.languagetree'
-  tangle = ..., --- @module 'vim.treesitter.languagetree'
   query = ..., --- @module 'vim.treesitter.query'
 })
 
 local LanguageTree = M.languagetree
-local Tangle = M.tangle
+local Tangle = require"vim.tangle"
 
 --- @nodoc
 M.language_version = vim._ts_get_language_version()

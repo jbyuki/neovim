@@ -8,6 +8,9 @@ local uv = vim.uv
 local npcall = vim.F.npcall
 local split = vim.split
 
+local Tangle = require('vim.tangle')
+local ntangle = Tangle.get_ntangle()
+
 local M = {}
 
 local default_border = {
@@ -1920,6 +1923,7 @@ local function make_position_param(window, offset_encoding)
   local row, col = unpack(api.nvim_win_get_cursor(window))
   offset_encoding = offset_encoding or M._get_offset_encoding(buf)
   row = row - 1
+
   local line = api.nvim_buf_get_lines(buf, row, row + 1, true)[1]
   if not line then
     return { line = 0, character = 0 }
@@ -1939,11 +1943,41 @@ end
 function M.make_position_params(window, offset_encoding)
   window = window or 0
   local buf = api.nvim_win_get_buf(window)
+
   offset_encoding = offset_encoding or M._get_offset_encoding(buf)
-  return {
-    textDocument = M.make_text_document_params(buf),
-    position = make_position_param(window, offset_encoding),
-  }
+  if Tangle.get_ll_from_buf(buf) then
+    local row, col = unpack(api.nvim_win_get_cursor(window))
+    row = row - 1
+
+    local nt_infos = ntangle.TtoNT(buf, row)
+    if #nt_infos == 0 then
+      return nil
+    end
+
+    for _, nt_info in ipairs(nt_infos) do
+      buf = ntangle.root_to_mirror_buf[nt_info[2]]
+      row = nt_info[3]
+      col = col + #nt_info[4]
+      break
+    end
+
+    local line = api.nvim_buf_get_lines(buf, row, row + 1, true)[1]
+    if not line then
+      return { line = 0, character = 0 }
+    end
+
+    offset_encoding = offset_encoding or M._get_offset_encoding(buf)
+    col = _str_utfindex_enc(line, col, offset_encoding)
+    return {
+      textDocument = M.make_text_document_params(buf),
+      position = { line = row, character = col }
+    }, buf
+  else
+    return {
+      textDocument = M.make_text_document_params(buf),
+      position = make_position_param(window, offset_encoding),
+    }, buf
+  end
 end
 
 --- Utility function for getting the encoding of the first LSP client on the given buffer.
@@ -2051,7 +2085,7 @@ end
 ---@return lsp.TextDocumentIdentifier
 ---@see https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocumentIdentifier
 function M.make_text_document_params(bufnr)
-  return { uri = vim.uri_from_bufnr(bufnr or 0) }
+  return { uri = vim.uri_from_bufnr(bufnr or vim.api.nvim_get_current_buf()) }
 end
 
 --- Create the workspace params
@@ -2086,7 +2120,7 @@ function M.make_formatting_params(options)
     insertSpaces = vim.bo.expandtab,
   })
   return {
-    textDocument = { uri = vim.uri_from_bufnr(0) },
+    textDocument = { uri = vim.uri_from_bufnr(vim.api.nvim_get_current_buf()) },
     options = options,
   }
 end

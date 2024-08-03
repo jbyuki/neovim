@@ -9,12 +9,15 @@ function M.get_ntangle()
       ntangle_inc = found
     else
       ntangle_inc = ntangle
+      if not M.hl_group then
+        M.init_hl()
+      end
     end
   end
   return ntangle_inc
 end
 
-if M.get_ntangle() then
+function M.init_hl()
   M.hl_group = {
     [ntangle_inc.HL_ELEM_TYPE.TEXT] = "NTangleText",
     [ntangle_inc.HL_ELEM_TYPE.SECTION_PART] = "NTangleSectionPart",

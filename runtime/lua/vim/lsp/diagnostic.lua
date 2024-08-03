@@ -1,6 +1,8 @@
 local protocol = require('vim.lsp.protocol')
 local ms = protocol.Methods
 
+local Tangle = require"vim.tangle"
+
 local api = vim.api
 
 local M = {}
@@ -234,13 +236,21 @@ end
 local function handle_diagnostics(uri, client_id, diagnostics, is_pull, config)
   local fname = vim.uri_to_fname(uri)
 
-  if #diagnostics == 0 and vim.fn.bufexists(fname) == 0 then
-    return
+  local bufnr
+  if Tangle.get_ntangle() then
+    local ntangle = Tangle.get_ntangle()
+    bufnr = ntangle.uri_to_buf[uri]
   end
 
-  local bufnr = vim.fn.bufadd(fname)
   if not bufnr then
-    return
+    if #diagnostics == 0 and vim.fn.bufexists(fname) == 0 then
+      return
+    end
+
+    local bufnr = vim.fn.bufadd(fname)
+    if not bufnr then
+      return
+    end
   end
 
   client_id = get_client_id(client_id)
