@@ -317,6 +317,7 @@ local function on_line_impl(self, buf, line, is_spell_nav)
       root_section = nt_info[2]
       line = nt_info[3]
       col_off = #nt_info[4]
+      bufnr = Tangle.get_mirror_buf_from_root_section(root_section)
       break
     end
 

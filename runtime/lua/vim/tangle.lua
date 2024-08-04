@@ -92,6 +92,13 @@ function M.get_root_section_from_buf(buf)
   end
 end
 
+function M.get_mirror_buf_from_root_section(root_section)
+  if M.get_ntangle() then
+    local ntangle = M.get_ntangle()
+    return ntangle.root_to_mirror_buf[root_section]
+  end
+end
+
 function M.get_hl_from_buf(buf)
   if M.get_ntangle() then
     local ntangle = M.get_ntangle()
