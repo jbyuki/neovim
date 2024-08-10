@@ -421,22 +421,8 @@ end
 function M.start(bufnr, lang)
   bufnr = bufnr or api.nvim_get_current_buf()
 
-  local hl = nil
-  if Tangle.get_ntangle() then
-    local ll = Tangle.get_ll_from_buf(bufnr)
-    hl = Tangle.get_hl_from_ll(ll)
-  end
-
   local parsers = {}
-  if Tangle.get_ntangle() and hl then
-    local bufs = Tangle.get_bufs_from_hl(hl)
-    for _, buf in pairs(bufs) do
-      parsers[buf] = M.get_parser(buf, lang)
-    end
-  else
-    parsers[bufnr] = M.get_parser(bufnr, lang)
-  end
-
+  parsers[bufnr] = M.get_parser(bufnr, lang)
   M.highlighter.new(bufnr, parsers)
 end
 

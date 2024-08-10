@@ -117,10 +117,9 @@ function LanguageTree.new(source, lang, opts)
   end
 
   local injections = opts.injections or {}
-
+  
   --- @type vim.treesitter.LanguageTree
   local self = {
-    _ntangle_ll = tangle.get_ll_from_buf(source),
     _source = source,
     _lang = lang,
     _children = {},

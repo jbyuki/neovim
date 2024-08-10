@@ -97,7 +97,8 @@ function TSHighlighter.new(source, trees, opts)
         self:on_bytes(...)
       end,
       on_detach = function()
-        if not self._ntangle_ll then
+        local ll = Tangle.get_ll_from_buf(self.bufnr)
+        if not ll then
           self:on_detach()
         end
       end,
@@ -116,7 +117,6 @@ function TSHighlighter.new(source, trees, opts)
   end
 
   self.bufnr = source
-  self._ntangle_ll = Tangle.get_ll_from_buf(source)
   self.redraw_count = 0
   self._highlight_states = {}
   self._queries = {}
@@ -189,7 +189,8 @@ function TSHighlighter:prepare_highlight_states(srow, erow)
       local root_start_row, _, root_end_row, _ = root_node:range()
 
       -- Only consider trees within the visible range
-      if not tree._tangle_buf then
+      local root_section = Tangle.get_root_section_from_buf(ntbuf)
+      if not root_section then
         if root_start_row > erow or root_end_row < srow then
           return
         end
@@ -208,7 +209,7 @@ function TSHighlighter:prepare_highlight_states(srow, erow)
         tstree = tstree,
         next_row = 0,
         iter = nil,
-        root_section = Tangle.get_root_section_from_buf(ntbuf),
+        root_section = root_section,
         highlighter_query = highlighter_query,
       })
     end)
@@ -310,8 +311,9 @@ local function on_line_impl(self, buf, line, is_spell_nav)
   local line_type
   local HL
 
-  if self._ntangle_ll then
-    HL = Tangle.get_hl_from_ll(self._ntangle_ll)
+  local ll = Tangle.get_ll_from_buf(bufnr)
+  if ll then
+    HL = Tangle.get_hl_from_ll(ll)
     local nt_infos = ntangle.TtoNT(bufnr, line)
     for _, nt_info in ipairs(nt_infos) do
       root_section = nt_info[2]
@@ -484,7 +486,8 @@ function TSHighlighter._on_win(_, _win, buf, topline, botline)
     return false
   end
 
-  if self._ntangle_ll then
+  local ll = Tangle.get_ll_from_buf(buf)
+  if ll then
     for lnum=topline,botline do
       local nt_infos = ntangle.TtoNT(buf, lnum)
       for _, nt_info in ipairs(nt_infos) do
