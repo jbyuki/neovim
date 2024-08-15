@@ -396,17 +396,19 @@ local function on_line_impl(self, buf, line, is_spell_nav)
 
             -- FIX MULTI LINE
 
-            if start_row == line then -- FIX THIS
-              api.nvim_buf_set_extmark(buf, ns, sr, start_col - col_off, {
-                end_line = er,
-                end_col = end_col - col_off,
-                hl_group = hl,
-                ephemeral = true,
-                priority = priority,
-                conceal = conceal,
-                spell = spell,
-                url = url,
-              })
+            if sr and er then
+              if start_row == line then -- FIX THIS
+                api.nvim_buf_set_extmark(buf, ns, sr, start_col - col_off, {
+                  end_line = er,
+                  end_col = end_col - col_off,
+                  hl_group = hl,
+                  ephemeral = true,
+                  priority = priority,
+                  conceal = conceal,
+                  spell = spell,
+                  url = url,
+                })
+              end
             end
           end
 
