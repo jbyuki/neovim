@@ -494,9 +494,15 @@ function TSHighlighter._on_win(_, _win, buf, topline, botline)
       local nt_infos = ntangle.TtoNT(buf, lnum)
       for _, nt_info in ipairs(nt_infos) do
         local ntbuf = ntangle.root_to_mirror_buf[nt_info[2]]
-        if ntbuf and self.trees[ntbuf] then
-          local line = nt_info[3]
-          self.trees[ntbuf]:parse({line, line+1})
+        if ntbuf then
+          if not self.trees[ntbuf] then
+            self.trees[ntbuf] = vim.treesitter.get_parser(ntbuf)
+          end
+
+          if self.trees[ntbuf] then
+            local line = nt_info[3]
+            self.trees[ntbuf]:parse({line, line+1})
+          end
         end
       end
     end
