@@ -1,3 +1,6 @@
+local Tangle = require('vim.tangle')
+local ntangle = Tangle.get_ntangle()
+
 ---@nodoc
 ---@class vim._comment.Parts
 ---@field left string Left part of comment
@@ -7,6 +10,21 @@
 ---@param ref_position integer[]
 ---@return string
 local function get_commentstring(ref_position)
+  local buf = vim.api.nvim_get_current_buf()
+  local row, col = ref_position[1] - 1, ref_position[2]
+  local ll = Tangle.get_ll_from_buf(buf)
+  if ll then
+    local HL = Tangle.get_hl_from_ll(ll)
+    local nt_infos = ntangle.TtoNT(buf, row)
+    for _, nt_info in ipairs(nt_infos) do
+      local mirror_buf = Tangle.get_mirror_buf_from_root_section(nt_info[2])
+      local ft = vim.bo[mirror_buf].ft
+      ts_cs = vim.filetype.get_option(ft, 'commentstring')
+      break
+    end
+    return ts_cs
+  end
+
   local buf_cs = vim.bo.commentstring
 
   local has_ts_parser, ts_parser = pcall(vim.treesitter.get_parser)
@@ -16,7 +34,6 @@ local function get_commentstring(ref_position)
 
   -- Try to get 'commentstring' associated with local tree-sitter language.
   -- This is useful for injected languages (like markdown with code blocks).
-  local row, col = ref_position[1] - 1, ref_position[2]
   local ref_range = { row, col, row, col + 1 }
 
   -- - Get 'commentstring' from the deepest LanguageTree which both contains
@@ -25,6 +42,7 @@ local function get_commentstring(ref_position)
   --   In simple cases using `parser:language_for_range()` would be enough, but
   --   it fails for languages without valid 'commentstring' (like 'comment').
   local ts_cs, res_level = nil, 0
+
 
   ---@param lang_tree vim.treesitter.LanguageTree
   local function traverse(lang_tree, level)
@@ -46,7 +64,6 @@ local function get_commentstring(ref_position)
     end
   end
   traverse(ts_parser, 1)
-
   return ts_cs or buf_cs
 end
 
