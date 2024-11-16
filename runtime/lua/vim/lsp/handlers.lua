@@ -485,10 +485,10 @@ M[ms.textDocument_implementation] = location_handler
 function M.signature_help(_, result, ctx, config)
   config = config or {}
   config.focus_id = ctx.method
-  if api.nvim_get_current_buf() ~= ctx.bufnr then
-    -- Ignore result since buffer changed. This happens for slow language servers.
-    return
-  end
+  -- if api.nvim_get_current_buf() ~= ctx.bufnr then
+  --   -- Ignore result since buffer changed. This happens for slow language servers.
+  --   return
+  -- end
   -- When use `autocmd CompleteDone <silent><buffer> lua vim.lsp.buf.signature_help()` to call signatureHelp handler
   -- If the completion item doesn't have signatures It will make noise. Change to use `print` that can use `<silent>` to ignore
   if not (result and result.signatures and result.signatures[1]) then

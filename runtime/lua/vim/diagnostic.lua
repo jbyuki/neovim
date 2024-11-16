@@ -1105,15 +1105,17 @@ function M.untangle_diagnostics(hl, bufnr, diagnostics)
 
   for _, d in ipairs(diagnostics) do
     -- TODO: Split up multi line diagnostics
-    assert(d.lnum == d.end_lnum)
+    -- assert(d.lnum == d.end_lnum)
 
     local ll, line, prefix = ntangle.NTtoT(hl, root_section, d.lnum)
-    d.lnum = line
-    d.end_lnum = line
+    if ll and line and prefix then
+      d.lnum = line
+      d.end_lnum = line
 
-    d.col = d.col - #prefix
-    d.end_col = d.end_col - #prefix
-    target_buf = Tangle.get_buf_from_ll(ll)
+      d.col = d.col - #prefix
+      d.end_col = d.end_col - #prefix
+      target_buf = Tangle.get_buf_from_ll(ll)
+    end
   end
   return target_buf
 end
