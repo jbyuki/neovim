@@ -4,6 +4,8 @@ local api = vim.api
 local lsp = vim.lsp
 local protocol = lsp.protocol
 local ms = protocol.Methods
+local Tangle = require"vim.tangle"
+local ntangle = Tangle.get_ntangle()
 
 local rtt_ms = 50
 local ns_to_ms = 0.000001
@@ -718,6 +720,21 @@ function M._omnifunc(findstart, base)
   vim.lsp.log.debug('omnifunc.findstart', { findstart = findstart, base = base })
   assert(base) -- silence luals
   local bufnr = api.nvim_get_current_buf()
+
+  if Tangle.get_ll_from_buf(bufnr) then
+    local row, col = unpack(api.nvim_win_get_cursor(0))
+    row = row - 1
+    local nt_infos = ntangle.TtoNT(bufnr, row)
+    if #nt_infos == 0 then
+      return
+    end
+
+    for _, nt_info in ipairs(nt_infos) do
+      bufnr = ntangle.root_to_mirror_buf[nt_info[2]]
+      break
+    end
+  end
+
   local clients = lsp.get_clients({ bufnr = bufnr, method = ms.textDocument_completion })
   local remaining = #clients
   if remaining == 0 then
