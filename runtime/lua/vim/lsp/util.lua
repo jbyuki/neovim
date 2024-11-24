@@ -12,6 +12,7 @@ local Tangle = require('vim.tangle')
 local ntangle = Tangle.get_ntangle()
 
 local M = {}
+local states = {}
 
 local default_border = {
   { '', 'NormalFloat' },
@@ -1074,7 +1075,7 @@ function M.preview_location(location, opts)
   return M.open_floating_preview(contents, syntax, opts)
 end
 
-local function find_window_by_var(name, value)
+function M.find_window_by_var(name, value)
   for _, win in ipairs(api.nvim_list_wins()) do
     if npcall(api.nvim_win_get_var, win, name) == value then
       return win
@@ -2163,6 +2164,13 @@ function M.lookup_section(settings, section)
     end
   end
   return settings
+end
+
+function M.get_state(bufnr)
+  if not states[bufnr] then
+    states[bufnr] = {}
+  end
+  return states[bufnr]
 end
 
 --- Converts line range (0-based, end-inclusive) to lsp range,

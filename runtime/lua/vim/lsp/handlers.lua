@@ -17,13 +17,6 @@ local function err_message(...)
   api.nvim_command('redraw')
 end
 
---- @see # https://microsoft.github.io/language-server-protocol/specifications/specification-current/#workspace_executeCommand
-M[ms.workspace_executeCommand] = function(_, _, _, _)
-  -- Error handling is done implicitly by wrapping all handlers; see end of this file
-end
-
---- @see # https://microsoft.github.io/language-server-protocol/specifications/specification-current/#progress
----@param params lsp.ProgressParams
 ---@param ctx lsp.HandlerContext
 M[ms.dollar_progress] = function(_, params, ctx)
   local client = vim.lsp.get_client_by_id(ctx.client_id)
@@ -485,6 +478,21 @@ M[ms.textDocument_implementation] = location_handler
 function M.signature_help(_, result, ctx, config)
   config = config or {}
   config.focus_id = ctx.method
+  config.focusable = false
+
+
+  local win = util.find_window_by_var(config.focus_id, api.nvim_get_current_buf())
+  if win and api.nvim_win_is_valid(win) and vim.fn.pumvisible() == 0 then
+    local state = util.get_state(api.nvim_get_current_buf())
+    if state and state.active_signature and state.active_signature.signatures and #state.active_signature.signatures > 1 then
+      local next_signature = ((state.active_signature.activeSignature or 0)+1)% #state.active_signature.signatures
+      result.activeSignature = next_signature
+    end
+  end
+  
+  local state = util.get_state(api.nvim_get_current_buf())
+  state.active_signature = result
+
   -- if api.nvim_get_current_buf() ~= ctx.bufnr then
   --   -- Ignore result since buffer changed. This happens for slow language servers.
   --   return
@@ -508,6 +516,13 @@ function M.signature_help(_, result, ctx, config)
     end
     return
   end
+
+  if result and result.activeSignature and result.signatures and #result.signatures > 1 then
+    if #lines > 0 then
+      lines[#lines] = ("(%d/%d)"):format(result.activeSignature+1, #result.signatures)
+    end
+  end
+
   local fbuf, fwin = util.open_floating_preview(lines, 'markdown', config)
   if hl then
     -- Highlight the second line if the signature is wrapped in a Markdown code block.
