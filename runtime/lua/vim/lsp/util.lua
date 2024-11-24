@@ -1586,7 +1586,7 @@ function M.open_floating_preview(contents, syntax, opts)
       return bufnr, current_winnr
     end
     do
-      local win = find_window_by_var(opts.focus_id, bufnr)
+      local win = M.find_window_by_var(opts.focus_id, bufnr)
       if win and api.nvim_win_is_valid(win) and vim.fn.pumvisible() == 0 then
         -- focus and return the existing buf, win
         api.nvim_set_current_win(win)
