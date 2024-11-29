@@ -4837,6 +4837,8 @@ void *get_varp_from(vimoption_T *p, buf_T *buf, win_T *win)
     return &(buf->b_p_ts);
   case kOptTextwidth:
     return &(buf->b_p_tw);
+  case kOptTangle:
+    return &(buf->b_p_tgl);
   case kOptUndofile:
     return &(buf->b_p_udf);
   case kOptWrapmargin:

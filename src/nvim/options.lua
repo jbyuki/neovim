@@ -9083,7 +9083,7 @@ return {
       ]=],
       full_name = 'tangle',
       redraw = { 'current_buffer' },
-      scope = { 'buffer' },
+      scope = { 'buf' },
       short_desc = N_('Associate to tangle buffer'),
       type = 'boolean',
       varname = 'p_tgl',
