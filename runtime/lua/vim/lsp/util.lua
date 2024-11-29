@@ -1548,7 +1548,7 @@ function M.open_floating_preview(contents, syntax, opts)
         return bufnr, current_winnr
       end
       do
-        local win = find_window_by_var(opts.focus_id, bufnr)
+        local win = M.find_window_by_var(opts.focus_id, bufnr)
         if win and api.nvim_win_is_valid(win) and vim.fn.pumvisible() == 0 then
           -- focus and return the existing buf, win
           api.nvim_set_current_win(win)
@@ -1921,7 +1921,7 @@ function M.make_position_params(window, position_encoding)
     end
 
     position_encoding = position_encoding or M._get_offset_encoding(buf)
-    col = _str_utfindex_enc(line, col, position_encoding)
+    col = vim.str_utfindex(line, position_encoding, col, false)
     return {
       textDocument = M.make_text_document_params(buf),
       position = { line = row, character = col }

@@ -49,10 +49,10 @@ function M.hover(config)
 
   lsp.buf_request_all(0, ms.textDocument_hover, client_positional_params(), function(results, ctx)
     local bufnr = assert(ctx.bufnr)
-    if api.nvim_get_current_buf() ~= bufnr then
+    -- if api.nvim_get_current_buf() ~= bufnr then
       -- Ignore result since buffer changed. This happens for slow language servers.
-      return
-    end
+      -- return
+    -- end
 
     -- Filter errors from results
     local results1 = {} --- @type table<integer,lsp.Hover>
@@ -344,10 +344,10 @@ function M.signature_help(config)
   config.focus_id = method
 
   lsp.buf_request_all(0, method, client_positional_params(), function(results, ctx)
-    if api.nvim_get_current_buf() ~= ctx.bufnr then
+    -- if api.nvim_get_current_buf() ~= ctx.bufnr then
       -- Ignore result since buffer changed. This happens for slow language servers.
-      return
-    end
+      -- return
+    -- end
 
     local signatures = process_signature_help_results(results)
 

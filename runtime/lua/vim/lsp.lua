@@ -1,5 +1,7 @@
 local api = vim.api
 local validate = vim.validate
+local Tangle = require('vim.tangle')
+local ntangle = Tangle.get_ntangle()
 
 local lsp = vim._defer_require('vim.lsp', {
   _changetracking = ..., --- @module 'vim.lsp._changetracking'
@@ -881,6 +883,23 @@ function lsp.buf_request(bufnr, method, params, handler, on_unsupported)
   validate('on_unsupported', on_unsupported, 'function', true)
 
   bufnr = resolve_bufnr(bufnr)
+
+  if Tangle.get_ll_from_buf(bufnr) then
+    local win = api.nvim_get_current_win()
+    local row, col = unpack(api.nvim_win_get_cursor(win))
+    row = row - 1
+
+    local nt_infos = ntangle.TtoNT(bufnr, row)
+    if #nt_infos == 0 then
+      return
+    end
+
+    for _, nt_info in ipairs(nt_infos) do
+      bufnr = ntangle.root_to_mirror_buf[nt_info[2]]
+      break
+    end
+  end
+
   local method_supported = false
   local clients = lsp.get_clients({ bufnr = bufnr })
   local client_request_ids = {} --- @type table<integer,integer>
@@ -938,7 +957,7 @@ function lsp.buf_request_all(bufnr, method, params, handler)
   local _, cancel = lsp.buf_request(bufnr, method, params, function(err, result, ctx, config)
     if not remaining then
       -- Calculate as late as possible in case a client is removed during the request
-      remaining = #lsp.get_clients({ bufnr = bufnr, method = method })
+      remaining = #lsp.get_clients({ bufnr = ctx.bufnr, method = method })
     end
 
     -- The error key is deprecated and will be removed in 0.13
