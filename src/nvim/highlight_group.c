@@ -144,6 +144,9 @@ static const char e_missing_argument_str[]
 static const char *highlight_init_both[] = {
   "Cursor            guifg=bg      guibg=fg",
   "CursorLineNr      gui=bold      cterm=bold",
+  "PmenuMatch        gui=bold      cterm=bold",
+  "PmenuMatchSel     gui=bold      cterm=bold",
+  "PmenuSel          gui=reverse   cterm=reverse,underline blend=0",
   "RedrawDebugNormal gui=reverse   cterm=reverse",
   "TabLineSel        gui=bold      cterm=bold",
   "TermCursor        gui=reverse   cterm=reverse",
@@ -169,8 +172,6 @@ static const char *highlight_init_both[] = {
   "default link PmenuExtraSel    PmenuSel",
   "default link PmenuKind        Pmenu",
   "default link PmenuKindSel     PmenuSel",
-  "default link PmenuMatch       Pmenu",
-  "default link PmenuMatchSel    PmenuSel",
   "default link PmenuSbar        Pmenu",
   "default link Substitute       Search",
   "default link StatusLineTerm   StatusLine",
@@ -214,6 +215,7 @@ static const char *highlight_init_both[] = {
   "default link LspReferenceRead            LspReferenceText",
   "default link LspReferenceText            Visual",
   "default link LspReferenceWrite           LspReferenceText",
+  "default link LspReferenceTarget          LspReferenceText",
   "default link LspSignatureActiveParameter Visual",
   "default link SnippetTabstop              Visual",
 
@@ -300,6 +302,11 @@ static const char *highlight_init_both[] = {
   "default link @tag         Tag",
   "default link @tag.builtin Special",
 
+  // :help
+  // Highlight "===" and "---" heading delimiters specially.
+  "default @markup.heading.1.delimiter.vimdoc guibg=bg guifg=bg guisp=fg gui=underdouble,nocombine ctermbg=NONE ctermfg=NONE cterm=underdouble,nocombine",
+  "default @markup.heading.2.delimiter.vimdoc guibg=bg guifg=bg guisp=fg gui=underline,nocombine ctermbg=NONE ctermfg=NONE cterm=underline,nocombine",
+
   // LSP semantic tokens
   "default link @lsp.type.class         @type",
   "default link @lsp.type.comment       @comment",
@@ -358,7 +365,6 @@ static const char *highlight_init_light[] = {
   "NonText              guifg=NvimLightGrey4",
   "NormalFloat                               guibg=NvimLightGrey1",
   "Pmenu                                     guibg=NvimLightGrey3            cterm=reverse",
-  "PmenuSel             guifg=NvimLightGrey3 guibg=NvimDarkGrey2             cterm=reverse,underline blend=0",
   "PmenuThumb                                guibg=NvimLightGrey4",
   "Question             guifg=NvimDarkCyan                                   ctermfg=6",
   "QuickFixLine         guifg=NvimDarkCyan                                   ctermfg=6",
@@ -443,7 +449,6 @@ static const char *highlight_init_dark[] = {
   "NonText              guifg=NvimDarkGrey4",
   "NormalFloat                                guibg=NvimDarkGrey1",
   "Pmenu                                      guibg=NvimDarkGrey3           cterm=reverse",
-  "PmenuSel             guifg=NvimDarkGrey3   guibg=NvimLightGrey2          cterm=reverse,underline blend=0",
   "PmenuThumb                                 guibg=NvimDarkGrey4",
   "Question             guifg=NvimLightCyan                                 ctermfg=14",
   "QuickFixLine         guifg=NvimLightCyan                                 ctermfg=14",
@@ -996,6 +1001,7 @@ void do_highlight(const char *line, const bool forceit, const bool init)
 {
   // If no argument, list current highlighting.
   if (!init && ends_excmd((uint8_t)(*line))) {
+    msg_ext_set_kind("list_cmd");
     for (int i = 1; i <= highlight_ga.ga_len && !got_int; i++) {
       // TODO(brammool): only call when the group has attributes set
       highlight_list_one(i);
@@ -1033,6 +1039,7 @@ void do_highlight(const char *line, const bool forceit, const bool init)
     if (id == 0) {
       semsg(_(e_highlight_group_name_not_found_str), line);
     } else {
+      msg_ext_set_kind("list_cmd");
       highlight_list_one(id);
     }
     return;
@@ -1617,9 +1624,9 @@ static void highlight_list_one(const int id)
   if (sgp->sg_link && !got_int) {
     syn_list_header(didh, 0, id, true);
     didh = true;
-    msg_puts_attr("links to", HL_ATTR(HLF_D));
+    msg_puts_hl("links to", HLF_D, false);
     msg_putchar(' ');
-    msg_outtrans(hl_table[hl_table[id - 1].sg_link - 1].sg_name, 0);
+    msg_outtrans(hl_table[hl_table[id - 1].sg_link - 1].sg_name, 0, false);
   }
 
   if (!didh) {
@@ -1630,7 +1637,7 @@ static void highlight_list_one(const int id)
   }
 }
 
-static bool hlgroup2dict(Dictionary *hl, NS ns_id, int hl_id, Arena *arena)
+static bool hlgroup2dict(Dict *hl, NS ns_id, int hl_id, Arena *arena)
 {
   HlGroup *sgp = &hl_table[hl_id - 1];
   int link = ns_id == 0 ? sgp->sg_link : ns_get_hl(&ns_id, hl_id, true, sgp->sg_set);
@@ -1648,18 +1655,19 @@ static bool hlgroup2dict(Dictionary *hl, NS ns_id, int hl_id, Arena *arena)
     PUT_C(*hl, "default", BOOLEAN_OBJ(true));
   }
   if (link > 0) {
+    assert(1 <= link && link <= highlight_ga.ga_len);
     PUT_C(*hl, "link", CSTR_AS_OBJ(hl_table[link - 1].sg_name));
   }
-  Dictionary hl_cterm = arena_dict(arena, HLATTRS_DICT_SIZE);
+  Dict hl_cterm = arena_dict(arena, HLATTRS_DICT_SIZE);
   hlattrs2dict(hl, NULL, attr, true, true);
   hlattrs2dict(hl, &hl_cterm, attr, false, true);
   if (kv_size(hl_cterm)) {
-    PUT_C(*hl, "cterm", DICTIONARY_OBJ(hl_cterm));
+    PUT_C(*hl, "cterm", DICT_OBJ(hl_cterm));
   }
   return true;
 }
 
-Dictionary ns_get_hl_defs(NS ns_id, Dict(get_highlight) *opts, Arena *arena, Error *err)
+Dict ns_get_hl_defs(NS ns_id, Dict(get_highlight) *opts, Arena *arena, Error *err)
 {
   Boolean link = GET_BOOL_OR_TRUE(opts, get_highlight, link);
   int id = -1;
@@ -1668,7 +1676,7 @@ Dictionary ns_get_hl_defs(NS ns_id, Dict(get_highlight) *opts, Arena *arena, Err
     id = create ? syn_check_group(opts->name.data, opts->name.size)
                 : syn_name2id_len(opts->name.data, opts->name.size);
     if (id == 0 && !create) {
-      Dictionary attrs = ARRAY_DICT_INIT;
+      Dict attrs = ARRAY_DICT_INIT;
       return attrs;
     }
   } else if (HAS_KEY(opts, get_highlight, id)) {
@@ -1679,7 +1687,7 @@ Dictionary ns_get_hl_defs(NS ns_id, Dict(get_highlight) *opts, Arena *arena, Err
     VALIDATE(1 <= id && id <= highlight_ga.ga_len, "%s", "Highlight id out of bounds", {
       goto cleanup;
     });
-    Dictionary attrs = ARRAY_DICT_INIT;
+    Dict attrs = ARRAY_DICT_INIT;
     hlgroup2dict(&attrs, ns_id, link ? id : syn_get_final_id(id), arena);
     return attrs;
   }
@@ -1687,19 +1695,19 @@ Dictionary ns_get_hl_defs(NS ns_id, Dict(get_highlight) *opts, Arena *arena, Err
     goto cleanup;
   }
 
-  Dictionary rv = arena_dict(arena, (size_t)highlight_ga.ga_len);
+  Dict rv = arena_dict(arena, (size_t)highlight_ga.ga_len);
   for (int i = 1; i <= highlight_ga.ga_len; i++) {
-    Dictionary attrs = ARRAY_DICT_INIT;
+    Dict attrs = ARRAY_DICT_INIT;
     if (!hlgroup2dict(&attrs, ns_id, i, arena)) {
       continue;
     }
-    PUT_C(rv, hl_table[(link ? i : syn_get_final_id(i)) - 1].sg_name, DICTIONARY_OBJ(attrs));
+    PUT_C(rv, hl_table[(link ? i : syn_get_final_id(i)) - 1].sg_name, DICT_OBJ(attrs));
   }
 
   return rv;
 
 cleanup:
-  return (Dictionary)ARRAY_DICT_INIT;
+  return (Dict)ARRAY_DICT_INIT;
 }
 
 /// Outputs a highlight when doing ":hi MyHighlight"
@@ -1746,10 +1754,10 @@ static bool highlight_list_arg(const int id, bool didh, const int type, int iarg
   didh = true;
   if (!got_int) {
     if (*name != NUL) {
-      msg_puts_attr(name, HL_ATTR(HLF_D));
-      msg_puts_attr("=", HL_ATTR(HLF_D));
+      msg_puts_hl(name, HLF_D, false);
+      msg_puts_hl("=", HLF_D, false);
     }
-    msg_outtrans(ts, 0);
+    msg_outtrans(ts, 0, false);
   }
   return didh;
 }
@@ -1879,7 +1887,7 @@ bool syn_list_header(const bool did_header, const int outlen, const int id, bool
     if (got_int) {
       return true;
     }
-    msg_outtrans(hl_table[id - 1].sg_name, 0);
+    msg_outtrans(hl_table[id - 1].sg_name, 0, false);
     name_col = msg_col;
     endcol = 15;
   } else if ((ui_has(kUIMessages) || msg_silent) && !force_newline) {
@@ -1910,7 +1918,7 @@ bool syn_list_header(const bool did_header, const int outlen, const int id, bool
     if (endcol == Columns - 1 && endcol <= name_col) {
       msg_putchar(' ');
     }
-    msg_puts_attr("xxx", syn_id2attr(id));
+    msg_puts_hl("xxx", id, false);
     msg_putchar(' ');
   }
 
@@ -2042,7 +2050,7 @@ static int syn_add_group(const char *name, size_t len)
       return 0;
     } else if (!ASCII_ISALNUM(c) && c != '_' && c != '.' && c != '@' && c != '-') {
       // '.' and '@' are allowed characters for use with treesitter capture names.
-      msg_source(HL_ATTR(HLF_W));
+      msg_source(HLF_W);
       emsg(_(e_highlight_group_name_invalid_char));
       return 0;
     }
@@ -2241,8 +2249,11 @@ void highlight_changed(void)
 
   need_highlight_changed = false;
 
+  // sentinel value. used when no highlight is active
+  highlight_attr[HLF_NONE] = 0;
+
   /// Translate builtin highlight groups into attributes for quick lookup.
-  for (int hlf = 0; hlf < HLF_COUNT; hlf++) {
+  for (int hlf = 1; hlf < HLF_COUNT; hlf++) {
     int id = syn_check_group(hlf_names[hlf], strlen(hlf_names[hlf]));
     if (id == 0) {
       abort();
@@ -2269,9 +2280,6 @@ void highlight_changed(void)
       highlight_attr_last[hlf] = highlight_attr[hlf];
     }
   }
-
-  // sentinel value. used when no highlight namespace is active
-  highlight_attr[HLF_COUNT] = 0;
 
   // Setup the user highlights
   //
@@ -2356,16 +2364,16 @@ void set_context_in_highlight_cmd(expand_T *xp, const char *arg)
 static void highlight_list(void)
 {
   for (int i = 10; --i >= 0;) {
-    highlight_list_two(i, HL_ATTR(HLF_D));
+    highlight_list_two(i, HLF_D);
   }
   for (int i = 40; --i >= 0;) {
     highlight_list_two(99, 0);
   }
 }
 
-static void highlight_list_two(int cnt, int attr)
+static void highlight_list_two(int cnt, int id)
 {
-  msg_puts_attr(&("N \bI \b!  \b"[cnt / 11]), attr);
+  msg_puts_hl(&("N \bI \b!  \b"[cnt / 11]), id, false);
   msg_clr_eos();
   ui_flush();
   os_delay(cnt == 99 ? 40 : (uint64_t)cnt * 50, false);

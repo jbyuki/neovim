@@ -181,6 +181,16 @@ function M.changelog(_, bufnr)
 end
 
 --- @type vim.filetype.mapfn
+function M.cl(_, bufnr)
+  local lines = table.concat(getlines(bufnr, 1, 4))
+  if lines:match('/%*') then
+    return 'opencl'
+  else
+    return 'lisp'
+  end
+end
+
+--- @type vim.filetype.mapfn
 function M.class(_, bufnr)
   -- Check if not a Java class (starts with '\xca\xfe\xba\xbe')
   if not getline(bufnr, 1):find('^\202\254\186\190') then
@@ -227,7 +237,8 @@ end
 --- Debian Control
 --- @type vim.filetype.mapfn
 function M.control(_, bufnr)
-  if getline(bufnr, 1):find('^Source:') then
+  local line1 = getline(bufnr, 1)
+  if line1 and findany(line1, { '^Source:', '^Package:' }) then
     return 'debcontrol'
   end
 end
@@ -735,6 +746,8 @@ function M.html(_, bufnr)
       )
     then
       return 'htmldjango'
+    elseif findany(line, { '<extend', '<super>' }) then
+      return 'superhtml'
     end
   end
   return 'html'
@@ -863,6 +876,16 @@ function M.log(path, _)
     return 'usserverlog'
   elseif findany(path, { 'usw2kagt%.log', 'usw2kagt%..*%.log', '.*%.usw2kagt%.log' }) then
     return 'usw2kagtlog'
+  end
+end
+
+--- @type vim.filetype.mapfn
+function M.ll(_, bufnr)
+  local first_line = getline(bufnr, 1)
+  if matchregex(first_line, [[;\|\<source_filename\>\|\<target\>]]) then
+    return 'llvm'
+  else
+    return 'lifelines'
   end
 end
 
@@ -1906,7 +1929,7 @@ local function match_from_hashbang(contents, path, dispatch_extension)
   end
 
   for k, v in pairs(patterns_hashbang) do
-    local ft = type(v) == 'table' and v[1] or v
+    local ft = type(v) == 'table' and v[1] or v --[[@as string]]
     local opts = type(v) == 'table' and v[2] or {}
     if opts.vim_regex and matchregex(name, k) or name:find(k) then
       return ft
@@ -2078,6 +2101,7 @@ local function match_from_text(contents, path)
         return ft
       end
     else
+      --- @cast k string
       local opts = type(v) == 'table' and v[2] or {}
       if opts.start_lnum and opts.end_lnum then
         assert(

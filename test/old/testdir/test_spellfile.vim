@@ -846,6 +846,22 @@ func Test_spell_add_word()
   %bw!
 endfunc
 
+func Test_spell_add_long_word()
+  set spell spellfile=./Xspellfile.add spelllang=en
+
+  let word = repeat('a', 9000)
+  let v:errmsg = ''
+  " Spell checking doesn't really work for such a long word,
+  " but this should not cause an E1510 error.
+  exe 'spellgood ' .. word
+  call assert_equal('', v:errmsg)
+  call assert_equal([word], readfile('./Xspellfile.add'))
+
+  set spell& spellfile= spelllang& encoding=utf-8
+  call delete('./Xspellfile.add')
+  call delete('./Xspellfile.add.spl')
+endfunc
+
 func Test_spellfile_verbose()
   call writefile(['1', 'one'], 'XtestVerbose.dic', 'D')
   call writefile([], 'XtestVerbose.aff', 'D')
@@ -1139,7 +1155,7 @@ endfunc
 " 'spellfile' accepts '@' on top of 'isfname'.
 func Test_spellfile_allow_at_character()
   call mkdir('Xtest/the foo@bar,dir', 'p')
-  let &spellfile = './Xtest/the foo@bar,dir/Xspellfile.add'
+  let &spellfile = './Xtest/the foo@bar\,dir/Xspellfile.add'
   let &spellfile = ''
   call delete('Xtest', 'rf')
 endfunc

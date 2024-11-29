@@ -307,4 +307,29 @@ func Test_insert_after_trailing_bar()
   bwipe!
 endfunc
 
+" Test global insert of a newline without terminating period
+func Test_global_insert_newline()
+  new
+  call setline(1, ['foo'])
+  call feedkeys("Qg/foo/i\\\n", "xt")
+  call assert_equal(['', 'foo'], getline(1, '$'))
+  bwipe!
+endfunc
+
+" An empty command followed by a newline shouldn't cause E749 in Ex mode.
+func Test_ex_empty_command_newline()
+  let g:var = 0
+  call feedkeys("gQexecute \"\\nlet g:var = 1\"\r", 'xt')
+  call assert_equal(1, g:var)
+  call feedkeys("gQexecute \"  \\nlet g:var = 2\"\r", 'xt')
+  call assert_equal(2, g:var)
+  call feedkeys("gQexecute \"\\t \\nlet g:var = 3\"\r", 'xt')
+  call assert_equal(3, g:var)
+  call feedkeys("gQexecute \"\\\"?!\\nlet g:var = 4\"\r", 'xt')
+  call assert_equal(4, g:var)
+  call feedkeys("gQexecute \"  \\\"?!\\nlet g:var = 5\"\r", 'xt')
+  call assert_equal(5, g:var)
+  unlet g:var
+endfunc
+
 " vim: shiftwidth=2 sts=2 expandtab

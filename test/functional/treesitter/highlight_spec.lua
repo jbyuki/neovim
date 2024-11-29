@@ -156,12 +156,11 @@ local injection_grid_expected_c = [[
 ]]
 
 describe('treesitter highlighting (C)', function()
-  local screen
+  local screen --- @type test.functional.ui.screen
 
   before_each(function()
     clear()
     screen = Screen.new(65, 18)
-    screen:attach()
     screen:set_default_attr_ids {
       [1] = { bold = true, foreground = Screen.colors.Blue1 },
       [2] = { foreground = Screen.colors.Blue1 },
@@ -176,7 +175,6 @@ describe('treesitter highlighting (C)', function()
       [11] = { foreground = Screen.colors.Cyan4 },
     }
 
-    exec_lua([[ hl_query = ... ]], hl_query_c)
     command [[ hi link @error ErrorMsg ]]
     command [[ hi link @warning WarningMsg ]]
   end)
@@ -188,22 +186,28 @@ describe('treesitter highlighting (C)', function()
     -- legacy syntax highlighting is used by default
     screen:expect(hl_grid_legacy_c)
 
-    exec_lua([[
-      vim.treesitter.query.set('c', 'highlights', hl_query)
+    exec_lua(function()
+      vim.treesitter.query.set('c', 'highlights', hl_query_c)
       vim.treesitter.start()
-    ]])
+    end)
     -- treesitter highlighting is used
     screen:expect(hl_grid_ts_c)
 
-    exec_lua('vim.treesitter.stop()')
+    exec_lua(function()
+      vim.treesitter.stop()
+    end)
     -- legacy syntax highlighting is used
     screen:expect(hl_grid_legacy_c)
 
-    exec_lua('vim.treesitter.start()')
+    exec_lua(function()
+      vim.treesitter.start()
+    end)
     -- treesitter highlighting is used
     screen:expect(hl_grid_ts_c)
 
-    exec_lua('vim.treesitter.stop()')
+    exec_lua(function()
+      vim.treesitter.stop()
+    end)
     -- legacy syntax highlighting is used
     screen:expect(hl_grid_legacy_c)
   end)
@@ -233,11 +237,11 @@ describe('treesitter highlighting (C)', function()
     ]],
     }
 
-    exec_lua [[
-      local parser = vim.treesitter.get_parser(0, "c")
+    exec_lua(function()
+      local parser = vim.treesitter.get_parser(0, 'c')
       local highlighter = vim.treesitter.highlighter
-      test_hl = highlighter.new(parser, {queries = {c = hl_query}})
-    ]]
+      highlighter.new(parser, { queries = { c = hl_query_c } })
+    end)
     screen:expect(hl_grid_ts_c)
 
     feed('5Goc<esc>dd')
@@ -364,10 +368,10 @@ describe('treesitter highlighting (C)', function()
 
   it('is updated with :sort', function()
     insert(test_text_c)
-    exec_lua [[
-      local parser = vim.treesitter.get_parser(0, "c")
-      test_hl = vim.treesitter.highlighter.new(parser, {queries = {c = hl_query}})
-    ]]
+    exec_lua(function()
+      local parser = vim.treesitter.get_parser(0, 'c')
+      vim.treesitter.highlighter.new(parser, { queries = { c = hl_query_c } })
+    end)
     screen:expect {
       grid = [[
         {3:int} width = {5:INT_MAX}, height = {5:INT_MAX};                         |
@@ -470,19 +474,19 @@ describe('treesitter highlighting (C)', function()
     ]],
     }
 
-    exec_lua [[
-      parser = vim.treesitter.get_parser(0, "c")
-      query = vim.treesitter.query.parse("c", "(declaration) @decl")
+    exec_lua(function()
+      local parser = vim.treesitter.get_parser(0, 'c')
+      local query = vim.treesitter.query.parse('c', '(declaration) @decl')
 
       local nodes = {}
       for _, node in query:iter_captures(parser:parse()[1]:root(), 0, 0, 19) do
         table.insert(nodes, node)
       end
 
-      parser:set_included_regions({nodes})
+      parser:set_included_regions({ nodes })
 
-      local hl = vim.treesitter.highlighter.new(parser, {queries = {c = "(identifier) @type"}})
-    ]]
+      vim.treesitter.highlighter.new(parser, { queries = { c = '(identifier) @type' } })
+    end)
 
     screen:expect {
       grid = [[
@@ -513,13 +517,15 @@ describe('treesitter highlighting (C)', function()
 
     screen:expect { grid = injection_grid_c }
 
-    exec_lua [[
-      local parser = vim.treesitter.get_parser(0, "c", {
-        injections = {c = '(preproc_def (preproc_arg) @injection.content (#set! injection.language "c")) (preproc_function_def value: (preproc_arg) @injection.content (#set! injection.language "c"))'}
+    exec_lua(function()
+      local parser = vim.treesitter.get_parser(0, 'c', {
+        injections = {
+          c = '(preproc_def (preproc_arg) @injection.content (#set! injection.language "c")) (preproc_function_def value: (preproc_arg) @injection.content (#set! injection.language "c"))',
+        },
       })
       local highlighter = vim.treesitter.highlighter
-      test_hl = highlighter.new(parser, {queries = {c = hl_query}})
-    ]]
+      highlighter.new(parser, { queries = { c = hl_query_c } })
+    end)
 
     screen:expect { grid = injection_grid_expected_c }
   end)
@@ -529,14 +535,16 @@ describe('treesitter highlighting (C)', function()
 
     screen:expect { grid = injection_grid_c }
 
-    exec_lua [[
-      vim.treesitter.language.register("c", "foo")
-      local parser = vim.treesitter.get_parser(0, "c", {
-        injections = {c = '(preproc_def (preproc_arg) @injection.content (#set! injection.language "foo")) (preproc_function_def value: (preproc_arg) @injection.content (#set! injection.language "foo"))'}
+    exec_lua(function()
+      vim.treesitter.language.register('c', 'foo')
+      local parser = vim.treesitter.get_parser(0, 'c', {
+        injections = {
+          c = '(preproc_def (preproc_arg) @injection.content (#set! injection.language "foo")) (preproc_function_def value: (preproc_arg) @injection.content (#set! injection.language "foo"))',
+        },
       })
       local highlighter = vim.treesitter.highlighter
-      test_hl = highlighter.new(parser, {queries = {c = hl_query}})
-    ]]
+      highlighter.new(parser, { queries = { c = hl_query_c } })
+    end)
 
     screen:expect { grid = injection_grid_expected_c }
   end)
@@ -550,13 +558,14 @@ describe('treesitter highlighting (C)', function()
                 }
     ]])
 
-    exec_lua [[
-      local injection_query = '(preproc_def (preproc_arg) @injection.content (#set! injection.language "c")) (preproc_function_def value: (preproc_arg) @injection.content (#set! injection.language "c"))'
-      vim.treesitter.query.set("c", "highlights", hl_query)
-      vim.treesitter.query.set("c", "injections", injection_query)
+    exec_lua(function()
+      local injection_query =
+        '(preproc_def (preproc_arg) @injection.content (#set! injection.language "c")) (preproc_function_def value: (preproc_arg) @injection.content (#set! injection.language "c"))'
+      vim.treesitter.query.set('c', 'highlights', hl_query_c)
+      vim.treesitter.query.set('c', 'injections', injection_query)
 
-      vim.treesitter.highlighter.new(vim.treesitter.get_parser(0, "c"))
-    ]]
+      vim.treesitter.highlighter.new(vim.treesitter.get_parser(0, 'c'))
+    end)
 
     screen:expect {
       grid = [[
@@ -576,10 +585,10 @@ describe('treesitter highlighting (C)', function()
     insert(hl_text_c)
     feed('gg')
 
-    exec_lua [[
-      local parser = vim.treesitter.get_parser(0, "c")
-      test_hl = vim.treesitter.highlighter.new(parser, {queries = {c = hl_query}})
-    ]]
+    exec_lua(function()
+      local parser = vim.treesitter.get_parser(0, 'c')
+      vim.treesitter.highlighter.new(parser, { queries = { c = hl_query_c } })
+    end)
 
     screen:expect(hl_grid_ts_c)
 
@@ -619,10 +628,14 @@ describe('treesitter highlighting (C)', function()
                 }
     ]])
 
-    exec_lua [[
-      local parser = vim.treesitter.get_parser(0, "c")
-      test_hl = vim.treesitter.highlighter.new(parser, {queries = {c = hl_query..'\n((translation_unit) @constant (#set! "priority" 101))\n'}})
-    ]]
+    exec_lua(function()
+      local parser = vim.treesitter.get_parser(0, 'c')
+      vim.treesitter.highlighter.new(parser, {
+        queries = {
+          c = hl_query_c .. '\n((translation_unit) @constant (#set! "priority" 101))\n',
+        },
+      })
+    end)
     -- expect everything to have Constant highlight
     screen:expect {
       grid = [[
@@ -669,11 +682,14 @@ describe('treesitter highlighting (C)', function()
       hi link @foo.bar Type
       hi link @foo String
     ]]
-      exec_lua [[
-      local parser = vim.treesitter.get_parser(0, "c", {})
-      local highlighter = vim.treesitter.highlighter
-      test_hl = highlighter.new(parser, {queries = {c = "(primitive_type) @foo.bar (string_literal) @foo"}})
-    ]]
+      exec_lua(function()
+        local parser = vim.treesitter.get_parser(0, 'c', {})
+        local highlighter = vim.treesitter.highlighter
+        highlighter.new(
+          parser,
+          { queries = { c = '(primitive_type) @foo.bar (string_literal) @foo' } }
+        )
+      end)
 
       screen:expect {
         grid = [[
@@ -701,10 +717,12 @@ describe('treesitter highlighting (C)', function()
     insert(hl_text_c)
 
     -- conceal can be empty or a single cchar.
-    exec_lua [=[
+    exec_lua(function()
       vim.opt.cole = 2
-      local parser = vim.treesitter.get_parser(0, "c")
-      test_hl = vim.treesitter.highlighter.new(parser, {queries = {c = [[
+      local parser = vim.treesitter.get_parser(0, 'c')
+      vim.treesitter.highlighter.new(parser, {
+        queries = {
+          c = [[
         ("static" @keyword
          (#set! conceal "R"))
 
@@ -717,8 +735,10 @@ describe('treesitter highlighting (C)', function()
             arguments: (argument_list) @arguments)
          (#eq? @function "multiqueue_put")
          (#set! @function conceal "V"))
-      ]]}})
-    ]=]
+      ]],
+        },
+      })
+    end)
 
     screen:expect {
       grid = [[
@@ -775,11 +795,11 @@ describe('treesitter highlighting (C)', function()
       int z = 6;
     ]])
 
-    exec_lua([[
+    exec_lua(function()
       local query = '((declaration)+ @string)'
       vim.treesitter.query.set('c', 'highlights', query)
       vim.treesitter.highlighter.new(vim.treesitter.get_parser(0, 'c'))
-    ]])
+    end)
 
     screen:expect {
       grid = [[
@@ -805,14 +825,10 @@ describe('treesitter highlighting (C)', function()
         declarator: (pointer_declarator) @variable.parameter)
     ]]
 
-    exec_lua(
-      [[
-      local query = ...
+    exec_lua(function()
       vim.treesitter.query.set('c', 'highlights', query)
       vim.treesitter.highlighter.new(vim.treesitter.get_parser(0, 'c'))
-    ]],
-      query
-    )
+    end)
 
     screen:expect {
       grid = [[
@@ -831,7 +847,6 @@ describe('treesitter highlighting (lua)', function()
   before_each(function()
     clear()
     screen = Screen.new(65, 18)
-    screen:attach()
     screen:set_default_attr_ids {
       [1] = { bold = true, foreground = Screen.colors.Blue },
       [2] = { foreground = Screen.colors.DarkCyan },
@@ -847,10 +862,10 @@ describe('treesitter highlighting (lua)', function()
       ffi.cdef("int (*fun)(int, char *);")
     ]]
 
-    exec_lua [[
+    exec_lua(function()
       vim.bo.filetype = 'lua'
       vim.treesitter.start()
-    ]]
+    end)
 
     screen:expect {
       grid = [[
@@ -870,14 +885,49 @@ describe('treesitter highlighting (help)', function()
   before_each(function()
     clear()
     screen = Screen.new(40, 6)
-    screen:attach()
     screen:set_default_attr_ids {
       [1] = { foreground = Screen.colors.Blue1 },
       [2] = { bold = true, foreground = Screen.colors.Blue1 },
       [3] = { bold = true, foreground = Screen.colors.Brown },
       [4] = { foreground = Screen.colors.Cyan4 },
       [5] = { foreground = Screen.colors.Magenta1 },
+      title = { bold = true, foreground = Screen.colors.Magenta1 },
+      h1_delim = { nocombine = true, underdouble = true },
+      h2_delim = { nocombine = true, underline = true },
     }
+  end)
+
+  it('defaults in vimdoc/highlights.scm', function()
+    -- Avoid regressions when syncing upstream vimdoc queries.
+
+    insert [[
+    ==============================================================================
+    NVIM DOCUMENTATION
+
+    ------------------------------------------------------------------------------
+    ABOUT NVIM                                                     *tag-1* *tag-2*
+
+    |news|			News
+    |nvim|			NVim
+    ]]
+
+    feed('gg')
+    exec_lua(function()
+      vim.wo.wrap = false
+      vim.bo.filetype = 'help'
+      vim.treesitter.start()
+    end)
+
+    screen:expect({
+      grid = [[
+        {h1_delim:^========================================}|
+        {title:NVIM DOCUMENTATION}                      |
+                                                |
+        {h2_delim:----------------------------------------}|
+        {title:ABOUT NVIM}                              |
+                                                |
+      ]],
+    })
   end)
 
   it('correctly redraws added/removed injections', function()
@@ -888,10 +938,10 @@ describe('treesitter highlighting (help)', function()
     <
     ]]
 
-    exec_lua [[
+    exec_lua(function()
       vim.bo.filetype = 'help'
       vim.treesitter.start()
-    ]]
+    end)
 
     screen:expect {
       grid = [[
@@ -943,15 +993,15 @@ describe('treesitter highlighting (help)', function()
     ]]
     ]=])
 
-    exec_lua [[
-      parser = vim.treesitter.get_parser(0, "lua", {
+    exec_lua(function()
+      local parser = vim.treesitter.get_parser(0, 'lua', {
         injections = {
-          lua = '(string content: (_) @injection.content (#set! injection.language lua))'
-        }
+          lua = '(string content: (_) @injection.content (#set! injection.language lua))',
+        },
       })
 
       vim.treesitter.highlighter.new(parser)
-    ]]
+    end)
 
     screen:expect {
       grid = [=[
@@ -967,12 +1017,11 @@ describe('treesitter highlighting (help)', function()
 end)
 
 describe('treesitter highlighting (nested injections)', function()
-  local screen
+  local screen --- @type test.functional.ui.screen
 
   before_each(function()
     clear()
     screen = Screen.new(80, 7)
-    screen:attach()
     screen:set_default_attr_ids {
       [1] = { foreground = Screen.colors.SlateBlue },
       [2] = { bold = true, foreground = Screen.colors.Brown },
@@ -996,11 +1045,11 @@ vim.cmd([[
 ]])
     ]=]
 
-    exec_lua [[
+    exec_lua(function()
       vim.opt.scrolloff = 0
       vim.bo.filetype = 'lua'
       vim.treesitter.start()
-    ]]
+    end)
 
     -- invalidate the language tree
     feed('ggi--[[<ESC>04x')
@@ -1040,11 +1089,10 @@ describe('treesitter highlighting (markdown)', function()
   before_each(function()
     clear()
     screen = Screen.new(40, 6)
-    screen:attach()
-    exec_lua([[
+    exec_lua(function()
       vim.bo.filetype = 'markdown'
       vim.treesitter.start()
-    ]])
+    end)
   end)
 
   it('supports hyperlinks', function()
@@ -1060,7 +1108,7 @@ describe('treesitter highlighting (markdown)', function()
     })
     screen:expect({
       grid = [[
-        {25:[}{100:This link text}{25:](}{101:https://example.com}{25:)} is|
+        {100:[This link text](}{101:https://example.com}{100:)} is|
          a hyperlink^.                           |
         {1:~                                       }|*3
                                                 |
@@ -1108,7 +1156,6 @@ it('starting and stopping treesitter highlight in init.lua works #29541', functi
   eq('', api.nvim_get_vvar('errmsg'))
 
   local screen = Screen.new(65, 18)
-  screen:attach()
   screen:set_default_attr_ids {
     [1] = { bold = true, foreground = Screen.colors.Blue1 },
     [2] = { foreground = Screen.colors.Blue1 },

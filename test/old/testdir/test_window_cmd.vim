@@ -55,6 +55,27 @@ func Test_window_cmd_cmdwin_with_vsp()
   set ls&vim
 endfunc
 
+func Test_cmdheight_not_changed()
+  throw 'Skipped: N/A'
+  set cmdheight=2
+  set winminheight=0
+  augroup Maximize
+    autocmd WinEnter * wincmd _
+  augroup END
+  split
+  tabnew
+  tabfirst
+  call assert_equal(2, &cmdheight)
+
+  tabonly!
+  only
+  set winminheight& cmdheight&
+  augroup Maximize
+    au!
+  augroup END
+  augroup! Maximize
+endfunc
+
 " Test for jumping to windows
 func Test_window_jump()
   new
@@ -539,7 +560,7 @@ func Test_equalalways_on_close()
   1wincmd w
   split
   4wincmd w
-  resize + 5
+  resize +5
   " left column has three windows, equalized heights.
   " right column has two windows, top one a bit higher
   let height_1 = winheight(1)

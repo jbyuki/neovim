@@ -54,7 +54,7 @@ local function call_ui_event_method(output, ev)
       local kind = ev.parameters[j][1]
       if kind ~= 'Object' then
         if kind == 'HlAttrs' then
-          kind = 'Dictionary'
+          kind = 'Dict'
         end
         output:write('\n      || args.items[' .. (j - 1) .. '].type != kObjectType' .. kind .. '')
       end
@@ -74,7 +74,7 @@ local function call_ui_event_method(output, ev)
       output:write(
         'ui_client_dict2hlattrs(args.items['
           .. (j - 1)
-          .. '].data.dictionary, '
+          .. '].data.dict, '
           .. (hlattrs_args_count == 0 and 'true' or 'false')
           .. ');\n'
       )
@@ -136,8 +136,8 @@ for i = 1, #events do
       call_output:write('  }\n')
       call_output:write('  entered = true;\n')
       write_arglist(call_output, ev)
-      call_output:write('  ui_call_event("' .. ev.name .. '", ' .. args .. ');\n')
-      call_output:write('  entered = false;\n')
+      call_output:write(('  ui_call_event("%s", %s, %s)'):format(ev.name, tostring(ev.fast), args))
+      call_output:write(';\n  entered = false;\n')
     elseif ev.compositor_impl then
       call_output:write('  ui_comp_' .. ev.name)
       write_signature(call_output, ev, '', true)
@@ -205,7 +205,8 @@ for _, ev in ipairs(events) do
     ev_exported[attr] = ev[attr]
   end
   for _, p in ipairs(ev_exported.parameters) do
-    if p[1] == 'HlAttrs' then
+    if p[1] == 'HlAttrs' or p[1] == 'Dict' then
+      -- TODO(justinmk): for back-compat, but do clients actually look at this?
       p[1] = 'Dictionary'
     end
   end

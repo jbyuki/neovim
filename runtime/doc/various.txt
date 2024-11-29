@@ -78,9 +78,8 @@ ga			Print the ascii value of the character under the
 			If the character can be inserted as a digraph, also
 			output the two characters that can be used to create
 			the character:
-			    <ö> 246, Hex 00f6, Oct 366, Digr o: ~
+				<ö> 246, Hex 00f6, Oct 366, Digr o: ~
 			This shows you can type CTRL-K o : to insert ö.
-
 
 							*g8*
 g8			Print the hex values of the bytes used in the
@@ -268,6 +267,7 @@ gx			Opens the current filepath or URL (decided by
 <
 							*:!cmd* *:!*
 :!{cmd}			Execute {cmd} with 'shell'. See also |:terminal|.
+			For the filter command, see |:range!|.
 
 			The command runs in a non-interactive shell connected
 			to a pipe (not a terminal). Use |:terminal| to run an
@@ -282,6 +282,16 @@ gx			Opens the current filepath or URL (decided by
 			requires using the call operator (&). >
 				:!Write-Output "1`n2" | & "C:\Windows\System32\sort.exe" /r
 <
+			Vim builds command line using options 'shell', 'shcf',
+			'sxq' and 'shq' in the following order:
+			`&sh &shcf &sxq &shq {cmd} &shq &sxq`
+			So setting both 'sxq' and 'shq' is possible but rarely
+			useful.  Additional escaping inside `{cmd}` may also
+			be due to 'sxe' option.
+
+			Also, all |cmdline-special| characters in {cmd} are
+			replaced by Vim before passing them to shell.
+
 							*E34*
 			Any "!" in {cmd} is replaced with the previous
 			external command (see also 'cpoptions'), unless
@@ -549,9 +559,9 @@ gO			Show a filetype-specific, navigable "outline" of the
 
 If you use the less or more program to view a file, you don't get syntax
 highlighting.  Thus you would like to use Vim instead.  You can do this by
-using the shell script "$VIMRUNTIME/macros/less.sh".
+using the shell script "$VIMRUNTIME/scripts/less.sh".
 
-This shell script uses the Vim script "$VIMRUNTIME/macros/less.vim".  It sets
+This shell script uses the Vim script "$VIMRUNTIME/scripts/less.vim".  It sets
 up mappings to simulate the commands that less supports.  Otherwise, you can
 still use the Vim commands.
 

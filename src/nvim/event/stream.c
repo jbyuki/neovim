@@ -44,6 +44,8 @@ int stream_set_blocking(int fd, bool blocking)
 void stream_init(Loop *loop, Stream *stream, int fd, uv_stream_t *uvstream)
   FUNC_ATTR_NONNULL_ARG(2)
 {
+  // The underlying stream is either a file or an existing uv stream.
+  assert(uvstream == NULL ? fd >= 0 : fd < 0);
   stream->uvstream = uvstream;
 
   if (fd >= 0) {
@@ -83,6 +85,7 @@ void stream_init(Loop *loop, Stream *stream, int fd, uv_stream_t *uvstream)
     stream->uvstream->data = stream;
   }
 
+  stream->fpos = 0;
   stream->internal_data = NULL;
   stream->curmem = 0;
   stream->maxmem = 0;
@@ -94,14 +97,17 @@ void stream_init(Loop *loop, Stream *stream, int fd, uv_stream_t *uvstream)
   stream->events = NULL;
 }
 
-void stream_close(Stream *stream, stream_close_cb on_stream_close, void *data, bool rstream)
+void stream_may_close(Stream *stream, bool rstream)
   FUNC_ATTR_NONNULL_ARG(1)
 {
+  if (stream->closed) {
+    return;
+  }
   assert(!stream->closed);
   DLOG("closing Stream: %p", (void *)stream);
   stream->closed = true;
-  stream->close_cb = on_stream_close;
-  stream->close_cb_data = data;
+  stream->close_cb = NULL;
+  stream->close_cb_data = NULL;
 
 #ifdef MSWIN
   if (UV_TTY == uv_guess_handle(stream->fd)) {
@@ -112,13 +118,6 @@ void stream_close(Stream *stream, stream_close_cb on_stream_close, void *data, b
 
   if (!stream->pending_reqs) {
     stream_close_handle(stream, rstream);
-  }
-}
-
-void stream_may_close(Stream *stream, bool rstream)
-{
-  if (!stream->closed) {
-    stream_close(stream, NULL, NULL, rstream);
   }
 }
 

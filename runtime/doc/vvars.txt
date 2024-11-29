@@ -152,13 +152,14 @@ v:event
 		                   an aborting condition (e.g. |c_Esc| or
 		                   |c_CTRL-C| for |CmdlineLeave|).
 		  chan             |channel-id|
+		  info             Dict of arbitrary event data.
 		  cmdlevel         Level of cmdline.
 		  cmdtype          Type of cmdline, |cmdline-char|.
 		  cwd              Current working directory.
 		  inclusive        Motion is |inclusive|, else exclusive.
 		  scope            Event-specific scope name.
 		  operator         Current |operator|.  Also set for Ex
-		  commands         (unlike |v:operator|). For
+		                   commands (unlike |v:operator|). For
 		                   example if |TextYankPost| is triggered
 		                   by the |:yank| Ex command then
 		                   `v:event.operator` is "y".

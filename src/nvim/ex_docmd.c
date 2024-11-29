@@ -81,6 +81,7 @@
 #include "nvim/os/os_defs.h"
 #include "nvim/os/shell.h"
 #include "nvim/path.h"
+#include "nvim/plines.h"
 #include "nvim/popupmenu.h"
 #include "nvim/pos_defs.h"
 #include "nvim/profile.h"
@@ -979,8 +980,6 @@ void handle_did_throw(void)
     force_abort = true;
   }
 
-  msg_ext_set_kind("emsg");  // kind=emsg for :throw, exceptions. #9993
-
   if (messages != NULL) {
     do {
       msglist_T *next = messages->next;
@@ -1079,7 +1078,6 @@ void *getline_cookie(LineGetter fgetline, void *cookie)
 /// @return  the buffer number.
 static int compute_buffer_local_count(cmd_addr_T addr_type, linenr_T lnum, int offset)
 {
-  buf_T *nextbuf;
   int count = offset;
 
   buf_T *buf = firstbuf;
@@ -1088,7 +1086,7 @@ static int compute_buffer_local_count(cmd_addr_T addr_type, linenr_T lnum, int o
   }
   while (count != 0) {
     count += (count < 0) ? 1 : -1;
-    nextbuf = (offset < 0) ? buf->b_prev : buf->b_next;
+    buf_T *nextbuf = (offset < 0) ? buf->b_prev : buf->b_next;
     if (nextbuf == NULL) {
       break;
     }
@@ -1107,7 +1105,7 @@ static int compute_buffer_local_count(cmd_addr_T addr_type, linenr_T lnum, int o
   // we might have gone too far, last buffer is not loaded
   if (addr_type == ADDR_LOADED_BUFFERS) {
     while (buf->b_ml.ml_mfp == NULL) {
-      nextbuf = (offset >= 0) ? buf->b_prev : buf->b_next;
+      buf_T *nextbuf = (offset >= 0) ? buf->b_prev : buf->b_next;
       if (nextbuf == NULL) {
         break;
       }
@@ -1696,9 +1694,7 @@ static int execute_cmd0(int *retv, exarg_T *eap, const char **errormsg, bool pre
   // ":silent! try" was used, it should only apply to :try itself.
   if (eap->cmdidx == CMD_try && cmdmod.cmod_did_esilent > 0) {
     emsg_silent -= cmdmod.cmod_did_esilent;
-    if (emsg_silent < 0) {
-      emsg_silent = 0;
-    }
+    emsg_silent = MAX(emsg_silent, 0);
     cmdmod.cmod_did_esilent = 0;
   }
 
@@ -2444,9 +2440,7 @@ static char *ex_range_without_command(exarg_T *eap)
       ex_print(eap);
     }
   } else if (eap->addr_count != 0) {
-    if (eap->line2 > curbuf->b_ml.ml_line_count) {
-      eap->line2 = curbuf->b_ml.ml_line_count;
-    }
+    eap->line2 = MIN(eap->line2, curbuf->b_ml.ml_line_count);
 
     if (eap->line2 < 0) {
       errormsg = _(e_invrange);
@@ -2503,6 +2497,15 @@ int parse_command_modifiers(exarg_T *eap, const char **errormsg, cmdmod_T *cmod,
 
     // ignore comment and empty lines
     if (*eap->cmd == '"') {
+      // a comment ends at a NL
+      eap->nextcmd = vim_strchr(eap->cmd, '\n');
+      if (eap->nextcmd != NULL) {
+        eap->nextcmd++;
+      }
+      return FAIL;
+    }
+    if (*eap->cmd == '\n') {
+      eap->nextcmd = eap->cmd + 1;
       return FAIL;
     }
     if (*eap->cmd == NUL) {
@@ -2785,9 +2788,7 @@ void undo_cmdmod(cmdmod_T *cmod)
       msg_silent = cmod->cmod_save_msg_silent - 1;
     }
     emsg_silent -= cmod->cmod_did_esilent;
-    if (emsg_silent < 0) {
-      emsg_silent = 0;
-    }
+    emsg_silent = MAX(emsg_silent, 0);
     // Restore msg_scroll, it's set by file I/O commands, even when no
     // message is actually displayed.
     msg_scroll = cmod->cmod_save_msg_scroll;
@@ -3520,11 +3521,7 @@ static linenr_T get_address(exarg_T *eap, char **ptr, cmd_addr_T addr_type, bool
         // This makes sure we never match in the current
         // line, and can match anywhere in the
         // next/previous line.
-        if (c == '/' && curwin->w_cursor.lnum > 0) {
-          curwin->w_cursor.col = MAXCOL;
-        } else {
-          curwin->w_cursor.col = 0;
-        }
+        curwin->w_cursor.col = (c == '/' && curwin->w_cursor.lnum > 0) ? MAXCOL : 0;
         searchcmdlen = 0;
         flags = silent ? 0 : SEARCH_HIS | SEARCH_MSG;
         if (!do_search(NULL, c, c, cmd, strlen(cmd), 1, flags, NULL)) {
@@ -4654,7 +4651,7 @@ static void ex_colorscheme(exarg_T *eap)
     char *expr = xstrdup("g:colors_name");
 
     emsg_off++;
-    char *p = eval_to_string(expr, false);
+    char *p = eval_to_string(expr, false, false);
     emsg_off--;
     xfree(expr);
 
@@ -4793,11 +4790,9 @@ static void ex_cquit(exarg_T *eap)
 int before_quit_all(exarg_T *eap)
 {
   if (cmdwin_type != 0) {
-    if (eap->forceit) {
-      cmdwin_result = K_XF1;            // open_cmdwin() takes care of this
-    } else {
-      cmdwin_result = K_XF2;
-    }
+    cmdwin_result = eap->forceit
+                    ? K_XF1  // open_cmdwin() takes care of this
+                    : K_XF2;
     return FAIL;
   }
 
@@ -5168,6 +5163,177 @@ static void ex_wrongmodifier(exarg_T *eap)
   eap->errmsg = _(e_invcmd);
 }
 
+/// callback function for 'findfunc'
+static Callback ffu_cb;
+
+static Callback *get_findfunc_callback(void)
+{
+  return *curbuf->b_p_ffu != NUL ? &curbuf->b_ffu_cb : &ffu_cb;
+}
+
+/// Call 'findfunc' to obtain a list of file names.
+static list_T *call_findfunc(char *pat, BoolVarValue cmdcomplete)
+{
+  const sctx_T saved_sctx = current_sctx;
+
+  typval_T args[3];
+  args[0].v_type = VAR_STRING;
+  args[0].vval.v_string = pat;
+  args[1].v_type = VAR_BOOL;
+  args[1].vval.v_bool = cmdcomplete;
+  args[2].v_type = VAR_UNKNOWN;
+
+  // Lock the text to prevent weird things from happening.  Also disallow
+  // switching to another window, it should not be needed and may end up in
+  // Insert mode in another buffer.
+  textlock++;
+
+  sctx_T *ctx = get_option_sctx(kOptFindfunc);
+  if (ctx != NULL) {
+    current_sctx = *ctx;
+  }
+
+  Callback *cb = get_findfunc_callback();
+  typval_T rettv;
+  int retval = callback_call(cb, 2, args, &rettv);
+
+  current_sctx = saved_sctx;
+
+  textlock--;
+
+  list_T *retlist = NULL;
+
+  if (retval == OK) {
+    if (rettv.v_type == VAR_LIST) {
+      retlist = tv_list_copy(NULL, rettv.vval.v_list, false, get_copyID());
+    } else {
+      emsg(_(e_invalid_return_type_from_findfunc));
+    }
+
+    tv_clear(&rettv);
+  }
+
+  return retlist;
+}
+
+/// Find file names matching "pat" using 'findfunc' and return it in "files".
+/// Used for expanding the :find, :sfind and :tabfind command argument.
+/// Returns OK on success and FAIL otherwise.
+int expand_findfunc(char *pat, char ***files, int *numMatches)
+{
+  *numMatches = 0;
+  *files = NULL;
+
+  list_T *l = call_findfunc(pat, kBoolVarTrue);
+  if (l == NULL) {
+    return FAIL;
+  }
+
+  int len = tv_list_len(l);
+  if (len == 0) {  // empty List
+    return FAIL;
+  }
+
+  *files = xmalloc(sizeof(char *) * (size_t)len);
+
+  // Copy all the List items
+  int idx = 0;
+  TV_LIST_ITER_CONST(l, li, {
+    if (TV_LIST_ITEM_TV(li)->v_type == VAR_STRING) {
+      (*files)[idx] = xstrdup(TV_LIST_ITEM_TV(li)->vval.v_string);
+      idx++;
+    }
+  });
+
+  *numMatches = idx;
+  tv_list_free(l);
+
+  return OK;
+}
+
+/// Use 'findfunc' to find file 'findarg'.  The 'count' argument is used to find
+/// the n'th matching file.
+static char *findfunc_find_file(char *findarg, size_t findarg_len, int count)
+{
+  char *ret_fname = NULL;
+
+  const char cc = findarg[findarg_len];
+  findarg[findarg_len] = NUL;
+
+  list_T *fname_list = call_findfunc(findarg, kBoolVarFalse);
+  int fname_count = tv_list_len(fname_list);
+
+  if (fname_count == 0) {
+    semsg(_(e_cant_find_file_str_in_path), findarg);
+  } else {
+    if (count > fname_count) {
+      semsg(_(e_no_more_file_str_found_in_path), findarg);
+    } else {
+      listitem_T *li = tv_list_find(fname_list, count - 1);
+      if (li != NULL && TV_LIST_ITEM_TV(li)->v_type == VAR_STRING) {
+        ret_fname = xstrdup(TV_LIST_ITEM_TV(li)->vval.v_string);
+      }
+    }
+  }
+
+  if (fname_list != NULL) {
+    tv_list_free(fname_list);
+  }
+
+  findarg[findarg_len] = cc;
+
+  return ret_fname;
+}
+
+/// Process the 'findfunc' option value.
+/// Returns NULL on success and an error message on failure.
+const char *did_set_findfunc(optset_T *args)
+{
+  buf_T *buf = (buf_T *)args->os_buf;
+  int retval;
+
+  if (args->os_flags & OPT_LOCAL) {
+    // buffer-local option set
+    retval = option_set_callback_func(buf->b_p_ffu, &buf->b_ffu_cb);
+  } else {
+    // global option set
+    retval = option_set_callback_func(p_ffu, &ffu_cb);
+    // when using :set, free the local callback
+    if (!(args->os_flags & OPT_GLOBAL)) {
+      callback_free(&buf->b_ffu_cb);
+    }
+  }
+
+  if (retval == FAIL) {
+    return e_invarg;
+  }
+
+  // If the option value starts with <SID> or s:, then replace that with
+  // the script identifier.
+  char **varp = (char **)args->os_varp;
+  char *name = get_scriptlocal_funcname(*varp);
+  if (name != NULL) {
+    free_string_option(*varp);
+    *varp = name;
+  }
+
+  return NULL;
+}
+
+void free_findfunc_option(void)
+{
+  callback_free(&ffu_cb);
+}
+
+/// Mark the global 'findfunc' callback with "copyID" so that it is not
+/// garbage collected.
+bool set_ref_in_findfunc(int copyID)
+{
+  bool abort = false;
+  abort = set_ref_in_callback(&ffu_cb, copyID, NULL, NULL);
+  return abort;
+}
+
 /// :sview [+command] file       split window with new file, read-only
 /// :split [[+command] file]     split window with current or new file
 /// :vsplit [[+command] file]    split window vertically with current or new file
@@ -5199,13 +5365,17 @@ void ex_splitview(exarg_T *eap)
   }
 
   if (eap->cmdidx == CMD_sfind || eap->cmdidx == CMD_tabfind) {
-    char *file_to_find = NULL;
-    char *search_ctx = NULL;
-    fname = find_file_in_path(eap->arg, strlen(eap->arg),
-                              FNAME_MESS, true, curbuf->b_ffname,
-                              &file_to_find, &search_ctx);
-    xfree(file_to_find);
-    vim_findfile_cleanup(search_ctx);
+    if (*get_findfunc() != NUL) {
+      fname = findfunc_find_file(eap->arg, strlen(eap->arg),
+                                 eap->addr_count > 0 ? eap->line2 : 1);
+    } else {
+      char *file_to_find = NULL;
+      char *search_ctx = NULL;
+      fname = find_file_in_path(eap->arg, strlen(eap->arg), FNAME_MESS, true,
+                                curbuf->b_ffname, &file_to_find, &search_ctx);
+      xfree(file_to_find);
+      vim_findfile_cleanup(search_ctx);
+    }
     if (fname == NULL) {
       goto theend;
     }
@@ -5329,12 +5499,14 @@ static void ex_tabs(exarg_T *eap)
 
     msg_putchar('\n');
     vim_snprintf(IObuff, IOSIZE, _("Tab page %d"), tabcount++);
-    msg_outtrans(IObuff, HL_ATTR(HLF_T));
+    msg_outtrans(IObuff, HLF_T, false);
     os_breakcheck();
 
     FOR_ALL_WINDOWS_IN_TAB(wp, tp) {
       if (got_int) {
         break;
+      } else if (!wp->w_config.focusable) {
+        continue;
       }
 
       msg_putchar('\n');
@@ -5347,7 +5519,7 @@ static void ex_tabs(exarg_T *eap)
       } else {
         home_replace(wp->w_buffer, wp->w_buffer->b_fname, IObuff, IOSIZE, true);
       }
-      msg_outtrans(IObuff, 0);
+      msg_outtrans(IObuff, 0, false);
       os_breakcheck();
     }
   }
@@ -5401,23 +5573,28 @@ static void ex_find(exarg_T *eap)
     return;
   }
 
-  char *file_to_find = NULL;
-  char *search_ctx = NULL;
-  char *fname = find_file_in_path(eap->arg, strlen(eap->arg),
-                                  FNAME_MESS, true, curbuf->b_ffname,
-                                  &file_to_find, &search_ctx);
-  if (eap->addr_count > 0) {
-    // Repeat finding the file "count" times.  This matters when it appears
-    // several times in the path.
-    linenr_T count = eap->line2;
-    while (fname != NULL && --count > 0) {
-      xfree(fname);
-      fname = find_file_in_path(NULL, 0, FNAME_MESS, false, curbuf->b_ffname,
-                                &file_to_find, &search_ctx);
+  char *fname = NULL;
+  if (*get_findfunc() != NUL) {
+    fname = findfunc_find_file(eap->arg, strlen(eap->arg),
+                               eap->addr_count > 0 ? eap->line2 : 1);
+  } else {
+    char *file_to_find = NULL;
+    char *search_ctx = NULL;
+    fname = find_file_in_path(eap->arg, strlen(eap->arg), FNAME_MESS, true,
+                              curbuf->b_ffname, &file_to_find, &search_ctx);
+    if (eap->addr_count > 0) {
+      // Repeat finding the file "count" times.  This matters when it appears
+      // several times in the path.
+      linenr_T count = eap->line2;
+      while (fname != NULL && --count > 0) {
+        xfree(fname);
+        fname = find_file_in_path(NULL, 0, FNAME_MESS, false,
+                                  curbuf->b_ffname, &file_to_find, &search_ctx);
+      }
     }
+    xfree(file_to_find);
+    vim_findfile_cleanup(search_ctx);
   }
-  xfree(file_to_find);
-  vim_findfile_cleanup(search_ctx);
 
   if (fname == NULL) {
     return;
@@ -5593,45 +5770,43 @@ static void ex_swapname(exarg_T *eap)
 /// (1998-11-02 16:21:01  R. Edward Ralston <eralston@computer.org>)
 static void ex_syncbind(exarg_T *eap)
 {
-  linenr_T topline;
-  int y;
+  linenr_T vtopline;  // Target topline (including fill)
+
   linenr_T old_linenr = curwin->w_cursor.lnum;
 
   setpcmark();
 
-  // determine max topline
+  // determine max (virtual) topline
   if (curwin->w_p_scb) {
-    topline = curwin->w_topline;
+    vtopline = get_vtopline(curwin);
     FOR_ALL_WINDOWS_IN_TAB(wp, curtab) {
       if (wp->w_p_scb && wp->w_buffer) {
-        y = wp->w_buffer->b_ml.ml_line_count - get_scrolloff_value(curwin);
-        if (topline > y) {
-          topline = y;
-        }
+        linenr_T y = plines_m_win_fill(wp, 1, wp->w_buffer->b_ml.ml_line_count)
+                     - get_scrolloff_value(curwin);
+        vtopline = MIN(vtopline, y);
       }
     }
-    if (topline < 1) {
-      topline = 1;
-    }
+    vtopline = MAX(vtopline, 1);
   } else {
-    topline = 1;
+    vtopline = 1;
   }
 
   // Set all scrollbind windows to the same topline.
   FOR_ALL_WINDOWS_IN_TAB(wp, curtab) {
     if (wp->w_p_scb) {
-      y = topline - wp->w_topline;
+      int y = vtopline - get_vtopline(wp);
       if (y > 0) {
         scrollup(wp, y, true);
       } else {
         scrolldown(wp, -y, true);
       }
-      wp->w_scbind_pos = topline;
+      wp->w_scbind_pos = vtopline;
       redraw_later(wp, UPD_VALID);
       cursor_correct(wp);
       wp->w_redr_status = true;
     }
   }
+
   if (curwin->w_p_scb) {
     did_syncbind = true;
     checkpcmark();
@@ -7344,7 +7519,7 @@ static void ex_filetype(exarg_T *eap)
     break;
   }
   if (strcmp(arg, "on") == 0 || strcmp(arg, "detect") == 0) {
-    if (*arg == 'o' || !filetype_detect) {
+    if (*arg == 'o' || filetype_detect != kTrue) {
       source_runtime(FILETYPE_FILE, DIP_ALL);
       filetype_detect = kTrue;
       if (plugin) {
@@ -7601,7 +7776,7 @@ void verify_command(char *cmd)
   if (strcmp("smile", cmd) != 0) {
     return;  // acceptable non-existing command
   }
-  int a = HL_ATTR(HLF_E);
+  int a = HLF_E;
   msg(" #xxn`          #xnxx`        ,+x@##@Mz;`        .xxx"
       "xxxxxxnz+,      znnnnnnnnnnnnnnnn.", a);
   msg(" n###z          x####`      :x##########W+`      ,###"

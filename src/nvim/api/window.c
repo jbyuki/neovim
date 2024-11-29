@@ -476,6 +476,7 @@ void nvim_win_set_hl_ns(Window window, Integer ns_id, Error *err)
   }
 
   win->w_ns_hl = (NS)ns_id;
+  win->w_ns_hl_winhl = -1;
   win->w_hl_needs_update = true;
   redraw_later(win, UPD_NOT_VALID);
 }
@@ -503,16 +504,15 @@ void nvim_win_set_hl_ns(Window window, Integer ns_id, Error *err)
 ///                - end_vcol: Ending virtual column index on "end_row",
 ///                            0-based exclusive, rounded up to full screen lines.
 ///                            When omitted include the whole line.
-/// @return  Dictionary containing text height information, with these keys:
+/// @return  Dict containing text height information, with these keys:
 ///          - all: The total number of screen lines occupied by the range.
 ///          - fill: The number of diff filler or virtual lines among them.
 ///
 /// @see |virtcol()| for text width.
-Dictionary nvim_win_text_height(Window window, Dict(win_text_height) *opts, Arena *arena,
-                                Error *err)
+Dict nvim_win_text_height(Window window, Dict(win_text_height) *opts, Arena *arena, Error *err)
   FUNC_API_SINCE(12)
 {
-  Dictionary rv = arena_dict(arena, 2);
+  Dict rv = arena_dict(arena, 2);
 
   win_T *const win = find_window_by_handle(window, err);
   if (!win) {

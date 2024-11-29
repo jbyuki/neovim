@@ -77,20 +77,26 @@ end
 ---
 --- If needed, this will create the parser.
 ---
+--- If no parser can be created, an error is thrown. Set `opts.error = false` to suppress this and
+--- return nil (and an error message) instead. WARNING: This behavior will become default in Nvim
+--- 0.12 and the option will be removed.
+---
 ---@param bufnr (integer|nil) Buffer the parser should be tied to (default: current buffer)
 ---@param lang (string|nil) Language of this parser (default: from buffer filetype)
 ---@param opts (table|nil) Options to pass to the created language tree
 ---
----@return vim.treesitter.LanguageTree object to use for parsing
+---@return vim.treesitter.LanguageTree? object to use for parsing
+---@return string? error message, if applicable
 function M.get_parser(bufnr, lang, opts)
   opts = opts or {}
+  local should_error = opts.error == nil or opts.error
 
   if bufnr == nil or bufnr == 0 then
     bufnr = api.nvim_get_current_buf()
   end
 
   if not valid_lang(lang) then
-    lang = M.language.get_lang(vim.bo[bufnr].filetype) or vim.bo[bufnr].filetype
+    lang = M.language.get_lang(vim.bo[bufnr].filetype)
   end
 
   if not valid_lang(lang) then
@@ -102,18 +108,24 @@ function M.get_parser(bufnr, lang, opts)
 
   if not valid_lang(lang) then
     if not parsers[bufnr] then
-      error(
-        string.format(
-          'There is no parser available for buffer %d and one could not be'
-            .. ' created because lang could not be determined. Either pass lang'
-            .. ' or set the buffer filetype',
-          bufnr
-        )
-      )
+      local err_msg =
+        string.format('Parser not found for buffer %s: language could not be determined', bufnr)
+      if should_error then
+        error(err_msg)
+      end
+      return nil, err_msg
     end
-  elseif parsers[bufnr] == nil then
-    assert(lang, 'lang should be valid')
-    parsers[bufnr] = M._create_parser(bufnr, lang, opts)
+  elseif parsers[bufnr] == nil or parsers[bufnr]:lang() ~= lang then
+    local parser = vim.F.npcall(M._create_parser, bufnr, lang, opts)
+    if not parser then
+      local err_msg =
+        string.format('Parser could not be created for buffer %s and language "%s"', bufnr, lang)
+      if should_error then
+        error(err_msg)
+      end
+      return nil, err_msg
+    end
+    parsers[bufnr] = parser
   end
 
   parsers[bufnr]:register_cbs(opts.buf_attach_cbs)
@@ -128,10 +140,8 @@ end
 ---
 ---@return vim.treesitter.LanguageTree object to use for parsing
 function M.get_string_parser(str, lang, opts)
-  vim.validate({
-    str = { str, 'string' },
-    lang = { lang, 'string' },
-  })
+  vim.validate('str', str, 'string')
+  vim.validate('lang', lang, 'string')
 
   return LanguageTree.new(str, lang, opts)
 end
@@ -147,16 +157,7 @@ function M.is_ancestor(dest, source)
     return false
   end
 
-  local current = source ---@type TSNode?
-  while current ~= nil do
-    if current == dest then
-      return true
-    end
-
-    current = current:parent()
-  end
-
-  return false
+  return dest:child_with_descendant(source) ~= nil
 end
 
 --- Returns the node's range or an unpacked range table
@@ -171,7 +172,7 @@ function M.get_node_range(node_or_range)
   if type(node_or_range) == 'table' then
     return unpack(node_or_range)
   else
-    return node_or_range:range()
+    return node_or_range:range(false)
   end
 end
 
@@ -247,11 +248,9 @@ end
 ---
 ---@return boolean True if the {node} contains the {range}
 function M.node_contains(node, range)
-  vim.validate({
-    -- allow a table so nodes can be mocked
-    node = { node, { 'userdata', 'table' } },
-    range = { range, M._range.validate, 'integer list with 4 or 6 elements' },
-  })
+  -- allow a table so nodes can be mocked
+  vim.validate('node', node, { 'userdata', 'table' })
+  vim.validate('range', range, M._range.validate, 'integer list with 4 or 6 elements')
   return M._range.contains({ node:range() }, range)
 end
 
@@ -264,7 +263,7 @@ end
 ---@param row integer Position row
 ---@param col integer Position column
 ---
----@return {capture: string, lang: string, metadata: table}[]
+---@return {capture: string, lang: string, metadata: vim.treesitter.query.TSMetadata}[]
 function M.get_captures_at_pos(bufnr, row, col)
   if bufnr == 0 then
     bufnr = api.nvim_get_current_buf()
@@ -349,6 +348,9 @@ end
 ---
 --- Ignore injected languages (default true)
 --- @field ignore_injections boolean?
+---
+--- Include anonymous nodes (default false)
+--- @field include_anonymous boolean?
 
 --- Returns the smallest named node at the given position
 ---
@@ -390,11 +392,14 @@ function M.get_node(opts)
 
   local ts_range = { row, col, row, col }
 
-  local root_lang_tree = M.get_parser(bufnr, opts.lang)
+  local root_lang_tree = M.get_parser(bufnr, opts.lang, { error = false })
   if not root_lang_tree then
     return
   end
 
+  if opts.include_anonymous then
+    return root_lang_tree:node_for_range(ts_range, opts)
+  end
   return root_lang_tree:named_node_for_range(ts_range, opts)
 end
 
@@ -446,6 +451,7 @@ end
 ---
 --- Can also be shown with `:InspectTree`. [:InspectTree]()
 ---
+---@since 11
 ---@param opts table|nil Optional options table with the following possible keys:
 ---                      - lang (string|nil): The language of the source buffer. If omitted, detect
 ---                        from the filetype of the source buffer.
@@ -469,6 +475,7 @@ end
 --- vim.wo.foldexpr = 'v:lua.vim.treesitter.foldexpr()'
 --- ```
 ---
+---@since 11
 ---@param lnum integer|nil Line number to calculate fold level for
 ---@return string
 function M.foldexpr(lnum)

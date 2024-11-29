@@ -134,14 +134,12 @@ describe('print', function()
     eq('abc  def', exec_capture('lua print("abc", "", "def")'))
   end)
   it('defers printing in luv event handlers', function()
-    exec_lua(
-      [[
-      local cmd = ...
+    exec_lua(function(cmd)
       function test()
         local timer = vim.uv.new_timer()
         local done = false
         timer:start(10, 0, function()
-          print("very fast")
+          print('very fast')
           timer:close()
           done = true
         end)
@@ -149,20 +147,17 @@ describe('print', function()
         -- loop until we know for sure the callback has been executed
         while not done do
           os.execute(cmd)
-          vim.uv.run("nowait") -- fake os_breakcheck()
+          vim.uv.run('nowait') -- fake os_breakcheck()
         end
-        print("very slow")
-        vim.api.nvim_command("sleep 1m") -- force deferred event processing
+        print('very slow')
+        vim.api.nvim_command('sleep 1m') -- force deferred event processing
       end
-    ]],
-      (is_os('win') and 'timeout 1') or 'sleep 0.1'
-    )
+    end, (is_os('win') and 'timeout 1') or 'sleep 0.1')
     eq('very slow\nvery fast', exec_capture('lua test()'))
   end)
 
   it('blank line in message works', function()
     local screen = Screen.new(40, 8)
-    screen:attach()
     screen:set_default_attr_ids({
       [0] = { bold = true, foreground = Screen.colors.Blue },
       [1] = { bold = true, foreground = Screen.colors.SeaGreen },
@@ -200,7 +195,6 @@ describe('debug.debug', function()
 
   before_each(function()
     screen = Screen.new()
-    screen:attach()
     screen:set_default_attr_ids {
       [0] = { bold = true, foreground = 255 },
       [1] = { bold = true, reverse = true },

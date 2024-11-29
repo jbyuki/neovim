@@ -8,23 +8,17 @@
 
 #include "auto/config.h"
 #include "nvim/ascii_defs.h"
-#include "nvim/buffer_defs.h"
 #include "nvim/charset.h"
 #include "nvim/cmdexpand.h"
 #include "nvim/eval.h"
-#include "nvim/eval/typval_defs.h"
 #include "nvim/ex_docmd.h"
-#include "nvim/file_search.h"
 #include "nvim/fileio.h"
 #include "nvim/garray.h"
-#include "nvim/gettext_defs.h"
 #include "nvim/globals.h"
 #include "nvim/macros_defs.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
-#include "nvim/message.h"
 #include "nvim/option.h"
-#include "nvim/option_defs.h"
 #include "nvim/option_vars.h"
 #include "nvim/os/fs.h"
 #include "nvim/os/fs_defs.h"
@@ -37,7 +31,6 @@
 #include "nvim/regexp_defs.h"
 #include "nvim/strings.h"
 #include "nvim/vim_defs.h"
-#include "nvim/window.h"
 
 enum {
   URL_SLASH = 1,      // path_is_url() has found ":/"
@@ -966,7 +959,7 @@ static void uniquefy_paths(garray_T *gap, char *pattern, char *path_option)
   file_pattern[0] = '*';
   file_pattern[1] = NUL;
   strcat(file_pattern, pattern);
-  char *pat = file_pat_to_reg_pat(file_pattern, NULL, NULL, true);
+  char *pat = file_pat_to_reg_pat(file_pattern, NULL, NULL, false);
   xfree(file_pattern);
   if (pat == NULL) {
     return;
@@ -1398,7 +1391,7 @@ static int expand_backtick(garray_T *gap, char *pat, int flags)
   char *cmd = xmemdupz(pat + 1, strlen(pat) - 2);
 
   if (*cmd == '=') {          // `={expr}`: Expand expression
-    buffer = eval_to_string(cmd + 1, true);
+    buffer = eval_to_string(cmd + 1, true, false);
   } else {
     buffer = get_cmd_output(cmd, NULL, (flags & EW_SILENT) ? kShellOptSilent : 0, NULL);
   }
@@ -1545,6 +1538,13 @@ void simplify_filename(char *filename)
     } while (vim_ispathsep(*p));
   }
   char *start = p;        // remember start after "c:/" or "/" or "///"
+#ifdef UNIX
+  // Posix says that "//path" is unchanged but "///path" is "/path".
+  if (start > filename + 2) {
+    STRMOVE(filename + 1, p);
+    start = p = filename + 1;
+  }
+#endif
 
   do {
     // At this point "p" is pointing to the char following a single "/"
@@ -1685,86 +1685,6 @@ void simplify_filename(char *filename)
       p = (char *)path_next_component(p);
     }
   } while (*p != NUL);
-}
-
-static char *eval_includeexpr(const char *const ptr, const size_t len)
-{
-  const sctx_T save_sctx = current_sctx;
-  set_vim_var_string(VV_FNAME, ptr, (ptrdiff_t)len);
-  current_sctx = curbuf->b_p_script_ctx[BV_INEX].script_ctx;
-
-  char *res = eval_to_string_safe(curbuf->b_p_inex,
-                                  was_set_insecurely(curwin, kOptIncludeexpr, OPT_LOCAL));
-
-  set_vim_var_string(VV_FNAME, NULL, 0);
-  current_sctx = save_sctx;
-  return res;
-}
-
-/// Return the name of the file ptr[len] in 'path'.
-/// Otherwise like file_name_at_cursor().
-///
-/// @param rel_fname  file we are searching relative to
-char *find_file_name_in_path(char *ptr, size_t len, int options, long count, char *rel_fname)
-{
-  char *file_name;
-  char *tofree = NULL;
-
-  if (len == 0) {
-    return NULL;
-  }
-
-  if ((options & FNAME_INCL) && *curbuf->b_p_inex != NUL) {
-    tofree = eval_includeexpr(ptr, len);
-    if (tofree != NULL) {
-      ptr = tofree;
-      len = strlen(ptr);
-    }
-  }
-
-  if (options & FNAME_EXP) {
-    char *file_to_find = NULL;
-    char *search_ctx = NULL;
-
-    file_name = find_file_in_path(ptr, len, options & ~FNAME_MESS,
-                                  true, rel_fname, &file_to_find, &search_ctx);
-
-    // If the file could not be found in a normal way, try applying
-    // 'includeexpr' (unless done already).
-    if (file_name == NULL
-        && !(options & FNAME_INCL) && *curbuf->b_p_inex != NUL) {
-      tofree = eval_includeexpr(ptr, len);
-      if (tofree != NULL) {
-        ptr = tofree;
-        len = strlen(ptr);
-        file_name = find_file_in_path(ptr, len, options & ~FNAME_MESS,
-                                      true, rel_fname, &file_to_find, &search_ctx);
-      }
-    }
-    if (file_name == NULL && (options & FNAME_MESS)) {
-      char c = ptr[len];
-      ptr[len] = NUL;
-      semsg(_("E447: Can't find file \"%s\" in path"), ptr);
-      ptr[len] = c;
-    }
-
-    // Repeat finding the file "count" times.  This matters when it
-    // appears several times in the path.
-    while (file_name != NULL && --count > 0) {
-      xfree(file_name);
-      file_name = find_file_in_path(ptr, len, options, false, rel_fname,
-                                    &file_to_find, &search_ctx);
-    }
-
-    xfree(file_to_find);
-    vim_findfile_cleanup(search_ctx);
-  } else {
-    file_name = xstrnsave(ptr, len);
-  }
-
-  xfree(tofree);
-
-  return file_name;
 }
 
 /// Checks for a Windows drive letter ("C:/") at the start of the path.
@@ -1914,7 +1834,7 @@ char *fix_fname(const char *fname)
 
   fname = xstrdup(fname);
 
-# ifdef USE_FNAME_CASE
+# ifdef CASE_INSENSITIVE_FILENAME
   path_fix_case((char *)fname);  // set correct case for file name
 # endif
 

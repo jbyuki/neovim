@@ -48,7 +48,7 @@ local function execute_lens(lens, bufnr, client_id)
 
   local client = vim.lsp.get_client_by_id(client_id)
   assert(client, 'Client is required to execute lens, client_id=' .. client_id)
-  client:_exec_cmd(lens.command, { bufnr = bufnr }, function(...)
+  client:exec_cmd(lens.command, { bufnr = bufnr }, function(...)
     vim.lsp.handlers[ms.workspace_executeCommand](...)
     M.refresh()
   end)
@@ -231,7 +231,7 @@ local function resolve_lenses(lenses, bufnr, client_id, callback)
       countdown()
     else
       assert(client)
-      client.request(ms.codeLens_resolve, lens, function(_, result)
+      client:request(ms.codeLens_resolve, lens, function(_, result)
         if api.nvim_buf_is_loaded(bufnr) and result and result.command then
           lens.command = result.command
           -- Eager display to have some sort of incremental feedback
@@ -261,7 +261,7 @@ end
 ---@param err lsp.ResponseError?
 ---@param result lsp.CodeLens[]
 ---@param ctx lsp.HandlerContext
-function M.on_codelens(err, result, ctx, _)
+function M.on_codelens(err, result, ctx)
   if err then
     active_refreshes[assert(ctx.bufnr)] = nil
     log.error('codelens', err)

@@ -31,7 +31,6 @@ describe('edit', function()
   -- oldtest: Test_edit_insert_reg()
   it('inserting a register using CTRL-R', function()
     local screen = Screen.new(10, 6)
-    screen:attach()
     feed('a<C-R>')
     screen:expect([[
       {18:^"}           |
@@ -44,12 +43,17 @@ describe('edit', function()
       {1:~           }|*4
       =^           |
     ]])
+    feed([['r'<CR><Esc>]])
+    expect('r')
+    -- Test for inserting null and empty list
+    feed('a<C-R>=v:_null_list<CR><Esc>')
+    feed('a<C-R>=[]<CR><Esc>')
+    expect('r')
   end)
 
   -- oldtest: Test_edit_ctrl_r_failed()
   it('positioning cursor after CTRL-R expression failed', function()
     local screen = Screen.new(60, 6)
-    screen:attach()
 
     feed('i<C-R>')
     screen:expect([[

@@ -43,12 +43,9 @@ describe(':autocmd', function()
 
   it('should not show group information if interrupted', function()
     local screen = Screen.new(50, 6)
-    screen:set_default_attr_ids({
-      [1] = { bold = true, foreground = Screen.colors.Blue1 }, -- NonText
-      [2] = { bold = true, foreground = Screen.colors.SeaGreen }, -- MoreMsg
-      [3] = { bold = true, foreground = Screen.colors.Magenta }, -- Title
-    })
-    screen:attach()
+    screen:add_extra_attr_ids {
+      [100] = { foreground = Screen.colors.Magenta, bold = true },
+    }
     exec([[
       set more
       autocmd! BufEnter
@@ -73,11 +70,11 @@ describe(':autocmd', function()
     feed(':autocmd<CR>')
     screen:expect([[
       :autocmd                                          |
-      {3:--- Autocommands ---}                              |
-      {3:test_1}  {3:BufEnter}                                  |
+      {100:--- Autocommands ---}                              |
+      {100:test_1}  {100:BufEnter}                                  |
           A         echo 'A'                            |
           B         echo 'B'                            |
-      {2:-- More --}^                                        |
+      {6:-- More --}^                                        |
     ]])
     feed('q')
     screen:expect([[

@@ -156,7 +156,7 @@ EXTERN bool msg_scrolled_ign INIT( = false);
 EXTERN bool msg_did_scroll INIT( = false);
 
 EXTERN char *keep_msg INIT( = NULL);         // msg to be shown after redraw
-EXTERN int keep_msg_attr INIT( = 0);         // highlight attr for keep_msg
+EXTERN int keep_msg_hl_id INIT( = 0);        // highlight id for keep_msg
 EXTERN bool need_fileinfo INIT( = false);    // do fileinfo() after redraw
 EXTERN int msg_scroll INIT( = false);        // msg_start() will scroll
 EXTERN bool msg_didout INIT( = false);       // msg_outstr() was used in line
@@ -178,8 +178,8 @@ EXTERN long emsg_assert_fails_lnum INIT( = 0);
 EXTERN char *emsg_assert_fails_context INIT( = NULL);
 
 EXTERN bool did_endif INIT( = false);        // just had ":endif"
-EXTERN dict_T vimvardict;                   // Dictionary with v: variables
-EXTERN dict_T globvardict;                  // Dictionary with g: variables
+EXTERN dict_T vimvardict;                   // Dict with v: variables
+EXTERN dict_T globvardict;                  // Dict with g: variables
 /// g: value
 #define globvarht globvardict.dv_hashtab
 EXTERN int did_emsg;                        // incremented by emsg() when a
@@ -712,12 +712,6 @@ EXTERN int replace_offset INIT( = 0);        // offset for replace_push()
 EXTERN char *escape_chars INIT( = " \t\\\"|");  // need backslash in cmd line
 
 EXTERN bool keep_help_flag INIT( = false);  // doing :ta from help file
-
-// When a string option is NULL (which only happens in out-of-memory situations), it is set to
-// empty_string_option, to avoid having to check for NULL everywhere.
-//
-// TODO(famiu): Remove this when refcounted strings are used for string options.
-EXTERN char *empty_string_option INIT( = "");
 
 EXTERN bool redir_off INIT( = false);        // no redirection for a moment
 EXTERN FILE *redir_fd INIT( = NULL);         // message redirection file

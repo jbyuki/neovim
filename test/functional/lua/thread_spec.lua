@@ -17,14 +17,6 @@ describe('thread', function()
   before_each(function()
     clear()
     screen = Screen.new(50, 10)
-    screen:attach()
-    screen:set_default_attr_ids({
-      [1] = { bold = true, foreground = Screen.colors.Blue1 },
-      [2] = { bold = true, reverse = true },
-      [3] = { foreground = Screen.colors.Grey100, background = Screen.colors.Red },
-      [4] = { bold = true, foreground = Screen.colors.SeaGreen4 },
-      [5] = { bold = true },
-    })
   end)
 
   it('entry func is executed in protected mode', function()
@@ -38,10 +30,10 @@ describe('thread', function()
     screen:expect([[
                                                         |
       {1:~                                                 }|*5
-      {2:                                                  }|
-      {3:Error in luv thread:}                              |
-      {3:[string "<nvim>"]:2: Error in thread entry func}   |
-      {4:Press ENTER or type command to continue}^           |
+      {3:                                                  }|
+      {9:Error in luv thread:}                              |
+      {9:[string "<nvim>"]:2: Error in thread entry func}   |
+      {6:Press ENTER or type command to continue}^           |
     ]])
     feed('<cr>')
     assert_alive()
@@ -65,10 +57,10 @@ describe('thread', function()
     screen:expect([[
                                                         |
       {1:~                                                 }|*5
-      {2:                                                  }|
-      {3:Error in luv callback, thread:}                    |
-      {3:[string "<nvim>"]:6: Error in thread callback}     |
-      {4:Press ENTER or type command to continue}^           |
+      {3:                                                  }|
+      {9:Error in luv callback, thread:}                    |
+      {9:[string "<nvim>"]:6: Error in thread callback}     |
+      {6:Press ENTER or type command to continue}^           |
     ]])
     feed('<cr>')
     assert_alive()
@@ -264,14 +256,6 @@ describe('threadpool', function()
 
   it('with invalid return value', function()
     local screen = Screen.new(50, 10)
-    screen:attach()
-    screen:set_default_attr_ids({
-      [1] = { bold = true, foreground = Screen.colors.Blue1 },
-      [2] = { bold = true, reverse = true },
-      [3] = { foreground = Screen.colors.Grey100, background = Screen.colors.Red },
-      [4] = { bold = true, foreground = Screen.colors.SeaGreen4 },
-      [5] = { bold = true },
-    })
 
     exec_lua [[
       local work = vim.uv.new_work(function() return {} end, function() end)
@@ -281,10 +265,10 @@ describe('threadpool', function()
     screen:expect([[
                                                         |
       {1:~                                                 }|*5
-      {2:                                                  }|
-      {3:Error in luv thread:}                              |
-      {3:Error: thread arg not support type 'table' at 1}   |
-      {4:Press ENTER or type command to continue}^           |
+      {3:                                                  }|
+      {9:Error in luv thread:}                              |
+      {9:Error: thread arg not support type 'table' at 1}   |
+      {6:Press ENTER or type command to continue}^           |
     ]])
   end)
 

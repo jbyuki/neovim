@@ -8,7 +8,6 @@ local exec_lua = n.exec_lua
 local fn = n.fn
 local nvim_prog = n.nvim_prog
 local matches = t.matches
-local write_file = t.write_file
 local tmpname = t.tmpname
 local eq = t.eq
 local pesc = vim.pesc
@@ -17,21 +16,20 @@ local is_ci = t.is_ci
 
 -- Collects all names passed to find_path() after attempting ":Man foo".
 local function get_search_history(name)
-  local args = vim.split(name, ' ')
-  local code = [[
-    local args = ...
-    local man = require('runtime.lua.man')
+  return exec_lua(function()
+    local args = vim.split(name, ' ')
+    local man = require('man')
     local res = {}
-    man.find_path = function(sect, name)
-      table.insert(res, {sect, name})
+    --- @diagnostic disable-next-line:duplicate-set-field
+    man.find_path = function(sect, name0)
+      table.insert(res, { sect, name0 })
       return nil
     end
-    local ok, rv = pcall(man.open_page, -1, {tab = 0}, args)
+    local ok, rv = pcall(man.open_page, -1, { tab = 0 }, args)
     assert(not ok)
     assert(rv and rv:match('no manual entry'))
     return res
-  ]]
-  return exec_lua(code, args)
+  end)
 end
 
 clear()
@@ -62,7 +60,6 @@ describe(':Man', function()
         c = { foreground = Screen.colors.Blue }, -- control chars
         eob = { bold = true, foreground = Screen.colors.Blue }, -- empty line '~'s
       })
-      screen:attach()
     end)
 
     it('clears backspaces from text and adds highlights', function()
@@ -226,7 +223,6 @@ describe(':Man', function()
     local actual_file = tmpname()
     -- actual_file must be an absolute path to an existent file for us to test against it
     matches('^/.+', actual_file)
-    write_file(actual_file, '')
     local args = { nvim_prog, '--headless', '+:Man ' .. actual_file, '+q' }
     matches(
       ('Error detected while processing command line:\r\n' .. 'man.lua: "no manual entry for %s"'):format(

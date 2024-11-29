@@ -14,10 +14,10 @@
 #include "nvim/eval.h"
 #include "nvim/eval/typval_defs.h"
 #include "nvim/event/defs.h"
-#include "nvim/event/libuv_process.h"
+#include "nvim/event/libuv_proc.h"
 #include "nvim/event/loop.h"
 #include "nvim/event/multiqueue.h"
-#include "nvim/event/process.h"
+#include "nvim/event/proc.h"
 #include "nvim/event/rstream.h"
 #include "nvim/event/stream.h"
 #include "nvim/event/wstream.h"
@@ -115,7 +115,7 @@ int os_expand_wildcards(int num_pat, char **pat, int *num_file, char ***file, in
   size_t len;
   char *p;
   char *extra_shell_arg = NULL;
-  ShellOpts shellopts = kShellOptExpand | kShellOptSilent;
+  int shellopts = kShellOptExpand | kShellOptSilent;
   int j;
   char *tempname;
 #define STYLE_ECHO      0       // use "echo", the default
@@ -659,7 +659,7 @@ char *shell_argv_to_str(char **const argv)
 /// @param extra_args Extra arguments to the shell, or NULL.
 ///
 /// @return shell command exit code
-int os_call_shell(char *cmd, ShellOpts opts, char *extra_args)
+int os_call_shell(char *cmd, int opts, char *extra_args)
 {
   StringBuilder input = KV_INITIAL_VALUE;
   char *output = NULL;
@@ -714,8 +714,10 @@ int os_call_shell(char *cmd, ShellOpts opts, char *extra_args)
 /// os_call_shell() wrapper. Handles 'verbose', :profile, and v:shell_error.
 /// Invalidates cached tags.
 ///
+/// @param opts  a combination of ShellOpts flags
+///
 /// @return shell command exit code
-int call_shell(char *cmd, ShellOpts opts, char *extra_shell_arg)
+int call_shell(char *cmd, int opts, char *extra_shell_arg)
 {
   int retval;
   proftime_T wait_time;
@@ -759,7 +761,7 @@ int call_shell(char *cmd, ShellOpts opts, char *extra_shell_arg)
 /// @param  ret_len  length of the stdout
 ///
 /// @return an allocated string, or NULL for error.
-char *get_cmd_output(char *cmd, char *infile, ShellOpts flags, size_t *ret_len)
+char *get_cmd_output(char *cmd, char *infile, int flags, size_t *ret_len)
 {
   char *buffer = NULL;
 
@@ -872,20 +874,20 @@ static int do_os_system(char **argv, const char *input, size_t len, char **outpu
   char prog[MAXPATHL];
   xstrlcpy(prog, argv[0], MAXPATHL);
 
-  LibuvProcess uvproc = libuv_process_init(&main_loop, &buf);
-  Process *proc = &uvproc.process;
+  LibuvProc uvproc = libuv_proc_init(&main_loop, &buf);
+  Proc *proc = &uvproc.proc;
   MultiQueue *events = multiqueue_new_child(main_loop.events);
   proc->events = events;
   proc->argv = argv;
-  int status = process_spawn(proc, has_input, true, true);
+  int status = proc_spawn(proc, has_input, true, true);
   if (status) {
     loop_poll_events(&main_loop, 0);
     // Failed, probably 'shell' is not executable.
     if (!silent) {
       msg_puts(_("\nshell failed to start: "));
-      msg_outtrans(os_strerror(status), 0);
+      msg_outtrans(os_strerror(status), 0, false);
       msg_puts(": ");
-      msg_outtrans(prog, 0);
+      msg_outtrans(prog, 0, false);
       msg_putchar('\n');
     }
     multiqueue_free(events);
@@ -910,7 +912,7 @@ static int do_os_system(char **argv, const char *input, size_t len, char **outpu
 
     if (!wstream_write(&proc->in, input_buffer)) {
       // couldn't write, stop the process and tell the user about it
-      process_stop(proc);
+      proc_stop(proc);
       return -1;
     }
     // close the input stream after everything is written
@@ -927,7 +929,7 @@ static int do_os_system(char **argv, const char *input, size_t len, char **outpu
     msg_no_more = true;
     lines_left = -1;
   }
-  int exitcode = process_wait(proc, -1, NULL);
+  int exitcode = proc_wait(proc, -1, NULL);
   if (!got_int && out_data_decide_throttle(0)) {
     // Last chunk of output was skipped; display it now.
     out_data_ring(NULL, SIZE_MAX);
@@ -1100,7 +1102,7 @@ static void out_data_append_to_screen(const char *output, size_t *count, bool eo
   const char *end = output + *count;
   while (p < end) {
     if (*p == '\n' || *p == '\r' || *p == TAB || *p == BELL) {
-      msg_putchar_attr((uint8_t)(*p), 0);
+      msg_putchar_hl((uint8_t)(*p), 0);
       p++;
     } else {
       // Note: this is not 100% precise:
@@ -1116,7 +1118,7 @@ static void out_data_append_to_screen(const char *output, size_t *count, bool eo
         goto end;
       }
 
-      msg_outtrans_len(p, i, 0);
+      msg_outtrans_len(p, i, 0, false);
       p += i;
     }
   }
@@ -1292,7 +1294,7 @@ static void shell_write_cb(Stream *stream, void *data, int status)
     msg_schedule_semsg(_("E5677: Error writing input to shell-command: %s"),
                        uv_err_name(status));
   }
-  stream_close(stream, NULL, NULL, false);
+  stream_may_close(stream, false);
 }
 
 /// Applies 'shellxescape' (p_sxe) and 'shellxquote' (p_sxq) to a command.

@@ -1732,7 +1732,9 @@ static void mb_decompose(int c, int *c1, int *c2, int *c3)
 
 /// Compare two strings, ignore case if rex.reg_ic set.
 /// Return 0 if strings match, non-zero otherwise.
-/// Correct the length "*n" when composing characters are ignored.
+/// Correct the length "*n" when composing characters are ignored
+/// or when both utf codepoints are considered equal because of
+/// case-folding but have different length (e.g. 's' and 'ſ')
 static int cstrncmp(char *s1, char *s2, int *n)
 {
   int result;
@@ -1740,8 +1742,27 @@ static int cstrncmp(char *s1, char *s2, int *n)
   if (!rex.reg_ic) {
     result = strncmp(s1, s2, (size_t)(*n));
   } else {
-    assert(*n >= 0);
-    result = mb_strnicmp(s1, s2, (size_t)(*n));
+    char *p = s1;
+    int n2 = 0;
+    int n1 = *n;
+    // count the number of characters for byte-length of s1
+    while (n1 > 0 && *p != NUL) {
+      n1 -= utfc_ptr2len(s1);
+      MB_PTR_ADV(p);
+      n2++;
+    }
+    // count the number of bytes to advance the same number of chars for s2
+    p = s2;
+    while (n2-- > 0 && *p != NUL) {
+      MB_PTR_ADV(p);
+    }
+
+    n2 = (int)(p - s2);
+
+    result = utf_strnicmp(s1, s2, (size_t)(*n), (size_t)n2);
+    if (result == 0 && n2 < *n) {
+      *n = n2;
+    }
   }
 
   // if it failed and it's utf8 and we want to combineignore:
@@ -1799,29 +1820,34 @@ static inline char *cstrchr(const char *const s, const int c)
     return vim_strchr(s, c);
   }
 
-  // Use folded case for UTF-8, slow! For ASCII use libc strpbrk which is
-  // expected to be highly optimized.
+  int cc, lc;
   if (c > 0x80) {
-    const int folded_c = utf_fold(c);
-    for (const char *p = s; *p != NUL; p += utfc_ptr2len(p)) {
-      if (utf_fold(utf_ptr2char(p)) == folded_c) {
-        return (char *)p;
-      }
-    }
-    return NULL;
-  }
-
-  int cc;
-  if (ASCII_ISUPPER(c)) {
+    cc = utf_fold(c);
+    lc = cc;
+  } else if (ASCII_ISUPPER(c)) {
     cc = TOLOWER_ASC(c);
+    lc = cc;
   } else if (ASCII_ISLOWER(c)) {
     cc = TOUPPER_ASC(c);
+    lc = c;
   } else {
     return vim_strchr(s, c);
   }
 
-  char tofind[] = { (char)c, (char)cc, NUL };
-  return strpbrk(s, tofind);
+  for (const char *p = s; *p != NUL; p += utfc_ptr2len(p)) {
+    const int uc = utf_ptr2char(p);
+    if (c > 0x80 || uc > 0x80) {
+      // Do not match an illegal byte.  E.g. 0xff matches 0xc3 0xbf, not 0xff.
+      // Compare with lower case of the character.
+      if ((uc < 0x80 || uc != (uint8_t)(*p)) && utf_fold(uc) == lc) {
+        return (char *)p;
+      }
+    } else if ((uint8_t)(*p) == c || (uint8_t)(*p) == cc) {
+      return (char *)p;
+    }
+  }
+
+  return NULL;
 }
 
 ////////////////////////////////////////////////////////////////
@@ -2168,7 +2194,7 @@ static int vim_regsub_both(char *source, typval_T *expr, char *dest, int destlen
         }
         tv_clear(&rettv);
       } else {
-        eval_result[nested] = eval_to_string(source + 2, true);
+        eval_result[nested] = eval_to_string(source + 2, true, false);
       }
       nesting--;
 
@@ -3005,7 +3031,7 @@ static bool use_multibytecode(int c)
 {
   return utf_char2len(c) > 1
          && (re_multi_type(peekchr()) != NOT_MULTI
-             || utf_iscomposing(c));
+             || utf_iscomposing_legacy(c));
 }
 
 // Emit (if appropriate) a byte of code
@@ -4300,7 +4326,7 @@ static uint8_t *regatom(int *flagp)
     }
     // When '.' is followed by a composing char ignore the dot, so that
     // the composing char is matched here.
-    if (c == Magic('.') && utf_iscomposing(peekchr())) {
+    if (c == Magic('.') && utf_iscomposing_legacy(peekchr())) {
       c = getchr();
       goto do_multibyte;
     }
@@ -4975,9 +5001,10 @@ do_multibyte:
           int l;
 
           // Need to get composing character too.
+          GraphemeState state = GRAPHEME_STATE_INIT;
           while (true) {
             l = utf_ptr2len(regparse);
-            if (!utf_composinglike(regparse, regparse + l)) {
+            if (!utf_composinglike(regparse, regparse + l, &state)) {
               break;
             }
             regmbc(utf_ptr2char(regparse));
@@ -6543,7 +6570,7 @@ static bool regmatch(uint8_t *scan, const proftime_T *tm, int *timed_out)
             // Check for following composing character, unless %C
             // follows (skips over all composing chars).
             if (status != RA_NOMATCH
-                && utf_composinglike((char *)rex.input, (char *)rex.input + len)
+                && utf_composinglike((char *)rex.input, (char *)rex.input + len, NULL)
                 && !rex.reg_icombine
                 && OP(next) != RE_COMPOSING) {
               // raaron: This code makes a composing character get
@@ -6598,14 +6625,14 @@ static bool regmatch(uint8_t *scan, const proftime_T *tm, int *timed_out)
             break;
           }
           const int opndc = utf_ptr2char((char *)opnd);
-          if (utf_iscomposing(opndc)) {
+          if (utf_iscomposing_legacy(opndc)) {
             // When only a composing char is given match at any
             // position where that composing char appears.
             status = RA_NOMATCH;
             for (i = 0; rex.input[i] != NUL;
                  i += utf_ptr2len((char *)rex.input + i)) {
               const int inpc = utf_ptr2char((char *)rex.input + i);
-              if (!utf_iscomposing(inpc)) {
+              if (!utf_iscomposing_legacy(inpc)) {
                 if (i > 0) {
                   break;
                 }
@@ -6617,11 +6644,9 @@ static bool regmatch(uint8_t *scan, const proftime_T *tm, int *timed_out)
               }
             }
           } else {
-            for (i = 0; i < len; i++) {
-              if (opnd[i] != rex.input[i]) {
-                status = RA_NOMATCH;
-                break;
-              }
+            if (cstrncmp((char *)opnd, (char *)rex.input, &len) != 0) {
+              status = RA_NOMATCH;
+              break;
             }
           }
           rex.input += len;
@@ -6630,7 +6655,7 @@ static bool regmatch(uint8_t *scan, const proftime_T *tm, int *timed_out)
 
         case RE_COMPOSING:
           // Skip composing characters.
-          while (utf_iscomposing(utf_ptr2char((char *)rex.input))) {
+          while (utf_iscomposing_legacy(utf_ptr2char((char *)rex.input))) {
             rex.input += utf_ptr2len((char *)rex.input);
           }
           break;
@@ -10046,7 +10071,7 @@ static int nfa_regatom(void)
     }
     // When '.' is followed by a composing char ignore the dot, so that
     // the composing char is matched here.
-    if (c == Magic('.') && utf_iscomposing(peekchr())) {
+    if (c == Magic('.') && utf_iscomposing_legacy(peekchr())) {
       old_regparse = (uint8_t *)regparse;
       c = getchr();
       goto nfa_do_multibyte;
@@ -10142,7 +10167,7 @@ static int nfa_regatom(void)
     case 'e':
       EMIT(NFA_ZEND);
       rex.nfa_has_zend = true;
-      if (!re_mult_next("\\zs")) {
+      if (!re_mult_next("\\ze")) {
         return false;
       }
       break;
@@ -10681,7 +10706,7 @@ collection:
 nfa_do_multibyte:
     // plen is length of current char with composing chars
     if (utf_char2len(c) != (plen = utfc_ptr2len((char *)old_regparse))
-        || utf_iscomposing(c)) {
+        || utf_iscomposing_legacy(c)) {
       int i = 0;
 
       // A base character plus composing characters, or just one
@@ -13982,19 +14007,25 @@ static int skip_to_start(int c, colnr_T *colp)
 static int find_match_text(colnr_T *startcol, int regstart, uint8_t *match_text)
 {
   colnr_T col = *startcol;
-  const int regstart_len = utf_ptr2len((char *)rex.line + col);
+  const int regstart_len = utf_char2len(regstart);
 
   while (true) {
     bool match = true;
     uint8_t *s1 = match_text;
-    uint8_t *s2 = rex.line + col + regstart_len;  // skip regstart
+    // skip regstart
+    int regstart_len2 = regstart_len;
+    if (regstart_len2 > 1 && utf_ptr2len((char *)rex.line + col) != regstart_len2) {
+      // because of case-folding of the previously matched text, we may need
+      // to skip fewer bytes than utf_char2len(regstart)
+      regstart_len2 = utf_char2len(utf_fold(regstart));
+    }
+    uint8_t *s2 = rex.line + col + regstart_len2;
     while (*s1) {
       int c1_len = utf_ptr2len((char *)s1);
       int c1 = utf_ptr2char((char *)s1);
       int c2_len = utf_ptr2len((char *)s2);
       int c2 = utf_ptr2char((char *)s2);
-      if ((c1 != c2 && (!rex.reg_ic || utf_fold(c1) != utf_fold(c2)))
-          || c1_len != c2_len) {
+      if (c1 != c2 && (!rex.reg_ic || utf_fold(c1) != utf_fold(c2))) {
         match = false;
         break;
       }
@@ -14003,7 +14034,7 @@ static int find_match_text(colnr_T *startcol, int regstart, uint8_t *match_text)
     }
     if (match
         // check that no composing char follows
-        && !utf_iscomposing(utf_ptr2char((char *)s2))) {
+        && !utf_iscomposing_legacy(utf_ptr2char((char *)s2))) {
       cleanup_subexpr();
       if (REG_MULTI) {
         rex.reg_startpos[0].lnum = rex.lnum;
@@ -14248,7 +14279,7 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start, regsubs_T *subm
         // is not really a match.
         if (!rex.reg_icombine
             && rex.input != rex.line
-            && utf_iscomposing(curc)) {
+            && utf_iscomposing_legacy(curc)) {
           break;
         }
         nfa_match = true;
@@ -14592,7 +14623,7 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start, regsubs_T *subm
 
         sta = t->state->out;
         len = 0;
-        if (utf_iscomposing(sta->c)) {
+        if (utf_iscomposing_legacy(sta->c)) {
           // Only match composing character(s), ignore base
           // character.  Used for ".{composing}" and "{composing}"
           // (no preceding character).
@@ -14694,7 +14725,7 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start, regsubs_T *subm
             int j;
 
             sta = t->state->out->out;
-            if (utf_iscomposing(sta->c)) {
+            if (utf_iscomposing_legacy(sta->c)) {
               // Only match composing character(s), ignore base
               // character.  Used for ".{composing}" and "{composing}"
               // (no preceding character).
@@ -14816,7 +14847,7 @@ static int nfa_regmatch(nfa_regprog_T *prog, nfa_state_T *start, regsubs_T *subm
       case NFA_ANY_COMPOSING:
         // On a composing character skip over it.  Otherwise do
         // nothing.  Always matches.
-        if (utf_iscomposing(curc)) {
+        if (utf_iscomposing_legacy(curc)) {
           add_off = clen;
         } else {
           add_here = true;
@@ -15662,7 +15693,7 @@ static int nfa_regexec_both(uint8_t *line, colnr_T startcol, proftime_T *tm, int
 
     // If match_text is set it contains the full text that must match.
     // Nothing else to try. Doesn't handle combining chars well.
-    if (prog->match_text != NULL && !rex.reg_icombine) {
+    if (prog->match_text != NULL && *prog->match_text != NUL && !rex.reg_icombine) {
       retval = find_match_text(&col, prog->regstart, prog->match_text);
       if (REG_MULTI) {
         rex.reg_mmatch->rmm_matchcol = col;

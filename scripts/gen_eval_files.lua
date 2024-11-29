@@ -2,7 +2,11 @@
 
 -- Generator for various vimdoc and Lua type files
 
+local util = require('scripts.util')
+local fmt = string.format
+
 local DEP_API_METADATA = 'build/funcs_metadata.mpack'
+local TEXT_WIDTH = 78
 
 --- @class vim.api.metadata
 --- @field name string
@@ -20,7 +24,7 @@ local DEP_API_METADATA = 'build/funcs_metadata.mpack'
 
 local LUA_API_RETURN_OVERRIDES = {
   nvim_buf_get_command = 'table<string,vim.api.keyset.command_info>',
-  nvim_buf_get_extmark_by_id = 'vim.api.keyset.get_extmark_item',
+  nvim_buf_get_extmark_by_id = 'vim.api.keyset.get_extmark_item_by_id',
   nvim_buf_get_extmarks = 'vim.api.keyset.get_extmark_item[]',
   nvim_buf_get_keymap = 'vim.api.keyset.keymap[]',
   nvim_get_autocmds = 'vim.api.keyset.get_autocmds.ret[]',
@@ -29,11 +33,11 @@ local LUA_API_RETURN_OVERRIDES = {
   nvim_get_keymap = 'vim.api.keyset.keymap[]',
   nvim_get_mark = 'vim.api.keyset.get_mark',
 
-  -- Can also return table<string,vim.api.keyset.hl_info>, however we need to
+  -- Can also return table<string,vim.api.keyset.get_hl_info>, however we need to
   -- pick one to get some benefit.
   -- REVISIT lewrus01 (26/01/24): we can maybe add
-  -- @overload fun(ns: integer, {}): table<string,vim.api.keyset.hl_info>
-  nvim_get_hl = 'vim.api.keyset.hl_info',
+  -- @overload fun(ns: integer, {}): table<string,vim.api.keyset.get_hl_info>
+  nvim_get_hl = 'vim.api.keyset.get_hl_info',
 
   nvim_get_mode = 'vim.api.keyset.get_mode',
   nvim_get_namespaces = 'table<string,integer>',
@@ -41,6 +45,18 @@ local LUA_API_RETURN_OVERRIDES = {
   nvim_get_option_info2 = 'vim.api.keyset.get_option_info',
   nvim_parse_cmd = 'vim.api.keyset.parse_cmd',
   nvim_win_get_config = 'vim.api.keyset.win_config',
+}
+
+local LUA_API_KEYSET_OVERRIDES = {
+  create_autocmd = {
+    callback = 'string|(fun(args: vim.api.keyset.create_autocmd.callback_args): boolean?)',
+  },
+}
+
+local LUA_API_PARAM_OVERRIDES = {
+  nvim_create_user_command = {
+    command = 'string|fun(args: vim.api.keyset.create_user_command.command_args)',
+  },
 }
 
 local LUA_META_HEADER = {
@@ -112,9 +128,9 @@ local API_TYPES = {
   String = 'string',
   Array = 'any[]',
   LuaRef = 'function',
-  Dictionary = 'table<string,any>',
+  Dict = 'table<string,any>',
   Float = 'number',
-  HLGroupID = 'number|string',
+  HLGroupID = 'integer|string',
   void = '',
 }
 
@@ -129,6 +145,10 @@ end
 --- @param t string
 --- @return string
 local function api_type(t)
+  if vim.startswith(t, '*') then
+    return api_type(t:sub(2)) .. '?'
+  end
+
   local as0 = t:match('^ArrayOf%((.*)%)')
   if as0 then
     local as = split(as0, ', ')
@@ -140,9 +160,36 @@ local function api_type(t)
     return 'vim.api.keyset.' .. d
   end
 
-  local d0 = t:match('^DictionaryOf%((.*)%)')
+  local d0 = t:match('^DictOf%((.*)%)')
   if d0 then
     return 'table<string,' .. api_type(d0) .. '>'
+  end
+
+  local u = t:match('^Union%((.*)%)')
+  if u then
+    local us = vim.split(u, ',%s*')
+    return table.concat(vim.tbl_map(api_type, us), '|')
+  end
+
+  local l = t:match('^LuaRefOf%((.*)%)')
+  if l then
+    --- @type string
+    l = l:gsub('%s+', ' ')
+    --- @type string?, string?
+    local as, r = l:match('%((.*)%),%s*(.*)')
+    if not as then
+      --- @type string
+      as = assert(l:match('%((.*)%)'))
+    end
+
+    local as1 = {} --- @type string[]
+    for a in vim.gsplit(as, ',%s') do
+      local a1 = vim.split(a, '%s+', { trimempty = true })
+      local nm = a1[2]:gsub('%*(.*)$', '%1?')
+      as1[#as1 + 1] = nm .. ': ' .. api_type(a1[1])
+    end
+
+    return ('fun(%s)%s'):format(table.concat(as1, ', '), r and ': ' .. api_type(r) or '')
   end
 
   return API_TYPES[t] or t
@@ -170,9 +217,9 @@ local function render_fun_sig(f, params)
   end
 
   if LUA_KEYWORDS[f] then
-    return string.format("vim.fn['%s'] = function(%s) end", f, param_str)
+    return fmt("vim.fn['%s'] = function(%s) end", f, param_str)
   else
-    return string.format('function vim.fn.%s(%s) end', f, param_str)
+    return fmt('function vim.fn.%s(%s) end', f, param_str)
   end
 end
 
@@ -198,14 +245,6 @@ local function process_params(params)
 
   return params
 end
-
---- @class vim.gen_vim_doc_fun
---- @field signature string
---- @field doc string[]
---- @field parameters_doc table<string,string>
---- @field return string[]
---- @field seealso string[]
---- @field annotations string[]
 
 --- @return table<string, vim.EvalFn>
 local function get_api_meta()
@@ -245,11 +284,23 @@ local function get_api_meta()
   for _, fun in pairs(functions) do
     local deprecated = fun.deprecated_since ~= nil
 
+    local notes = {} --- @type string[]
+    for _, note in ipairs(fun.notes or {}) do
+      notes[#notes + 1] = note.desc
+    end
+
+    local sees = {} --- @type string[]
+    for _, see in ipairs(fun.see or {}) do
+      sees[#sees + 1] = see.desc
+    end
+
+    local pty_overrides = LUA_API_PARAM_OVERRIDES[fun.name] or {}
+
     local params = {} --- @type [string,string][]
     for _, p in ipairs(fun.params) do
       params[#params + 1] = {
         p.name,
-        api_type(p.type),
+        api_type(pty_overrides[p.name] or p.type),
         not deprecated and p.desc or nil,
       }
     end
@@ -258,13 +309,15 @@ local function get_api_meta()
       signature = 'NA',
       name = fun.name,
       params = params,
+      notes = notes,
+      see = sees,
       returns = api_type(fun.returns[1].type),
       deprecated = deprecated,
     }
 
     if not deprecated then
       r.desc = fun.desc
-      r.return_desc = fun.returns[1].desc
+      r.returns_desc = fun.returns[1].desc
     end
 
     ret[fun.name] = r
@@ -278,8 +331,19 @@ end
 --- Ensure code blocks have one empty line before the start fence and after the closing fence.
 ---
 --- @param x string
+--- @param special string?
+---                | 'see-api-meta' Normalize `@see` for API meta docstrings.
 --- @return string
-local function norm_text(x)
+local function norm_text(x, special)
+  if special == 'see-api-meta' then
+    -- Try to guess a symbol that actually works in @see.
+    -- "nvim_xx()" => "vim.api.nvim_xx"
+    x = x:gsub([=[%|?(nvim_[^.()| ]+)%(?%)?%|?]=], 'vim.api.%1')
+    -- TODO: Remove backticks when LuaLS resolves: https://github.com/LuaLS/lua-language-server/issues/2889
+    -- "|foo|" => "`:help foo`"
+    x = x:gsub([=[|([^ ]+)|]=], '`:help %1`')
+  end
+
   return (
     x:gsub('|([^ ]+)|', '`%1`')
       :gsub('\n*>lua', '\n\n```lua')
@@ -291,13 +355,12 @@ local function norm_text(x)
   )
 end
 
+--- Generates LuaLS docstring for an API function.
 --- @param _f string
 --- @param fun vim.EvalFn
 --- @param write fun(line: string)
 local function render_api_meta(_f, fun, write)
   write('')
-
-  local text_utils = require('scripts.text_utils')
 
   if vim.startswith(fun.name, 'nvim__') then
     write('--- @private')
@@ -309,10 +372,18 @@ local function render_api_meta(_f, fun, write)
 
   local desc = fun.desc
   if desc then
-    desc = text_utils.md_to_vimdoc(desc, 0, 0, 74)
-    for _, l in ipairs(split(norm_text(desc))) do
-      write('--- ' .. l)
-    end
+    write(util.prefix_lines('--- ', norm_text(desc)))
+  end
+
+  -- LuaLS doesn't support @note. Render @note items as a markdown list.
+  if fun.notes and #fun.notes > 0 then
+    write('--- Note:')
+    write(util.prefix_lines('--- ', table.concat(fun.notes, '\n')))
+    write('---')
+  end
+
+  for _, see in ipairs(fun.see or {}) do
+    write(util.prefix_lines('--- @see ', norm_text(see, 'see-api-meta')))
   end
 
   local param_names = {} --- @type string[]
@@ -322,8 +393,6 @@ local function render_api_meta(_f, fun, write)
     local pdesc = p[3]
     if pdesc then
       local s = '--- @param ' .. p[1] .. ' ' .. p[2] .. ' '
-      local indent = #('@param ' .. p[1] .. ' ')
-      pdesc = text_utils.md_to_vimdoc(pdesc, #s, indent, 74, true)
       local pdesc_a = split(vim.trim(norm_text(pdesc)))
       write(s .. pdesc_a[1])
       for i = 2, #pdesc_a do
@@ -336,15 +405,15 @@ local function render_api_meta(_f, fun, write)
       write('--- @param ' .. p[1] .. ' ' .. p[2])
     end
   end
+
   if fun.returns ~= '' then
-    local ret_desc = fun.returns_desc and ' : ' .. fun.returns_desc or ''
-    ret_desc = text_utils.md_to_vimdoc(ret_desc, 0, 0, 74)
+    local ret_desc = fun.returns_desc and ' # ' .. fun.returns_desc or ''
     local ret = LUA_API_RETURN_OVERRIDES[fun.name] or fun.returns
-    write('--- @return ' .. ret .. ret_desc)
+    write(util.prefix_lines('--- ', '@return ' .. ret .. ret_desc))
   end
   local param_str = table.concat(param_names, ', ')
 
-  write(string.format('function vim.api.%s(%s) end', fun.name, param_str))
+  write(fmt('function vim.api.%s(%s) end', fun.name, param_str))
 end
 
 --- @return table<string, vim.EvalFn>
@@ -358,9 +427,11 @@ local function get_api_keysets_meta()
   local keysets = metadata.keysets
 
   for _, k in ipairs(keysets) do
+    local pty_overrides = LUA_API_KEYSET_OVERRIDES[k.name] or {}
     local params = {}
     for _, key in ipairs(k.keys) do
-      table.insert(params, { key .. '?', api_type(k.types[key] or 'any') })
+      local pty = pty_overrides[key] or k.types[key] or 'any'
+      table.insert(params, { key .. '?', api_type(pty) })
     end
     ret[k.name] = {
       signature = 'NA',
@@ -372,10 +443,14 @@ local function get_api_keysets_meta()
   return ret
 end
 
+--- Generates LuaLS docstring for an API keyset.
 --- @param _f string
 --- @param fun vim.EvalFn
 --- @param write fun(line: string)
 local function render_api_keyset_meta(_f, fun, write)
+  if string.sub(fun.name, 1, 1) == '_' then
+    return -- not exported
+  end
   write('')
   write('--- @class vim.api.keyset.' .. fun.name)
   for _, p in ipairs(fun.params) do
@@ -388,6 +463,7 @@ local function get_eval_meta()
   return require('src/nvim/eval').funcs
 end
 
+--- Generates LuaLS docstring for a Vimscript "eval" function.
 --- @param f string
 --- @param fun vim.EvalFn
 --- @param write fun(line: string)
@@ -397,7 +473,6 @@ local function render_eval_meta(f, fun, write)
   end
 
   local funname = fun.name or f
-
   local params = process_params(fun.params)
 
   write('')
@@ -421,16 +496,18 @@ local function render_eval_meta(f, fun, write)
   for i, param in ipairs(params) do
     local pname, ptype = param[1], param[2]
     local optional = (pname ~= '...' and i > req_args) and '?' or ''
-    write(string.format('--- @param %s%s %s', pname, optional, ptype))
+    write(fmt('--- @param %s%s %s', pname, optional, ptype))
   end
 
   if fun.returns ~= false then
-    write('--- @return ' .. (fun.returns or 'any'))
+    local ret_desc = fun.returns_desc and ' # ' .. fun.returns_desc or ''
+    write('--- @return ' .. (fun.returns or 'any') .. ret_desc)
   end
 
   write(render_fun_sig(funname, params))
 end
 
+--- Generates vimdoc heading for a Vimscript "eval" function signature.
 --- @param name string
 --- @param name_tag boolean
 --- @param fun vim.EvalFn
@@ -462,19 +539,16 @@ local function render_sig_and_tag(name, name_tag, fun, write)
     write(string.rep(' ', tag_pad_len) .. tag)
     write(fun.signature)
   else
-    write(string.format('%s%s%s', fun.signature, string.rep(' ', tag_pad_len - siglen), tag))
+    write(fmt('%s%s%s', fun.signature, string.rep(' ', tag_pad_len - siglen), tag))
   end
 end
 
+--- Generates vimdoc for a Vimscript "eval" function.
 --- @param f string
 --- @param fun vim.EvalFn
 --- @param write fun(line: string)
 local function render_eval_doc(f, fun, write)
-  if fun.deprecated then
-    return
-  end
-
-  if not fun.signature then
+  if fun.deprecated or not fun.signature then
     return
   end
 
@@ -483,6 +557,9 @@ local function render_eval_doc(f, fun, write)
   if not fun.desc then
     return
   end
+
+  local params = process_params(fun.params)
+  local req_args = type(fun.args) == 'table' and fun.args[1] or fun.args or 0
 
   local desc_l = split(vim.trim(fun.desc))
   for _, l in ipairs(desc_l) do
@@ -497,6 +574,26 @@ local function render_eval_doc(f, fun, write)
   end
 
   if #desc_l > 0 and not desc_l[#desc_l]:match('^<?$') then
+    write('')
+  end
+
+  if #params > 0 then
+    write(util.md_to_vimdoc('Parameters: ~', 16, 16, TEXT_WIDTH))
+    for i, param in ipairs(params) do
+      local pname, ptype = param[1], param[2]
+      local optional = (pname ~= '...' and i > req_args) and '?' or ''
+      local s = fmt('- %-14s (`%s%s`)', fmt('{%s}', pname), ptype, optional)
+      write(util.md_to_vimdoc(s, 16, 18, TEXT_WIDTH))
+    end
+    write('')
+  end
+
+  if fun.returns ~= false then
+    write(util.md_to_vimdoc('Return: ~', 16, 16, TEXT_WIDTH))
+    local ret = ('(`%s`)'):format((fun.returns or 'any'))
+    ret = ret .. (fun.returns_desc and ' ' .. fun.returns_desc or '')
+    ret = util.md_to_vimdoc(ret, 18, 18, TEXT_WIDTH)
+    write(ret)
     write('')
   end
 end
@@ -567,8 +664,8 @@ local function render_option_meta(_f, opt, write)
   end
 
   for _, s in pairs {
-    { 'wo', 'window' },
-    { 'bo', 'buffer' },
+    { 'wo', 'win' },
+    { 'bo', 'buf' },
     { 'go', 'global' },
   } do
     local id, scope = s[1], s[2]
@@ -611,8 +708,8 @@ end
 local function scope_to_doc(s)
   local m = {
     global = 'global',
-    buffer = 'local to buffer',
-    window = 'local to window',
+    buf = 'local to buffer',
+    win = 'local to window',
     tab = 'local to tab page',
   }
 
@@ -620,7 +717,7 @@ local function scope_to_doc(s)
     return m[s[1]]
   end
   assert(s[1] == 'global')
-  return 'global or ' .. m[s[2]] .. ' |global-local|'
+  return 'global or ' .. m[s[2]] .. (s[2] ~= 'tab' and ' |global-local|' or '')
 end
 
 -- @param o vim.option_meta
@@ -667,7 +764,9 @@ local function get_option_meta()
   local optinfo = vim.api.nvim_get_all_options_info()
   local ret = {} --- @type table<string,vim.option_meta>
   for _, o in ipairs(opts) do
-    if o.desc then
+    local is_window_option = #o.scope == 1 and o.scope[1] == 'win'
+    local is_option_hidden = o.immutable and not o.varname and not is_window_option
+    if not is_option_hidden and o.desc then
       if o.full_name == 'cmdheight' then
         table.insert(o.scope, 'tab')
       end
@@ -736,9 +835,9 @@ local function render_option_doc(_f, opt, write)
 
   local name_str --- @type string
   if opt.abbreviation then
-    name_str = string.format("'%s' '%s'", opt.full_name, opt.abbreviation)
+    name_str = fmt("'%s' '%s'", opt.full_name, opt.abbreviation)
   else
-    name_str = string.format("'%s'", opt.full_name)
+    name_str = fmt("'%s'", opt.full_name)
   end
 
   local otype = opt.type == 'boolean' and 'boolean' or opt.type
@@ -746,13 +845,13 @@ local function render_option_doc(_f, opt, write)
     local v = render_option_default(opt.defaults, true)
     local pad = string.rep('\t', math.max(1, math.ceil((24 - #name_str) / 8)))
     if opt.defaults.doc then
-      local deflen = #string.format('%s%s%s (', name_str, pad, otype)
+      local deflen = #fmt('%s%s%s (', name_str, pad, otype)
       --- @type string
       v = v:gsub('\n', '\n' .. string.rep(' ', deflen - 2))
     end
-    write(string.format('%s%s%s\t(default %s)', name_str, pad, otype, v))
+    write(fmt('%s%s%s\t(default %s)', name_str, pad, otype, v))
   else
-    write(string.format('%s\t%s', name_str, otype))
+    write(fmt('%s\t%s', name_str, otype))
   end
 
   write('\t\t\t' .. scope_to_doc(opt.scope) .. scope_more_doc(opt))

@@ -17,7 +17,6 @@ local screen
 before_each(function()
   clear()
   screen = Screen.new(25, 5)
-  screen:attach()
   source([[
     hi Test ctermfg=Red guifg=Red term=bold
     function CustomCompl(...)
@@ -108,7 +107,7 @@ describe('input()', function()
       {T:1}^                        |
     ]])
   end)
-  it('allows unequal numeric values when using {opts} dictionary', function()
+  it('allows unequal numeric values when using {opts} dict', function()
     command('echohl Test')
     api.nvim_set_var('opts', { prompt = 1, default = 2, cancelreturn = 3 })
     feed([[:echo input(opts)<CR>]])
@@ -164,7 +163,7 @@ describe('input()', function()
       reset = true,
     }
   end)
-  it('allows omitting everything with dictionary argument', function()
+  it('allows omitting everything with dict argument', function()
     command('echohl Test')
     feed([[:call input({})<CR>]])
     screen:expect([[
@@ -290,7 +289,7 @@ describe('inputdialog()', function()
       {T:1}^                        |
     ]])
   end)
-  it('allows unequal numeric values when using {opts} dictionary', function()
+  it('allows unequal numeric values when using {opts} dict', function()
     command('echohl Test')
     api.nvim_set_var('opts', { prompt = 1, default = 2, cancelreturn = 3 })
     feed([[:echo input(opts)<CR>]])
@@ -346,7 +345,7 @@ describe('inputdialog()', function()
       reset = true,
     }
   end)
-  it('allows omitting everything with dictionary argument', function()
+  it('allows omitting everything with dict argument', function()
     command('echohl Test')
     feed(':echo inputdialog({})<CR>')
     screen:expect([[

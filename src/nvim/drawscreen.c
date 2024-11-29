@@ -395,18 +395,9 @@ void screen_resize(int width, int height)
 void check_screensize(void)
 {
   // Limit Rows and Columns to avoid an overflow in Rows * Columns.
-  if (Rows < min_rows()) {
-    // need room for one window and command line
-    Rows = min_rows();
-  } else if (Rows > 1000) {
-    Rows = 1000;
-  }
-
-  if (Columns < MIN_COLUMNS) {
-    Columns = MIN_COLUMNS;
-  } else if (Columns > 10000) {
-    Columns = 10000;
-  }
+  // need room for one window and command line
+  Rows = MIN(MAX(Rows, min_rows_for_all_tabpages()), 1000);
+  Columns = MIN(MAX(Columns, MIN_COLUMNS), 10000);
 }
 
 /// Return true if redrawing should currently be done.
@@ -961,7 +952,7 @@ int showmode(void)
 
     // Position on the last line in the window, column 0
     msg_pos_mode();
-    int attr = HL_ATTR(HLF_CM);                     // Highlight mode
+    int hl_id = HLF_CM;  // Highlight mode
 
     // When the screen is too narrow to show the entire mode message,
     // avoid scrolling and truncate instead.
@@ -970,7 +961,7 @@ int showmode(void)
     lines_left = 0;
 
     if (do_mode) {
-      msg_puts_attr("--", attr);
+      msg_puts_hl("--", hl_id, false);
       // CTRL-X in Insert mode
       if (edit_submode != NULL && !shortmess(SHM_COMPLETIONMENU)) {
         // These messages can get long, avoid a wrap in a narrow window.
@@ -990,55 +981,49 @@ int showmode(void)
           }
           if (length - vim_strsize(edit_submode) > 0) {
             if (edit_submode_pre != NULL) {
-              msg_puts_attr(edit_submode_pre, attr);
+              msg_puts_hl(edit_submode_pre, hl_id, false);
             }
-            msg_puts_attr(edit_submode, attr);
+            msg_puts_hl(edit_submode, hl_id, false);
           }
           if (edit_submode_extra != NULL) {
-            msg_puts_attr(" ", attr);  // Add a space in between.
-            int sub_attr;
-            if (edit_submode_highl < HLF_COUNT) {
-              sub_attr = win_hl_attr(curwin, (int)edit_submode_highl);
-            } else {
-              sub_attr = attr;
-            }
-            msg_puts_attr(edit_submode_extra, sub_attr);
+            msg_puts_hl(" ", hl_id, false);  // Add a space in between.
+            int sub_id = edit_submode_highl < HLF_COUNT ? (int)edit_submode_highl : hl_id;
+            msg_puts_hl(edit_submode_extra, sub_id, false);
           }
         }
       } else {
         if (State & MODE_TERMINAL) {
-          msg_puts_attr(_(" TERMINAL"), attr);
+          msg_puts_hl(_(" TERMINAL"), hl_id, false);
         } else if (State & VREPLACE_FLAG) {
-          msg_puts_attr(_(" VREPLACE"), attr);
+          msg_puts_hl(_(" VREPLACE"), hl_id, false);
         } else if (State & REPLACE_FLAG) {
-          msg_puts_attr(_(" REPLACE"), attr);
+          msg_puts_hl(_(" REPLACE"), hl_id, false);
         } else if (State & MODE_INSERT) {
           if (p_ri) {
-            msg_puts_attr(_(" REVERSE"), attr);
+            msg_puts_hl(_(" REVERSE"), hl_id, false);
           }
-          msg_puts_attr(_(" INSERT"), attr);
+          msg_puts_hl(_(" INSERT"), hl_id, false);
         } else if (restart_edit == 'I' || restart_edit == 'i'
                    || restart_edit == 'a' || restart_edit == 'A') {
           if (curbuf->terminal) {
-            msg_puts_attr(_(" (terminal)"), attr);
+            msg_puts_hl(_(" (terminal)"), hl_id, false);
           } else {
-            msg_puts_attr(_(" (insert)"), attr);
+            msg_puts_hl(_(" (insert)"), hl_id, false);
           }
         } else if (restart_edit == 'R') {
-          msg_puts_attr(_(" (replace)"), attr);
+          msg_puts_hl(_(" (replace)"), hl_id, false);
         } else if (restart_edit == 'V') {
-          msg_puts_attr(_(" (vreplace)"), attr);
+          msg_puts_hl(_(" (vreplace)"), hl_id, false);
         }
         if (State & MODE_LANGMAP) {
           if (curwin->w_p_arab) {
-            msg_puts_attr(_(" Arabic"), attr);
-          } else if (get_keymap_str(curwin, " (%s)",
-                                    NameBuff, MAXPATHL)) {
-            msg_puts_attr(NameBuff, attr);
+            msg_puts_hl(_(" Arabic"), hl_id, false);
+          } else if (get_keymap_str(curwin, " (%s)", NameBuff, MAXPATHL)) {
+            msg_puts_hl(NameBuff, hl_id, false);
           }
         }
         if ((State & MODE_INSERT) && p_paste) {
-          msg_puts_attr(_(" (paste)"), attr);
+          msg_puts_hl(_(" (paste)"), hl_id, false);
         }
 
         if (VIsual_active) {
@@ -1062,9 +1047,9 @@ int showmode(void)
           default:
             p = N_(" SELECT BLOCK"); break;
           }
-          msg_puts_attr(_(p), attr);
+          msg_puts_hl(_(p), hl_id, false);
         }
-        msg_puts_attr(" --", attr);
+        msg_puts_hl(" --", hl_id, false);
       }
 
       need_clear = true;
@@ -1072,7 +1057,7 @@ int showmode(void)
     if (reg_recording != 0
         && edit_submode == NULL             // otherwise it gets too long
         ) {
-      recording_mode(attr);
+      recording_mode(hl_id);
       need_clear = true;
     }
 
@@ -1107,9 +1092,13 @@ int showmode(void)
   win_T *ruler_win = curwin->w_status_height == 0 ? curwin : lastwin_nofloating();
   if (redrawing() && ruler_win->w_status_height == 0 && global_stl_height() == 0
       && !(p_ch == 0 && !ui_has(kUIMessages))) {
-    grid_line_start(&msg_grid_adj, Rows - 1);
+    if (!ui_has(kUIMessages)) {
+      grid_line_start(&msg_grid_adj, Rows - 1);
+    }
     win_redr_ruler(ruler_win);
-    grid_line_flush();
+    if (!ui_has(kUIMessages)) {
+      grid_line_flush();
+    }
   }
 
   redraw_cmdline = false;
@@ -1148,7 +1137,7 @@ void clearmode(void)
   msg_ext_ui_flush();
   msg_pos_mode();
   if (reg_recording != 0) {
-    recording_mode(HL_ATTR(HLF_CM));
+    recording_mode(HLF_CM);
   }
   msg_clr_eos();
   msg_ext_flush_showmode();
@@ -1157,16 +1146,16 @@ void clearmode(void)
   msg_row = save_msg_row;
 }
 
-static void recording_mode(int attr)
+static void recording_mode(int hl_id)
 {
   if (shortmess(SHM_RECORDING)) {
     return;
   }
 
-  msg_puts_attr(_("recording"), attr);
+  msg_puts_hl(_("recording"), hl_id, false);
   char s[4];
   snprintf(s, ARRAY_SIZE(s), " @%c", reg_recording);
-  msg_puts_attr(s, attr);
+  msg_puts_hl(s, hl_id, false);
 }
 
 #define COL_RULER 17        // columns needed by standard ruler
@@ -1564,9 +1553,7 @@ static void win_update(win_T *wp)
         // in a pattern match.
         if (syntax_present(wp)) {
           mod_top -= buf->b_s.b_syn_sync_linebreaks;
-          if (mod_top < 1) {
-            mod_top = 1;
-          }
+          mod_top = MAX(mod_top, 1);
         }
       }
       if (mod_bot == 0 || mod_bot < buf->b_mod_bot) {
@@ -1635,17 +1622,13 @@ static void win_update(win_T *wp)
       }
 
       hasFolding(wp, mod_top, &mod_top, NULL);
-      if (mod_top > lnumt) {
-        mod_top = lnumt;
-      }
+      mod_top = MIN(mod_top, lnumt);
 
       // Now do the same for the bottom line (one above mod_bot).
       mod_bot--;
       hasFolding(wp, mod_bot, NULL, &mod_bot);
       mod_bot++;
-      if (mod_bot < lnumb) {
-        mod_bot = lnumb;
-      }
+      mod_bot = MAX(mod_bot, lnumb);
     }
 
     // When a change starts above w_topline and the end is below
@@ -1823,8 +1806,10 @@ static void win_update(win_T *wp)
           // Correct the first entry for filler lines at the top
           // when it won't get updated below.
           if (win_may_fill(wp) && bot_start > 0) {
-            wp->w_lines[0].wl_size = (uint16_t)(plines_win_nofill(wp, wp->w_topline, true)
-                                                + wp->w_topfill);
+            int n = plines_win_nofill(wp, wp->w_topline, false) + wp->w_topfill
+                    - adjust_plines_for_skipcol(wp);
+            n = MIN(n, wp->w_height_inner);
+            wp->w_lines[0].wl_size = (uint16_t)n;
           }
         }
       }
@@ -1865,18 +1850,8 @@ static void win_update(win_T *wp)
           to = curwin->w_cursor.lnum;
         }
         // redraw more when the cursor moved as well
-        if (wp->w_old_cursor_lnum < from) {
-          from = wp->w_old_cursor_lnum;
-        }
-        if (wp->w_old_cursor_lnum > to) {
-          to = wp->w_old_cursor_lnum;
-        }
-        if (wp->w_old_visual_lnum < from) {
-          from = wp->w_old_visual_lnum;
-        }
-        if (wp->w_old_visual_lnum > to) {
-          to = wp->w_old_visual_lnum;
-        }
+        from = MIN(MIN(from, wp->w_old_cursor_lnum), wp->w_old_visual_lnum);
+        to = MAX(MAX(to, wp->w_old_cursor_lnum), wp->w_old_visual_lnum);
       } else {
         // Find the line numbers that need to be updated: The lines
         // between the old cursor position and the current cursor
@@ -1898,15 +1873,8 @@ static void win_update(win_T *wp)
               && wp->w_old_visual_lnum != 0) {
             from = wp->w_old_visual_lnum;
           }
-          if (wp->w_old_visual_lnum > to) {
-            to = wp->w_old_visual_lnum;
-          }
-          if (VIsual.lnum < from) {
-            from = VIsual.lnum;
-          }
-          if (VIsual.lnum > to) {
-            to = VIsual.lnum;
-          }
+          to = MAX(MAX(to, wp->w_old_visual_lnum), VIsual.lnum);
+          from = MIN(from, VIsual.lnum);
         }
       }
 
@@ -1918,7 +1886,7 @@ static void win_update(win_T *wp)
         unsigned save_ve_flags = curwin->w_ve_flags;
 
         if (curwin->w_p_lbr) {
-          curwin->w_ve_flags = VE_ALL;
+          curwin->w_ve_flags = kOptVeFlagAll;
         }
 
         getvcols(wp, &VIsual, &curwin->w_cursor, &fromc, &toc);
@@ -1927,7 +1895,7 @@ static void win_update(win_T *wp)
         // Highlight to the end of the line, unless 'virtualedit' has
         // "block".
         if (curwin->w_curswant == MAXCOL) {
-          if (get_ve_flags(curwin) & VE_BLOCK) {
+          if (get_ve_flags(curwin) & kOptVeFlagBlock) {
             pos_T pos;
             int cursor_above = curwin->w_cursor.lnum < VIsual.lnum;
 
@@ -1941,9 +1909,7 @@ static void win_update(win_T *wp)
 
               pos.col = (colnr_T)strlen(ml_get_buf(wp->w_buffer, pos.lnum));
               getvvcol(wp, &pos, NULL, NULL, &t);
-              if (toc < t) {
-                toc = t;
-              }
+              toc = MAX(toc, t);
             }
             toc++;
           } else {
@@ -1953,12 +1919,8 @@ static void win_update(win_T *wp)
 
         if (fromc != wp->w_old_cursor_fcol
             || toc != wp->w_old_cursor_lcol) {
-          if (from > VIsual.lnum) {
-            from = VIsual.lnum;
-          }
-          if (to < VIsual.lnum) {
-            to = VIsual.lnum;
-          }
+          from = MIN(from, VIsual.lnum);
+          to = MAX(to, VIsual.lnum);
         }
         wp->w_old_cursor_fcol = fromc;
         wp->w_old_cursor_lcol = toc;
@@ -1975,19 +1937,13 @@ static void win_update(win_T *wp)
     }
 
     // There is no need to update lines above the top of the window.
-    if (from < wp->w_topline) {
-      from = wp->w_topline;
-    }
+    from = MAX(from, wp->w_topline);
 
     // If we know the value of w_botline, use it to restrict the update to
     // the lines that are visible in the window.
     if (wp->w_valid & VALID_BOTLINE) {
-      if (from >= wp->w_botline) {
-        from = wp->w_botline - 1;
-      }
-      if (to >= wp->w_botline) {
-        to = wp->w_botline - 1;
-      }
+      from = MIN(from, wp->w_botline - 1);
+      to = MIN(to, wp->w_botline - 1);
     }
 
     // Find the minimal part to be updated.
@@ -2116,7 +2072,7 @@ static void win_update(win_T *wp)
                         // match in fixed position might need redraw
                         // if lines were inserted or deleted
                         || (wp->w_match_head != NULL
-                            && buf->b_mod_xlines != 0)))))
+                            && buf->b_mod_set && buf->b_mod_xlines != 0)))))
         || lnum == wp->w_cursorline
         || lnum == wp->w_last_cursorline) {
       if (lnum == mod_top) {
@@ -2175,11 +2131,9 @@ static void win_update(win_T *wp)
             if (hasFolding(wp, l, NULL, &l)) {
               new_rows++;
             } else if (l == wp->w_topline) {
-              int n = plines_win_nofill(wp, l, false) + wp->w_topfill;
-              n -= adjust_plines_for_skipcol(wp);
-              if (n > wp->w_height_inner) {
-                n = wp->w_height_inner;
-              }
+              int n = plines_win_nofill(wp, l, false) + wp->w_topfill
+                      - adjust_plines_for_skipcol(wp);
+              n = MIN(n, wp->w_height_inner);
               new_rows += n;
             } else {
               new_rows += plines_win(wp, l, true);
@@ -2244,16 +2198,12 @@ static void win_update(win_T *wp)
                 x += wp->w_lines[j++].wl_size;
                 i++;
               }
-              if (bot_start > x) {
-                bot_start = x;
-              }
+              bot_start = MIN(bot_start, x);
             } else {       // j > i
                            // move entries in w_lines[] downwards
               j -= i;
               wp->w_lines_valid += (linenr_T)j;
-              if (wp->w_lines_valid > wp->w_grid.rows) {
-                wp->w_lines_valid = wp->w_grid.rows;
-              }
+              wp->w_lines_valid = MIN(wp->w_lines_valid, wp->w_grid.rows);
               for (i = wp->w_lines_valid; i - j >= idx; i--) {
                 wp->w_lines[i] = wp->w_lines[i - j];
               }
@@ -2281,7 +2231,7 @@ static void win_update(win_T *wp)
           && wp->w_lines[idx].wl_valid
           && wp->w_lines[idx].wl_lnum == lnum
           && lnum > wp->w_topline
-          && !(dy_flags & (DY_LASTLINE | DY_TRUNCATE))
+          && !(dy_flags & (kOptDyFlagLastline | kOptDyFlagTruncate))
           && srow + wp->w_lines[idx].wl_size > wp->w_grid.rows
           && win_get_fill(wp, lnum) == 0) {
         // This line is not going to fit.  Don't draw anything here,
@@ -2341,7 +2291,8 @@ static void win_update(win_T *wp)
       // - 'number' is set and below inserted/deleted lines, or
       // - 'relativenumber' is set and cursor moved vertically,
       // the text doesn't need to be redrawn, but the number column does.
-      if ((wp->w_p_nu && mod_top != 0 && lnum >= mod_bot && buf->b_mod_xlines != 0)
+      if ((wp->w_p_nu && mod_top != 0 && lnum >= mod_bot
+           && buf->b_mod_set && buf->b_mod_xlines != 0)
           || (wp->w_p_rnu && wp->w_last_cursor_lnum_rnu != wp->w_cursor.lnum)) {
         foldinfo_T info = wp->w_p_cul && lnum == wp->w_cursor.lnum
                           ? cursorline_fi : fold_info(wp, lnum);
@@ -2385,9 +2336,7 @@ redr_statuscol:
 
   wp->w_last_cursor_lnum_rnu = wp->w_p_rnu ? wp->w_cursor.lnum : 0;
 
-  if (idx > wp->w_lines_valid) {
-    wp->w_lines_valid = idx;
-  }
+  wp->w_lines_valid = MAX(wp->w_lines_valid, idx);
 
   // Let the syntax stuff know we stop parsing here.
   if (syntax_last_parsed != 0 && syntax_present(wp)) {
@@ -2410,7 +2359,7 @@ redr_statuscol:
       // Window ends in filler lines.
       wp->w_botline = lnum;
       wp->w_filler_rows = wp->w_grid.rows - srow;
-    } else if (dy_flags & DY_TRUNCATE) {      // 'display' has "truncate"
+    } else if (dy_flags & kOptDyFlagTruncate) {      // 'display' has "truncate"
       // Last line isn't finished: Display "@@@" in the last screen line.
       grid_line_start(&wp->w_grid, wp->w_grid.rows - 1);
       grid_line_fill(0, MIN(wp->w_grid.cols, 3), wp->w_p_fcs_chars.lastline, at_attr);
@@ -2418,7 +2367,7 @@ redr_statuscol:
       grid_line_flush();
       set_empty_rows(wp, srow);
       wp->w_botline = lnum;
-    } else if (dy_flags & DY_LASTLINE) {      // 'display' has "lastline"
+    } else if (dy_flags & kOptDyFlagLastline) {      // 'display' has "lastline"
       // Last line isn't finished: Display "@@@" at the end.
       // If this would split a doublewidth char in two, we need to display "@@@@" instead
       grid_line_start(&wp->w_grid, wp->w_grid.rows - 1);
@@ -2508,10 +2457,12 @@ redr_statuscol:
       recursive = true;
       curwin->w_valid &= ~VALID_TOPLINE;
       update_topline(curwin);  // may invalidate w_botline again
+      // New redraw either due to updated topline or reset skipcol.
       if (must_redraw != 0) {
         // Don't update for changes in buffer again.
         int mod_set = curbuf->b_mod_set;
         curbuf->b_mod_set = false;
+        curs_columns(curwin, true);
         win_update(curwin);
         must_redraw = 0;
         curbuf->b_mod_set = mod_set;
@@ -2602,10 +2553,7 @@ int compute_foldcolumn(win_T *wp, int col)
   int wmw = wp == curwin && p_wmw == 0 ? 1 : (int)p_wmw;
   int wwidth = wp->w_grid.cols;
 
-  if (fdc > wwidth - (col + wmw)) {
-    fdc = wwidth - (col + wmw);
-  }
-  return fdc;
+  return MIN(fdc, wwidth - (col + wmw));
 }
 
 /// Return the width of the 'number' and 'relativenumber' column.
@@ -2642,9 +2590,7 @@ int number_width(win_T *wp)
   } while (lnum > 0);
 
   // 'numberwidth' gives the minimal width plus one
-  if (n < wp->w_p_nuw - 1) {
-    n = (int)wp->w_p_nuw - 1;
-  }
+  n = MAX(n, (int)wp->w_p_nuw - 1);
 
   // If 'signcolumn' is set to 'number' and there is a sign to display, then
   // the minimal width for the number column is 2.
@@ -2669,9 +2615,7 @@ void redraw_later(win_T *wp, int type)
     if (type >= UPD_NOT_VALID) {
       wp->w_lines_valid = 0;
     }
-    if (must_redraw < type) {   // must_redraw is the maximum of all windows
-      must_redraw = type;
-    }
+    must_redraw = MAX(must_redraw, type);  // must_redraw is the maximum of all windows
   }
 }
 
@@ -2689,8 +2633,8 @@ void redraw_all_later(int type)
 /// or it is currently not allowed.
 void set_must_redraw(int type)
 {
-  if (!redraw_not_allowed && must_redraw < type) {
-    must_redraw = type;
+  if (!redraw_not_allowed) {
+    must_redraw = MAX(must_redraw, type);
   }
 }
 

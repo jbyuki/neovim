@@ -123,10 +123,7 @@ void win_redr_status(win_T *wp)
       // len += (int)strlen(p + len);  // dead assignment
     }
 
-    int this_ru_col = ru_col - (Columns - stl_width);
-    if (this_ru_col < (stl_width + 1) / 2) {
-      this_ru_col = (stl_width + 1) / 2;
-    }
+    int this_ru_col = MAX(ru_col - (Columns - stl_width), (stl_width + 1) / 2);
     if (this_ru_col <= 1) {
       p = "<";                // No room for file name!
       len = 1;
@@ -374,10 +371,7 @@ static void win_redr_custom(win_T *wp, bool draw_winbar, bool draw_ruler)
           stl = p_ruf;
         }
       }
-      col = ru_col - (Columns - maxwidth);
-      if (col < (maxwidth + 1) / 2) {
-        col = (maxwidth + 1) / 2;
-      }
+      col = MAX(ru_col - (Columns - maxwidth), (maxwidth + 1) / 2);
       maxwidth -= col;
       if (!in_status_line) {
         grid = &msg_grid_adj;
@@ -436,7 +430,7 @@ static void win_redr_custom(win_T *wp, bool draw_winbar, bool draw_ruler)
     if (hltab[n].userhl == 0) {
       curattr = attr;
     } else if (hltab[n].userhl < 0) {
-      curattr = syn_id2attr(-hltab[n].userhl);
+      curattr = hl_combine_attr(attr, syn_id2attr(-hltab[n].userhl));
     } else if (wp != NULL && wp != curwin && wp->w_status_height != 0) {
       curattr = highlight_stlnc[hltab[n].userhl - 1];
     } else {
@@ -574,15 +568,9 @@ void win_redr_ruler(win_T *wp)
   if (wp->w_status_height == 0 && !is_stl_global) {  // can't use last char of screen
     o++;
   }
-  int this_ru_col = ru_col - (Columns - width);
-  if (this_ru_col < 0) {
-    this_ru_col = 0;
-  }
   // Never use more than half the window/screen width, leave the other half
   // for the filename.
-  if (this_ru_col < (width + 1) / 2) {
-    this_ru_col = (width + 1) / 2;
-  }
+  int this_ru_col = MAX(ru_col - (Columns - width), (width + 1) / 2);
   if (this_ru_col + o < width) {
     // Need at least 3 chars left for get_rel_pos() + NUL.
     while (this_ru_col + o < width && RULER_BUF_LEN > i + 4) {
@@ -594,9 +582,11 @@ void win_redr_ruler(win_T *wp)
 
   if (ui_has(kUIMessages) && !part_of_status) {
     MAXSIZE_TEMP_ARRAY(content, 1);
-    MAXSIZE_TEMP_ARRAY(chunk, 2);
+    MAXSIZE_TEMP_ARRAY(chunk, 3);
     ADD_C(chunk, INTEGER_OBJ(attr));
     ADD_C(chunk, CSTR_AS_OBJ(buffer));
+    ADD_C(chunk, INTEGER_OBJ(HLF_MSG));
+    assert(attr == HL_ATTR(HLF_MSG));
     ADD_C(content, ARRAY_OBJ(chunk));
     ui_call_msg_ruler(content);
     did_show_ext_ruler = true;
@@ -660,14 +650,14 @@ static void ui_ext_tabline_update(void)
 
   Array tabs = arena_array(&arena, n_tabs);
   FOR_ALL_TABS(tp) {
-    Dictionary tab_info = arena_dict(&arena, 2);
+    Dict tab_info = arena_dict(&arena, 2);
     PUT_C(tab_info, "tab", TABPAGE_OBJ(tp->handle));
 
     win_T *cwp = (tp == curtab) ? curwin : tp->tp_curwin;
     get_trans_bufname(cwp->w_buffer);
     PUT_C(tab_info, "name", CSTR_TO_ARENA_OBJ(&arena, NameBuff));
 
-    ADD_C(tabs, DICTIONARY_OBJ(tab_info));
+    ADD_C(tabs, DICT_OBJ(tab_info));
   }
 
   size_t n_buffers = 0;
@@ -682,13 +672,13 @@ static void ui_ext_tabline_update(void)
       continue;
     }
 
-    Dictionary buffer_info = arena_dict(&arena, 2);
+    Dict buffer_info = arena_dict(&arena, 2);
     PUT_C(buffer_info, "buffer", BUFFER_OBJ(buf->handle));
 
     get_trans_bufname(buf);
     PUT_C(buffer_info, "name", CSTR_TO_ARENA_OBJ(&arena, NameBuff));
 
-    ADD_C(buffers, DICTIONARY_OBJ(buffer_info));
+    ADD_C(buffers, DICT_OBJ(buffer_info));
   }
 
   ui_call_tabline_update(curtab->handle, tabs, curbuf->handle, buffers);
@@ -726,7 +716,6 @@ void draw_tabline(void)
     win_redr_custom(NULL, false, false);
   } else {
     int tabcount = 0;
-    int tabwidth = 0;
     int col = 0;
     win_T *cwp;
     int wincount;
@@ -735,13 +724,7 @@ void draw_tabline(void)
       tabcount++;
     }
 
-    if (tabcount > 0) {
-      tabwidth = (Columns - 1 + tabcount / 2) / tabcount;
-    }
-
-    if (tabwidth < 6) {
-      tabwidth = 6;
-    }
+    int tabwidth = MAX(tabcount > 0 ? (Columns - 1 + tabcount / 2) / tabcount : 0, 6);
 
     int attr = attr_nosel;
     tabcount = 0;
@@ -777,7 +760,9 @@ void draw_tabline(void)
       bool modified = false;
 
       for (wincount = 0; wp != NULL; wp = wp->w_next, wincount++) {
-        if (bufIsChanged(wp->w_buffer)) {
+        if (!wp->w_config.focusable) {
+          wincount--;
+        } else if (bufIsChanged(wp->w_buffer)) {
           modified = true;
         }
       }
@@ -810,9 +795,7 @@ void draw_tabline(void)
           len -= ptr2cells(p);
           MB_PTR_ADV(p);
         }
-        if (len > Columns - col - 1) {
-          len = Columns - col - 1;
-        }
+        len = MIN(len, Columns - col - 1);
 
         grid_line_puts(col, p, -1, attr);
         col += len;
@@ -829,6 +812,16 @@ void draw_tabline(void)
           .func = NULL,
         };
       }
+    }
+
+    for (int scol = col; scol < Columns; scol++) {
+      // Use 0 as tabpage number here, so that double-click opens a tabpage
+      // after the last one, and single-click goes to the next tabpage.
+      tab_page_click_defs[scol] = (StlClickDefinition) {
+        .type = kStlClickTabSwitch,
+        .tabnr = 0,
+        .func = NULL,
+      };
     }
 
     char c = use_sep_chars ? '_' : ' ';
@@ -975,7 +968,7 @@ int build_stl_str_hl(win_T *wp, char *out, size_t outlen, char *fmt, OptIndex op
     };
     set_var(S_LEN("g:statusline_winid"), &tv, false);
 
-    usefmt = eval_to_string_safe(fmt + 2, use_sandbox);
+    usefmt = eval_to_string_safe(fmt + 2, use_sandbox, false);
     if (usefmt == NULL) {
       usefmt = fmt;
     }
@@ -1193,9 +1186,7 @@ int build_stl_str_hl(win_T *wp, char *out, size_t outlen, char *fmt, OptIndex op
 
           // If the item was partially or completely truncated, set its
           // start to the start of the group
-          if (stl_items[idx].start < t) {
-            stl_items[idx].start = t;
-          }
+          stl_items[idx].start = MAX(stl_items[idx].start, t);
         }
         // If the group is shorter than the minimum width, add padding characters.
       } else if (abs(stl_items[stl_groupitems[groupdepth]].minwid) > group_len) {
@@ -1269,24 +1260,17 @@ int build_stl_str_hl(win_T *wp, char *out, size_t outlen, char *fmt, OptIndex op
     // TABPAGE pairs are used to denote a region that when clicked will
     // either switch to or close a tab.
     //
-    // Ex: tabline=%0Ttab\ zero%X
-    //   This tabline has a TABPAGENR item with minwid `0`,
+    // Ex: tabline=%1Ttab\ one%X
+    //   This tabline has a TABPAGENR item with minwid `1`,
     //   which is then closed with a TABCLOSENR item.
-    //   Clicking on this region with mouse enabled will switch to tab 0.
+    //   Clicking on this region with mouse enabled will switch to tab 1.
     //   Setting the minwid to a different value will switch
     //   to that tab, if it exists
     //
     // Ex: tabline=%1Xtab\ one%X
     //   This tabline has a TABCLOSENR item with minwid `1`,
     //   which is then closed with a TABCLOSENR item.
-    //   Clicking on this region with mouse enabled will close tab 0.
-    //   This is determined by the following formula:
-    //      tab to close = (1 - minwid)
-    //   This is because for TABPAGENR we use `minwid` = `tab number`.
-    //   For TABCLOSENR we store the tab number as a negative value.
-    //   Because 0 is a valid TABPAGENR value, we have to
-    //   start our numbering at `-1`.
-    //   So, `-1` corresponds to us wanting to close tab `0`
+    //   Clicking on this region with mouse enabled will close tab 1.
     //
     // Note: These options are only valid when creating a tabline.
     if (*fmt_p == STL_TABPAGENR || *fmt_p == STL_TABCLOSENR) {
@@ -1452,7 +1436,7 @@ int build_stl_str_hl(win_T *wp, char *out, size_t outlen, char *fmt, OptIndex op
       }
 
       // Note: The result stored in `t` is unused.
-      str = eval_to_string_safe(out_p, use_sandbox);
+      str = eval_to_string_safe(out_p, use_sandbox, false);
 
       curwin = save_curwin;
       curbuf = save_curbuf;
@@ -1650,7 +1634,7 @@ stcsign:
         schar_T fold_buf[9];
         fill_foldcolumn(wp, stcp->foldinfo, (linenr_T)get_vim_var_nr(VV_LNUM),
                         0, fdc, NULL, fold_buf);
-        stl_items[curitem].minwid = -((stcp->use_cul ? HLF_CLF : HLF_FC) + 1);
+        stl_items[curitem].minwid = -(stcp->use_cul ? HLF_CLF : HLF_FC);
         size_t buflen = 0;
         // TODO(bfredl): this is very backwards. we must support schar_T
         // being used directly in 'statuscolumn'
@@ -1671,7 +1655,7 @@ stcsign:
             buf_tmp[signlen++] = ' ';
             buf_tmp[signlen++] = ' ';
             buf_tmp[signlen] = NUL;
-            stl_items[curitem].minwid = -((stcp->use_cul ? HLF_CLS : HLF_SC) + 1);
+            stl_items[curitem].minwid = -(stcp->use_cul ? HLF_CLS : HLF_SC);
           }
         }
         stl_items[curitem++].type = Highlight;

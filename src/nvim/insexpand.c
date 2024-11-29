@@ -151,13 +151,6 @@ static char *ctrl_x_mode_names[] = {
   "cmdline",
 };
 
-// Array indexes used for cp_text[].
-#define CPT_ABBR        0   ///< "abbr"
-#define CPT_MENU        1   ///< "menu"
-#define CPT_KIND        2   ///< "kind"
-#define CPT_INFO        3   ///< "info"
-#define CPT_COUNT       4   ///< Number of entries
-
 /// Structure used to store one match for insert completion.
 typedef struct compl_S compl_T;
 struct compl_S {
@@ -171,7 +164,8 @@ struct compl_S {
   int cp_flags;                  ///< CP_ values
   int cp_number;                 ///< sequence number
   int cp_score;                  ///< fuzzy match score
-  int cp_user_hlattr;            ///< highlight attribute to combine with
+  int cp_user_abbr_hlattr;       ///< highlight attribute for abbr
+  int cp_user_kind_hlattr;       ///< highlight attribute for kind
 };
 
 /// state information used for getting the next set of insert completion
@@ -479,9 +473,9 @@ bool check_compl_option(bool dict_opt)
     ctrl_x_mode = CTRL_X_NORMAL;
     edit_submode = NULL;
     msg((dict_opt ? _("'dictionary' option is empty") : _("'thesaurus' option is empty")),
-        HL_ATTR(HLF_E));
+        HLF_E);
     if (emsg_silent == 0 && !in_assert_fails) {
-      vim_beep(BO_COMPL);
+      vim_beep(kOptBoFlagComplete);
       setcursor();
       ui_flush();
       os_delay(2004, false);
@@ -764,7 +758,7 @@ int ins_compl_add_infercase(char *str_arg, int len, bool icase, char *fname, Dir
     flags |= CP_ICASE;
   }
 
-  int res = ins_compl_add(str, len, fname, NULL, false, NULL, dir, flags, false, -1);
+  int res = ins_compl_add(str, len, fname, NULL, false, NULL, dir, flags, false, -1, -1);
   xfree(tofree);
   return res;
 }
@@ -804,7 +798,7 @@ static inline void free_cptext(char *const *const cptext)
 ///         returned in case of error.
 static int ins_compl_add(char *const str, int len, char *const fname, char *const *const cptext,
                          const bool cptext_allocated, typval_T *user_data, const Direction cdir,
-                         int flags_arg, const bool adup, int user_hlattr)
+                         int flags_arg, const bool adup, int user_abbr_hlattr, int user_kind_hlattr)
   FUNC_ATTR_NONNULL_ARG(1)
 {
   compl_T *match;
@@ -870,7 +864,8 @@ static int ins_compl_add(char *const str, int len, char *const fname, char *cons
     match->cp_fname = NULL;
   }
   match->cp_flags = flags;
-  match->cp_user_hlattr = user_hlattr;
+  match->cp_user_abbr_hlattr = user_abbr_hlattr;
+  match->cp_user_kind_hlattr = user_kind_hlattr;
 
   if (cptext != NULL) {
     int i;
@@ -1004,7 +999,7 @@ static void ins_compl_add_matches(int num_matches, char **matches, int icase)
   for (int i = 0; i < num_matches && add_r != FAIL; i++) {
     if ((add_r = ins_compl_add(matches[i], -1, NULL, NULL, false, NULL, dir,
                                CP_FAST | (icase ? CP_ICASE : 0),
-                               false, -1)) == OK) {
+                               false, -1, -1)) == OK) {
       // If dir was BACKWARD then honor it just once.
       dir = FORWARD;
     }
@@ -1074,7 +1069,7 @@ bool pum_wanted(void)
   FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT
 {
   // "completeopt" must contain "menu" or "menuone"
-  return (get_cot_flags() & COT_ANY_MENU) != 0;
+  return (get_cot_flags() & (kOptCotFlagMenu | kOptCotFlagMenuone)) != 0;
 }
 
 /// Check that there are two or more matches to be shown in the popup menu.
@@ -1093,7 +1088,7 @@ static bool pum_enough_matches(void)
     comp = comp->cp_next;
   } while (!is_first_match(comp));
 
-  if (get_cot_flags() & COT_MENUONE) {
+  if (get_cot_flags() & kOptCotFlagMenuone) {
     return i >= 1;
   }
   return i >= 2;
@@ -1176,8 +1171,8 @@ static int ins_compl_build_pum(void)
   const int lead_len = compl_leader != NULL ? (int)strlen(compl_leader) : 0;
   int max_fuzzy_score = 0;
   unsigned cur_cot_flags = get_cot_flags();
-  bool compl_no_select = (cur_cot_flags & COT_NOSELECT) != 0;
-  bool compl_fuzzy_match = (cur_cot_flags & COT_FUZZY) != 0;
+  bool compl_no_select = (cur_cot_flags & kOptCotFlagNoselect) != 0;
+  bool compl_fuzzy_match = (cur_cot_flags & kOptCotFlagFuzzy) != 0;
 
   do {
     // When 'completeopt' contains "fuzzy" and leader is not NULL or empty,
@@ -1242,7 +1237,9 @@ static int ins_compl_build_pum(void)
         if (comp->cp_score > max_fuzzy_score) {
           did_find_shown_match = true;
           max_fuzzy_score = comp->cp_score;
-          compl_shown_match = comp;
+          if (!compl_no_select) {
+            compl_shown_match = comp;
+          }
         }
 
         if (!shown_match_ok && comp == compl_shown_match && !compl_no_select) {
@@ -1271,7 +1268,8 @@ static int ins_compl_build_pum(void)
       compl_match_array[i].pum_kind = comp->cp_text[CPT_KIND];
       compl_match_array[i].pum_info = comp->cp_text[CPT_INFO];
       compl_match_array[i].pum_score = comp->cp_score;
-      compl_match_array[i].pum_user_hlattr = comp->cp_user_hlattr;
+      compl_match_array[i].pum_user_abbr_hlattr = comp->cp_user_abbr_hlattr;
+      compl_match_array[i].pum_user_kind_hlattr = comp->cp_user_kind_hlattr;
       if (comp->cp_text[CPT_MENU] != NULL) {
         compl_match_array[i++].pum_extra = comp->cp_text[CPT_MENU];
       } else {
@@ -1566,7 +1564,7 @@ static void ins_compl_files(int count, char **files, bool thesaurus, int flags,
       msg_hist_off = true;  // reset in msg_trunc()
       vim_snprintf(IObuff, IOSIZE,
                    _("Scanning dictionary: %s"), files[i]);
-      msg_trunc(IObuff, true, HL_ATTR(HLF_R));
+      msg_trunc(IObuff, true, HLF_R);
     }
 
     if (fp == NULL) {
@@ -1789,6 +1787,13 @@ int ins_compl_bs(void)
   return NUL;
 }
 
+/// Check if the complete function returned "always" in the "refresh" dictionary item.
+static bool ins_compl_refresh_always(void)
+  FUNC_ATTR_PURE
+{
+  return (ctrl_x_mode_function() || ctrl_x_mode_omni()) && compl_opt_refresh_always;
+}
+
 /// Check that we need to find matches again, ins_compl_restart() is to
 /// be called.
 static bool ins_compl_need_restart(void)
@@ -1796,9 +1801,7 @@ static bool ins_compl_need_restart(void)
 {
   // Return true if we didn't complete finding matches or when the
   // "completefunc" returned "always" in the "refresh" dictionary item.
-  return compl_was_interrupted
-         || ((ctrl_x_mode_function() || ctrl_x_mode_omni())
-             && compl_opt_refresh_always);
+  return compl_was_interrupted || ins_compl_refresh_always();
 }
 
 /// Called after changing "compl_leader".
@@ -1831,7 +1834,7 @@ static void ins_compl_new_leader(void)
 
   // Don't let Enter select the original text when there is no popup menu.
   // Don't let Enter select when use user function and refresh_always is set
-  if (compl_match_array == NULL || ins_compl_need_restart()) {
+  if (compl_match_array == NULL || ins_compl_refresh_always()) {
     compl_enter_selects = false;
   }
 }
@@ -2233,7 +2236,7 @@ bool ins_compl_prep(int c)
   // Set "compl_get_longest" when finding the first matches.
   if (ctrl_x_mode_not_defined_yet()
       || (ctrl_x_mode_normal() && !compl_started)) {
-    compl_get_longest = (get_cot_flags() & COT_LONGEST) != 0;
+    compl_get_longest = (get_cot_flags() & kOptCotFlagLongest) != 0;
     compl_used_match = true;
   }
 
@@ -2365,13 +2368,13 @@ static void copy_global_to_buflocal_cb(Callback *globcb, Callback *bufcb)
 /// Invoked when the 'completefunc' option is set. The option value can be a
 /// name of a function (string), or function(<name>) or funcref(<name>) or a
 /// lambda expression.
-const char *did_set_completefunc(optset_T *args FUNC_ATTR_UNUSED)
+const char *did_set_completefunc(optset_T *args)
 {
-  if (option_set_callback_func(curbuf->b_p_cfu, &cfu_cb) == FAIL) {
+  buf_T *buf = (buf_T *)args->os_buf;
+  if (option_set_callback_func(buf->b_p_cfu, &cfu_cb) == FAIL) {
     return e_invarg;
   }
-
-  set_buflocal_cfu_callback(curbuf);
+  set_buflocal_cfu_callback(buf);
   return NULL;
 }
 
@@ -2409,14 +2412,19 @@ void set_buflocal_ofu_callback(buf_T *buf)
 /// lambda expression.
 const char *did_set_thesaurusfunc(optset_T *args FUNC_ATTR_UNUSED)
 {
+  buf_T *buf = (buf_T *)args->os_buf;
   int retval;
 
-  if (*curbuf->b_p_tsrfu != NUL) {
+  if (args->os_flags & OPT_LOCAL) {
     // buffer-local option set
-    retval = option_set_callback_func(curbuf->b_p_tsrfu, &curbuf->b_tsrfu_cb);
+    retval = option_set_callback_func(buf->b_p_tsrfu, &buf->b_tsrfu_cb);
   } else {
     // global option set
     retval = option_set_callback_func(p_tsrfu, &tsrfu_cb);
+    // when using :set, free the local callback
+    if (!(args->os_flags & OPT_GLOBAL)) {
+      callback_free(&buf->b_tsrfu_cb);
+    }
   }
 
   return retval == FAIL ? e_invarg : NULL;
@@ -2539,6 +2547,14 @@ theend:
   }
 }
 
+static inline int get_user_highlight_attr(const char *hlname)
+{
+  if (hlname != NULL && *hlname != NUL) {
+    return syn_name2attr(hlname);
+  }
+  return -1;
+}
+
 /// Add a match to the list of matches from Vimscript object
 ///
 /// @param[in]  tv  Object to get matches from.
@@ -2556,8 +2572,10 @@ static int ins_compl_add_tv(typval_T *const tv, const Direction dir, bool fast)
   bool empty = false;
   int flags = fast ? CP_FAST : 0;
   char *(cptext[CPT_COUNT]);
-  char *user_hlname = NULL;
-  int user_hlattr = -1;
+  char *user_abbr_hlname = NULL;
+  int user_abbr_hlattr = -1;
+  char *user_kind_hlname = NULL;
+  int user_kind_hlattr = -1;
   typval_T user_data;
 
   user_data.v_type = VAR_UNKNOWN;
@@ -2567,10 +2585,13 @@ static int ins_compl_add_tv(typval_T *const tv, const Direction dir, bool fast)
     cptext[CPT_MENU] = tv_dict_get_string(tv->vval.v_dict, "menu", true);
     cptext[CPT_KIND] = tv_dict_get_string(tv->vval.v_dict, "kind", true);
     cptext[CPT_INFO] = tv_dict_get_string(tv->vval.v_dict, "info", true);
-    user_hlname = tv_dict_get_string(tv->vval.v_dict, "hl_group", false);
-    if (user_hlname != NULL && *user_hlname != NUL) {
-      user_hlattr = syn_name2attr(user_hlname);
-    }
+
+    user_abbr_hlname = tv_dict_get_string(tv->vval.v_dict, "abbr_hlgroup", false);
+    user_abbr_hlattr = get_user_highlight_attr(user_abbr_hlname);
+
+    user_kind_hlname = tv_dict_get_string(tv->vval.v_dict, "kind_hlgroup", false);
+    user_kind_hlattr = get_user_highlight_attr(user_kind_hlname);
+
     tv_dict_get_tv(tv->vval.v_dict, "user_data", &user_data);
 
     if (tv_dict_get_number(tv->vval.v_dict, "icase")) {
@@ -2592,7 +2613,8 @@ static int ins_compl_add_tv(typval_T *const tv, const Direction dir, bool fast)
     return FAIL;
   }
   int status = ins_compl_add((char *)word, -1, NULL, cptext, true,
-                             &user_data, dir, flags, dup, user_hlattr);
+                             &user_data, dir, flags, dup,
+                             user_abbr_hlattr, user_kind_hlattr);
   if (status != OK) {
     tv_clear(&user_data);
   }
@@ -2660,9 +2682,9 @@ static void set_completion(colnr_T startcol, list_T *list)
 {
   int flags = CP_ORIGINAL_TEXT;
   unsigned cur_cot_flags = get_cot_flags();
-  bool compl_longest = (cur_cot_flags & COT_LONGEST) != 0;
-  bool compl_no_insert = (cur_cot_flags & COT_NOINSERT) != 0;
-  bool compl_no_select = (cur_cot_flags & COT_NOSELECT) != 0;
+  bool compl_longest = (cur_cot_flags & kOptCotFlagLongest) != 0;
+  bool compl_no_insert = (cur_cot_flags & kOptCotFlagNoinsert) != 0;
+  bool compl_no_select = (cur_cot_flags & kOptCotFlagNoselect) != 0;
 
   // If already doing completions stop it.
   if (ctrl_x_mode_not_default()) {
@@ -2685,7 +2707,7 @@ static void set_completion(colnr_T startcol, list_T *list)
     flags |= CP_ICASE;
   }
   if (ins_compl_add(compl_orig_text, -1, NULL, NULL, false, NULL, 0,
-                    flags | CP_FAST, false, -1) != OK) {
+                    flags | CP_FAST, false, -1, -1) != OK) {
     return;
   }
 
@@ -3024,7 +3046,7 @@ static int process_next_cpt_value(ins_compl_next_state_T *st, int *compl_type_ar
                    : st->ins_buf->b_sfname == NULL
                    ? st->ins_buf->b_fname
                    : st->ins_buf->b_sfname);
-      msg_trunc(IObuff, true, HL_ATTR(HLF_R));
+      msg_trunc(IObuff, true, HLF_R);
     }
   } else if (*st->e_cpt == NUL) {
     status = INS_COMPL_CPT_END;
@@ -3052,7 +3074,7 @@ static int process_next_cpt_value(ins_compl_next_state_T *st, int *compl_type_ar
       if (!shortmess(SHM_COMPLETIONSCAN)) {
         msg_hist_off = true;  // reset in msg_trunc()
         vim_snprintf(IObuff, IOSIZE, "%s", _("Scanning tags."));
-        msg_trunc(IObuff, true, HL_ATTR(HLF_R));
+        msg_trunc(IObuff, true, HLF_R);
       }
     }
 
@@ -3430,7 +3452,7 @@ static void get_next_bufname_token(void)
       char *tail = path_tail(b->b_sfname);
       if (strncmp(tail, compl_orig_text, strlen(compl_orig_text)) == 0) {
         ins_compl_add(tail, (int)strlen(tail), NULL, NULL, false, NULL, 0,
-                      p_ic ? CP_ICASE : 0, false, -1);
+                      p_ic ? CP_ICASE : 0, false, -1, -1);
       }
     }
   }
@@ -3709,8 +3731,8 @@ static int find_next_completion_match(bool allow_get_expansion, int todo, bool a
   bool found_end = false;
   compl_T *found_compl = NULL;
   unsigned cur_cot_flags = get_cot_flags();
-  bool compl_no_select = (cur_cot_flags & COT_NOSELECT) != 0;
-  bool compl_fuzzy_match = (cur_cot_flags & COT_FUZZY) != 0;
+  bool compl_no_select = (cur_cot_flags & kOptCotFlagNoselect) != 0;
+  bool compl_fuzzy_match = (cur_cot_flags & kOptCotFlagFuzzy) != 0;
 
   while (--todo >= 0) {
     if (compl_shows_dir_forward() && compl_shown_match->cp_next != NULL) {
@@ -3814,8 +3836,8 @@ static int ins_compl_next(bool allow_get_expansion, int count, bool insert_match
   const bool started = compl_started;
   buf_T *const orig_curbuf = curbuf;
   unsigned cur_cot_flags = get_cot_flags();
-  bool compl_no_insert = (cur_cot_flags & COT_NOINSERT) != 0;
-  bool compl_fuzzy_match = (cur_cot_flags & COT_FUZZY) != 0;
+  bool compl_no_insert = (cur_cot_flags & kOptCotFlagNoinsert) != 0;
+  bool compl_fuzzy_match = (cur_cot_flags & kOptCotFlagFuzzy) != 0;
 
   // When user complete function return -1 for findstart which is next
   // time of 'always', compl_shown_match become NULL.
@@ -3954,7 +3976,7 @@ void ins_compl_check_keys(int frequency, bool in_compl_func)
       }
     }
   }
-  if (compl_pending != 0 && !got_int && !(cot_flags & COT_NOINSERT)) {
+  if (compl_pending != 0 && !got_int && !(cot_flags & kOptCotFlagNoinsert)) {
     int todo = compl_pending > 0 ? compl_pending : -compl_pending;
 
     compl_pending = 0;
@@ -4468,7 +4490,7 @@ static int ins_compl_start(void)
     flags |= CP_ICASE;
   }
   if (ins_compl_add(compl_orig_text, -1, NULL, NULL, false, NULL, 0,
-                    flags, false, -1) != OK) {
+                    flags, false, -1, -1) != OK) {
     XFREE_CLEAR(compl_pattern);
     compl_patternlen = 0;
     XFREE_CLEAR(compl_orig_text);
@@ -4546,7 +4568,7 @@ static void ins_compl_show_statusmsg(void)
       if (!p_smd) {
         msg_hist_off = true;
         msg(edit_submode_extra, (edit_submode_highl < HLF_COUNT
-                                 ? HL_ATTR(edit_submode_highl) : 0));
+                                 ? (int)edit_submode_highl + 1 : 0));
         msg_hist_off = false;
       }
     } else {

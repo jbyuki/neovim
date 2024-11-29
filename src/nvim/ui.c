@@ -44,6 +44,7 @@
 
 typedef struct {
   LuaRef cb;
+  uint8_t errors;
   bool ext_widgets[kUIGlobalCount];
 } UIEventCallback;
 
@@ -182,9 +183,10 @@ bool ui_override(void)
   return false;
 }
 
-bool ui_active(void)
+/// Gets the number of UIs connected to this server.
+size_t ui_active(void)
 {
-  return ui_count > 0;
+  return ui_count;
 }
 
 void ui_refresh(void)
@@ -197,7 +199,7 @@ void ui_refresh(void)
   int height = INT_MAX;
   bool ext_widgets[kUIExtCount];
   bool inclusive = ui_override();
-  memset(ext_widgets, ui_active(), ARRAY_SIZE(ext_widgets));
+  memset(ext_widgets, !!ui_active(), ARRAY_SIZE(ext_widgets));
 
   for (size_t i = 0; i < ui_count; i++) {
     RemoteUI *ui = uis[i];
@@ -211,21 +213,20 @@ void ui_refresh(void)
   cursor_row = cursor_col = 0;
   pending_cursor_update = true;
 
+  bool had_message = ui_ext[kUIMessages];
   for (UIExtension i = 0; (int)i < kUIExtCount; i++) {
+    ui_ext[i] = ext_widgets[i] | ui_cb_ext[i];
     if (i < kUIGlobalCount) {
-      ext_widgets[i] |= ui_cb_ext[i];
+      ui_call_option_set(cstr_as_string(ui_ext_names[i]), BOOLEAN_OBJ(ui_ext[i]));
     }
-    // Set 'cmdheight' to zero for all tabpages when ext_messages becomes active.
-    if (i == kUIMessages && !ui_ext[i] && ext_widgets[i]) {
-      set_option_value(kOptCmdheight, NUMBER_OPTVAL(0), 0);
-      command_height();
-      FOR_ALL_TABS(tp) {
-        tp->tp_ch_used = 0;
-      }
-    }
-    ui_ext[i] = ext_widgets[i];
-    if (i < kUIGlobalCount) {
-      ui_call_option_set(cstr_as_string(ui_ext_names[i]), BOOLEAN_OBJ(ext_widgets[i]));
+  }
+
+  // Reset 'cmdheight' for all tabpages when ext_messages toggles.
+  if (had_message != ui_ext[kUIMessages]) {
+    set_option_value(kOptCmdheight, NUMBER_OPTVAL(had_message), 0);
+    command_height();
+    FOR_ALL_TABS(tp) {
+      tp->tp_ch_used = had_message;
     }
   }
 
@@ -324,7 +325,7 @@ void ui_busy_stop(void)
 
 /// Emit a bell or visualbell as a warning
 ///
-/// val is one of the BO_ values, e.g., BO_OPER
+/// val is one of the OptBoFlags values, e.g., kOptBoFlagOperator
 void vim_beep(unsigned val)
 {
   called_vim_beep = true;
@@ -333,7 +334,7 @@ void vim_beep(unsigned val)
     return;
   }
 
-  if (!((bo_flags & val) || (bo_flags & BO_ALL))) {
+  if (!((bo_flags & val) || (bo_flags & kOptBoFlagAll))) {
     static int beeps = 0;
     static uint64_t start_time = 0;
 
@@ -357,8 +358,8 @@ void vim_beep(unsigned val)
   // a script or executing a function give the user a hint where the beep
   // comes from.
   if (vim_strchr(p_debug, 'e') != NULL) {
-    msg_source(HL_ATTR(HLF_W));
-    msg(_("Beep!"), HL_ATTR(HLF_W));
+    msg_source(HLF_W);
+    msg(_("Beep!"), HLF_W);
   }
 }
 
@@ -476,7 +477,7 @@ void ui_line(ScreenGrid *grid, int row, bool invalid_row, int startcol, int endc
                    (const sattr_T *)grid->attrs + off);
 
   // 'writedelay': flush & delay each time.
-  if (p_wd && (rdb_flags & RDB_LINE)) {
+  if (p_wd && (rdb_flags & kOptRdbFlagLine)) {
     // If 'writedelay' is active, set the cursor to indicate what was drawn.
     ui_call_grid_cursor_goto(grid->handle, row,
                              MIN(clearcol, (int)grid->cols - 1));
@@ -563,7 +564,7 @@ void ui_flush(void)
   }
   ui_call_flush();
 
-  if (p_wd && (rdb_flags & RDB_FLUSH)) {
+  if (p_wd && (rdb_flags & kOptRdbFlagFlush)) {
     os_sleep((uint64_t)llabs(p_wd));
   }
 }
@@ -658,7 +659,7 @@ Array ui_array(Arena *arena)
   Array all_uis = arena_array(arena, ui_count);
   for (size_t i = 0; i < ui_count; i++) {
     RemoteUI *ui = uis[i];
-    Dictionary info = arena_dict(arena, 10 + kUIExtCount);
+    Dict info = arena_dict(arena, 10 + kUIExtCount);
     PUT_C(info, "width", INTEGER_OBJ(ui->width));
     PUT_C(info, "height", INTEGER_OBJ(ui->height));
     PUT_C(info, "rgb", BOOLEAN_OBJ(ui->rgb));
@@ -681,7 +682,7 @@ Array ui_array(Arena *arena)
     }
     PUT_C(info, "chan", INTEGER_OBJ((Integer)ui->channel_id));
 
-    ADD_C(all_uis, DICTIONARY_OBJ(info));
+    ADD_C(all_uis, DICT_OBJ(info));
   }
   return all_uis;
 }
@@ -712,13 +713,22 @@ void ui_grid_resize(handle_T grid_handle, int width, int height, Error *err)
   }
 }
 
-void ui_call_event(char *name, Array args)
+void ui_call_event(char *name, bool fast, Array args)
 {
-  UIEventCallback *event_cb;
   bool handled = false;
-  map_foreach_value(&ui_event_cbs, event_cb, {
+  UIEventCallback *event_cb;
+
+  // Prompt messages should be shown immediately so must be safe
+  if (strcmp(name, "msg_show") == 0) {
+    char *kind = args.items[0].data.string.data;
+    fast = !kind || ((strncmp(kind, "confirm", 7) != 0 && strstr(kind, "_prompt") == NULL));
+  }
+
+  map_foreach(&ui_event_cbs, ui_event_ns_id, event_cb, {
     Error err = ERROR_INIT;
-    Object res = nlua_call_ref(event_cb->cb, name, args, kRetNilBool, NULL, &err);
+    uint32_t ns_id = ui_event_ns_id;
+    Object res = nlua_call_ref_ctx(fast, event_cb->cb, name, args, kRetNilBool, NULL, &err);
+    ui_event_ns_id = 0;
     // TODO(bfredl/luukvbaal): should this be documented or reconsidered?
     // Why does truthy return from Lua callback mean remote UI should not receive
     // the event.
@@ -727,6 +737,7 @@ void ui_call_event(char *name, Array args)
     }
     if (ERROR_SET(&err)) {
       ELOG("Error executing UI event callback: %s", err.msg);
+      ui_remove_cb(ns_id, true);
     }
     api_clear_error(&err);
   })
@@ -779,12 +790,16 @@ void ui_add_cb(uint32_t ns_id, LuaRef cb, bool *ext_widgets)
   ui_refresh();
 }
 
-void ui_remove_cb(uint32_t ns_id)
+void ui_remove_cb(uint32_t ns_id, bool checkerr)
 {
-  if (map_has(uint32_t, &ui_event_cbs, ns_id)) {
-    UIEventCallback *item = pmap_del(uint32_t)(&ui_event_cbs, ns_id, NULL);
+  UIEventCallback *item = pmap_get(uint32_t)(&ui_event_cbs, ns_id);
+  if (item && (!checkerr || ++item->errors > 10)) {
+    pmap_del(uint32_t)(&ui_event_cbs, ns_id, NULL);
     free_ui_event_callback(item);
+    ui_cb_update_ext();
+    ui_refresh();
+    if (checkerr) {
+      msg_schedule_semsg("Excessive errors in vim.ui_attach() callback from ns: %d.", ns_id);
+    }
   }
-  ui_cb_update_ext();
-  ui_refresh();
 }

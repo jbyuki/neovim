@@ -386,6 +386,32 @@ func Test_foldexpr_no_interrupt_addsub()
   set foldmethod& foldexpr&
 endfunc
 
+" Fold function defined in another script
+func Test_foldexpr_compiled()
+  throw 'Skipped: Vim9 script is N/A'
+  new
+  let lines =<< trim END
+      vim9script
+      def FoldFunc(): number
+        return v:lnum
+      enddef
+
+      set foldmethod=expr
+      set foldexpr=s:FoldFunc()
+  END
+  call writefile(lines, 'XfoldExpr', 'D')
+  source XfoldExpr
+
+  call setline(1, ['one', 'two', 'three'])
+  redraw
+  call assert_equal(1, foldlevel(1))
+  call assert_equal(2, foldlevel(2))
+  call assert_equal(3, foldlevel(3))
+
+  bwipe!
+  set foldmethod& foldexpr&
+endfunc
+
 func Check_foldlevels(expected)
   call assert_equal(a:expected, map(range(1, line('$')), 'foldlevel(v:val)'))
 endfunc
@@ -1469,6 +1495,63 @@ func Test_foldtext_scriptlocal_func()
   delfunc s:FoldText
 endfunc
 
+" Test for setting 'foldtext' from the modeline and executing the expression
+" in a sandbox
+func Test_foldtext_in_modeline()
+  func ModelineFoldText()
+    call feedkeys('aFoo', 'xt')
+    return "folded text"
+  endfunc
+  let lines =<< trim END
+    func T()
+      let i = 1
+    endfunc
+    " vim: foldenable foldtext=ModelineFoldText()
+  END
+  call writefile(lines, 'Xmodelinefoldtext', 'D')
+
+  set modeline modelineexpr
+  split Xmodelinefoldtext
+
+  call cursor(1, 1)
+  normal! zf3j
+  call assert_equal('folded text', foldtextresult(1))
+  call assert_equal(lines, getbufline('', 1, '$'))
+
+  bw!
+  set modeline& modelineexpr&
+  delfunc ModelineFoldText
+endfunc
+
+" Test for setting 'foldexpr' from the modeline and executing the expression
+" in a sandbox
+func Test_foldexpr_in_modeline()
+  func ModelineFoldExpr()
+    call feedkeys('aFoo', 'xt')
+    return strlen(matchstr(getline(v:lnum),'^\s*'))
+  endfunc
+  let lines =<< trim END
+    aaa
+     bbb
+      ccc
+      ccc
+     bbb
+    aaa
+    " vim: foldenable foldmethod=expr foldexpr=ModelineFoldExpr()
+  END
+  call writefile(lines, 'Xmodelinefoldexpr', 'D')
+
+  set modeline modelineexpr
+  split Xmodelinefoldexpr
+
+  call assert_equal(2, foldlevel(3))
+  call assert_equal(lines, getbufline('', 1, '$'))
+
+  bw!
+  set modeline& modelineexpr&
+  delfunc ModelineFoldExpr
+endfunc
+
 " Make sure a fold containing a nested fold is split correctly when using
 " foldmethod=indent
 func Test_fold_split()
@@ -1670,6 +1753,27 @@ func Test_cursor_down_fold_eob()
   call assert_equal(3, line('.'))
   norm k2j
   call assert_equal(4, line('.'))
+  bwipe!
+endfunc
+
+" issue: #15455
+func Test_cursor_fold_marker_undo()
+  new
+  call setline(1, ['{{{', '', 'This is a Line', '', 'This is a Line', '', '}}}'])
+  let &ul=&ul
+  setl foldmethod=marker
+  call cursor(2, 1)
+  norm! zo1vjdu
+  call assert_equal(1, foldlevel('.'))
+  bwipe!
+  new
+  call setline(1, ['', '{{{', '', 'This is a Line', '', 'This is a Line', '', '}}}'])
+  let &ul=&ul
+  setl foldmethod=marker
+  call cursor(3, 1)
+  norm! zo
+  norm! vjdu
+  call assert_equal(1, foldlevel('.'))
   bwipe!
 endfunc
 

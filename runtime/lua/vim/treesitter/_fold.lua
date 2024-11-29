@@ -114,7 +114,7 @@ local function compute_folds_levels(bufnr, info, srow, erow, parse_injections)
   srow = srow or 0
   erow = erow or api.nvim_buf_line_count(bufnr)
 
-  local parser = ts.get_parser(bufnr)
+  local parser = assert(ts.get_parser(bufnr, nil, { error = false }))
 
   parser:parse(parse_injections and { srow, erow } or nil)
 
@@ -131,9 +131,7 @@ local function compute_folds_levels(bufnr, info, srow, erow, parse_injections)
 
     -- Collect folds starting from srow - 1, because we should first subtract the folds that end at
     -- srow - 1 from the level of srow - 1 to get accurate level of srow.
-    for _, match, metadata in
-      query:iter_matches(tree:root(), bufnr, math.max(srow - 1, 0), erow, { all = true })
-    do
+    for _, match, metadata in query:iter_matches(tree:root(), bufnr, math.max(srow - 1, 0), erow) do
       for id, nodes in pairs(match) do
         if query.captures[id] == 'fold' then
           local range = ts.get_range(nodes[1], bufnr, metadata[id])
@@ -394,7 +392,7 @@ function M.foldexpr(lnum)
   lnum = lnum or vim.v.lnum
   local bufnr = api.nvim_get_current_buf()
 
-  local parser = vim.F.npcall(ts.get_parser, bufnr)
+  local parser = ts.get_parser(bufnr, nil, { error = false })
   if not parser then
     return '0'
   end

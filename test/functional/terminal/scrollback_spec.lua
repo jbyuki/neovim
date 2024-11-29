@@ -1,7 +1,7 @@
 local t = require('test.testutil')
 local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local tt = require('test.functional.terminal.testutil')
+local tt = require('test.functional.testterm')
 
 local clear, eq = n.clear, t.eq
 local feed, testprg = n.feed, n.testprg
@@ -22,7 +22,7 @@ describe(':terminal scrollback', function()
 
   before_each(function()
     clear()
-    screen = tt.screen_setup(nil, nil, 30)
+    screen = tt.setup_screen(nil, nil, 30)
   end)
 
   describe('when the limit is exceeded', function()
@@ -354,8 +354,7 @@ end)
 describe(':terminal prints more lines than the screen height and exits', function()
   it('will push extra lines to scrollback', function()
     clear()
-    local screen = Screen.new(30, 7)
-    screen:attach({ rgb = false })
+    local screen = Screen.new(30, 7, { rgb = false })
     command(("call termopen(['%s', '10']) | startinsert"):format(testprg('tty-test')))
     screen:expect([[
       line6                         |
@@ -399,9 +398,9 @@ describe("'scrollback' option", function()
   it('set to 0 behaves as 1', function()
     local screen
     if is_os('win') then
-      screen = tt.screen_setup(nil, { 'cmd.exe' }, 30)
+      screen = tt.setup_screen(nil, { 'cmd.exe' }, 30)
     else
-      screen = tt.screen_setup(nil, { 'sh' }, 30)
+      screen = tt.setup_screen(nil, { 'sh' }, 30)
     end
 
     api.nvim_set_option_value('scrollback', 0, {})
@@ -416,10 +415,10 @@ describe("'scrollback' option", function()
     local screen
     if is_os('win') then
       command([[let $PROMPT='$$']])
-      screen = tt.screen_setup(nil, { 'cmd.exe' }, 30)
+      screen = tt.setup_screen(nil, { 'cmd.exe' }, 30)
     else
       command('let $PS1 = "$"')
-      screen = tt.screen_setup(nil, { 'sh' }, 30)
+      screen = tt.setup_screen(nil, { 'sh' }, 30)
     end
 
     api.nvim_set_option_value('scrollback', 200, {})
@@ -480,8 +479,8 @@ describe("'scrollback' option", function()
   end)
 
   it('deletes extra lines immediately', function()
-    -- Scrollback is 10 on screen_setup
-    local screen = tt.screen_setup(nil, nil, 30)
+    -- Scrollback is 10 on setup_screen
+    local screen = tt.setup_screen(nil, nil, 30)
     local lines = {}
     for i = 1, 30 do
       table.insert(lines, 'line' .. tostring(i))
@@ -580,7 +579,6 @@ describe('pending scrollback line handling', function()
   before_each(function()
     clear()
     screen = Screen.new(30, 7)
-    screen:attach()
     screen:set_default_attr_ids {
       [1] = { foreground = Screen.colors.Brown },
       [2] = { reverse = true },

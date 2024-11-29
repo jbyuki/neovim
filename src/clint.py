@@ -848,7 +848,7 @@ def CheckIncludes(filename, lines, error):
             or filename.endswith('.in.h')
             or FileInfo(filename).RelativePath() in {
         'func_attr.h',
-        'os/pty_process.h',
+        'os/pty_proc.h',
     }):
         return
 
@@ -869,7 +869,7 @@ def CheckIncludes(filename, lines, error):
             "src/nvim/msgpack_rpc/unpacker.h",
             "src/nvim/option.h",
             "src/nvim/os/pty_conpty_win.h",
-            "src/nvim/os/pty_process_win.h",
+            "src/nvim/os/pty_proc_win.h",
                              ]
 
     skip_headers = [
@@ -880,6 +880,8 @@ def CheckIncludes(filename, lines, error):
             "mpack/object.h",
             "nvim/func_attr.h",
             "termkey/termkey.h",
+            "vterm/vterm.h",
+            "xdiff/xdiff.h",
             ]
 
     for i in check_includes_ignore:
@@ -895,7 +897,7 @@ def CheckIncludes(filename, lines, error):
             if (not name.endswith('.h.generated.h') and
                     not name.endswith('/defs.h') and
                     not name.endswith('_defs.h') and
-                    not name.endswith('h.inline.generated.h') and
+                    not name.endswith('.h.inline.generated.h') and
                     not name.endswith('_defs.generated.h') and
                     not name.endswith('_enum.generated.h')):
                 error(filename, i, 'build/include_defs', 5,
@@ -1780,7 +1782,7 @@ def CheckSpacing(filename, clean_lines, linenum, error):
                    r'(?<!\bPMap)'
                    r'(?<!\bSet)'
                    r'(?<!\bArrayOf)'
-                   r'(?<!\bDictionaryOf)'
+                   r'(?<!\bDictOf)'
                    r'(?<!\bDict)'
                    r'\((?:const )?(?:struct )?[a-zA-Z_]\w*(?: *\*(?:const)?)*\)'
                    r' +'
@@ -2204,18 +2206,18 @@ def ProcessFileData(filename, file_extension, lines, error,
 
         error = RecordedError
 
-    if file_extension == 'h':
-        CheckForHeaderGuard(filename, lines, error)
-        CheckIncludes(filename, lines, error)
-        if filename.endswith('/defs.h') or filename.endswith('_defs.h'):
-            CheckNonSymbols(filename, lines, error)
-
     RemoveMultiLineComments(filename, lines, error)
     clean_lines = CleansedLines(lines, init_lines)
     for line in range(clean_lines.NumLines()):
         ProcessLine(filename, clean_lines, line,
                     nesting_state, error,
                     extra_check_functions)
+
+    if file_extension == 'h':
+        CheckForHeaderGuard(filename, lines, error)
+        CheckIncludes(filename, lines, error)
+        if filename.endswith('/defs.h') or filename.endswith('_defs.h'):
+            CheckNonSymbols(filename, lines, error)
 
     # We check here rather than inside ProcessLine so that we see raw
     # lines rather than "cleaned" lines.

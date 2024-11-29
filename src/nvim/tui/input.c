@@ -7,24 +7,27 @@
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/event/loop.h"
+#include "nvim/event/rstream.h"
 #include "nvim/event/stream.h"
 #include "nvim/macros_defs.h"
 #include "nvim/main.h"
 #include "nvim/map_defs.h"
 #include "nvim/memory.h"
+#include "nvim/msgpack_rpc/channel.h"
 #include "nvim/option_vars.h"
 #include "nvim/os/os.h"
 #include "nvim/os/os_defs.h"
 #include "nvim/strings.h"
 #include "nvim/tui/input.h"
 #include "nvim/tui/input_defs.h"
+#include "nvim/tui/termkey/driver-csi.h"
+#include "nvim/tui/termkey/termkey.h"
 #include "nvim/tui/tui.h"
 #include "nvim/ui_client.h"
+
 #ifdef MSWIN
 # include "nvim/os/os_win_console.h"
 #endif
-#include "nvim/event/rstream.h"
-#include "nvim/msgpack_rpc/channel.h"
 
 #define READ_STREAM_SIZE 0xfff
 
@@ -157,12 +160,16 @@ void tinput_init(TermInput *input, Loop *loop)
   // initialize a timer handle for handling ESC with libtermkey
   uv_timer_init(&loop->uv, &input->timer_handle);
   input->timer_handle.data = input;
+
+  uv_timer_init(&loop->uv, &input->bg_query_timer);
+  input->bg_query_timer.data = input;
 }
 
 void tinput_destroy(TermInput *input)
 {
   map_destroy(int, &kitty_key_map);
   uv_close((uv_handle_t *)&input->timer_handle, NULL);
+  uv_close((uv_handle_t *)&input->bg_query_timer, NULL);
   rstream_may_close(&input->read_stream);
   termkey_destroy(input->tk);
 }
@@ -176,6 +183,7 @@ void tinput_stop(TermInput *input)
 {
   rstream_stop(&input->read_stream);
   uv_timer_stop(&input->timer_handle);
+  uv_timer_stop(&input->bg_query_timer);
 }
 
 static void tinput_done_event(void **argv)
@@ -261,7 +269,7 @@ static size_t handle_more_modifiers(TermKeyKey *key, char *buf, size_t buflen)
 
 static void handle_kitty_key_protocol(TermInput *input, TermKeyKey *key)
 {
-  const char *name = pmap_get(int)(&kitty_key_map, (int)key->code.codepoint);
+  const char *name = pmap_get(int)(&kitty_key_map, key->code.codepoint);
   if (name) {
     char buf[64];
     size_t len = 0;
@@ -461,7 +469,7 @@ static void tinput_timer_cb(uv_timer_t *handle)
 {
   TermInput *input = handle->data;
   // If the raw buffer is not empty, process the raw buffer first because it is
-  // processing an incomplete bracketed paster sequence.
+  // processing an incomplete bracketed paste sequence.
   size_t size = rstream_available(&input->read_stream);
   if (size) {
     size_t consumed = handle_raw_buffer(input, true, input->read_stream.read_pos, size);
@@ -469,6 +477,13 @@ static void tinput_timer_cb(uv_timer_t *handle)
   }
   tk_getkeys(input, true);
   tinput_flush(input);
+}
+
+static void bg_query_timer_cb(uv_timer_t *handle)
+  FUNC_ATTR_NONNULL_ALL
+{
+  TermInput *input = handle->data;
+  tui_query_bg_color(input->tui_data);
 }
 
 /// Handle focus events.
@@ -598,7 +613,7 @@ static void handle_unknown_csi(TermInput *input, const TermKeyKey *key)
   // contain, so just allocate enough space for a large upper bound
   TermKeyCsiParam params[16];
   size_t nparams = 16;
-  unsigned long cmd;
+  unsigned cmd;
   if (termkey_interpret_csi(input->tk, key, params, &nparams, &cmd) != TERMKEY_RES_KEY) {
     return;
   }
@@ -641,7 +656,7 @@ static void handle_unknown_csi(TermInput *input, const TermKeyKey *key)
   case 't':
     if (nparams == 5) {
       // We only care about the first 3 parameters, and we ignore subparameters
-      long args[3];
+      int args[3];
       for (size_t i = 0; i < ARRAY_SIZE(args); i++) {
         if (termkey_interpret_csi_param(params[i], &args[i], NULL, NULL) != TERMKEY_RES_KEY) {
           return;
@@ -650,10 +665,37 @@ static void handle_unknown_csi(TermInput *input, const TermKeyKey *key)
 
       if (args[0] == 48) {
         // In-band resize event (DEC private mode 2048)
-        int height_chars = (int)args[1];
-        int width_chars = (int)args[2];
+        int height_chars = args[1];
+        int width_chars = args[2];
         tui_set_size(input->tui_data, width_chars, height_chars);
         ui_client_set_size(width_chars, height_chars);
+      }
+    }
+    break;
+  case 'n':
+    // Device Status Report (DSR)
+    if (nparams == 2) {
+      int args[2];
+      for (size_t i = 0; i < ARRAY_SIZE(args); i++) {
+        if (termkey_interpret_csi_param(params[i], &args[i], NULL, NULL) != TERMKEY_RES_KEY) {
+          return;
+        }
+      }
+
+      if (args[0] == 997) {
+        // Theme update notification
+        // https://github.com/contour-terminal/contour/blob/master/docs/vt-extensions/color-palette-update-notifications.md
+        // The second argument tells us whether the OS theme is set to light
+        // mode or dark mode, but all we care about is the background color of
+        // the terminal emulator. We query for that with OSC 11 and the response
+        // is handled by the autocommand created in _defaults.lua. The terminal
+        // may send us multiple notifications all at once so we use a timer to
+        // coalesce the queries.
+        if (uv_timer_get_due_in(&input->bg_query_timer) > 0) {
+          return;
+        }
+
+        uv_timer_start(&input->bg_query_timer, bg_query_timer_cb, 100, 0);
       }
     }
     break;

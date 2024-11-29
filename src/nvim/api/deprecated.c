@@ -183,11 +183,11 @@ Integer nvim_buf_set_virtual_text(Buffer buffer, Integer src_id, Integer line, A
 /// @param[out] err Error details, if any
 /// @return Highlight definition map
 /// @see nvim_get_hl_by_name
-Dictionary nvim_get_hl_by_id(Integer hl_id, Boolean rgb, Arena *arena, Error *err)
+Dict nvim_get_hl_by_id(Integer hl_id, Boolean rgb, Arena *arena, Error *err)
   FUNC_API_SINCE(3)
   FUNC_API_DEPRECATED_SINCE(9)
 {
-  Dictionary dic = ARRAY_DICT_INIT;
+  Dict dic = ARRAY_DICT_INIT;
   VALIDATE_INT((syn_get_final_id((int)hl_id) != 0), "highlight id", hl_id, {
     return dic;
   });
@@ -204,11 +204,11 @@ Dictionary nvim_get_hl_by_id(Integer hl_id, Boolean rgb, Arena *arena, Error *er
 /// @param[out] err Error details, if any
 /// @return Highlight definition map
 /// @see nvim_get_hl_by_id
-Dictionary nvim_get_hl_by_name(String name, Boolean rgb, Arena *arena, Error *err)
+Dict nvim_get_hl_by_name(String name, Boolean rgb, Arena *arena, Error *err)
   FUNC_API_SINCE(3)
   FUNC_API_DEPRECATED_SINCE(9)
 {
-  Dictionary result = ARRAY_DICT_INIT;
+  Dict result = ARRAY_DICT_INIT;
   int id = syn_name2id(name.data);
 
   VALIDATE_S((id != 0), "highlight name", name.data, {
@@ -515,7 +515,7 @@ static int64_t convert_index(int64_t index)
 /// @param          name Option name
 /// @param[out] err Error details, if any
 /// @return         Option Information
-Dictionary nvim_get_option_info(String name, Arena *arena, Error *err)
+Dict nvim_get_option_info(String name, Arena *arena, Error *err)
   FUNC_API_SINCE(7)
   FUNC_API_DEPRECATED_SINCE(11)
 {
@@ -533,7 +533,7 @@ void nvim_set_option(uint64_t channel_id, String name, Object value, Error *err)
   FUNC_API_SINCE(1)
   FUNC_API_DEPRECATED_SINCE(11)
 {
-  set_option_to(channel_id, NULL, kOptReqGlobal, name, value, err);
+  set_option_to(channel_id, NULL, kOptScopeGlobal, name, value, err);
 }
 
 /// Gets the global value of an option.
@@ -546,7 +546,7 @@ Object nvim_get_option(String name, Error *err)
   FUNC_API_SINCE(1)
   FUNC_API_DEPRECATED_SINCE(11)
 {
-  return get_option_from(NULL, kOptReqGlobal, name, err);
+  return get_option_from(NULL, kOptScopeGlobal, name, err);
 }
 
 /// Gets a buffer option value
@@ -566,7 +566,7 @@ Object nvim_buf_get_option(Buffer buffer, String name, Error *err)
     return (Object)OBJECT_INIT;
   }
 
-  return get_option_from(buf, kOptReqBuf, name, err);
+  return get_option_from(buf, kOptScopeBuf, name, err);
 }
 
 /// Sets a buffer option value. Passing `nil` as value deletes the option (only
@@ -588,7 +588,7 @@ void nvim_buf_set_option(uint64_t channel_id, Buffer buffer, String name, Object
     return;
   }
 
-  set_option_to(channel_id, buf, kOptReqBuf, name, value, err);
+  set_option_to(channel_id, buf, kOptScopeBuf, name, value, err);
 }
 
 /// Gets a window option value
@@ -608,7 +608,7 @@ Object nvim_win_get_option(Window window, String name, Error *err)
     return (Object)OBJECT_INIT;
   }
 
-  return get_option_from(win, kOptReqWin, name, err);
+  return get_option_from(win, kOptScopeWin, name, err);
 }
 
 /// Sets a window option value. Passing `nil` as value deletes the option (only
@@ -630,26 +630,32 @@ void nvim_win_set_option(uint64_t channel_id, Window window, String name, Object
     return;
   }
 
-  set_option_to(channel_id, win, kOptReqWin, name, value, err);
+  set_option_to(channel_id, win, kOptScopeWin, name, value, err);
 }
 
 /// Gets the value of a global or local (buffer, window) option.
 ///
 /// @param[in]   from       Pointer to buffer or window for local option value.
-/// @param       req_scope  Requested option scope. See OptReqScope in option.h.
+/// @param       scope      Option scope. See OptScope in option.h.
 /// @param       name       The option name.
 /// @param[out]  err        Details of an error that may have occurred.
 ///
 /// @return  the option value.
-static Object get_option_from(void *from, OptReqScope req_scope, String name, Error *err)
+static Object get_option_from(void *from, OptScope scope, String name, Error *err)
 {
   VALIDATE_S(name.size > 0, "option name", "<empty>", {
     return (Object)OBJECT_INIT;
   });
 
-  OptVal value = get_option_value_strict(find_option(name.data), req_scope, from, err);
-  if (ERROR_SET(err)) {
-    return (Object)OBJECT_INIT;
+  OptIndex opt_idx = find_option(name.data);
+  OptVal value = NIL_OPTVAL;
+
+  if (option_has_scope(opt_idx, scope)) {
+    value = get_option_value_for(opt_idx, scope == kOptScopeGlobal ? OPT_GLOBAL : OPT_LOCAL,
+                                 scope, from, err);
+    if (ERROR_SET(err)) {
+      return (Object)OBJECT_INIT;
+    }
   }
 
   VALIDATE_S(value.type != kOptValTypeNil, "option name", name.data, {
@@ -662,12 +668,12 @@ static Object get_option_from(void *from, OptReqScope req_scope, String name, Er
 /// Sets the value of a global or local (buffer, window) option.
 ///
 /// @param[in]   to         Pointer to buffer or window for local option value.
-/// @param       req_scope  Requested option scope. See OptReqScope in option.h.
+/// @param       scope      Option scope. See OptScope in option.h.
 /// @param       name       The option name.
 /// @param       value      New option value.
 /// @param[out]  err        Details of an error that may have occurred.
-static void set_option_to(uint64_t channel_id, void *to, OptReqScope req_scope, String name,
-                          Object value, Error *err)
+static void set_option_to(uint64_t channel_id, void *to, OptScope scope, String name, Object value,
+                          Error *err)
 {
   VALIDATE_S(name.size > 0, "option name", "<empty>", {
     return;
@@ -689,15 +695,15 @@ static void set_option_to(uint64_t channel_id, void *to, OptReqScope req_scope, 
     return;
   });
 
-  int attrs = get_option_attrs(opt_idx);
   // For global-win-local options -> setlocal
   // For        win-local options -> setglobal and setlocal (opt_flags == 0)
-  const int opt_flags = (req_scope == kOptReqWin && !(attrs & SOPT_GLOBAL))
-                        ? 0
-                        : (req_scope == kOptReqGlobal) ? OPT_GLOBAL : OPT_LOCAL;
+  const int opt_flags
+    = (scope == kOptScopeWin && !option_has_scope(opt_idx, kOptScopeGlobal))
+      ? 0
+      : ((scope == kOptScopeGlobal) ? OPT_GLOBAL : OPT_LOCAL);
 
   WITH_SCRIPT_CONTEXT(channel_id, {
-    set_option_value_for(name.data, opt_idx, optval, opt_flags, req_scope, to, err);
+    set_option_value_for(name.data, opt_idx, optval, opt_flags, scope, to, err);
   });
 }
 

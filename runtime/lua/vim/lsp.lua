@@ -3,7 +3,6 @@ local validate = vim.validate
 
 local lsp = vim._defer_require('vim.lsp', {
   _changetracking = ..., --- @module 'vim.lsp._changetracking'
-  _dynamic = ..., --- @module 'vim.lsp._dynamic'
   _snippet_grammar = ..., --- @module 'vim.lsp._snippet_grammar'
   _tagfunc = ..., --- @module 'vim.lsp._tagfunc'
   _watchfiles = ..., --- @module 'vim.lsp._watchfiles'
@@ -31,46 +30,59 @@ local changetracking = lsp._changetracking
 ---@nodoc
 lsp.rpc_response_error = lsp.rpc.rpc_response_error
 
+lsp._resolve_to_request = {
+  [ms.codeAction_resolve] = ms.textDocument_codeAction,
+  [ms.codeLens_resolve] = ms.textDocument_codeLens,
+  [ms.documentLink_resolve] = ms.textDocument_documentLink,
+  [ms.inlayHint_resolve] = ms.textDocument_inlayHint,
+}
+
 -- maps request name to the required server_capability in the client.
 lsp._request_name_to_capability = {
-  [ms.textDocument_hover] = { 'hoverProvider' },
-  [ms.textDocument_signatureHelp] = { 'signatureHelpProvider' },
-  [ms.textDocument_definition] = { 'definitionProvider' },
-  [ms.textDocument_implementation] = { 'implementationProvider' },
-  [ms.textDocument_declaration] = { 'declarationProvider' },
-  [ms.textDocument_typeDefinition] = { 'typeDefinitionProvider' },
-  [ms.textDocument_documentSymbol] = { 'documentSymbolProvider' },
-  [ms.textDocument_prepareCallHierarchy] = { 'callHierarchyProvider' },
   [ms.callHierarchy_incomingCalls] = { 'callHierarchyProvider' },
   [ms.callHierarchy_outgoingCalls] = { 'callHierarchyProvider' },
-  [ms.textDocument_prepareTypeHierarchy] = { 'typeHierarchyProvider' },
-  [ms.typeHierarchy_subtypes] = { 'typeHierarchyProvider' },
-  [ms.typeHierarchy_supertypes] = { 'typeHierarchyProvider' },
-  [ms.textDocument_rename] = { 'renameProvider' },
-  [ms.textDocument_prepareRename] = { 'renameProvider', 'prepareProvider' },
+  [ms.codeAction_resolve] = { 'codeActionProvider', 'resolveProvider' },
+  [ms.codeLens_resolve] = { 'codeLensProvider', 'resolveProvider' },
+  [ms.documentLink_resolve] = { 'documentLinkProvider', 'resolveProvider' },
+  [ms.inlayHint_resolve] = { 'inlayHintProvider', 'resolveProvider' },
   [ms.textDocument_codeAction] = { 'codeActionProvider' },
   [ms.textDocument_codeLens] = { 'codeLensProvider' },
-  [ms.codeLens_resolve] = { 'codeLensProvider', 'resolveProvider' },
-  [ms.codeAction_resolve] = { 'codeActionProvider', 'resolveProvider' },
-  [ms.workspace_executeCommand] = { 'executeCommandProvider' },
-  [ms.workspace_symbol] = { 'workspaceSymbolProvider' },
-  [ms.textDocument_references] = { 'referencesProvider' },
-  [ms.textDocument_rangeFormatting] = { 'documentRangeFormattingProvider' },
-  [ms.textDocument_rangesFormatting] = { 'documentRangeFormattingProvider', 'rangesSupport' },
-  [ms.textDocument_formatting] = { 'documentFormattingProvider' },
   [ms.textDocument_completion] = { 'completionProvider' },
-  [ms.textDocument_documentHighlight] = { 'documentHighlightProvider' },
-  [ms.textDocument_semanticTokens_full] = { 'semanticTokensProvider' },
-  [ms.textDocument_semanticTokens_full_delta] = { 'semanticTokensProvider' },
-  [ms.textDocument_inlayHint] = { 'inlayHintProvider' },
+  [ms.textDocument_declaration] = { 'declarationProvider' },
+  [ms.textDocument_definition] = { 'definitionProvider' },
   [ms.textDocument_diagnostic] = { 'diagnosticProvider' },
-  [ms.inlayHint_resolve] = { 'inlayHintProvider', 'resolveProvider' },
-  [ms.textDocument_documentLink] = { 'documentLinkProvider' },
-  [ms.documentLink_resolve] = { 'documentLinkProvider', 'resolveProvider' },
   [ms.textDocument_didClose] = { 'textDocumentSync', 'openClose' },
   [ms.textDocument_didOpen] = { 'textDocumentSync', 'openClose' },
-  [ms.textDocument_willSave] = { 'textDocumentSync', 'willSave' },
+  [ms.textDocument_documentColor] = { 'colorProvider' },
+  [ms.textDocument_documentHighlight] = { 'documentHighlightProvider' },
+  [ms.textDocument_documentLink] = { 'documentLinkProvider' },
+  [ms.textDocument_documentSymbol] = { 'documentSymbolProvider' },
+  [ms.textDocument_formatting] = { 'documentFormattingProvider' },
+  [ms.textDocument_hover] = { 'hoverProvider' },
+  [ms.textDocument_implementation] = { 'implementationProvider' },
+  [ms.textDocument_inlayHint] = { 'inlayHintProvider' },
+  [ms.textDocument_inlineValue] = { 'inlineValueProvider' },
+  [ms.textDocument_linkedEditingRange] = { 'linkedEditingRangeProvider' },
+  [ms.textDocument_moniker] = { 'monikerProvider' },
+  [ms.textDocument_onTypeFormatting] = { 'documentOnTypeFormattingProvider' },
+  [ms.textDocument_prepareCallHierarchy] = { 'callHierarchyProvider' },
+  [ms.textDocument_prepareRename] = { 'renameProvider', 'prepareProvider' },
+  [ms.textDocument_prepareTypeHierarchy] = { 'typeHierarchyProvider' },
+  [ms.textDocument_rangeFormatting] = { 'documentRangeFormattingProvider' },
+  [ms.textDocument_rangesFormatting] = { 'documentRangeFormattingProvider', 'rangesSupport' },
+  [ms.textDocument_references] = { 'referencesProvider' },
+  [ms.textDocument_rename] = { 'renameProvider' },
+  [ms.textDocument_selectionRange] = { 'selectionRangeProvider' },
+  [ms.textDocument_semanticTokens_full] = { 'semanticTokensProvider' },
+  [ms.textDocument_semanticTokens_full_delta] = { 'semanticTokensProvider' },
+  [ms.textDocument_signatureHelp] = { 'signatureHelpProvider' },
+  [ms.textDocument_typeDefinition] = { 'typeDefinitionProvider' },
   [ms.textDocument_willSaveWaitUntil] = { 'textDocumentSync', 'willSaveWaitUntil' },
+  [ms.textDocument_willSave] = { 'textDocumentSync', 'willSave' },
+  [ms.typeHierarchy_subtypes] = { 'typeHierarchyProvider' },
+  [ms.typeHierarchy_supertypes] = { 'typeHierarchyProvider' },
+  [ms.workspace_executeCommand] = { 'executeCommandProvider' },
+  [ms.workspace_symbol] = { 'workspaceSymbolProvider' },
 }
 
 -- TODO improve handling of scratch buffers with LSP attached.
@@ -80,7 +92,7 @@ lsp._request_name_to_capability = {
 ---@param bufnr (integer|nil) Buffer number to resolve. Defaults to current buffer
 ---@return integer bufnr
 local function resolve_bufnr(bufnr)
-  validate({ bufnr = { bufnr, 'n', true } })
+  validate('bufnr', bufnr, 'number', true)
   if bufnr == nil or bufnr == 0 then
     return api.nvim_get_current_buf()
   end
@@ -183,9 +195,10 @@ local function reuse_client_default(client, config)
   end
 
   if config.root_dir then
+    local root = vim.uri_from_fname(config.root_dir)
     for _, dir in ipairs(client.workspace_folders or {}) do
       -- note: do not need to check client.root_dir since that should be client.workspace_folders[1]
-      if config.root_dir == dir.name then
+      if root == dir.uri then
         return true
       end
     end
@@ -229,9 +242,9 @@ end
 --- - `name` arbitrary name for the LSP client. Should be unique per language server.
 --- - `cmd` command string[] or function, described at |vim.lsp.start_client()|.
 --- - `root_dir` path to the project root. By default this is used to decide if an existing client
----   should be re-used. The example above uses |vim.fs.root()| and |vim.fs.dirname()| to detect
----   the root by traversing the file system upwards starting from the current directory until
----   either a `pyproject.toml` or `setup.py` file is found.
+---   should be re-used. The example above uses |vim.fs.root()| to detect the root by traversing
+---   the file system upwards starting from the current directory until either a `pyproject.toml`
+---   or `setup.py` file is found.
 --- - `workspace_folders` list of `{ uri:string, name: string }` tables specifying the project root
 ---   folders used by the language server. If `nil` the property is derived from `root_dir` for
 ---   convenience.
@@ -336,17 +349,17 @@ end
 ---@param bufnr integer
 function lsp._set_defaults(client, bufnr)
   if
-    client.supports_method(ms.textDocument_definition) and is_empty_or_default(bufnr, 'tagfunc')
+    client:supports_method(ms.textDocument_definition) and is_empty_or_default(bufnr, 'tagfunc')
   then
     vim.bo[bufnr].tagfunc = 'v:lua.vim.lsp.tagfunc'
   end
   if
-    client.supports_method(ms.textDocument_completion) and is_empty_or_default(bufnr, 'omnifunc')
+    client:supports_method(ms.textDocument_completion) and is_empty_or_default(bufnr, 'omnifunc')
   then
     vim.bo[bufnr].omnifunc = 'v:lua.vim.lsp.omnifunc'
   end
   if
-    client.supports_method(ms.textDocument_rangeFormatting)
+    client:supports_method(ms.textDocument_rangeFormatting)
     and is_empty_or_default(bufnr, 'formatprg')
     and is_empty_or_default(bufnr, 'formatexpr')
   then
@@ -354,14 +367,16 @@ function lsp._set_defaults(client, bufnr)
   end
   vim._with({ buf = bufnr }, function()
     if
-      client.supports_method(ms.textDocument_hover)
+      client:supports_method(ms.textDocument_hover)
       and is_empty_or_default(bufnr, 'keywordprg')
       and vim.fn.maparg('K', 'n', false, false) == ''
     then
-      vim.keymap.set('n', 'K', vim.lsp.buf.hover, { buffer = bufnr, desc = 'vim.lsp.buf.hover()' })
+      vim.keymap.set('n', 'K', function()
+        vim.lsp.buf.hover()
+      end, { buffer = bufnr, desc = 'vim.lsp.buf.hover()' })
     end
   end)
-  if client.supports_method(ms.textDocument_diagnostic) then
+  if client:supports_method(ms.textDocument_diagnostic) then
     lsp.diagnostic._enable(bufnr)
   end
 end
@@ -472,12 +487,12 @@ local function text_document_did_save_handler(bufnr)
     local name = api.nvim_buf_get_name(bufnr)
     local old_name = changetracking._get_and_set_name(client, bufnr, name)
     if old_name and name ~= old_name then
-      client.notify(ms.textDocument_didClose, {
+      client:notify(ms.textDocument_didClose, {
         textDocument = {
           uri = vim.uri_from_fname(old_name),
         },
       })
-      client.notify(ms.textDocument_didOpen, {
+      client:notify(ms.textDocument_didOpen, {
         textDocument = {
           version = 0,
           uri = uri,
@@ -493,7 +508,7 @@ local function text_document_did_save_handler(bufnr)
       if type(save_capability) == 'table' and save_capability.includeText then
         included_text = text(bufnr)
       end
-      client.notify(ms.textDocument_didSave, {
+      client:notify(ms.textDocument_didSave, {
         textDocument = {
           uri = uri,
         },
@@ -514,10 +529,10 @@ local function buf_detach_client(bufnr, client)
 
   changetracking.reset_buf(client, bufnr)
 
-  if client.supports_method(ms.textDocument_didClose) then
+  if client:supports_method(ms.textDocument_didClose) then
     local uri = vim.uri_from_bufnr(bufnr)
     local params = { textDocument = { uri = uri } }
-    client.notify(ms.textDocument_didClose, params)
+    client:notify(ms.textDocument_didClose, params)
   end
 
   client.attached_buffers[bufnr] = nil
@@ -551,12 +566,12 @@ local function buf_attach(bufnr)
           },
           reason = protocol.TextDocumentSaveReason.Manual, ---@type integer
         }
-        if client.supports_method(ms.textDocument_willSave) then
-          client.notify(ms.textDocument_willSave, params)
+        if client:supports_method(ms.textDocument_willSave) then
+          client:notify(ms.textDocument_willSave, params)
         end
-        if client.supports_method(ms.textDocument_willSaveWaitUntil) then
+        if client:supports_method(ms.textDocument_willSaveWaitUntil) then
           local result, err =
-            client.request_sync(ms.textDocument_willSaveWaitUntil, params, 1000, ctx.buf)
+            client:request_sync(ms.textDocument_willSaveWaitUntil, params, 1000, ctx.buf)
           if result and result.result then
             util.apply_text_edits(result.result, ctx.buf, client.offset_encoding)
           elseif err then
@@ -590,8 +605,8 @@ local function buf_attach(bufnr)
       local params = { textDocument = { uri = uri } }
       for _, client in ipairs(clients) do
         changetracking.reset_buf(client, bufnr)
-        if client.supports_method(ms.textDocument_didClose) then
-          client.notify(ms.textDocument_didClose, params)
+        if client:supports_method(ms.textDocument_didClose) then
+          client:notify(ms.textDocument_didClose, params)
         end
       end
       for _, client in ipairs(clients) do
@@ -624,10 +639,8 @@ end
 ---@param client_id (integer) Client id
 ---@return boolean success `true` if client was attached successfully; `false` otherwise
 function lsp.buf_attach_client(bufnr, client_id)
-  validate({
-    bufnr = { bufnr, 'n', true },
-    client_id = { client_id, 'n' },
-  })
+  validate('bufnr', bufnr, 'number', true)
+  validate('client_id', client_id, 'number')
   bufnr = resolve_bufnr(bufnr)
   if not api.nvim_buf_is_loaded(bufnr) then
     log.warn(string.format('buf_attach_client called on unloaded buffer (id: %d): ', bufnr))
@@ -651,7 +664,7 @@ function lsp.buf_attach_client(bufnr, client_id)
   -- Send didOpen for the client if it is initialized. If it isn't initialized
   -- then it will send didOpen on initialize.
   if client.initialized then
-    client:_on_attach(bufnr)
+    client:on_attach(bufnr)
   end
   return true
 end
@@ -663,10 +676,8 @@ end
 ---@param bufnr integer Buffer handle, or 0 for current
 ---@param client_id integer Client id
 function lsp.buf_detach_client(bufnr, client_id)
-  validate({
-    bufnr = { bufnr, 'n', true },
-    client_id = { client_id, 'n' },
-  })
+  validate('bufnr', bufnr, 'number', true)
+  validate('client_id', client_id, 'number')
   bufnr = resolve_bufnr(bufnr)
 
   local client = all_clients[client_id]
@@ -731,13 +742,13 @@ function lsp.stop_client(client_id, force)
   for _, id in ipairs(ids) do
     if type(id) == 'table' then
       if id.stop then
-        id.stop(force)
+        id:stop(force)
       end
     else
       --- @cast id -vim.lsp.Client
       local client = all_clients[id]
       if client then
-        client.stop(force)
+        client:stop(force)
       end
     end
   end
@@ -767,7 +778,7 @@ end
 ---@param filter? vim.lsp.get_clients.Filter
 ---@return vim.lsp.Client[]: List of |vim.lsp.Client| objects
 function lsp.get_clients(filter)
-  validate({ filter = { filter, 't', true } })
+  validate('filter', filter, 'table', true)
 
   filter = filter or {}
 
@@ -781,7 +792,7 @@ function lsp.get_clients(filter)
       and (filter.id == nil or client.id == filter.id)
       and (filter.bufnr == nil or client.attached_buffers[bufnr])
       and (filter.name == nil or client.name == filter.name)
-      and (filter.method == nil or client.supports_method(filter.method, { bufnr = filter.bufnr }))
+      and (filter.method == nil or client:supports_method(filter.method, filter.bufnr))
       and (filter._uninitialized or client.initialized)
     then
       clients[#clients + 1] = client
@@ -803,7 +814,7 @@ api.nvim_create_autocmd('VimLeavePre', {
     local active_clients = lsp.get_clients()
     log.info('exit_handler', active_clients)
     for _, client in pairs(all_clients) do
-      client.stop()
+      client:stop()
     end
 
     local timeouts = {} --- @type table<integer,integer>
@@ -838,7 +849,7 @@ api.nvim_create_autocmd('VimLeavePre', {
       if not vim.wait(max_timeout, check_clients_closed, poll_time) then
         for client_id, client in pairs(active_clients) do
           if timeouts[client_id] ~= nil then
-            client.stop(true)
+            client:stop(true)
           end
         end
       end
@@ -852,7 +863,7 @@ api.nvim_create_autocmd('VimLeavePre', {
 ---
 ---@param bufnr (integer) Buffer handle, or 0 for current.
 ---@param method (string) LSP method name
----@param params table|nil Parameters to send to the server
+---@param params? table|(fun(client: vim.lsp.Client, bufnr: integer): table?) Parameters to send to the server
 ---@param handler? lsp.Handler See |lsp-handler|
 ---       If nil, follows resolution strategy defined in |lsp-handler-configuration|
 ---@param on_unsupported? fun()
@@ -864,22 +875,21 @@ api.nvim_create_autocmd('VimLeavePre', {
 ---cancel all the requests. You could instead
 ---iterate all clients and call their `cancel_request()` methods.
 function lsp.buf_request(bufnr, method, params, handler, on_unsupported)
-  validate({
-    bufnr = { bufnr, 'n', true },
-    method = { method, 's' },
-    handler = { handler, 'f', true },
-    on_unsupported = { on_unsupported, 'f', true },
-  })
+  validate('bufnr', bufnr, 'number', true)
+  validate('method', method, 'string')
+  validate('handler', handler, 'function', true)
+  validate('on_unsupported', on_unsupported, 'function', true)
 
   bufnr = resolve_bufnr(bufnr)
   local method_supported = false
   local clients = lsp.get_clients({ bufnr = bufnr })
   local client_request_ids = {} --- @type table<integer,integer>
   for _, client in ipairs(clients) do
-    if client.supports_method(method, { bufnr = bufnr }) then
+    if client:supports_method(method, bufnr) then
       method_supported = true
 
-      local request_success, request_id = client.request(method, params, handler, bufnr)
+      local cparams = type(params) == 'function' and params(client, bufnr) or params --[[@as table?]]
+      local request_success, request_id = client:request(method, cparams, handler, bufnr)
       -- This could only fail if the client shut down in the time since we looked
       -- it up and we did the request, which should be rare.
       if request_success then
@@ -902,7 +912,7 @@ function lsp.buf_request(bufnr, method, params, handler, on_unsupported)
   local function _cancel_all_requests()
     for client_id, request_id in pairs(client_request_ids) do
       local client = all_clients[client_id]
-      client.cancel_request(request_id)
+      client:cancel_request(request_id)
     end
   end
 
@@ -914,35 +924,31 @@ end
 ---
 ---@param bufnr (integer) Buffer handle, or 0 for current.
 ---@param method (string) LSP method name
----@param params (table|nil) Parameters to send to the server
----@param handler fun(results: table<integer, {error: lsp.ResponseError?, result: any}>) (function)
+---@param params? table|(fun(client: vim.lsp.Client, bufnr: integer): table?) Parameters to send to the server.
+---               Can also be passed as a function that returns the params table for cases where
+---               parameters are specific to the client.
+---@param handler lsp.MultiHandler (function)
 --- Handler called after all requests are completed. Server results are passed as
 --- a `client_id:result` map.
 ---@return function cancel Function that cancels all requests.
 function lsp.buf_request_all(bufnr, method, params, handler)
-  local results = {} --- @type table<integer,{error: lsp.ResponseError?, result: any}>
-  local result_count = 0
-  local expected_result_count = 0
+  local results = {} --- @type table<integer,{err: lsp.ResponseError?, result: any}>
+  local remaining --- @type integer?
 
-  local set_expected_result_count = once(function()
-    for _, client in ipairs(lsp.get_clients({ bufnr = bufnr })) do
-      if client.supports_method(method, { bufnr = bufnr }) then
-        expected_result_count = expected_result_count + 1
-      end
+  local _, cancel = lsp.buf_request(bufnr, method, params, function(err, result, ctx, config)
+    if not remaining then
+      -- Calculate as late as possible in case a client is removed during the request
+      remaining = #lsp.get_clients({ bufnr = bufnr, method = method })
+    end
+
+    -- The error key is deprecated and will be removed in 0.13
+    results[ctx.client_id] = { err = err, error = err, result = result }
+    remaining = remaining - 1
+
+    if remaining == 0 then
+      handler(results, ctx, config)
     end
   end)
-
-  local function _sync_handler(err, result, ctx)
-    results[ctx.client_id] = { error = err, result = result }
-    result_count = result_count + 1
-    set_expected_result_count()
-
-    if result_count >= expected_result_count then
-      handler(results)
-    end
-  end
-
-  local _, cancel = lsp.buf_request(bufnr, method, params, _sync_handler)
 
   return cancel
 end
@@ -986,10 +992,8 @@ end
 ---
 ---@return boolean success true if any client returns true; false otherwise
 function lsp.buf_notify(bufnr, method, params)
-  validate({
-    bufnr = { bufnr, 'n', true },
-    method = { method, 's' },
-  })
+  validate('bufnr', bufnr, 'number', true)
+  validate('method', method, 'string')
   local resp = false
   for _, client in ipairs(lsp.get_clients({ bufnr = bufnr })) do
     if client.rpc.notify(method, params) then
@@ -1025,7 +1029,7 @@ end
 --- Provides an interface between the built-in client and a `formatexpr` function.
 ---
 --- Currently only supports a single client. This can be set via
---- `setlocal formatexpr=v:lua.vim.lsp.formatexpr()` but will typically or in `on_attach`
+--- `setlocal formatexpr=v:lua.vim.lsp.formatexpr()` or (more typically) in `on_attach`
 --- via `vim.bo[bufnr].formatexpr = 'v:lua.vim.lsp.formatexpr(#{timeout_ms:250})'`.
 ---
 ---@param opts? vim.lsp.formatexpr.Opts
@@ -1047,10 +1051,10 @@ function lsp.formatexpr(opts)
   end
   local bufnr = api.nvim_get_current_buf()
   for _, client in pairs(lsp.get_clients({ bufnr = bufnr })) do
-    if client.supports_method(ms.textDocument_rangeFormatting) then
+    if client:supports_method(ms.textDocument_rangeFormatting) then
       local params = util.make_formatting_params()
       local end_line = vim.fn.getline(end_lnum) --[[@as string]]
-      local end_col = util._str_utfindex_enc(end_line, nil, client.offset_encoding)
+      local end_col = vim.str_utfindex(end_line, client.offset_encoding)
       --- @cast params +lsp.DocumentRangeFormattingParams
       params.range = {
         start = {
@@ -1063,7 +1067,7 @@ function lsp.formatexpr(opts)
         },
       }
       local response =
-        client.request_sync(ms.textDocument_rangeFormatting, params, timeout_ms, bufnr)
+        client:request_sync(ms.textDocument_rangeFormatting, params, timeout_ms, bufnr)
       if response and response.result then
         lsp.util.apply_text_edits(response.result, bufnr, client.offset_encoding)
         return 0
@@ -1169,6 +1173,7 @@ function lsp.for_each_buffer_client(bufnr, fn)
   end
 end
 
+--- @deprecated
 --- Function to manage overriding defaults for LSP handlers.
 ---@param handler (lsp.Handler) See |lsp-handler|
 ---@param override_config (table) Table containing the keys to override behavior of the {handler}

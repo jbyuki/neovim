@@ -692,9 +692,9 @@ func Test_opfunc_callback()
   delfunc s:OpFunc3
 
   " Using Vim9 lambda expression in legacy context should fail
-  " set opfunc=(a)\ =>\ OpFunc1(24,\ a)
+  set opfunc=(a)\ =>\ OpFunc1(24,\ a)
   let g:OpFunc1Args = []
-  " call assert_fails('normal! g@l', 'E117:')
+  call assert_fails('normal! g@l', 'E117:')
   call assert_equal([], g:OpFunc1Args)
 
   " set 'operatorfunc' to a partial with dict. This used to cause a crash.
@@ -3897,9 +3897,9 @@ func Test_normal_count_after_operator()
   bw!
 endfunc
 
-func Test_normal_gj_on_extra_wide_char()
+func Test_normal_gj_on_6_cell_wide_unprintable_char()
   new | 25vsp
-  let text='1 foooooooo ar e  ins‍zwe1 foooooooo ins‍zwei' .
+  let text='1 foooooooo ar e  ins​zwe1 foooooooo ins​zwei' .
          \ ' i drei vier fünf sechs sieben acht un zehn elf zwöfl' .
          \ ' dreizehn v ierzehn fünfzehn'
   put =text
@@ -3958,8 +3958,7 @@ func Test_mouse_shape_after_failed_change()
   END
   call writefile(lines, 'Xmouseshape.vim', 'D')
   call RunVim([], [], "-g -S Xmouseshape.vim")
-  sleep 300m
-  call assert_equal(['busy', 'arrow'], readfile('Xmouseshapes'))
+  call WaitForAssert({-> assert_equal(['busy', 'arrow'], readfile('Xmouseshapes'))}, 300)
 
   call delete('Xmouseshapes')
 endfunc
@@ -3990,8 +3989,7 @@ func Test_mouse_shape_after_cancelling_gr()
   END
   call writefile(lines, 'Xmouseshape.vim', 'D')
   call RunVim([], [], "-g -S Xmouseshape.vim")
-  sleep 300m
-  call assert_equal(['beam', 'arrow'], readfile('Xmouseshapes'))
+  call WaitForAssert({-> assert_equal(['beam', 'arrow'], readfile('Xmouseshapes'))}, 300)
 
   call delete('Xmouseshapes')
 endfunc
@@ -4276,6 +4274,7 @@ endfunc
 " Test for Ctrl-D with long line
 func Test_halfpage_longline()
   10new
+  40vsplit
   call setline(1, ['long'->repeat(1000), 'short'])
   exe "norm! \<C-D>"
   call assert_equal(2, line('.'))
@@ -4283,12 +4282,25 @@ func Test_halfpage_longline()
 endfunc
 
 " Test for Ctrl-E with long line and very narrow window,
-" used to cause an inifite loop
+" used to cause an infinite loop
 func Test_scroll_longline_no_loop()
   4vnew
   setl smoothscroll number showbreak=> scrolloff=2
   call setline(1, repeat(['Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'], 3))
   exe "normal! \<C-E>"
+  bwipe!
+endfunc
+
+" Test for go command
+func Test_normal_go()
+  new
+  call setline(1, ['one two three four'])
+  call cursor(1, 5)
+  norm! dvgo
+  call assert_equal('wo three four', getline(1))
+  norm! ...
+  call assert_equal('three four', getline(1))
+
   bwipe!
 endfunc
 " vim: shiftwidth=2 sts=2 expandtab nofoldenable

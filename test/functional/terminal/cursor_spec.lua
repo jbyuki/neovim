@@ -1,7 +1,7 @@
 local t = require('test.testutil')
 local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
-local tt = require('test.functional.terminal.testutil')
+local tt = require('test.functional.testterm')
 
 local feed, clear = n.feed, n.clear
 local testprg, command = n.testprg, n.command
@@ -18,7 +18,7 @@ describe(':terminal cursor', function()
 
   before_each(function()
     clear()
-    screen = tt.screen_setup()
+    screen = tt.setup_screen()
   end)
 
   it('moves the screen cursor when focused', function()
@@ -122,13 +122,12 @@ describe('cursor with customized highlighting', function()
     clear()
     command('highlight TermCursor ctermfg=45 ctermbg=46 cterm=NONE')
     command('highlight TermCursorNC ctermfg=55 ctermbg=56 cterm=NONE')
-    screen = Screen.new(50, 7)
+    screen = Screen.new(50, 7, { rgb = false })
     screen:set_default_attr_ids({
       [1] = { foreground = 45, background = 46 },
       [2] = { foreground = 55, background = 56 },
       [3] = { bold = true },
     })
-    screen:attach({ rgb = false })
     command('call termopen(["' .. testprg('tty-test') .. '"])')
     feed('i')
     poke_eventloop()

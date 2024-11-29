@@ -14,8 +14,7 @@ local is_os = t.is_os
 local ok = t.ok
 local sleep = uv.sleep
 
---- This module uses functions from the context of the test session, i.e. in the context of the
---- nvim being tests.
+--- Functions executing in the current nvim session/process being tested.
 local M = {}
 
 local runtime_set = 'set runtimepath^=./build/lib/nvim/'
@@ -251,6 +250,8 @@ function M.set_method_error(err)
   method_error = err
 end
 
+--- Runs the event loop of the given session.
+---
 --- @param lsession test.Session
 --- @param request_cb function?
 --- @param notification_cb function?
@@ -297,6 +298,7 @@ function M.run_session(lsession, request_cb, notification_cb, setup_cb, timeout)
   return lsession.eof_err
 end
 
+--- Runs the event loop of the current global session.
 function M.run(request_cb, notification_cb, setup_cb, timeout)
   assert(session)
   return M.run_session(session, request_cb, notification_cb, setup_cb, timeout)
@@ -456,7 +458,7 @@ end
 --- @param argv string[]
 --- @param merge boolean?
 --- @param env string[]?
---- @param keep boolean
+--- @param keep boolean?
 --- @param io_extra uv.uv_pipe_t? used for stdin_fd, see :help ui-option
 --- @return test.Session
 function M.spawn(argv, merge, env, keep, io_extra)
@@ -757,58 +759,21 @@ function M.assert_visible(bufnr, visible)
   end
 end
 
---- @param path string
-local function do_rmdir(path)
-  local stat = uv.fs_stat(path)
-  if stat == nil then
-    return
-  end
-  if stat.type ~= 'directory' then
-    error(string.format('rmdir: not a directory: %s', path))
-  end
-  for file in vim.fs.dir(path) do
-    if file ~= '.' and file ~= '..' then
-      local abspath = path .. '/' .. file
-      if t.isdir(abspath) then
-        do_rmdir(abspath) -- recurse
-      else
-        local ret, err = os.remove(abspath)
-        if not ret then
-          if not session then
-            error('os.remove: ' .. err)
-          else
-            -- Try Nvim delete(): it handles `readonly` attribute on Windows,
-            -- and avoids Lua cross-version/platform incompatibilities.
-            if -1 == M.call('delete', abspath) then
-              local hint = (is_os('win') and ' (hint: try :%bwipeout! before rmdir())' or '')
-              error('delete() failed' .. hint .. ': ' .. abspath)
-            end
-          end
-        end
-      end
-    end
-  end
-  local ret, err = uv.fs_rmdir(path)
-  if not ret then
-    error('luv.fs_rmdir(' .. path .. '): ' .. err)
-  end
-end
-
 local start_dir = uv.cwd()
 
 function M.rmdir(path)
-  local ret, _ = pcall(do_rmdir, path)
+  local ret, _ = pcall(vim.fs.rm, path, { recursive = true, force = true })
   if not ret and is_os('win') then
     -- Maybe "Permission denied"; try again after changing the nvim
     -- process to the top-level directory.
     M.command([[exe 'cd '.fnameescape(']] .. start_dir .. "')")
-    ret, _ = pcall(do_rmdir, path)
+    ret, _ = pcall(vim.fs.rm, path, { recursive = true, force = true })
   end
   -- During teardown, the nvim process may not exit quickly enough, then rmdir()
   -- will fail (on Windows).
   if not ret then -- Try again.
     sleep(1000)
-    do_rmdir(path)
+    vim.fs.rm(path, { recursive = true, force = true })
   end
 end
 
@@ -835,10 +800,53 @@ function M.exec_capture(code)
   return M.api.nvim_exec2(code, { output = true }).output
 end
 
---- @param code string
+--- Execute Lua code in the wrapped Nvim session.
+---
+--- When `code` is passed as a function, it is converted into Lua byte code.
+---
+--- Direct upvalues are copied over, however upvalues contained
+--- within nested functions are not. Upvalues are also copied back when `code`
+--- finishes executing. See `:help lua-upvalue`.
+---
+--- Only types which can be serialized can be transferred over, e.g:
+--- `table`, `number`, `boolean`, `string`.
+---
+--- `code` runs with a different environment and thus will have a different global
+--- environment. See `:help lua-environments`.
+---
+--- Example:
+--- ```lua
+--- local upvalue1 = 'upvalue1'
+--- exec_lua(function(a, b, c)
+---   print(upvalue1, a, b, c)
+---   (function()
+---     print(upvalue2)
+---   end)()
+--- end, 'a', 'b', 'c'
+--- ```
+--- Prints:
+--- ```
+--- upvalue1 a b c
+--- nil
+--- ```
+---
+--- Not supported:
+--- ```lua
+--- local a = vim.uv.new_timer()
+--- exec_lua(function()
+---   print(a) -- Error: a is of type 'userdata' which cannot be serialized.
+--- end)
+--- ```
+--- @param code string|function
+--- @param ... any
 --- @return any
 function M.exec_lua(code, ...)
-  return M.api.nvim_exec_lua(code, { ... })
+  if type(code) == 'string' then
+    return M.api.nvim_exec_lua(code, { ... })
+  end
+
+  assert(session, 'no Nvim session')
+  return require('test.functional.testnvim.exec_lua')(session, 2, code, ...)
 end
 
 function M.get_pathsep()
@@ -892,26 +900,6 @@ function M.missing_provider(provider)
     return M.exec_lua([[return {require('vim.provider.python').detect_by_module('neovim')}]])[2]
   end
   assert(false, 'Unknown provider: ' .. provider)
-end
-
---- @param obj string|table
---- @return any
-function M.alter_slashes(obj)
-  if not is_os('win') then
-    return obj
-  end
-  if type(obj) == 'string' then
-    local ret = obj:gsub('/', '\\')
-    return ret
-  elseif type(obj) == 'table' then
-    --- @cast obj table<any,any>
-    local ret = {} --- @type table<any,any>
-    for k, v in pairs(obj) do
-      ret[k] = M.alter_slashes(v)
-    end
-    return ret
-  end
-  assert(false, 'expected string or table of strings, got ' .. type(obj))
 end
 
 local load_factor = 1

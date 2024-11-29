@@ -6,9 +6,9 @@
 
 #include "nvim/event/defs.h"
 #include "nvim/tui/input_defs.h"  // IWYU pragma: keep
+#include "nvim/tui/termkey/termkey_defs.h"
 #include "nvim/tui/tui_defs.h"
 #include "nvim/types_defs.h"
-#include "termkey/termkey.h"
 
 typedef enum {
   kKeyEncodingLegacy,  ///< Legacy key encoding
@@ -32,6 +32,7 @@ typedef struct {
   TermKey *tk;
   TermKey_Terminfo_Getstr_Hook *tk_ti_hook_fn;  ///< libtermkey terminfo hook
   uv_timer_t timer_handle;
+  uv_timer_t bg_query_timer;  ///< timer used to batch background color queries
   Loop *loop;
   RStream read_stream;
   TUIData *tui_data;

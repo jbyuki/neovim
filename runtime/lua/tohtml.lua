@@ -1003,6 +1003,7 @@ local function extend_style(out, state)
     --TODO(altermo) use local namespace (instead of global 0)
     local fg = vim.fn.synIDattr(hlid, 'fg#')
     local bg = vim.fn.synIDattr(hlid, 'bg#')
+    local sp = vim.fn.synIDattr(hlid, 'sp#')
     local decor_line = {}
     if vim.fn.synIDattr(hlid, 'underline') ~= '' then
       table.insert(decor_line, 'underline')
@@ -1020,6 +1021,8 @@ local function extend_style(out, state)
       ['font-weight'] = vim.fn.synIDattr(hlid, 'bold') ~= '' and 'bold' or nil,
       ['text-decoration-line'] = not vim.tbl_isempty(decor_line) and table.concat(decor_line, ' ')
         or nil,
+      -- TODO(ribru17): fallback to displayed text color if sp not set
+      ['text-decoration-color'] = sp ~= '' and cterm_to_hex(sp) or nil,
       --TODO(altermo) if strikethrough and undercurl then the strikethrough becomes wavy
       ['text-decoration-style'] = vim.fn.synIDattr(hlid, 'undercurl') ~= '' and 'wavy' or nil,
     }
@@ -1290,9 +1293,25 @@ local function opt_to_global_state(opt, title)
   local fonts = {}
   if opt.font then
     fonts = type(opt.font) == 'string' and { opt.font } or opt.font --[[@as (string[])]]
+    for i, v in pairs(fonts) do
+      fonts[i] = ('"%s"'):format(v)
+    end
   elseif vim.o.guifont:match('^[^:]+') then
-    table.insert(fonts, vim.o.guifont:match('^[^:]+'))
+    -- Example:
+    -- Input: "Font,Escape\,comma, Ignore space after comma"
+    -- Output: { "Font","Escape,comma","Ignore space after comma" }
+    local prev = ''
+    for name in vim.gsplit(vim.o.guifont:match('^[^:]+'), ',', { trimempty = true }) do
+      if vim.endswith(name, '\\') then
+        prev = prev .. vim.trim(name:sub(1, -2) .. ',')
+      elseif vim.trim(name) ~= '' then
+        table.insert(fonts, ('"%s%s"'):format(prev, vim.trim(name)))
+        prev = ''
+      end
+    end
   end
+  -- Generic family names (monospace here) must not be quoted
+  -- because the browser recognizes them as font families.
   table.insert(fonts, 'monospace')
   --- @type vim.tohtml.state.global
   local state = {

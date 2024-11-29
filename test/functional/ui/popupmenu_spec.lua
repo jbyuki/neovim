@@ -19,18 +19,7 @@ describe('ui/ext_popupmenu', function()
   local screen
   before_each(function()
     clear()
-    screen = Screen.new(60, 8)
-    screen:attach({ rgb = true, ext_popupmenu = true })
-    screen:set_default_attr_ids({
-      [1] = { bold = true, foreground = Screen.colors.Blue },
-      [2] = { bold = true },
-      [3] = { reverse = true },
-      [4] = { bold = true, reverse = true },
-      [5] = { bold = true, foreground = Screen.colors.SeaGreen },
-      [6] = { background = Screen.colors.WebGray },
-      [7] = { background = Screen.colors.LightMagenta },
-      [8] = { foreground = Screen.colors.Red },
-    })
+    screen = Screen.new(60, 8, { rgb = true, ext_popupmenu = true })
     source([[
       function! TestComplete() abort
         call complete(1, [{'word':'foo', 'abbr':'fo', 'menu':'the foo', 'info':'foo-y', 'kind':'x'}, 'bar', 'spam'])
@@ -52,7 +41,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       foo^                                                         |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = expected,
@@ -67,7 +56,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       ^                                                            |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = expected,
@@ -83,7 +72,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       ^                                                            |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = expected,
@@ -98,7 +87,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       bar^                                                         |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
     }
   end)
@@ -110,7 +99,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       foo^                                                         |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = expected,
@@ -125,7 +114,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       foo^                                                         |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = expected,
@@ -140,7 +129,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       spam^                                                        |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = expected,
@@ -154,7 +143,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       foo^                                                         |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]])
 
     feed('<c-w><C-r>=TestComplete()<CR>')
@@ -163,7 +152,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       foo^                                                         |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = expected,
@@ -178,7 +167,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       foo^                                                         |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = expected,
@@ -193,7 +182,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       bar^                                                         |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = expected,
@@ -208,7 +197,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       ^                                                            |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = expected,
@@ -223,7 +212,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       foo^                                                         |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = expected,
@@ -237,7 +226,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       ^                                                            |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]])
 
     command('set wildmenu')
@@ -332,7 +321,7 @@ describe('ui/ext_popupmenu', function()
                                                                     |
         foo^                                                         |
         {1:~                                                           }|*5
-        {2:-- INSERT --}                                                |
+        {5:-- INSERT --}                                                |
       ]],
         popupmenu = {
           items = expected,
@@ -347,7 +336,7 @@ describe('ui/ext_popupmenu', function()
                                                                     |
         spam^                                                        |
         {1:~                                                           }|*5
-        {2:-- INSERT --}                                                |
+        {5:-- INSERT --}                                                |
       ]],
         popupmenu = {
           items = expected,
@@ -362,7 +351,7 @@ describe('ui/ext_popupmenu', function()
                                                                     |
         spam^                                                        |
         {1:~                                                           }|*5
-        {2:-- INSERT --}                                                |
+        {5:-- INSERT --}                                                |
       ]],
         popupmenu = {
           items = expected,
@@ -376,7 +365,7 @@ describe('ui/ext_popupmenu', function()
                                                                     |
         bar^                                                         |
         {1:~                                                           }|*5
-        {2:-- INSERT --}                                                |
+        {5:-- INSERT --}                                                |
       ]])
 
       feed('<Esc>:sign <Tab>')
@@ -440,33 +429,33 @@ describe('ui/ext_popupmenu', function()
       screen:expect([[
                                                                     |
         foo^                                                         |
-        {6:fo   x the foo }{1:                                             }|
-        {7:bar            }{1:                                             }|
-        {7:spam           }{1:                                             }|
+        {12:fo   x the foo }{1:                                             }|
+        {4:bar            }{1:                                             }|
+        {4:spam           }{1:                                             }|
         {1:~                                                           }|*2
-        {2:-- INSERT --}                                                |
+        {5:-- INSERT --}                                                |
       ]])
 
       feed('<f1>')
       screen:expect([[
                                                                     |
         spam^                                                        |
-        {7:fo   x the foo }{1:                                             }|
-        {7:bar            }{1:                                             }|
-        {6:spam           }{1:                                             }|
+        {4:fo   x the foo }{1:                                             }|
+        {4:bar            }{1:                                             }|
+        {12:spam           }{1:                                             }|
         {1:~                                                           }|*2
-        {2:-- INSERT --}                                                |
+        {5:-- INSERT --}                                                |
       ]])
 
       feed('<f2>')
       screen:expect([[
                                                                     |
         spam^                                                        |
-        {7:fo   x the foo }{1:                                             }|
-        {7:bar            }{1:                                             }|
-        {7:spam           }{1:                                             }|
+        {4:fo   x the foo }{1:                                             }|
+        {4:bar            }{1:                                             }|
+        {4:spam           }{1:                                             }|
         {1:~                                                           }|*2
-        {2:-- INSERT --}                                                |
+        {5:-- INSERT --}                                                |
       ]])
 
       feed('<f3>')
@@ -474,42 +463,42 @@ describe('ui/ext_popupmenu', function()
                                                                     |
         bar^                                                         |
         {1:~                                                           }|*5
-        {2:-- INSERT --}                                                |
+        {5:-- INSERT --}                                                |
       ]])
 
       feed('<Esc>:sign <Tab>')
       screen:expect([[
                                                                     |
-        bar  {6: define         }                                       |
-        {1:~    }{7: jump           }{1:                                       }|
-        {1:~    }{7: list           }{1:                                       }|
-        {1:~    }{7: place          }{1:                                       }|
-        {1:~    }{7: undefine       }{1:                                       }|
-        {1:~    }{7: unplace        }{1:                                       }|
+        bar  {12: define         }                                       |
+        {1:~    }{4: jump           }{1:                                       }|
+        {1:~    }{4: list           }{1:                                       }|
+        {1:~    }{4: place          }{1:                                       }|
+        {1:~    }{4: undefine       }{1:                                       }|
+        {1:~    }{4: unplace        }{1:                                       }|
         :sign define^                                                |
       ]])
 
       feed('<f1>')
       screen:expect([[
                                                                     |
-        bar  {7: define         }                                       |
-        {1:~    }{7: jump           }{1:                                       }|
-        {1:~    }{6: list           }{1:                                       }|
-        {1:~    }{7: place          }{1:                                       }|
-        {1:~    }{7: undefine       }{1:                                       }|
-        {1:~    }{7: unplace        }{1:                                       }|
+        bar  {4: define         }                                       |
+        {1:~    }{4: jump           }{1:                                       }|
+        {1:~    }{12: list           }{1:                                       }|
+        {1:~    }{4: place          }{1:                                       }|
+        {1:~    }{4: undefine       }{1:                                       }|
+        {1:~    }{4: unplace        }{1:                                       }|
         :sign list^                                                  |
       ]])
 
       feed('<f2>')
       screen:expect([[
                                                                     |
-        bar  {7: define         }                                       |
-        {1:~    }{7: jump           }{1:                                       }|
-        {1:~    }{7: list           }{1:                                       }|
-        {1:~    }{7: place          }{1:                                       }|
-        {1:~    }{7: undefine       }{1:                                       }|
-        {1:~    }{7: unplace        }{1:                                       }|
+        bar  {4: define         }                                       |
+        {1:~    }{4: jump           }{1:                                       }|
+        {1:~    }{4: list           }{1:                                       }|
+        {1:~    }{4: place          }{1:                                       }|
+        {1:~    }{4: undefine       }{1:                                       }|
+        {1:~    }{4: unplace        }{1:                                       }|
         :sign ^                                                      |
       ]])
 
@@ -542,33 +531,33 @@ describe('ui/ext_popupmenu', function()
     screen:expect([[
       aa bb cc                                                    |
       aa^                                                          |
-      {6:aa             }{1:                                             }|
-      {7:bb             }{1:                                             }|
-      {7:cc             }{1:                                             }|
+      {12:aa             }{1:                                             }|
+      {4:bb             }{1:                                             }|
+      {4:cc             }{1:                                             }|
       {1:~                                                           }|*2
-      {2:-- Keyword Local completion (^N^P) }{5:match 1 of 3}             |
+      {5:-- Keyword Local completion (^N^P) }{6:match 1 of 3}             |
     ]])
 
     feed('<f1>')
     screen:expect([[
       aa bb cc                                                    |
       cc^                                                          |
-      {7:aa             }{1:                                             }|
-      {7:bb             }{1:                                             }|
-      {6:cc             }{1:                                             }|
+      {4:aa             }{1:                                             }|
+      {4:bb             }{1:                                             }|
+      {12:cc             }{1:                                             }|
       {1:~                                                           }|*2
-      {2:-- Keyword Local completion (^N^P) }{5:match 3 of 3}             |
+      {5:-- Keyword Local completion (^N^P) }{6:match 3 of 3}             |
     ]])
 
     feed('<f2>')
     screen:expect([[
       aa bb cc                                                    |
       cc^                                                          |
-      {7:aa             }{1:                                             }|
-      {7:bb             }{1:                                             }|
-      {7:cc             }{1:                                             }|
+      {4:aa             }{1:                                             }|
+      {4:bb             }{1:                                             }|
+      {4:cc             }{1:                                             }|
       {1:~                                                           }|*2
-      {2:-- Keyword Local completion (^N^P) }{8:Back at original}         |
+      {5:-- Keyword Local completion (^N^P) }{19:Back at original}         |
     ]])
 
     feed('<f3>')
@@ -576,7 +565,7 @@ describe('ui/ext_popupmenu', function()
       aa bb cc                                                    |
       bb^                                                          |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]])
   end)
 
@@ -619,7 +608,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       January^                                                     |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
       ]],
         popupmenu = {
           items = month_expected,
@@ -671,7 +660,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       January^                                                     |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
       ]],
         popupmenu = {
           items = month_expected,
@@ -726,7 +715,7 @@ describe('ui/ext_popupmenu', function()
                                                                 |
     January^                                                     |
     {1:~                                                           }|*5
-    {2:-- INSERT --}                                                |
+    {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = month_expected,
@@ -740,7 +729,7 @@ describe('ui/ext_popupmenu', function()
                                                                 |
     January^                                                     |
     {1:~                                                           }|*5
-    {2:-- INSERT --}                                                |
+    {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = month_expected,
@@ -832,10 +821,10 @@ describe('ui/ext_popupmenu', function()
       grid = [[
                                       |
       {1:~                               }|*3
-      {4:långfile2                       }|
+      {3:långfile2                       }|
                                       |
       {1:~                               }|*2
-      {3:långfile1                       }|
+      {2:långfile1                       }|
       :b långfile1^                    |
     ]],
       popupmenu = {
@@ -851,6 +840,8 @@ describe('ui/ext_popupmenu', function()
       set mouse=a mousemodel=popup
 
       aunmenu PopUp
+      " Delete the default MenuPopup event handler.
+      autocmd! nvim_popupmenu
       menu PopUp.foo :let g:menustr = 'foo'<CR>
       menu PopUp.bar :let g:menustr = 'bar'<CR>
       menu PopUp.baz :let g:menustr = 'baz'<CR>
@@ -861,7 +852,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       foo^                                                         |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = expected,
@@ -876,7 +867,7 @@ describe('ui/ext_popupmenu', function()
                                                                   |
       ^                                                            |
       {1:~                                                           }|*5
-      {2:-- INSERT --}                                                |
+      {5:-- INSERT --}                                                |
     ]],
       popupmenu = {
         items = expected,
@@ -897,9 +888,9 @@ describe('ui/ext_popupmenu', function()
     feed('<RightMouse><0,0>')
     screen:expect([[
                                                                   |
-      {7:^foo }                                                        |
-      {7:bar }{1:                                                        }|
-      {7:baz }{1:                                                        }|
+      {4:^foo }                                                        |
+      {4:bar }{1:                                                        }|
+      {4:baz }{1:                                                        }|
       {1:~                                                           }|*3
                                                                   |
     ]])
@@ -965,7 +956,6 @@ describe("builtin popupmenu 'pumblend'", function()
       [44] = { foreground = tonumber('0x3f3f3f'), background = tonumber('0x7f5d7f') },
       [45] = { background = Screen.colors.WebGray, blend = 0 },
     })
-    screen:attach()
     command('syntax on')
     command('set mouse=a')
     command('set pumblend=10')
@@ -1115,7 +1105,7 @@ describe("builtin popupmenu 'pumblend'", function()
   end)
 
   it('256-color (non-RGB)', function()
-    local screen = Screen.new(60, 8)
+    local screen = Screen.new(60, 8, { rgb = false })
     screen:set_default_attr_ids({
       [1] = { foreground = Screen.colors.Grey0, background = tonumber('0x000007') },
       [2] = { foreground = tonumber('0x000055'), background = tonumber('0x000007') },
@@ -1128,7 +1118,6 @@ describe("builtin popupmenu 'pumblend'", function()
       [9] = { bold = true },
       [10] = { foreground = tonumber('0x000002') },
     })
-    screen:attach({ rgb = false })
     command('set pumblend=10')
     insert([[
       Lorem ipsum dolor sit amet, consectetur
@@ -1157,7 +1146,7 @@ describe('builtin popupmenu', function()
   local function with_ext_multigrid(multigrid)
     local screen
     before_each(function()
-      screen = Screen.new(32, 20)
+      screen = Screen.new(32, 20, { ext_multigrid = multigrid })
       screen:set_default_attr_ids({
         -- popup selected item / scrollbar track
         s = { background = Screen.colors.Grey },
@@ -1202,7 +1191,6 @@ describe('builtin popupmenu', function()
           underline = true,
         },
       })
-      screen:attach({ ext_multigrid = multigrid })
     end)
 
     it('with preview-window above', function()
@@ -3634,6 +3622,58 @@ describe('builtin popupmenu', function()
           :sign un^                        |
         ]])
       end)
+
+      it(
+        'cascading highlights for matched text (PmenuMatch, PmenuMatchSel) in cmdline pum',
+        function()
+          screen:add_extra_attr_ids {
+            [100] = {
+              background = Screen.colors.Grey,
+              italic = true,
+              underline = true,
+              foreground = Screen.colors.White,
+            },
+            [101] = {
+              strikethrough = true,
+              foreground = Screen.colors.Grey0,
+              italic = true,
+              bold = true,
+              underline = true,
+              background = Screen.colors.White,
+            },
+            [102] = {
+              strikethrough = true,
+              foreground = Screen.colors.Red,
+              italic = true,
+              underline = true,
+              background = Screen.colors.Grey,
+            },
+            [103] = {
+              foreground = Screen.colors.Yellow,
+              italic = true,
+              bold = true,
+              underline = true,
+              background = Screen.colors.Pink,
+            },
+          }
+          exec([[
+            set wildoptions=pum,fuzzy
+            hi Pmenu          guifg=White guibg=Grey gui=underline,italic
+            hi PmenuSel       guifg=Red gui=strikethrough
+            hi PmenuMatch     guifg=Yellow guibg=Pink gui=bold
+            hi PmenuMatchSel  guifg=Black guibg=White
+          ]])
+
+          feed(':sign plc<Tab>')
+          screen:expect([[
+                                            |
+            {1:~                               }|*16
+            {1:~    }{102: }{101:pl}{102:a}{101:c}{102:e          }{1:           }|
+            {1:~    }{100: un}{103:pl}{100:a}{103:c}{100:e        }{1:           }|
+            :sign place^                     |
+          ]])
+        end
+      )
     end
 
     it("'pumheight'", function()
@@ -3805,6 +3845,8 @@ describe('builtin popupmenu', function()
         call setline(1, 'popup menu test')
         set mouse=a mousemodel=popup
 
+        " Delete the default MenuPopup event handler.
+        autocmd! nvim_popupmenu
         aunmenu PopUp
         menu PopUp.foo :let g:menustr = 'foo'<CR>
         menu PopUp.bar :let g:menustr = 'bar'<CR>
@@ -4449,9 +4491,10 @@ describe('builtin popupmenu', function()
           :let g:menustr = 'foo'          |
         ]])
       end
+      local no_menu_screen ---@type string|test.function.ui.screen.Expect
       if multigrid then
         api.nvim_input_mouse('left', 'press', '', 4, 1, 2)
-        screen:expect({
+        no_menu_screen = {
           grid = [[
         ## grid 1
           [2:--------------------------------]|*2
@@ -4470,25 +4513,198 @@ describe('builtin popupmenu', function()
           {2:WINBAR          }|
           ^popup menu test |
         ]],
-        })
+        }
       else
         feed('<LeftMouse><31,2>')
-        screen:expect([[
+        no_menu_screen = {
+          grid = [[
           popup menu test                 |
           {1:~                               }|
           {3:[No Name] [+]                   }|
           popup menu test│{2:WINBAR          }|
           {1:~              }│^popup menu test |
           :let g:menustr = 'bar'          |
-        ]])
+        ]],
+        }
       end
+      screen:expect(no_menu_screen)
       eq('bar', api.nvim_get_var('menustr'))
+
+      local no_sel_screen ---@type string|test.function.ui.screen.Expect
+      if multigrid then
+        no_sel_screen = {
+          grid = [[
+        ## grid 1
+          [2:--------------------------------]|*2
+          {3:[No Name] [+]                   }|
+          [5:---------------]│[6:----------------]|*2
+          [3:--------------------------------]|
+        ## grid 2
+          popup menu test                 |
+          {1:~                               }|
+        ## grid 3
+          :let g:menustr = 'bar'          |
+        ## grid 4
+          {n: foo }|
+          {n: bar }|
+          {n: baz }|
+        ## grid 5
+          popup menu test|
+          {1:~              }|
+        ## grid 6
+          {2:WINBAR          }|
+          ^popup menu test |
+        ]],
+          float_pos = { [4] = { -1, 'NW', 1, 1, 19, false, 250 } },
+        }
+      else
+        no_sel_screen = {
+          grid = [[
+          popup menu test                 |
+          {1:~                  }{n: foo }{1:        }|
+          {3:[No Name] [+]      }{n: bar }{3:        }|
+          popup menu test│{2:WIN}{n: baz }{2:        }|
+          {1:~              }│^popup menu test |
+          :let g:menustr = 'bar'          |
+        ]],
+        }
+      end
+      local sel_screens = {} ---@type (string|test.function.ui.screen.Expect)[]
+      for i, s in ipairs({ 'foo', 'bar', 'baz' }) do
+        local sel_screen = vim.deepcopy(no_sel_screen)
+        local grid = assert(sel_screen.grid)
+        grid = grid:gsub(vim.pesc(('{n: %s }'):format(s)), ('{s: %s }'):format(s))
+        sel_screen.grid = grid
+        sel_screens[i] = sel_screen
+      end
+
+      command([[let g:menustr = '']])
+      local g = multigrid and 1 or 0
+
+      api.nvim_input_mouse('right', 'press', '', g, 0, 20)
+      screen:expect(no_sel_screen)
+      api.nvim_input_mouse('move', '', '', g, 1, 19)
+      screen:expect(sel_screens[1])
+      api.nvim_input_mouse('move', '', '', g, 1, 18)
+      screen:expect(no_sel_screen)
+      api.nvim_input_mouse('move', '', '', g, 2, 23)
+      screen:expect(sel_screens[2])
+      api.nvim_input_mouse('move', '', '', g, 2, 24)
+      screen:expect(no_sel_screen)
+      api.nvim_input_mouse('move', '', '', g, 3, 19)
+      screen:expect(sel_screens[3])
+      api.nvim_input_mouse('left', 'press', '', g, 3, 18)
+      screen:expect(no_menu_screen)
+      eq('', api.nvim_get_var('menustr'))
+
+      command('wincmd t | set rightleft')
+      if multigrid then
+        no_menu_screen = {
+          grid = [[
+        ## grid 1
+          [2:--------------------------------]|*2
+          {4:[No Name] [+]                   }|
+          [5:---------------]│[6:----------------]|*2
+          [3:--------------------------------]|
+        ## grid 2
+                           tset unem pupo^p|
+          {1:                               ~}|
+        ## grid 3
+          :let g:menustr = 'bar'          |
+        ## grid 5
+          popup menu test|
+          {1:~              }|
+        ## grid 6
+          {2:WINBAR          }|
+          popup menu test |
+        ]],
+        }
+      else
+        no_menu_screen = {
+          grid = [[
+                           tset unem pupo^p|
+          {1:                               ~}|
+          {4:[No Name] [+]                   }|
+          popup menu test│{2:WINBAR          }|
+          {1:~              }│popup menu test |
+          :let g:menustr = 'bar'          |
+        ]],
+        }
+      end
+      screen:expect(no_menu_screen)
+
+      if multigrid then
+        no_sel_screen = {
+          grid = [[
+        ## grid 1
+          [2:--------------------------------]|*2
+          {4:[No Name] [+]                   }|
+          [5:---------------]│[6:----------------]|*2
+          [3:--------------------------------]|
+        ## grid 2
+                           tset unem pupo^p|
+          {1:                               ~}|
+        ## grid 3
+          :let g:menustr = 'bar'          |
+        ## grid 4
+          {n: oof }|
+          {n: rab }|
+          {n: zab }|
+        ## grid 5
+          popup menu test|
+          {1:~              }|
+        ## grid 6
+          {2:WINBAR          }|
+          popup menu test |
+        ]],
+          float_pos = { [4] = { -1, 'NW', 1, 1, 17, false, 250 } },
+        }
+      else
+        no_sel_screen = {
+          grid = [[
+                           tset unem pupo^p|
+          {1:                 }{n: oof }{1:         ~}|
+          {4:[No Name] [+]    }{n: rab }{4:          }|
+          popup menu test│{2:W}{n: zab }{2:          }|
+          {1:~              }│popup menu test |
+          :let g:menustr = 'bar'          |
+        ]],
+        }
+      end
+      for i, s in ipairs({ 'oof', 'rab', 'zab' }) do
+        local sel_screen = vim.deepcopy(no_sel_screen)
+        local grid = assert(sel_screen.grid)
+        grid = grid:gsub(vim.pesc(('{n: %s }'):format(s)), ('{s: %s }'):format(s))
+        sel_screen.grid = grid
+        sel_screens[i] = sel_screen
+      end
+
+      api.nvim_input_mouse('right', 'press', '', g, 0, 20)
+      screen:expect(no_sel_screen)
+      api.nvim_input_mouse('move', '', '', g, 1, 21)
+      screen:expect(sel_screens[1])
+      api.nvim_input_mouse('move', '', '', g, 1, 22)
+      screen:expect(no_sel_screen)
+      api.nvim_input_mouse('move', '', '', g, 2, 17)
+      screen:expect(sel_screens[2])
+      api.nvim_input_mouse('move', '', '', g, 2, 16)
+      screen:expect(no_sel_screen)
+      api.nvim_input_mouse('move', '', '', g, 3, 21)
+      screen:expect(sel_screens[3])
+      api.nvim_input_mouse('left', 'press', '', g, 3, 22)
+      screen:expect(no_menu_screen)
+      eq('', api.nvim_get_var('menustr'))
+
+      command('set norightleft')
     end)
 
     if not multigrid then
       -- oldtest: Test_popup_command_dump()
       it(':popup command', function()
         exec([[
+          " Delete the default MenuPopup event handler.
+          autocmd! nvim_popupmenu
+
           func ChangeMenu()
             aunmenu PopUp.&Paste
             nnoremenu 1.40 PopUp.&Paste :echomsg "pasted"<CR>
@@ -4646,6 +4862,8 @@ describe('builtin popupmenu', function()
         screen:try_resize(50, 20)
         exec([[
           set mousemodel=popup_setpos
+          " Delete the default MenuPopup event handler.
+          autocmd! nvim_popupmenu
           aunmenu *
           source $VIMRUNTIME/menu.vim
           call setline(1, join(range(20)))
@@ -4954,19 +5172,30 @@ describe('builtin popupmenu', function()
         feed('<C-E><Esc>')
       end)
 
-      -- oldtest: Test_pum_user_hl_group()
-      it('custom hl_group override', function()
+      -- oldtest: Test_pum_user_abbr_hlgroup()
+      it('custom abbr_hlgroup override', function()
         exec([[
-          func CompleteFunc( findstart, base )
+          let s:var = 0
+          func CompleteFunc(findstart, base)
             if a:findstart
               return 0
             endif
+            if s:var == 1
+              return {
+                    \ 'words': [
+                    \ { 'word': 'aword1', 'abbr_hlgroup': 'StrikeFake' },
+                    \ { 'word': '你好', 'abbr_hlgroup': 'StrikeFake' },
+                    \]}
+            endif
             return {
                   \ 'words': [
-                  \ { 'word': 'aword1', 'menu': 'extra text 1', 'kind': 'W', 'hl_group': 'StrikeFake' },
+                  \ { 'word': 'aword1', 'menu': 'extra text 1', 'kind': 'W', 'abbr_hlgroup': 'StrikeFake' },
                   \ { 'word': 'aword2', 'menu': 'extra text 2', 'kind': 'W', },
-                  \ { 'word': '你好', 'menu': 'extra text 3', 'kind': 'W', 'hl_group': 'StrikeFake' },
+                  \ { 'word': '你好', 'menu': 'extra text 3', 'kind': 'W', 'abbr_hlgroup': 'StrikeFake' },
                   \]}
+          endfunc
+          func ChangeVar()
+            let s:var = 1
           endfunc
           set completeopt=menu
           set completefunc=CompleteFunc
@@ -4981,9 +5210,9 @@ describe('builtin popupmenu', function()
         feed('Saw<C-X><C-U>')
         screen:expect([[
           aword1^                          |
-          {ds:aword1 W extra text 1 }{1:          }|
+          {ds:aword1}{s: W extra text 1 }{1:          }|
           {n:aword2 W extra text 2 }{1:          }|
-          {dn:你好   W extra text 3 }{1:          }|
+          {dn:你好}{n:   W extra text 3 }{1:          }|
           {1:~                               }|*15
           {2:-- }{5:match 1 of 3}                 |
         ]])
@@ -4994,22 +5223,201 @@ describe('builtin popupmenu', function()
         feed('Saw<C-X><C-U>')
         screen:expect([[
           aword1^                          |
-          {uds:aw}{ds:ord1 W extra text 1 }{1:          }|
+          {uds:aw}{ds:ord1}{s: W extra text 1 }{1:          }|
           {umn:aw}{n:ord2 W extra text 2 }{1:          }|
-          {dn:你好   W extra text 3 }{1:          }|
+          {dn:你好}{n:   W extra text 3 }{1:          }|
           {1:~                               }|*15
           {2:-- }{5:match 1 of 3}                 |
         ]])
         feed('<C-N>')
         screen:expect([[
           aword2^                          |
-          {udn:aw}{dn:ord1 W extra text 1 }{1:          }|
+          {udn:aw}{dn:ord1}{n: W extra text 1 }{1:          }|
           {ums:aw}{s:ord2 W extra text 2 }{1:          }|
-          {dn:你好   W extra text 3 }{1:          }|
+          {dn:你好}{n:   W extra text 3 }{1:          }|
           {1:~                               }|*15
           {2:-- }{5:match 2 of 3}                 |
         ]])
         feed('<C-E><Esc>')
+
+        command('call ChangeVar()')
+        feed('S<C-X><C-U>')
+        screen:expect([[
+          aword1^                          |
+          {ds:aword1}{s:         }{1:                 }|
+          {dn:你好}{n:           }{1:                 }|
+          {1:~                               }|*16
+          {2:-- }{5:match 1 of 2}                 |
+        ]])
+        feed('<C-E><Esc>')
+      end)
+
+      -- oldtest: Test_pum_user_kind_hlgroup()
+      it('custom kind_hlgroup override', function()
+        exec([[
+          func CompleteFunc( findstart, base )
+            if a:findstart
+              return 0
+            endif
+            return {
+                  \ 'words': [
+                  \ { 'word': 'aword1', 'menu': 'extra text 1', 'kind': 'variable', 'kind_hlgroup': 'KindVar', 'abbr_hlgroup': 'StrikeFake' },
+                  \ { 'word': 'aword2', 'menu': 'extra text 2', 'kind': 'function', 'kind_hlgroup': 'KindFunc' },
+                  \ { 'word': '你好', 'menu': 'extra text 3', 'kind': 'class', 'kind_hlgroup': 'KindClass'  },
+                  \]}
+          endfunc
+          set completeopt=menu
+          set completefunc=CompleteFunc
+
+          hi StrikeFake guifg=DarkRed
+          hi KindVar guifg=DarkYellow
+          hi KindFunc guifg=DarkBlue
+          hi KindClass guifg=DarkGreen
+        ]])
+
+        local attr_ids = screen:get_default_attr_ids()
+        attr_ids.kvs = { foreground = Screen.colors.DarkYellow, background = Screen.colors.Grey }
+        attr_ids.kfn = { foreground = Screen.colors.DarkBlue, background = Screen.colors.Plum1 }
+        attr_ids.kcn = { foreground = Screen.colors.DarkGreen, background = Screen.colors.Plum1 }
+        screen:set_default_attr_ids(attr_ids)
+
+        feed('S<C-X><C-U>')
+        screen:expect([[
+          aword1^                          |
+          {ds:aword1}{s: }{kvs:variable}{s: extra text 1 }{1:   }|
+          {n:aword2 }{kfn:function}{n: extra text 2 }{1:   }|
+          {n:你好   }{kcn:class}{n:    extra text 3 }{1:   }|
+          {1:~                               }|*15
+          {2:-- }{5:match 1 of 3}                 |
+        ]])
+        feed('<C-E><Esc>')
+      end)
+
+      -- oldtest: Test_pum_completeitemalign()
+      it('completeitemalign option', function()
+        screen:try_resize(30, 15)
+        exec([[
+          func Omni_test(findstart, base)
+            if a:findstart
+              return col(".")
+            endif
+            return {
+                  \ 'words': [
+                  \ { 'word': 'foo', 'kind': 'S', 'menu': 'menu' },
+                  \ { 'word': 'bar', 'kind': 'T', 'menu': 'menu' },
+                  \ { 'word': '你好', 'kind': 'C', 'menu': '中文' },
+                  \]}
+          endfunc
+
+          func Omni_long(findstart, base)
+            if a:findstart
+              return col(".")
+            endif
+            return {
+                  \ 'words': [
+                  \ { 'word': 'loooong_foo', 'kind': 'S', 'menu': 'menu' },
+                  \ { 'word': 'loooong_bar', 'kind': 'T', 'menu': 'menu' },
+                  \]}
+          endfunc
+          set omnifunc=Omni_test
+        ]])
+        -- T1
+        command('set cia=abbr,kind,menu')
+        feed('S<C-X><C-O>')
+        screen:expect([[
+          foo^                           |
+          {s:foo  S menu    }{1:               }|
+          {n:bar  T menu    }{1:               }|
+          {n:你好 C 中文    }{1:               }|
+          {1:~                             }|*10
+          {2:-- }{5:match 1 of 3}               |
+        ]])
+        feed('<C-E><ESC>')
+        -- T2
+        command('set cia=abbr,menu,kind')
+        feed('S<C-X><C-O>')
+        screen:expect([[
+          foo^                           |
+          {s:foo  menu S    }{1:               }|
+          {n:bar  menu T    }{1:               }|
+          {n:你好 中文 C    }{1:               }|
+          {1:~                             }|*10
+          {2:-- }{5:match 1 of 3}               |
+        ]])
+        feed('<C-E><ESC>')
+        -- T3
+        command('set cia=kind,abbr,menu')
+        feed('S<C-X><C-O>')
+        screen:expect([[
+          foo^                           |
+          {s:S foo  menu    }{1:               }|
+          {n:T bar  menu    }{1:               }|
+          {n:C 你好 中文    }{1:               }|
+          {1:~                             }|*10
+          {2:-- }{5:match 1 of 3}               |
+        ]])
+        feed('<C-E><ESC>')
+        -- T4
+        command('set cia=kind,menu,abbr')
+        feed('S<C-X><C-O>')
+        screen:expect([[
+          foo^                           |
+          {s:S menu foo     }{1:               }|
+          {n:T menu bar     }{1:               }|
+          {n:C 中文 你好    }{1:               }|
+          {1:~                             }|*10
+          {2:-- }{5:match 1 of 3}               |
+        ]])
+        feed('<C-E><ESC>')
+        -- T5
+        command('set cia=menu,abbr,kind')
+        feed('S<C-X><C-O>')
+        screen:expect([[
+          foo^                           |
+          {s:menu foo  S    }{1:               }|
+          {n:menu bar  T    }{1:               }|
+          {n:中文 你好 C    }{1:               }|
+          {1:~                             }|*10
+          {2:-- }{5:match 1 of 3}               |
+        ]])
+        feed('<C-E><ESC>')
+        -- T6
+        command('set cia=menu,kind,abbr')
+        feed('S<C-X><C-O>')
+        screen:expect([[
+          foo^                           |
+          {s:menu S foo     }{1:               }|
+          {n:menu T bar     }{1:               }|
+          {n:中文 C 你好    }{1:               }|
+          {1:~                             }|*10
+          {2:-- }{5:match 1 of 3}               |
+        ]])
+        feed('<C-E><ESC>')
+        -- T7
+        command('set cia&')
+        feed('S<C-X><C-O>')
+        screen:expect([[
+          foo^                           |
+          {s:foo  S menu    }{1:               }|
+          {n:bar  T menu    }{1:               }|
+          {n:你好 C 中文    }{1:               }|
+          {1:~                             }|*10
+          {2:-- }{5:match 1 of 3}               |
+        ]])
+        feed('<C-E><ESC>')
+
+        -- Test_pum_completeitemalign_07
+        command('set cia=menu,kind,abbr columns=12 cmdheight=2 omnifunc=Omni_long')
+        feed('S<C-X><C-O>')
+        screen:expect([[
+          loooong_foo^ |
+          {s:menu S loooo}|
+          {n:menu T loooo}|
+          {1:~           }|*10
+                      |
+          {2:--}          |
+        ]])
+        feed('<C-E><ESC>')
       end)
     end
   end

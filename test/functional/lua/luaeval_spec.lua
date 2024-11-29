@@ -13,6 +13,7 @@ local fn = n.fn
 local clear = n.clear
 local eval = n.eval
 local feed = n.feed
+local assert_alive = n.assert_alive
 local NIL = vim.NIL
 local eq = t.eq
 
@@ -185,7 +186,7 @@ describe('luaeval()', function()
   end)
 
   it('issues an error in some cases', function()
-    eq("Vim(call):E5100: Cannot convert given lua table: table should contain either only integer keys or only string keys",
+    eq("Vim(call):E5100: Cannot convert given Lua table: table should contain either only integer keys or only string keys",
        exc_exec('call luaeval("{1, foo=2}")'))
 
     startswith("Vim(call):E5107: Error loading lua [string \"luaeval()\"]:",
@@ -509,23 +510,15 @@ describe('v:lua', function()
 
   it('works in func options', function()
     local screen = Screen.new(60, 8)
-    screen:set_default_attr_ids({
-      [1] = {bold = true, foreground = Screen.colors.Blue1},
-      [2] = {background = Screen.colors.WebGray},
-      [3] = {background = Screen.colors.LightMagenta},
-      [4] = {bold = true},
-      [5] = {bold = true, foreground = Screen.colors.SeaGreen4},
-    })
-    screen:attach()
     api.nvim_set_option_value('omnifunc', 'v:lua.mymod.omni', {})
     feed('isome st<c-x><c-o>')
     screen:expect{grid=[[
       some stuff^                                                  |
-      {1:~   }{2: stuff          }{1:                                        }|
-      {1:~   }{3: steam          }{1:                                        }|
-      {1:~   }{3: strange things }{1:                                        }|
+      {1:~   }{12: stuff          }{1:                                        }|
+      {1:~   }{4: steam          }{1:                                        }|
+      {1:~   }{4: strange things }{1:                                        }|
       {1:~                                                           }|*3
-      {4:-- Omni completion (^O^N^P) }{5:match 1 of 3}                    |
+      {5:-- Omni completion (^O^N^P) }{6:match 1 of 3}                    |
     ]]}
     api.nvim_set_option_value('operatorfunc', 'v:lua.mymod.noisy', {})
     feed('<Esc>g@g@')
@@ -558,5 +551,41 @@ describe('v:lua', function()
     eq("Vim:E107: Missing parentheses: v:lua", pcall_err(eval, "'bad'->v:lua"))
     eq("Vim:E1085: Not a callable type: v:lua", pcall_err(eval, "'bad'->v:lua()"))
     eq([[Vim:E15: Invalid expression: "v:lua.()"]], pcall_err(eval, "'bad'->v:lua.()"))
+
+    eq("Vim:E1085: Not a callable type: v:lua", pcall_err(eval, "v:lua()"))
+    eq([[Vim:E15: Invalid expression: "v:lua.()"]], pcall_err(eval, "v:lua.()"))
+  end)
+
+  describe('invalid use in fold text', function()
+    before_each(function()
+      feed('ifoo<CR>bar<Esc>')
+      command('1,2fold')
+    end)
+
+    it('with missing function name when used as simple function', function()
+      api.nvim_set_option_value('debug', 'throw', {})
+      eq(
+        [[Vim(eval):E15: Invalid expression: "v:lua.()"]],
+        pcall_err(command, 'set foldtext=v:lua.() | eval foldtextresult(1)')
+      )
+    end)
+
+    it('with missing function name when used in expression', function()
+      api.nvim_set_option_value('debug', 'throw', {})
+      eq(
+        [[Vim(eval):E15: Invalid expression: "+v:lua.()"]],
+        pcall_err(command, 'set foldtext=+v:lua.() | eval foldtextresult(1)')
+      )
+    end)
+
+    it('with non-existent function when used as simple function', function()
+      command('set foldtext=v:lua.NoSuchFunc() | eval foldtextresult(1)')
+      assert_alive()
+    end)
+
+    it('with non-existent function when used in expression', function()
+      command('set foldtext=+v:lua.NoSuchFunc() | eval foldtextresult(1)')
+      assert_alive()
+    end)
   end)
 end)

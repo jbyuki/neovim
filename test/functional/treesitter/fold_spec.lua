@@ -48,13 +48,13 @@ void ui_refresh(void)
   end
 
   local function get_fold_levels()
-    return exec_lua([[
-    local res = {}
-    for i = 1, vim.api.nvim_buf_line_count(0) do
-      res[i] = vim.treesitter.foldexpr(i)
-    end
-    return res
-    ]])
+    return exec_lua(function()
+      local res = {}
+      for i = 1, vim.api.nvim_buf_line_count(0) do
+        res[i] = vim.treesitter.foldexpr(i)
+      end
+      return res
+    end)
   end
 
   it('can compute fold levels', function()
@@ -246,9 +246,13 @@ function f()
 end
 -- comment]])
 
-    exec_lua(
-      [[vim.treesitter.query.set('lua', 'folds', '[(function_declaration) (parameters) (arguments)] @fold')]]
-    )
+    exec_lua(function()
+      vim.treesitter.query.set(
+        'lua',
+        'folds',
+        '[(function_declaration) (parameters) (arguments)] @fold'
+      )
+    end)
     parse('lua')
 
     eq({
@@ -290,9 +294,13 @@ function f()
   )
 end]])
 
-    exec_lua(
-      [[vim.treesitter.query.set('lua', 'folds', '[(function_declaration) (function_definition) (parameters) (arguments)] @fold')]]
-    )
+    exec_lua(function()
+      vim.treesitter.query.set(
+        'lua',
+        'folds',
+        '[(function_declaration) (function_definition) (parameters) (arguments)] @fold'
+      )
+    end)
     parse('lua')
 
     -- If fold1.stop = fold2.start, then move fold1's stop up so that fold2.start gets proper level.
@@ -333,9 +341,13 @@ function f(a)
   end
 end]])
 
-    exec_lua(
-      [[vim.treesitter.query.set('lua', 'folds', '[(if_statement) (function_declaration) (parameters) (arguments) (table_constructor)] @fold')]]
-    )
+    exec_lua(function()
+      vim.treesitter.query.set(
+        'lua',
+        'folds',
+        '[(if_statement) (function_declaration) (parameters) (arguments) (table_constructor)] @fold'
+      )
+    end)
     parse('lua')
 
     eq({
@@ -430,7 +442,6 @@ t3]])
 
   it('updates folds in all windows', function()
     local screen = Screen.new(60, 48)
-    screen:attach()
     screen:set_default_attr_ids({
       [1] = { background = Screen.colors.Grey, foreground = Screen.colors.DarkBlue },
       [2] = { bold = true, foreground = Screen.colors.Blue1 },
@@ -591,7 +602,6 @@ t3]])
 
   it("doesn't open folds in diff mode", function()
     local screen = Screen.new(60, 36)
-    screen:attach()
 
     parse('c')
     command(
@@ -648,7 +658,6 @@ t3]])
 
   it('does not extend closed fold with `o`/`O`', function()
     local screen = Screen.new(60, 24)
-    screen:attach()
 
     insert(test_text)
     parse('c')
@@ -715,7 +724,6 @@ t3]])
       [3] = { foreground = Screen.colors.Blue1, bold = true },
       [4] = { bold = true },
     })
-    screen:attach()
 
     insert([[
 # h1

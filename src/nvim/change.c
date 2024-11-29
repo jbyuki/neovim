@@ -89,9 +89,9 @@ void change_warning(buf_T *buf, int col)
     if (msg_row == Rows - 1) {
       msg_col = col;
     }
-    msg_source(HL_ATTR(HLF_W));
+    msg_source(HLF_W);
     msg_ext_set_kind("wmsg");
-    msg_puts_attr(_(w_readonly), HL_ATTR(HLF_W) | MSG_HIST);
+    msg_puts_hl(_(w_readonly), HLF_W, true);
     set_vim_var_string(VV_WARNINGMSG, _(w_readonly), -1);
     msg_clr_eos();
     msg_end();
@@ -523,19 +523,13 @@ void changed_lines_redraw_buf(buf_T *buf, linenr_T lnum, linenr_T lnume, linenr_
 {
   if (buf->b_mod_set) {
     // find the maximum area that must be redisplayed
-    if (lnum < buf->b_mod_top) {
-      buf->b_mod_top = lnum;
-    }
+    buf->b_mod_top = MIN(buf->b_mod_top, lnum);
     if (lnum < buf->b_mod_bot) {
       // adjust old bot position for xtra lines
       buf->b_mod_bot += xtra;
-      if (buf->b_mod_bot < lnum) {
-        buf->b_mod_bot = lnum;
-      }
+      buf->b_mod_bot = MAX(buf->b_mod_bot, lnum);
     }
-    if (lnume + xtra > buf->b_mod_bot) {
-      buf->b_mod_bot = lnume + xtra;
-    }
+    buf->b_mod_bot = MAX(buf->b_mod_bot, lnume + xtra);
     buf->b_mod_xlines += xtra;
   } else {
     // set the area that must be redisplayed
@@ -762,10 +756,8 @@ void ins_char_bytes(char *buf, size_t charlen)
     // put back when BS is used.  The bytes of a multi-byte character are
     // done the other way around, so that the first byte is popped off
     // first (it tells the byte length of the character).
-    replace_push(NUL);
-    for (size_t i = 0; i < oldlen; i++) {
-      i += (size_t)replace_push_mb(oldp + col + i) - 1;
-    }
+    replace_push_nul();
+    replace_push(oldp + col, oldlen);
   }
 
   char *newp = xmalloc(linelen + newlen - oldlen);
@@ -902,14 +894,15 @@ int del_bytes(colnr_T count, bool fixpos_arg, bool use_delcombine)
   // delete the last combining character.
   if (p_deco && use_delcombine && utfc_ptr2len(oldp + col) >= count) {
     char *p0 = oldp + col;
-    if (utf_composinglike(p0, p0 + utf_ptr2len(p0))) {
+    GraphemeState state = GRAPHEME_STATE_INIT;
+    if (utf_composinglike(p0, p0 + utf_ptr2len(p0), &state)) {
       // Find the last composing char, there can be several.
       int n = col;
       do {
         col = n;
         count = utf_ptr2len(oldp + n);
         n += count;
-      } while (utf_composinglike(oldp + col, oldp + n));
+      } while (utf_composinglike(oldp + col, oldp + n, &state));
       fixpos = false;
     }
   }
@@ -921,7 +914,7 @@ int del_bytes(colnr_T count, bool fixpos_arg, bool use_delcombine)
     // fixpos is true, we don't want to end up positioned at the NUL,
     // unless "restart_edit" is set or 'virtualedit' contains "onemore".
     if (col > 0 && fixpos && restart_edit == 0
-        && (get_ve_flags(curwin) & VE_ONEMORE) == 0) {
+        && (get_ve_flags(curwin) & kOptVeFlagOnemore) == 0) {
       curwin->w_cursor.col--;
       curwin->w_cursor.coladd = 0;
       curwin->w_cursor.col -= utf_head_off(oldp, oldp + curwin->w_cursor.col);
@@ -1142,12 +1135,10 @@ bool open_line(int dir, int flags, int second_line_indent, bool *did_do_comment)
     // on the line onto the replace stack.  We'll push any other characters
     // that might be replaced at the start of the next line (due to
     // autoindent etc) a bit later.
-    replace_push(NUL);      // Call twice because BS over NL expects it
-    replace_push(NUL);
+    replace_push_nul();      // Call twice because BS over NL expects it
+    replace_push_nul();
     p = saved_line + curwin->w_cursor.col;
-    while (*p != NUL) {
-      p += replace_push_mb(p);
-    }
+    replace_push(p, strlen(p));
     saved_line[curwin->w_cursor.col] = NUL;
   }
 
@@ -1696,13 +1687,13 @@ bool open_line(int dir, int flags, int second_line_indent, bool *did_do_comment)
     // stack, preceded by a NUL, so they can be put back when a BS is
     // entered.
     if (REPLACE_NORMAL(State)) {
-      replace_push(NUL);            // end of extra blanks
+      replace_push_nul();            // end of extra blanks
     }
     if (curbuf->b_p_ai || (flags & OPENLINE_DELSPACES)) {
       while ((*p_extra == ' ' || *p_extra == '\t')
-             && !utf_iscomposing(utf_ptr2char(p_extra + 1))) {
+             && !utf_iscomposing_first(utf_ptr2char(p_extra + 1))) {
         if (REPLACE_NORMAL(State)) {
-          replace_push(*p_extra);
+          replace_push(p_extra, 1);  // always ascii, len = 1
         }
         p_extra++;
         less_cols_off++;
@@ -1799,7 +1790,7 @@ bool open_line(int dir, int flags, int second_line_indent, bool *did_do_comment)
     // must be a NUL on the replace stack, for when it is deleted with BS
     if (REPLACE_NORMAL(State)) {
       for (colnr_T n = 0; n < curwin->w_cursor.col; n++) {
-        replace_push(NUL);
+        replace_push_nul();
       }
     }
     newcol += curwin->w_cursor.col;
@@ -1813,7 +1804,7 @@ bool open_line(int dir, int flags, int second_line_indent, bool *did_do_comment)
   // must be a NUL on the replace stack, for when it is deleted with BS.
   if (REPLACE_NORMAL(State)) {
     while (lead_len-- > 0) {
-      replace_push(NUL);
+      replace_push_nul();
     }
   }
 
@@ -2262,9 +2253,7 @@ int get_last_leader_offset(char *line, char **flags)
         for (int off = (len2 > i ? i : len2); off > 0 && off + len1 > len2;) {
           off--;
           if (!strncmp(string + off, com_leader, (size_t)(len2 - off))) {
-            if (i - off < lower_check_bound) {
-              lower_check_bound = i - off;
-            }
+            lower_check_bound = MIN(lower_check_bound, i - off);
           }
         }
       }

@@ -33,14 +33,17 @@
   ")"
 ] @punctuation.bracket
 
-":" @punctuation.delimiter
+[
+  ":"
+  "/"
+] @punctuation.delimiter
 
 [
   "@"
   "#"
 ] @punctuation.special
 
-"_" @constant
+"_" @character.special
 
 ((parameters
   (identifier) @number)

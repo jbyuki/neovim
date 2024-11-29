@@ -20,7 +20,6 @@ describe('decorations providers', function()
   before_each(function()
     clear()
     screen = Screen.new(40, 8)
-    screen:attach()
     screen:set_default_attr_ids {
       [1] = {bold=true, foreground=Screen.colors.Blue};
       [2] = {foreground = Screen.colors.Grey100, background = Screen.colors.Red};
@@ -766,7 +765,6 @@ describe('extmark decorations', function()
   before_each( function()
     clear()
     screen = Screen.new(50, 15)
-    screen:attach()
     screen:set_default_attr_ids {
       [1] = {bold=true, foreground=Screen.colors.Blue};
       [2] = {foreground = Screen.colors.Brown};
@@ -1964,7 +1962,7 @@ describe('extmark decorations', function()
     ]]}
   end)
 
-  pending('highlight applies to a full TAB in visual block mode', function()
+  it('highlight applies to a full TAB in visual block mode', function()
     screen:try_resize(50, 8)
     command('hi! Visual guifg=NONE guibg=LightGrey')
     api.nvim_buf_set_lines(0, 0, -1, true, {'asdf', '\tasdf', '\tasdf', '\tasdf', 'asdf'})
@@ -2341,21 +2339,28 @@ describe('extmark decorations', function()
   it('supports URLs', function()
     insert(example_text)
 
-    local url = 'https://example.com'
+    local url1 = 'https://example.com'
+    local url2 = 'http://127.0.0.1'
 
     screen:add_extra_attr_ids {
-        u = { url = "https://example.com" },
+      u = { url = url1 },
+      uh = { url = url2, background = Screen.colors.Yellow },
     }
 
     api.nvim_buf_set_extmark(0, ns, 1, 4, {
       end_col = 14,
-      url = url,
+      url = url1,
+    })
+    api.nvim_buf_set_extmark(0, ns, 2, 4, {
+      end_col = 17,
+      hl_group = 'Search',
+      url = url2,
     })
 
-    screen:expect{grid=[[
+    screen:expect([[
       for _,item in ipairs(items) do                    |
           {u:local text}, hl_id_cell, count = unpack(item)  |
-          if hl_id_cell ~= nil then                     |
+          {uh:if hl_id_cell} ~= nil then                     |
               hl_id = hl_id_cell                        |
           end                                           |
           for _ = 1, (count or 1) do                    |
@@ -2368,7 +2373,7 @@ describe('extmark decorations', function()
       {1:~                                                 }|
       {1:~                                                 }|
                                                         |
-    ]]}
+    ]])
   end)
 
   it('can replace marks in place with different decorations #27211', function()
@@ -2494,7 +2499,6 @@ describe('decorations: inline virtual text', function()
   before_each( function()
     clear()
     screen = Screen.new(50, 3)
-    screen:attach()
     screen:set_default_attr_ids {
       [1] = {bold=true, foreground=Screen.colors.Blue};
       [2] = {foreground = Screen.colors.Brown};
@@ -4114,7 +4118,6 @@ describe('decorations: virtual lines', function()
   before_each(function()
     clear()
     screen = Screen.new(50, 12)
-    screen:attach()
     screen:add_extra_attr_ids {
         [100] = { foreground = Screen.colors.Blue, background = Screen.colors.Yellow },
     }
@@ -5039,7 +5042,6 @@ describe('decorations: signs', function()
   before_each(function()
     clear()
     screen = Screen.new(50, 10)
-    screen:attach()
     screen:add_extra_attr_ids {
         [100] = { foreground = Screen.colors.Blue, background = Screen.colors.Yellow },
     }
@@ -5613,6 +5615,40 @@ l5
       ]]
     })
   end)
+
+  it('supports emoji as signs', function()
+    insert(example_test3)
+    feed 'gg'
+    api.nvim_buf_set_extmark(0, ns, 1, 0, {sign_text='🧑‍🌾'})
+    -- VS16 can change width of character
+    api.nvim_buf_set_extmark(0, ns, 2, 0, {sign_text='❤️'})
+    api.nvim_buf_set_extmark(0, ns, 3, 0, {sign_text='❤'})
+    api.nvim_buf_set_extmark(0, ns, 4, 0, {sign_text='❤x'})
+    screen:expect([[
+      {7:  }^l1                                              |
+      🧑‍🌾l2                                              |
+      ❤️l3                                              |
+      ❤ l4                                              |
+      ❤xl5                                              |
+      {7:  }                                                |
+      {1:~                                                 }|*3
+                                                        |
+    ]])
+    eq("Invalid 'sign_text'", pcall_err(api.nvim_buf_set_extmark, 0, ns, 5, 0, {sign_text='❤️x'}))
+  end)
+
+  it('auto signcolumn hides with invalidated sign', function()
+    api.nvim_set_option_value('signcolumn', 'auto', {})
+    api.nvim_buf_set_extmark(0, ns, 0, 0, {sign_text='S1', invalidate=true})
+    feed('ia<cr>b<esc>dd')
+    screen:expect({
+      grid = [[
+        ^a                                                 |
+        {1:~                                                 }|*8
+                                                          |
+      ]]
+    })
+  end)
 end)
 
 describe('decorations: virt_text', function()
@@ -5621,7 +5657,6 @@ describe('decorations: virt_text', function()
   before_each(function()
     clear()
     screen = Screen.new(50, 10)
-    screen:attach()
   end)
 
   it('avoids regression in #17638', function()
@@ -5696,7 +5731,6 @@ describe('decorations: window scoped', function()
   before_each(function()
     clear()
     screen = Screen.new(20, 10)
-    screen:attach()
     screen:add_extra_attr_ids {
       [100] = { special = Screen.colors.Red, undercurl = true },
       [101] = { url = 'https://example.com' },

@@ -84,7 +84,7 @@
 #include "nvim/os/input.h"
 #include "nvim/os/os.h"
 #include "nvim/os/os_defs.h"
-#include "nvim/os/process.h"
+#include "nvim/os/proc.h"
 #include "nvim/os/time.h"
 #include "nvim/os/time_defs.h"
 #include "nvim/path.h"
@@ -743,7 +743,7 @@ static void add_b0_fenc(ZeroBlock *b0p, buf_T *buf)
 /// @param swap_fname Name of the swapfile. If it's from before a reboot, the result is 0.
 ///
 /// @return PID, or 0 if process is not running or the swapfile is from before a reboot.
-static int swapfile_process_running(const ZeroBlock *b0p, const char *swap_fname)
+static int swapfile_proc_running(const ZeroBlock *b0p, const char *swap_fname)
 {
   FileInfo st;
   double uptime;
@@ -775,7 +775,6 @@ void ml_recover(bool checkext)
 
   recoverymode = true;
   int called_from_main = (curbuf->b_ml.ml_mfp == NULL);
-  int attr = HL_ATTR(HLF_E);
 
   // If the file name ends in ".s[a-w][a-z]" we assume this is the swapfile.
   // Otherwise a search is done to find the swapfile(s).
@@ -853,40 +852,39 @@ void ml_recover(bool checkext)
   // be set to the real value below.
   mfp->mf_page_size = MIN_SWAP_PAGE_SIZE;
 
+  int hl_id = HLF_E;
   // try to read block 0
   if ((hp = mf_get(mfp, 0, 1)) == NULL) {
     msg_start();
-    msg_puts_attr(_("Unable to read block 0 from "), attr | MSG_HIST);
-    msg_outtrans(mfp->mf_fname, attr | MSG_HIST);
-    msg_puts_attr(_("\nMaybe no changes were made or Vim did not update the swap file."),
-                  attr | MSG_HIST);
+    msg_puts_hl(_("Unable to read block 0 from "), hl_id, true);
+    msg_outtrans(mfp->mf_fname, hl_id, true);
+    msg_puts_hl(_("\nMaybe no changes were made or Nvim did not update the swap file."), hl_id,
+                true);
     msg_end();
     goto theend;
   }
   ZeroBlock *b0p = hp->bh_data;
   if (strncmp(b0p->b0_version, "VIM 3.0", 7) == 0) {
     msg_start();
-    msg_outtrans(mfp->mf_fname, MSG_HIST);
-    msg_puts_attr(_(" cannot be used with this version of Vim.\n"),
-                  MSG_HIST);
-    msg_puts_attr(_("Use Vim version 3.0.\n"), MSG_HIST);
+    msg_outtrans(mfp->mf_fname, 0, true);
+    msg_puts_hl(_(" cannot be used with this version of Nvim.\n"), 0, true);
+    msg_puts_hl(_("Use Vim version 3.0.\n"), 0, true);
     msg_end();
     goto theend;
   }
   if (ml_check_b0_id(b0p) == FAIL) {
-    semsg(_("E307: %s does not look like a Vim swap file"), mfp->mf_fname);
+    semsg(_("E307: %s does not look like a Nvim swap file"), mfp->mf_fname);
     goto theend;
   }
   if (b0_magic_wrong(b0p)) {
     msg_start();
-    msg_outtrans(mfp->mf_fname, attr | MSG_HIST);
-    msg_puts_attr(_(" cannot be used on this computer.\n"),
-                  attr | MSG_HIST);
-    msg_puts_attr(_("The file was created on "), attr | MSG_HIST);
+    msg_outtrans(mfp->mf_fname, hl_id, true);
+    msg_puts_hl(_(" cannot be used on this computer.\n"), hl_id, true);
+    msg_puts_hl(_("The file was created on "), hl_id, true);
     // avoid going past the end of a corrupted hostname
     b0p->b0_fname[0] = NUL;
-    msg_puts_attr(b0p->b0_hname, attr | MSG_HIST);
-    msg_puts_attr(_(",\nor the file has been damaged."), attr | MSG_HIST);
+    msg_puts_hl(b0p->b0_hname, hl_id, true);
+    msg_puts_hl(_(",\nor the file has been damaged."), hl_id, true);
     msg_end();
     goto theend;
   }
@@ -899,18 +897,14 @@ void ml_recover(bool checkext)
     mf_new_page_size(mfp, (unsigned)char_to_long(b0p->b0_page_size));
     if (mfp->mf_page_size < previous_page_size) {
       msg_start();
-      msg_outtrans(mfp->mf_fname, attr | MSG_HIST);
-      msg_puts_attr(_(" has been damaged (page size is smaller than minimum value).\n"),
-                    attr | MSG_HIST);
+      msg_outtrans(mfp->mf_fname, hl_id, true);
+      msg_puts_hl(_(" has been damaged (page size is smaller than minimum value).\n"), hl_id, true);
       msg_end();
       goto theend;
     }
-    off_T size;
-    if ((size = vim_lseek(mfp->mf_fd, 0, SEEK_END)) <= 0) {
-      mfp->mf_blocknr_max = 0;              // no file or empty file
-    } else {
-      mfp->mf_blocknr_max = size / mfp->mf_page_size;
-    }
+    off_T size = vim_lseek(mfp->mf_fd, 0, SEEK_END);
+    // 0 means no file or empty file
+    mfp->mf_blocknr_max = size <= 0 ? 0 : size / mfp->mf_page_size;
     mfp->mf_infile_count = mfp->mf_blocknr_max;
 
     // need to reallocate the memory used to store the data
@@ -1217,7 +1211,7 @@ void ml_recover(bool checkext)
       msg(_("Recovery completed. Buffer contents equals file contents."), 0);
     }
     msg_puts(_("\nYou may want to delete the .swp file now."));
-    if (swapfile_process_running(b0p, fname_used)) {
+    if (swapfile_proc_running(b0p, fname_used)) {
       // Warn there could be an active Vim on the same file, the user may
       // want to kill it.
       msg_puts(_("\nNote: process STILL RUNNING: "));
@@ -1253,7 +1247,7 @@ theend:
 /// with the 'directory' option.
 ///
 /// Used to:
-/// - list the swapfiles for "vim -r"
+/// - list the swapfiles for "nvim -r"
 /// - count the number of swapfiles when recovering
 /// - list the swapfiles when recovering
 /// - list the swapfiles for swapfilelist()
@@ -1465,7 +1459,7 @@ char *make_percent_swname(char *dir, char *dir_end, const char *name)
 }
 
 // PID of swapfile owner, or zero if not running.
-static int process_running;
+static int proc_running;
 
 /// For Vimscript "swapinfo()".
 ///
@@ -1491,7 +1485,7 @@ void swapfile_dict(const char *fname, dict_T *d)
         tv_dict_add_str_len(d, S_LEN("fname"), b0.b0_fname,
                             B0_FNAME_SIZE_ORG);
 
-        tv_dict_add_nr(d, S_LEN("pid"), swapfile_process_running(&b0, fname));
+        tv_dict_add_nr(d, S_LEN("pid"), swapfile_proc_running(&b0, fname));
         tv_dict_add_nr(d, S_LEN("mtime"), char_to_long(b0.b0_mtime));
         tv_dict_add_nr(d, S_LEN("dirty"), b0.b0_dirty ? 1 : 0);
         tv_dict_add_nr(d, S_LEN("inode"), char_to_long(b0.b0_ino));
@@ -1524,7 +1518,7 @@ static time_t swapfile_info(char *fname)
     // print name of owner of the file
     if (os_get_uname((uv_uid_t)file_info.stat.st_uid, uname, B0_UNAME_SIZE) == OK) {
       msg_puts(_("          owned by: "));
-      msg_outtrans(uname, 0);
+      msg_outtrans(uname, 0, false);
       msg_puts(_("   dated: "));
     } else {
       msg_puts(_("             dated: "));
@@ -1544,7 +1538,7 @@ static time_t swapfile_info(char *fname)
       if (strncmp(b0.b0_version, "VIM 3.0", 7) == 0) {
         msg_puts(_("         [from Vim version 3.0]"));
       } else if (ml_check_b0_id(&b0) == FAIL) {
-        msg_puts(_("         [does not look like a Vim swap file]"));
+        msg_puts(_("         [does not look like a Nvim swap file]"));
       } else if (!ml_check_b0_strings(&b0)) {
         msg_puts(_("         [garbled strings (not nul terminated)]"));
       } else {
@@ -1552,7 +1546,7 @@ static time_t swapfile_info(char *fname)
         if (b0.b0_fname[0] == NUL) {
           msg_puts(_("[No Name]"));
         } else {
-          msg_outtrans(b0.b0_fname, 0);
+          msg_outtrans(b0.b0_fname, 0, false);
         }
 
         msg_puts(_("\n          modified: "));
@@ -1560,7 +1554,7 @@ static time_t swapfile_info(char *fname)
 
         if (*(b0.b0_uname) != NUL) {
           msg_puts(_("\n         user name: "));
-          msg_outtrans(b0.b0_uname, 0);
+          msg_outtrans(b0.b0_uname, 0, false);
         }
 
         if (*(b0.b0_hname) != NUL) {
@@ -1569,13 +1563,13 @@ static time_t swapfile_info(char *fname)
           } else {
             msg_puts(_("\n         host name: "));
           }
-          msg_outtrans(b0.b0_hname, 0);
+          msg_outtrans(b0.b0_hname, 0, false);
         }
 
         if (char_to_long(b0.b0_pid) != 0) {
           msg_puts(_("\n        process ID: "));
           msg_outnum((int)char_to_long(b0.b0_pid));
-          if ((process_running = swapfile_process_running(&b0, fname))) {
+          if ((proc_running = swapfile_proc_running(&b0, fname))) {
             msg_puts(_(" (STILL RUNNING)"));
           }
         }
@@ -1643,7 +1637,7 @@ static bool swapfile_unchanged(char *fname)
   }
 
   // process must be known and not running.
-  if (char_to_long(b0.b0_pid) == 0 || swapfile_process_running(&b0, fname)) {
+  if (char_to_long(b0.b0_pid) == 0 || swapfile_proc_running(&b0, fname)) {
     ret = false;
   }
 
@@ -1898,9 +1892,7 @@ errorret:
     buf->b_ml.ml_line_lnum = lnum;
     return questions;
   }
-  if (lnum <= 0) {                      // pretend line 0 is line 1
-    lnum = 1;
-  }
+  lnum = MAX(lnum, 1);  // pretend line 0 is line 1
 
   if (buf->b_ml.ml_mfp == NULL) {       // there are no lines
     buf->b_ml.ml_line_len = 1;
@@ -2111,12 +2103,8 @@ static int ml_append_int(buf_T *buf, linenr_T lnum, char *line, colnr_T len, boo
     if (line_count > db_idx + 1) {          // if there are following lines
       // Offset is the start of the previous line.
       // This will become the character just after the new line.
-      int offset;
-      if (db_idx < 0) {
-        offset = (int)dp->db_txt_end;
-      } else {
-        offset = ((dp->db_index[db_idx]) & DB_INDEX_MASK);
-      }
+      int offset = db_idx < 0 ? (int)dp->db_txt_end
+                              : (int)((dp->db_index[db_idx]) & DB_INDEX_MASK);
       memmove((char *)dp + dp->db_txt_start,
               (char *)dp + dp->db_txt_start + len,
               (size_t)offset - (dp->db_txt_start + (size_t)len));
@@ -3268,7 +3256,7 @@ static void attention_message(buf_T *buf, char *fname)
   msg_puts("\"\n");
   const time_t swap_mtime = swapfile_info(fname);
   msg_puts(_("While opening file \""));
-  msg_outtrans(buf->b_fname, 0);
+  msg_outtrans(buf->b_fname, 0, false);
   msg_puts("\"\n");
   FileInfo file_info;
   if (!os_fileinfo(buf->b_fname, &file_info)) {
@@ -3289,11 +3277,11 @@ static void attention_message(buf_T *buf, char *fname)
              " instances of the same\n    file when making changes."
              "  Quit, or continue with caution.\n"));
   msg_puts(_("(2) An edit session for this file crashed.\n"));
-  msg_puts(_("    If this is the case, use \":recover\" or \"vim -r "));
-  msg_outtrans(buf->b_fname, 0);
+  msg_puts(_("    If this is the case, use \":recover\" or \"nvim -r "));
+  msg_outtrans(buf->b_fname, 0, false);
   msg_puts(_("\"\n    to recover the changes (see \":help recovery\").\n"));
   msg_puts(_("    If you did this already, delete the swap file \""));
-  msg_outtrans(fname, 0);
+  msg_outtrans(fname, 0, false);
   msg_puts(_("\"\n    to avoid this message.\n"));
   cmdline_row = msg_row;
   no_wait_return--;
@@ -3408,7 +3396,7 @@ static char *findswapname(buf_T *buf, char **dirp, char *old_fname, bool *found_
         fd = os_open(fname, O_RDONLY, 0);
         if (fd >= 0) {
           if (read_eintr(fd, &b0, sizeof(b0)) == sizeof(b0)) {
-            process_running = swapfile_process_running(&b0, fname);
+            proc_running = swapfile_proc_running(&b0, fname);
 
             // If the swapfile has the same directory as the
             // buffer don't compare the directory names, they can
@@ -3468,7 +3456,7 @@ static char *findswapname(buf_T *buf, char **dirp, char *old_fname, bool *found_
             choice = SEA_CHOICE_READONLY;
           }
 
-          process_running = 0;  // Set by attention_message..swapfile_info.
+          proc_running = 0;  // Set by attention_message..swapfile_info.
           if (choice == SEA_CHOICE_NONE) {
             // Show info about the existing swapfile.
             attention_message(buf, fname);
@@ -3500,12 +3488,12 @@ static char *findswapname(buf_T *buf, char **dirp, char *old_fname, bool *found_
               = do_dialog(VIM_WARNING,
                           _("VIM - ATTENTION"),
                           name,
-                          process_running
+                          proc_running
                           ? _("&Open Read-Only\n&Edit anyway\n&Recover\n&Quit\n&Abort")
                           : _("&Open Read-Only\n&Edit anyway\n&Recover\n&Delete it\n&Quit\n&Abort"),
                           1, NULL, false);
 
-            if (process_running && dialog_result >= 4) {
+            if (proc_running && dialog_result >= 4) {
               // compensate for missing "Delete it" button
               dialog_result++;
             }
