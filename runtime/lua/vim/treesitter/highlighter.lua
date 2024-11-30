@@ -93,9 +93,6 @@ function TSHighlighter.new(source, trees, opts)
 
   for _, tree in pairs(trees) do
     tree:register_cbs({
-      on_bytes = function(...)
-        self:on_bytes(...)
-      end,
       on_detach = function()
         local ll = Tangle.get_ll_from_buf(self.bufnr)
         if not ll then
