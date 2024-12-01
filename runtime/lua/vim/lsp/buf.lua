@@ -7,6 +7,9 @@ local ms = require('vim.lsp.protocol').Methods
 
 local M = {}
 
+local Tangle = require"vim.tangle"
+local ntangle = Tangle.get_ntangle()
+
 --- @param params? table
 --- @return fun(client: vim.lsp.Client): lsp.TextDocumentPositionParams
 local function client_positional_params(params)
@@ -164,6 +167,21 @@ end
 local function get_locations(method, opts)
   opts = opts or {}
   local bufnr = api.nvim_get_current_buf()
+
+  if Tangle.get_ll_from_buf(bufnr) then
+    local row, col = unpack(api.nvim_win_get_cursor(0))
+    row = row - 1
+    local nt_infos = ntangle.TtoNT(bufnr, row)
+    if #nt_infos == 0 then
+      return
+    end
+
+    for _, nt_info in ipairs(nt_infos) do
+      bufnr = ntangle.root_to_mirror_buf[nt_info[2]]
+      break
+    end
+  end
+
   local clients = lsp.get_clients({ method = method, bufnr = bufnr })
   if not next(clients) then
     vim.notify(lsp._unsupported_method(method), vim.log.levels.WARN)
