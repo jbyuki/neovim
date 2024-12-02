@@ -337,7 +337,7 @@ local function process_signature_help_results(results)
       local result = r.result --- @type lsp.SignatureHelp
       if result and result.signatures and result.signatures[1] then
         for _, sig in ipairs(result.signatures) do
-          signatures[#signatures + 1] = { client, sig }
+          signatures[#signatures + 1] = { client, sig, result.activeParameter }
         end
       end
     end
@@ -383,12 +383,12 @@ function M.signature_help(config)
     --- @param update_win? integer
     local function show_signature(update_win)
       idx = (idx % total) + 1
-      local client, result = signatures[idx][1], signatures[idx][2]
+      local client, result, activeParam = signatures[idx][1], signatures[idx][2], signatures[idx][3]
       --- @type string[]?
       local triggers =
         vim.tbl_get(client.server_capabilities, 'signatureHelpProvider', 'triggerCharacters')
       local lines, hl =
-        util.convert_signature_help_to_markdown_lines({ signatures = { result } }, ft, triggers)
+        util.convert_signature_help_to_markdown_lines({ signatures = { result }, activeParameter = activeParam }, ft, triggers)
       if not lines then
         return
       end
