@@ -6,6 +6,10 @@ local ntangle = Tangle.get_ntangle()
 
 local ns = api.nvim_create_namespace('treesitter/highlighter')
 
+local enable_perf_analysis = false
+local on_line_history = {}
+local on_prepare_history = {}
+
 ---@alias vim.treesitter.highlighter.Iter fun(end_line: integer|nil): integer, TSNode, vim.treesitter.query.TSMetadata, TSQueryMatch
 
 ---@class (private) vim.treesitter.highlighter.Query
@@ -176,6 +180,8 @@ end
 function TSHighlighter:prepare_highlight_states(srow, erow)
   self._highlight_states = {}
 
+  local start = vim.uv.hrtime()
+
   for ntbuf, ltree in pairs(self.trees) do
     ltree:for_each_tree(function(tstree, tree)
       if not tstree then
@@ -210,6 +216,11 @@ function TSHighlighter:prepare_highlight_states(srow, erow)
         highlighter_query = highlighter_query,
       })
     end)
+  end
+
+  local stop = vim.uv.hrtime()
+  if enable_perf_analysis then
+    table.insert(on_prepare_history , (stop - start)/1e6)
   end
 end
 
@@ -294,6 +305,8 @@ local function on_line_impl(self, buf, line, is_spell_nav)
   if vim.tbl_count(self.trees) == 0 then
     return
   end
+
+  local start = vim.uv.hrtime()
 
   local bufnr = buf
   local col_off
@@ -431,6 +444,11 @@ local function on_line_impl(self, buf, line, is_spell_nav)
       end
     end
   end)
+
+  local stop = vim.uv.hrtime()
+  if enable_perf_analysis then
+    table.insert(on_line_history,(stop - start)/1e6)
+  end
 end
 
 ---@private
@@ -510,5 +528,16 @@ api.nvim_set_decoration_provider(ns, {
   on_line = TSHighlighter._on_line,
   _on_spell_nav = TSHighlighter._on_spell_nav,
 })
+
+function TSHighlighter.start_analysis()
+  enable_perf_analysis = true
+  on_line_history = {}
+  on_prepare_history = {}
+end
+
+function TSHighlighter.stop_analysis()
+  enable_perf_analysis = false
+  return on_line_history, on_prepare_history 
+end
 
 return TSHighlighter
