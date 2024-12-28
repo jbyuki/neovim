@@ -218,6 +218,10 @@ local function handle_diagnostics(uri, client_id, diagnostics, is_pull)
   local bufnr
   if Tangle.get_ntangle() then
     local ntangle = Tangle.get_ntangle()
+    local s,e = uri:find("%l%%3A")
+    if s then
+      uri = uri:sub(1,s-1) .. uri:sub(s,s):upper() .. ":" .. uri:sub(e+1)
+    end
     bufnr = ntangle.uri_to_buf[uri]
   end
 
