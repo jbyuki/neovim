@@ -328,15 +328,19 @@ end
 --- @param items lsp.CompletionItem[]
 --- @param encoding string
 --- @return integer?
-local function adjust_start_col(lnum, line, items, encoding)
+local function adjust_start_col(lnum, col_off, line, items, encoding)
   local min_start_char = nil
   for _, item in pairs(items) do
-    -- if item.textEdit and item.textEdit.range.start.line == lnum then
-    if item.textEdit then
+    if item.textEdit and item.textEdit.range.start.line == lnum then
       if min_start_char and min_start_char ~= item.textEdit.range.start.character then
         return nil
       end
       min_start_char = item.textEdit.range.start.character
+    elseif item.textEdit and col_off[item.textEdit.range.start.line] then
+      -- if min_start_char and min_start_char ~= item.textEdit.range.start.character then
+      --   return nil
+      -- end
+      min_start_char = item.textEdit.range.start.character - col_off[item.textEdit.range.start.line]
     end
   end
   if min_start_char then
@@ -359,6 +363,7 @@ end
 --- @return integer? server_start_boundary
 function M._convert_results(
   line,
+  col_off,
   lnum,
   cursor_col,
   client_id,
@@ -383,13 +388,13 @@ function M._convert_results(
   -- `adjust_start_col` is used to prefer the language server boundary.
   --
   local candidates = get_items(result)
-  local curstartbyte = adjust_start_col(lnum, line, candidates, encoding)
+  local curstartbyte = adjust_start_col(lnum, col_off, line, candidates, encoding)
   if server_start_boundary == nil then
     server_start_boundary = curstartbyte
   elseif curstartbyte ~= nil and curstartbyte ~= server_start_boundary then
     server_start_boundary = client_start_boundary
   end
-  local prefix = line:sub((server_start_boundary or client_start_boundary) + 1, cursor_col)
+  local prefix = line:sub((server_start_boundary or client_start_boundary) + 1, cursor_col - (col_off[line] or 0))
   local matches = M._lsp_to_complete_items(result, prefix, client_id)
   return matches, server_start_boundary
 end
@@ -442,6 +447,20 @@ local function trigger(bufnr, clients)
   local cursor_row, cursor_col = unpack(api.nvim_win_get_cursor(win)) --- @type integer, integer
   local line = api.nvim_get_current_line()
   local line_to_cursor = line:sub(1, cursor_col)
+  local col_off =  {}
+
+  local buf = vim.api.nvim_get_current_buf()
+  if Tangle.get_ll_from_buf(buf) then
+    local nt_infos = ntangle.TtoNT(buf, cursor_row-1)
+    if #nt_infos == 0 then
+      return
+    end
+
+    for _, nt_info in ipairs(nt_infos) do
+      col_off[nt_info[3]] = #nt_info[4]
+    end
+  end
+
   local word_boundary = vim.fn.match(line_to_cursor, '\\k*$')
   local start_time = vim.uv.hrtime()
   Context.last_request_time = start_time
@@ -474,6 +493,7 @@ local function trigger(bufnr, clients)
         local client_matches
         client_matches, server_start_boundary = M._convert_results(
           line,
+          col_off,
           cursor_row - 1,
           cursor_col,
           client_id,
@@ -485,7 +505,7 @@ local function trigger(bufnr, clients)
         vim.list_extend(matches, client_matches)
       end
     end
-    local start_col = (server_start_boundary or word_boundary) + 1
+    local start_col = (server_start_boundary or word_boundary) + 1 - (col_off[cursor_row-1] or 0)
     vim.fn.complete(start_col, matches)
   end)
 
