@@ -241,7 +241,6 @@ local function handle_diagnostics(uri, client_id, diagnostics, is_pull)
   end
 
   local namespace = M.get_namespace(client_id, is_pull)
-
   vim.diagnostic.set(namespace, bufnr, diagnostic_lsp_to_vim(diagnostics, bufnr, client_id))
 end
 

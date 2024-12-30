@@ -1087,6 +1087,10 @@ function M.set(namespace, bufnr, diagnostics, opts)
     bufnr = M.untangle_diagnostics(hl, bufnr, diagnostics)
   end
 
+  if type(bufnr) ~= "number" then
+    return
+  end
+
   bufnr = get_bufnr(bufnr)
 
   if vim.tbl_isempty(diagnostics) then
