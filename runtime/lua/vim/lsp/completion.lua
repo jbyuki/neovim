@@ -331,16 +331,16 @@ end
 local function adjust_start_col(lnum, col_off, line, items, encoding)
   local min_start_char = nil
   for _, item in pairs(items) do
-    if item.textEdit and item.textEdit.range.start.line == lnum then
-      if min_start_char and min_start_char ~= item.textEdit.range.start.character then
-        return nil
-      end
-      min_start_char = item.textEdit.range.start.character
-    elseif item.textEdit and col_off[item.textEdit.range.start.line] then
+    if item.textEdit and col_off[item.textEdit.range.start.line] then
       -- if min_start_char and min_start_char ~= item.textEdit.range.start.character then
       --   return nil
       -- end
       min_start_char = item.textEdit.range.start.character - col_off[item.textEdit.range.start.line]
+    elseif item.textEdit and item.textEdit.range.start.line == lnum then
+      if min_start_char and min_start_char ~= item.textEdit.range.start.character then
+        return nil
+      end
+      min_start_char = item.textEdit.range.start.character
     end
   end
   if min_start_char then
@@ -394,7 +394,7 @@ function M._convert_results(
   elseif curstartbyte ~= nil and curstartbyte ~= server_start_boundary then
     server_start_boundary = client_start_boundary
   end
-  local prefix = line:sub((server_start_boundary or client_start_boundary) + 1, cursor_col - (col_off[line] or 0))
+  local prefix = line:sub((server_start_boundary or client_start_boundary) + 1, cursor_col - (col_off[lnum] or 0))
   local matches = M._lsp_to_complete_items(result, prefix, client_id)
   return matches, server_start_boundary
 end
@@ -505,7 +505,7 @@ local function trigger(bufnr, clients)
         vim.list_extend(matches, client_matches)
       end
     end
-    local start_col = (server_start_boundary or word_boundary) + 1 - (col_off[cursor_row-1] or 0)
+    local start_col = (server_start_boundary or word_boundary) + 1
     vim.fn.complete(start_col, matches)
   end)
 
