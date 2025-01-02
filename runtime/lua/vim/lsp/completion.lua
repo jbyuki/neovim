@@ -390,7 +390,7 @@ function M._convert_results(
   local candidates = get_items(result)
   local curstartbyte = adjust_start_col(lnum, col_off, line, candidates, encoding)
   if server_start_boundary == nil then
-    server_start_boundary = curstartbyte
+    server_start_boundary = curstartbyte + 1
   elseif curstartbyte ~= nil and curstartbyte ~= server_start_boundary then
     server_start_boundary = client_start_boundary
   end
