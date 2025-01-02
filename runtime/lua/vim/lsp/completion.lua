@@ -342,6 +342,7 @@ local function adjust_start_col(lnum, col_off, line, items, encoding)
       end
       min_start_char = item.textEdit.range.start.character
     end
+    break
   end
   if min_start_char then
     return vim.str_byteindex(line, encoding, min_start_char, false)
@@ -390,7 +391,7 @@ function M._convert_results(
   local candidates = get_items(result)
   local curstartbyte = adjust_start_col(lnum, col_off, line, candidates, encoding)
   if server_start_boundary == nil then
-    server_start_boundary = curstartbyte + 1
+    server_start_boundary = curstartbyte
   elseif curstartbyte ~= nil and curstartbyte ~= server_start_boundary then
     server_start_boundary = client_start_boundary
   end
