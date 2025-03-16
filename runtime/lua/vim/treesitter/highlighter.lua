@@ -504,7 +504,7 @@ function TSHighlighter._on_win(_, _win, buf, topline, botline)
         local ntbuf = ntangle.root_to_mirror_buf[nt_info[2]]
         if ntbuf then
           if not self.trees[ntbuf] then
-            self.trees[ntbuf] = vim.treesitter.get_parser(ntbuf)
+            self.trees[ntbuf] = vim.treesitter.get_parser(ntbuf, nil, { error = false })
           end
 
           if self.trees[ntbuf] then
