@@ -403,7 +403,7 @@ local function on_line_impl(self, buf, line, is_spell_nav)
               if start_row == line then -- FIX THIS
                 api.nvim_buf_set_extmark(buf, ns, sr, start_col - col_off, {
                   end_line = er,
-                  end_col = end_col - col_off,
+                  end_col = math.max(end_col - col_off, 0),
                   hl_group = hl,
                   ephemeral = true,
                   priority = priority,
