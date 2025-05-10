@@ -1189,9 +1189,9 @@ describe('vim._with', function()
       ]]
       screen:expect [[
         19                            |
-        {1:[No Name] [+]  20,1         3%}|
+        {1:< Name] [+] 20,1            3%}|
         ^19                            |
-        {2:[No Name] [+]  20,1         3%}|
+        {2:< Name] [+] 20,1            3%}|
                                       |
       ]]
       exec_lua [[
@@ -1200,9 +1200,9 @@ describe('vim._with', function()
       ]]
       screen:expect [[
         99                            |
-        {1:[No Name] [+]  100,1       19%}|
+        {1:< Name] [+] 100,1          19%}|
         ^19                            |
-        {2:[No Name] [+]  20,1         3%}|
+        {2:< Name] [+] 20,1            3%}|
                                       |
       ]]
     end)
@@ -1620,5 +1620,22 @@ describe('vim._with', function()
 
     matches('Invalid buffer', get_error('{ buf = -1 }, function() end'))
     matches('Invalid window', get_error('{ win = -1 }, function() end'))
+  end)
+
+  it('no double-free when called from :filter browse oldfiles #31501', function()
+    exec_lua([=[
+      vim.api.nvim_create_autocmd('BufEnter', {
+        callback = function()
+          vim._with({ lockmarks = true }, function() end)
+        end,
+      })
+      vim.cmd([[
+        let v:oldfiles = ['Xoldfile']
+        call nvim_input('1<CR>')
+        noswapfile filter /Xoldfile/ browse oldfiles
+      ]])
+    ]=])
+    n.assert_alive()
+    eq('Xoldfile', fn.bufname('%'))
   end)
 end)

@@ -2,21 +2,22 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <uv.h>
 
 #include "auto/config.h"
+#include "klib/kvec.h"
+#include "mpack/mpack_core.h"
 #include "nvim/api/keysets_defs.h"
 #include "nvim/api/private/defs.h"
+#include "nvim/api/private/dispatch.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/ascii_defs.h"
 #include "nvim/buffer.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/cmdhist.h"
-#include "nvim/errors.h"
 #include "nvim/eval.h"
 #include "nvim/eval/decode.h"
 #include "nvim/eval/encode.h"
@@ -26,8 +27,6 @@
 #include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/fileio.h"
-#include "nvim/garray.h"
-#include "nvim/garray_defs.h"
 #include "nvim/gettext_defs.h"
 #include "nvim/globals.h"
 #include "nvim/hashtab.h"
@@ -38,8 +37,10 @@
 #include "nvim/mark_defs.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
+#include "nvim/memory_defs.h"
 #include "nvim/message.h"
 #include "nvim/msgpack_rpc/packer.h"
+#include "nvim/msgpack_rpc/packer_defs.h"
 #include "nvim/msgpack_rpc/unpacker.h"
 #include "nvim/normal_defs.h"
 #include "nvim/ops.h"
@@ -549,19 +550,16 @@ static ShaDaReadResult sd_reader_skip(FileDescriptor *const sd_reader, const siz
 {
   const ptrdiff_t skip_bytes = file_skip(sd_reader, offset);
   if (skip_bytes < 0) {
-    semsg(_(SERR "System error while skipping in ShaDa file: %s"),
-          os_strerror((int)skip_bytes));
+    semsg(_(SERR "System error while skipping in ShaDa file: %s"), os_strerror((int)skip_bytes));
     return kSDReadStatusReadError;
   } else if (skip_bytes != (ptrdiff_t)offset) {
     assert(skip_bytes < (ptrdiff_t)offset);
     if (file_eof(sd_reader)) {
-      semsg(_(RCERR "Error while reading ShaDa file: "
-              "last entry specified that it occupies %" PRIu64 " bytes, "
+      semsg(_(RCERR "Reading ShaDa file: last entry specified that it occupies %" PRIu64 " bytes, "
               "but file ended earlier"),
             (uint64_t)offset);
     } else {
-      semsg(_(SERR "System error while skipping in ShaDa file: %s"),
-            _("too few bytes read"));
+      semsg(_(SERR "System error while skipping in ShaDa file: %s"), _("too few bytes read"));
     }
     return kSDReadStatusNotShaDa;
   }
@@ -578,15 +576,6 @@ static void close_file(FileDescriptor *cookie)
   }
 }
 
-/// Check whether writing to shada file was disabled ("-i NONE" or "--clean").
-///
-/// @return true if it was disabled, false otherwise.
-static bool shada_disabled(void)
-  FUNC_ATTR_PURE
-{
-  return strequal(p_shadafile, "NONE");
-}
-
 /// Read ShaDa file
 ///
 /// @param[in]  file   File to read or NULL to use default name.
@@ -596,11 +585,10 @@ static bool shada_disabled(void)
 static int shada_read_file(const char *const file, const int flags)
   FUNC_ATTR_WARN_UNUSED_RESULT
 {
-  if (shada_disabled()) {
+  char *const fname = shada_filename(file);
+  if (fname == NULL) {
     return FAIL;
   }
-
-  char *const fname = shada_filename(file);
 
   FileDescriptor sd_reader;
   int of_ret = file_open(&sd_reader, fname, kFileReadOnly, 0);
@@ -1291,13 +1279,19 @@ static const char *shada_get_default_file(void)
 ///
 /// @param[in]  file  Forced file name or NULL.
 ///
-/// @return An allocated string containing shada file name.
+/// @return  An allocated string containing shada file name,
+///          or NULL if shada file should not be used.
 static char *shada_filename(const char *file)
-  FUNC_ATTR_MALLOC FUNC_ATTR_NONNULL_RET FUNC_ATTR_WARN_UNUSED_RESULT
+  FUNC_ATTR_MALLOC FUNC_ATTR_WARN_UNUSED_RESULT
 {
   if (file == NULL || *file == NUL) {
     if (p_shadafile != NULL && *p_shadafile != NUL) {
-      file = p_shadafile;
+      // Check if writing to ShaDa file was disabled ("-i NONE" or "--clean").
+      if (!strequal(p_shadafile, "NONE")) {
+        file = p_shadafile;
+      } else {
+        return NULL;
+      }
     } else {
       if ((file = find_shada_parameter('n')) == NULL || *file == NUL) {
         file = shada_get_default_file();
@@ -2399,38 +2393,42 @@ static ShaDaWriteResult shada_write(FileDescriptor *const sd_writer,
     } while (var_iter != NULL);
   }
 
-  // Initialize jump list
-  wms->jumps_size = shada_init_jumps(wms->jumps, &removable_bufs);
+  if (num_marked_files > 0) {  // Skip if '0 in 'shada'
+    // Initialize jump list
+    wms->jumps_size = shada_init_jumps(wms->jumps, &removable_bufs);
+  }
 
-  const bool search_highlighted = !(no_hlsearch
-                                    || find_shada_parameter('h') != NULL);
-  const bool search_last_used = search_was_last_used();
+  if (dump_one_history[HIST_SEARCH] > 0) {  // Skip if /0 in 'shada'
+    const bool search_highlighted = !(no_hlsearch
+                                      || find_shada_parameter('h') != NULL);
+    const bool search_last_used = search_was_last_used();
 
-  // Initialize search pattern
-  add_search_pattern(&wms->search_pattern, &get_search_pattern, false,
-                     search_last_used, search_highlighted);
+    // Initialize search pattern
+    add_search_pattern(&wms->search_pattern, &get_search_pattern, false,
+                       search_last_used, search_highlighted);
 
-  // Initialize substitute search pattern
-  add_search_pattern(&wms->sub_search_pattern, &get_substitute_pattern, true,
-                     search_last_used, search_highlighted);
+    // Initialize substitute search pattern
+    add_search_pattern(&wms->sub_search_pattern, &get_substitute_pattern, true,
+                       search_last_used, search_highlighted);
 
-  // Initialize substitute replacement string
-  {
+    // Initialize substitute replacement string
     SubReplacementString sub;
     sub_get_replacement(&sub);
-    wms->replacement = (PossiblyFreedShadaEntry) {
-      .can_free_entry = false,
-      .data = {
-        .type = kSDItemSubString,
-        .timestamp = sub.timestamp,
+    if (sub.sub != NULL) {  // Don't store empty replacement string
+      wms->replacement = (PossiblyFreedShadaEntry) {
+        .can_free_entry = false,
         .data = {
-          .sub_string = {
-            .sub = sub.sub,
-          }
-        },
-        .additional_data = sub.additional_data,
-      }
-    };
+          .type = kSDItemSubString,
+          .timestamp = sub.timestamp,
+          .data = {
+            .sub_string = {
+              .sub = sub.sub,
+            }
+          },
+          .additional_data = sub.additional_data,
+        }
+      };
+    }
   }
 
   // Initialize global marks
@@ -2558,9 +2556,9 @@ static ShaDaWriteResult shada_write(FileDescriptor *const sd_writer,
     }
   }
 
-  // Update numbered marks: '0' should be replaced with the current position,
-  // '9' should be removed and all other marks shifted.
-  if (!ignore_buf(curbuf, &removable_bufs) && curwin->w_cursor.lnum != 0) {
+  // Update numbered marks: replace '0 mark with the current position,
+  // remove '9 and shift all other marks. Skip if f0 in 'shada'.
+  if (dump_global_marks && !ignore_buf(curbuf, &removable_bufs) && curwin->w_cursor.lnum != 0) {
     replace_numbered_mark(wms, 0, (PossiblyFreedShadaEntry) {
       .can_free_entry = false,
       .data = {
@@ -2698,11 +2696,11 @@ shada_write_exit:
 /// @return OK if writing was successful, FAIL otherwise.
 int shada_write_file(const char *const file, bool nomerge)
 {
-  if (shada_disabled()) {
+  char *const fname = shada_filename(file);
+  if (fname == NULL) {
     return FAIL;
   }
 
-  char *const fname = shada_filename(file);
   char *tempname = NULL;
   FileDescriptor sd_writer;
   FileDescriptor sd_reader;

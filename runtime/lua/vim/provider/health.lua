@@ -10,22 +10,20 @@ end
 
 -- Attempts to construct a shell command from an args list.
 -- Only for display, to help users debug a failed command.
+--- @param cmd string|string[]
 local function shellify(cmd)
   if type(cmd) ~= 'table' then
     return cmd
   end
-  local escaped = {}
+  local escaped = {} --- @type string[]
   for i, v in ipairs(cmd) do
-    if v:match('[^A-Za-z_/.-]') then
-      escaped[i] = vim.fn.shellescape(v)
-    else
-      escaped[i] = v
-    end
+    escaped[i] = v:match('[^A-Za-z_/.-]') and vim.fn.shellescape(v) or v
   end
   return table.concat(escaped, ' ')
 end
 
 -- Handler for s:system() function.
+--- @param self {output: string, stderr: string, add_stderr_to_output: boolean}
 local function system_handler(self, _, data, event)
   if event == 'stderr' then
     if self.add_stderr_to_output then
@@ -38,7 +36,7 @@ local function system_handler(self, _, data, event)
   end
 end
 
---- @param cmd table List of command arguments to execute
+--- @param cmd string|string[] List of command arguments to execute
 --- @param args? table Optional arguments:
 ---                   - stdin (string): Data to write to the job's stdin
 ---                   - stderr (boolean): Append stderr to stdout
@@ -47,8 +45,8 @@ end
 local function system(cmd, args)
   args = args or {}
   local stdin = args.stdin or ''
-  local stderr = vim.F.if_nil(args.stderr, false)
-  local ignore_error = vim.F.if_nil(args.ignore_error, false)
+  local stderr = args.stderr or false
+  local ignore_error = args.ignore_error or false
 
   local shell_error_code = 0
   local opts = {
@@ -109,8 +107,21 @@ local function provider_disabled(provider)
   return false
 end
 
+--- Checks the hygiene of a `g:loaded_xx_provider` variable.
+local function check_loaded_var(var)
+  if vim.g[var] == 1 then
+    health.error(('`g:%s=1` may have been set by mistake.'):format(var), {
+      ('Remove `vim.g.%s=1` from your config.'):format(var),
+      'To disable the provider, set this to 0, not 1.',
+      'If you want to enable the provider but skip automatic detection, set the respective `g:…_host_prog` var. See :help provider',
+    })
+  end
+end
+
 local function clipboard()
   health.start('Clipboard (optional)')
+
+  check_loaded_var('loaded_clipboard_provider')
 
   if
     os.getenv('TMUX')
@@ -145,6 +156,8 @@ end
 
 local function node()
   health.start('Node.js provider (optional)')
+
+  check_loaded_var('loaded_node_provider')
 
   if provider_disabled('node') then
     return
@@ -249,6 +262,8 @@ end
 local function perl()
   health.start('Perl provider (optional)')
 
+  check_loaded_var('loaded_perl_provider')
+
   if provider_disabled('perl') then
     return
   end
@@ -258,7 +273,7 @@ local function perl()
   if not perl_exec then
     health.warn(assert(perl_warnings), {
       'See :help provider-perl for more information.',
-      'You may disable this provider (and warning) by adding `let g:loaded_perl_provider = 0` to your init.vim',
+      'You can disable this provider (and warning) by adding `let g:loaded_perl_provider = 0` to your init.vim',
     })
     health.warn('No usable perl executable found')
     return
@@ -530,13 +545,14 @@ local function version_info(python)
   if rc ~= 0 or nvim_version == '' then
     nvim_version = 'unable to find pynvim module version'
     local base = vim.fs.basename(nvim_path)
-    local metas = vim.fn.glob(base .. '-*/METADATA', true, 1)
-    vim.list_extend(metas, vim.fn.glob(base .. '-*/PKG-INFO', true, 1))
-    vim.list_extend(metas, vim.fn.glob(base .. '.egg-info/PKG-INFO', true, 1))
+    local metas = vim.fn.glob(base .. '-*/METADATA', true, true)
+    vim.list_extend(metas, vim.fn.glob(base .. '-*/PKG-INFO', true, true))
+    vim.list_extend(metas, vim.fn.glob(base .. '.egg-info/PKG-INFO', true, true))
     metas = table.sort(metas, compare)
 
     if metas and next(metas) ~= nil then
       for line in io.lines(metas[1]) do
+        --- @cast line string
         local version = line:match('^Version: (%S+)')
         if version then
           nvim_version = version
@@ -548,7 +564,7 @@ local function version_info(python)
 
   local nvim_path_base = vim.fn.fnamemodify(nvim_path, [[:~:h]])
   local version_status = 'unknown; ' .. nvim_path_base
-  if is_bad_response(nvim_version) and is_bad_response(pypi_version) then
+  if not is_bad_response(nvim_version) and not is_bad_response(pypi_version) then
     if vim.version.lt(nvim_version, pypi_version) then
       version_status = 'outdated; from ' .. nvim_path_base
     else
@@ -561,6 +577,8 @@ end
 
 local function python()
   health.start('Python 3 provider (optional)')
+
+  check_loaded_var('loaded_python3_provider')
 
   local python_exe = ''
   local virtual_env = os.getenv('VIRTUAL_ENV')
@@ -596,7 +614,7 @@ local function python()
   if pythonx_warnings then
     health.warn(pythonx_warnings, {
       'See :help provider-python for more information.',
-      'You may disable this provider (and warning) by adding `let g:loaded_python3_provider = 0` to your init.vim',
+      'You can disable this provider (and warning) by adding `let g:loaded_python3_provider = 0` to your init.vim',
     })
   elseif pyname and pyname ~= '' and python_exe == '' then
     if not vim.g[host_prog_var] then
@@ -762,6 +780,7 @@ local function python()
   -- subshells launched from Nvim.
   local bin_dir = iswin and 'Scripts' or 'bin'
   local venv_bins = vim.fn.glob(string.format('%s/%s/python*', virtual_env, bin_dir), true, true)
+  --- @param v string
   venv_bins = vim.tbl_filter(function(v)
     -- XXX: Remove irrelevant executables found in bin/.
     return not v:match('python.*%-config')
@@ -809,6 +828,7 @@ local function python()
         msg,
         bin_dir,
         table.concat(
+          --- @param v string
           vim.tbl_map(function(v)
             return vim.fs.basename(v)
           end, venv_bins),
@@ -817,12 +837,15 @@ local function python()
       )
     end
     local conj = '\nBut '
+    local msgs = {} --- @type string[]
     for _, err in ipairs(errors) do
-      msg = msg .. conj .. err
+      msgs[#msgs + 1] = msg
+      msgs[#msgs + 1] = conj
+      msgs[#msgs + 1] = err
       conj = '\nAnd '
     end
-    msg = msg .. '\nSo invoking Python may lead to unexpected results.'
-    health.warn(msg, vim.tbl_keys(hints))
+    msgs[#msgs + 1] = '\nSo invoking Python may lead to unexpected results.'
+    health.warn(table.concat(msgs), vim.tbl_keys(hints))
   else
     health.info(msg)
     health.info(
@@ -835,6 +858,8 @@ end
 
 local function ruby()
   health.start('Ruby provider (optional)')
+
+  check_loaded_var('loaded_ruby_provider')
 
   if provider_disabled('ruby') then
     return
@@ -856,7 +881,7 @@ local function ruby()
       'Run `gem environment` to ensure the gem bin directory is in $PATH.',
       'If you are using rvm/rbenv/chruby, try "rehashing".',
       'See :help g:ruby_host_prog for non-standard gem installations.',
-      'You may disable this provider (and warning) by adding `let g:loaded_ruby_provider = 0` to your init.vim',
+      'You can disable this provider (and warning) by adding `let g:loaded_ruby_provider = 0` to your init.vim',
     })
     return
   end

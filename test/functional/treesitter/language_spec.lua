@@ -63,7 +63,14 @@ describe('treesitter language API', function()
       return { keys, lang.fields, lang.symbols }
     end))
 
-    eq({ fields = true, symbols = true, _abi_version = true, _wasm = false }, keys)
+    eq({
+      abi_version = true,
+      fields = true,
+      symbols = true,
+      state_count = true,
+      supertypes = true,
+      _wasm = false,
+    }, keys)
 
     local fset = {}
     for _, f in pairs(fields) do
@@ -117,6 +124,7 @@ describe('treesitter language API', function()
       '<node translation_unit>',
       exec_lua(function()
         local langtree = vim.treesitter.get_parser(0, 'c')
+        langtree:parse()
         local tree = langtree:tree_for_range({ 1, 3, 1, 3 })
         return tostring(tree:root())
       end)
@@ -133,6 +141,7 @@ describe('treesitter language API', function()
       '<node translation_unit>',
       exec_lua(function()
         local langtree = vim.treesitter.get_parser(0, 'c')
+        langtree:parse()
         local tree = langtree:tree_for_range({ 10, 10, 10, 10 })
         return tostring(tree:root())
       end)
@@ -149,6 +158,7 @@ describe('treesitter language API', function()
       '<node primitive_type>',
       exec_lua(function()
         local langtree = vim.treesitter.get_parser(0, 'c')
+        langtree:parse()
         local node = langtree:named_node_for_range({ 1, 3, 1, 3 })
         return tostring(node)
       end)
@@ -160,6 +170,7 @@ describe('treesitter language API', function()
 
     exec_lua(function()
       _G.langtree = vim.treesitter.get_parser(0, 'lua')
+      _G.langtree:parse()
       _G.node = _G.langtree:node_for_range({ 0, 3, 0, 3 })
     end)
 

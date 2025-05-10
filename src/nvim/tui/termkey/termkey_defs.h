@@ -123,6 +123,13 @@ typedef enum {
   TERMKEY_MOUSE_RELEASE,
 } TermKeyMouseEvent;
 
+typedef enum {
+  TERMKEY_EVENT_UNKNOWN,
+  TERMKEY_EVENT_PRESS,
+  TERMKEY_EVENT_REPEAT,
+  TERMKEY_EVENT_RELEASE,
+} TermKeyEvent;
+
 enum {
   TERMKEY_KEYMOD_SHIFT = 1 << 0,
   TERMKEY_KEYMOD_ALT   = 1 << 1,
@@ -144,6 +151,7 @@ enum {
   TERMKEY_FLAG_CTRLC       = 1 << 6,  // Allow Ctrl-C to be read as normal, disabling SIGINT
   TERMKEY_FLAG_EINTR       = 1 << 7,  // Return ERROR on signal (EINTR) rather than retry
   TERMKEY_FLAG_NOSTART     = 1 << 8,  // Do not call termkey_start() in constructor
+  TERMKEY_FLAG_KEEPC0      = 1 << 9,  // Keep raw C0 control codes
 };
 
 enum {
@@ -162,6 +170,8 @@ typedef struct {
   } code;
 
   int modifiers;
+
+  TermKeyEvent event;
 
   // Any Unicode character can be UTF-8 encoded in no more than 6 bytes, plus
   // terminating NUL

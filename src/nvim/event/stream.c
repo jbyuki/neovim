@@ -8,6 +8,7 @@
 #include "nvim/event/loop.h"
 #include "nvim/event/stream.h"
 #include "nvim/log.h"
+#include "nvim/memory.h"
 #include "nvim/types_defs.h"
 #ifdef MSWIN
 # include "nvim/os/os_win_console.h"
@@ -103,9 +104,10 @@ void stream_may_close(Stream *stream, bool rstream)
   if (stream->closed) {
     return;
   }
-  assert(!stream->closed);
   DLOG("closing Stream: %p", (void *)stream);
   stream->closed = true;
+  // TODO(justinmk): stream->close_cb is never actually invoked. Either remove it, or see if it can
+  // be used somewhere...
   stream->close_cb = NULL;
   stream->close_cb_data = NULL;
 
@@ -118,7 +120,7 @@ void stream_may_close(Stream *stream, bool rstream)
 
   if (!stream->pending_reqs) {
     stream_close_handle(stream, rstream);
-  }
+  }  // Else: rstream.c:read_event() or wstream.c:write_cb() will call stream_close_handle().
 }
 
 void stream_close_handle(Stream *stream, bool rstream)

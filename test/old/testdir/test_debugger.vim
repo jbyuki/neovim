@@ -6,10 +6,11 @@ source check.vim
 
 func CheckCWD()
   " Check that the longer lines don't wrap due to the length of the script name
-  " in cwd
+  " in cwd. Need to subtract by 1 since Vim will still wrap the message if it
+  " just fits.
   let script_len = len( getcwd() .. '/Xtest1.vim' )
   let longest_line = len( 'Breakpoint in "" line 1' )
-  if script_len > ( 75 - longest_line )
+  if script_len > ( 75 - longest_line - 1 )
     throw 'Skipped: Your CWD has too many characters'
   endif
 endfunc
@@ -128,7 +129,7 @@ func Test_Debugger()
   call RunDbgCmd(buf, 'step')
   call RunDbgCmd(buf, 'frame 2')
   call RunDbgCmd(buf, 'echo var3', [
-	\ 'Error detected while processing function Foo[2]..Bar[2]..Bazz:',
+	\ 'Error in function Foo[2]..Bar[2]..Bazz:',
 	\ 'line    4:',
 	\ 'E121: Undefined variable: var3'])
 
@@ -148,7 +149,7 @@ func Test_Debugger()
 
   " Undefined var2
   call RunDbgCmd(buf, 'echo var2', [
-	      \ 'Error detected while processing function Foo[2]..Bar:',
+	      \ 'Error in function Foo[2]..Bar:',
 	      \ 'line    3:',
 	      \ 'E121: Undefined variable: var2'])
 
@@ -267,7 +268,7 @@ func Test_Debugger()
 
   " Check for error cases
   call RunDbgCmd(buf, 'breakadd abcd', [
-	      \ 'Error detected while processing function Bazz:',
+	      \ 'Error in function Bazz:',
 	      \ 'line    5:',
 	      \ 'E475: Invalid argument: abcd'])
   call RunDbgCmd(buf, 'breakadd func', ['E475: Invalid argument: func'])

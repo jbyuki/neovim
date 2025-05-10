@@ -14,6 +14,7 @@
 #include "auto/config.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
+#include "nvim/api/ui.h"
 #include "nvim/arglist.h"
 #include "nvim/ascii_defs.h"
 #include "nvim/autocmd.h"
@@ -21,6 +22,7 @@
 #include "nvim/buffer.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/change.h"
+#include "nvim/channel.h"
 #include "nvim/charset.h"
 #include "nvim/cmdexpand.h"
 #include "nvim/cmdexpand_defs.h"
@@ -51,7 +53,6 @@
 #include "nvim/getchar.h"
 #include "nvim/gettext_defs.h"
 #include "nvim/globals.h"
-#include "nvim/highlight.h"
 #include "nvim/highlight_defs.h"
 #include "nvim/highlight_group.h"
 #include "nvim/input.h"
@@ -68,6 +69,7 @@
 #include "nvim/message.h"
 #include "nvim/mouse.h"
 #include "nvim/move.h"
+#include "nvim/msgpack_rpc/server.h"
 #include "nvim/normal.h"
 #include "nvim/normal_defs.h"
 #include "nvim/ops.h"
@@ -404,6 +406,8 @@ int do_cmdline(char *cmdline, LineGetter fgetline, void *cookie, int flags)
   bool msg_didout_before_start = false;
   int count = 0;                        // line number count
   bool did_inc = false;                 // incremented RedrawingDisabled
+  int block_indent = -1;                // indent for ext_cmdline block event
+  char *block_line = NULL;              // block_line for ext_cmdline block event
   int retval = OK;
   cstack_T cstack = {                   // conditional stack
     .cs_idx = -1,
@@ -571,16 +575,20 @@ int do_cmdline(char *cmdline, LineGetter fgetline, void *cookie, int flags)
 
     // 2. If no line given, get an allocated line with fgetline().
     if (next_cmdline == NULL) {
-      // Need to set msg_didout for the first line after an ":if",
-      // otherwise the ":if" will be overwritten.
-      if (count == 1 && getline_equal(fgetline, cookie, getexline)) {
-        msg_didout = true;
+      int indent = cstack.cs_idx < 0 ? 0 : (cstack.cs_idx + 1) * 2;
+      if (count >= 1 && getline_equal(fgetline, cookie, getexline)) {
+        if (ui_has(kUICmdline)) {
+          char *line = block_line == last_cmdline ? "" : last_cmdline;
+          ui_ext_cmdline_block_append((size_t)MAX(0, block_indent), line);
+          block_line = last_cmdline;
+          block_indent = indent;
+        } else if (count == 1) {
+          // Need to set msg_didout for the first line after an ":if",
+          // otherwise the ":if" will be overwritten.
+          msg_didout = true;
+        }
       }
-      if (fgetline == NULL
-          || (next_cmdline = fgetline(':', cookie,
-                                      cstack.cs_idx <
-                                      0 ? 0 : (cstack.cs_idx + 1) * 2,
-                                      true)) == NULL) {
+      if (fgetline == NULL || (next_cmdline = fgetline(':', cookie, indent, true)) == NULL) {
         // Don't call wait_return() for aborted command line.  The NULL
         // returned for the end of a sourced file or executed function
         // doesn't do this.
@@ -678,8 +686,7 @@ int do_cmdline(char *cmdline, LineGetter fgetline, void *cookie, int flags)
 
       // If the command was typed, remember it for the ':' register.
       // Do this AFTER executing the command to make :@: work.
-      if (getline_equal(fgetline, cookie, getexline)
-          && new_last_cmdline != NULL) {
+      if (getline_equal(fgetline, cookie, getexline) && new_last_cmdline != NULL) {
         xfree(last_cmdline);
         last_cmdline = new_last_cmdline;
         new_last_cmdline = NULL;
@@ -937,6 +944,10 @@ int do_cmdline(char *cmdline, LineGetter fgetline, void *cookie, int flags)
     }
   }
 
+  if (block_indent >= 0) {
+    ui_ext_cmdline_block_leave();
+  }
+
   did_endif = false;    // in case do_cmdline used recursively
 
   do_cmdline_end();
@@ -983,7 +994,7 @@ void handle_did_throw(void)
   if (messages != NULL) {
     do {
       msglist_T *next = messages->next;
-      emsg_multiline(messages->msg, messages->multiline);
+      emsg_multiline(messages->msg, "emsg", HLF_E, messages->multiline);
       xfree(messages->msg);
       xfree(messages->sfile);
       xfree(messages);
@@ -1384,8 +1395,9 @@ static void parse_register(exarg_T *eap)
       // Do not allow register = for user commands
       && (!IS_USER_CMDIDX(eap->cmdidx) || *eap->arg != '=')
       && !((eap->argt & EX_COUNT) && ascii_isdigit(*eap->arg))) {
-    if (valid_yank_reg(*eap->arg, (eap->cmdidx != CMD_put
-                                   && !IS_USER_CMDIDX(eap->cmdidx)))) {
+    if (valid_yank_reg(*eap->arg,
+                       (!IS_USER_CMDIDX(eap->cmdidx)
+                        && eap->cmdidx != CMD_put && eap->cmdidx != CMD_iput))) {
       eap->regname = (uint8_t)(*eap->arg++);
       // for '=' register: accept the rest of the line as an expression
       if (eap->arg[-1] == '=' && eap->arg[0] != NUL) {
@@ -1743,7 +1755,7 @@ int execute_cmd(exarg_T *eap, CmdParseInfo *cmdinfo, bool preview)
 
   if (!MODIFIABLE(curbuf) && (eap->argt & EX_MODIFY)
       // allow :put in terminals
-      && !(curbuf->terminal && eap->cmdidx == CMD_put)) {
+      && !(curbuf->terminal && (eap->cmdidx == CMD_put || eap->cmdidx == CMD_iput))) {
     errormsg = _(e_modifiable);
     goto end;
   }
@@ -2146,7 +2158,7 @@ static char *do_one_cmd(char **cmdlinep, int flags, cstack_T *cstack, LineGetter
     }
     if (!MODIFIABLE(curbuf) && (ea.argt & EX_MODIFY)
         // allow :put in terminals
-        && (!curbuf->terminal || ea.cmdidx != CMD_put)) {
+        && !(curbuf->terminal && (ea.cmdidx == CMD_put || ea.cmdidx == CMD_iput))) {
       // Command not allowed in non-'modifiable' buffer
       errormsg = _(e_modifiable);
       goto doend;
@@ -2202,7 +2214,7 @@ static char *do_one_cmd(char **cmdlinep, int flags, cstack_T *cstack, LineGetter
           errormsg = _("E493: Backwards range given");
           goto doend;
         }
-        if (ask_yesno(_("Backwards range given, OK to swap"), false) != 'y') {
+        if (ask_yesno(_("Backwards range given, OK to swap")) != 'y') {
           goto doend;
         }
       }
@@ -4135,7 +4147,7 @@ void separate_nextcmd(exarg_T *eap)
 }
 
 /// get + command from ex argument
-static char *getargcmd(char **argp)
+char *getargcmd(char **argp)
 {
   char *arg = *argp;
   char *command = NULL;
@@ -4210,7 +4222,7 @@ static char *get_bad_name(expand_T *xp FUNC_ATTR_UNUSED, int idx)
 /// Get "++opt=arg" argument.
 ///
 /// @return  FAIL or OK.
-static int getargopt(exarg_T *eap)
+int getargopt(exarg_T *eap)
 {
   char *arg = eap->arg + 2;
   int *pp = NULL;
@@ -4501,6 +4513,12 @@ static void ex_bunload(exarg_T *eap)
 /// :[N]buffer [N]       to buffer N
 /// :[N]sbuffer [N]      to buffer N
 static void ex_buffer(exarg_T *eap)
+{
+  do_exbuffer(eap);
+}
+
+/// ":buffer" command and alike.
+static void do_exbuffer(exarg_T *eap)
 {
   if (*eap->arg) {
     eap->errmsg = ex_errmsg(e_trailing_arg, eap->arg);
@@ -5111,14 +5129,13 @@ static void ex_print(exarg_T *eap)
   if (curbuf->b_ml.ml_flags & ML_EMPTY) {
     emsg(_(e_empty_buffer));
   } else {
-    for (; !got_int; os_breakcheck()) {
-      print_line(eap->line1,
+    for (linenr_T line = eap->line1; line <= eap->line2 && !got_int; os_breakcheck()) {
+      print_line(line,
                  (eap->cmdidx == CMD_number || eap->cmdidx == CMD_pound
                   || (eap->flags & EXFLAG_NR)),
-                 eap->cmdidx == CMD_list || (eap->flags & EXFLAG_LIST));
-      if (++eap->line1 > eap->line2) {
-        break;
-      }
+                 eap->cmdidx == CMD_list || (eap->flags & EXFLAG_LIST),
+                 line == eap->line1);
+      line++;
     }
     setpcmark();
     // put cursor at last line
@@ -5522,6 +5539,56 @@ static void ex_tabs(exarg_T *eap)
       msg_outtrans(IObuff, 0, false);
       os_breakcheck();
     }
+  }
+}
+
+/// ":detach"
+///
+/// Detaches the current UI.
+///
+/// ":detach!" with bang (!) detaches all UIs _except_ the current UI.
+static void ex_detach(exarg_T *eap)
+{
+  // come on pooky let's burn this mf down
+  if (eap && eap->forceit) {
+    emsg("bang (!) not supported yet");
+  } else {
+    // 1. (TODO) Send "detach" UI-event (notification only).
+    // 2. Perform server-side `nvim_ui_detach`.
+    // 3. Close server-side channel without self-exit.
+
+    if (!current_ui) {
+      emsg("UI not attached");
+      return;
+    }
+
+    Channel *chan = find_channel(current_ui);
+    if (!chan) {
+      emsg(e_invchan);
+      return;
+    }
+    chan->detach = true;  // Prevent self-exit on channel-close.
+
+    // Server-side UI detach. Doesn't close the channel.
+    Error err2 = ERROR_INIT;
+    nvim_ui_detach(chan->id, &err2);
+    if (ERROR_SET(&err2)) {
+      emsg(err2.msg);  // UI disappeared already?
+      api_clear_error(&err2);
+      return;
+    }
+
+    // Server-side channel close.
+    const char *err = NULL;
+    bool rv = channel_close(chan->id, kChannelPartAll, &err);
+    if (!rv && err) {
+      emsg(err);  // UI disappeared already?
+      return;
+    }
+    // XXX: Can't do this, channel_decref() is async...
+    // assert(!find_channel(chan->id));
+
+    ILOG("detach current_ui=%" PRId64, chan->id);
   }
 }
 
@@ -6101,12 +6168,20 @@ static void ex_sleep(exarg_T *eap)
   default:
     semsg(_(e_invarg2), eap->arg); return;
   }
-  do_sleep(len);
+
+  // Hide the cursor if invoked with !
+  do_sleep(len, eap->forceit);
 }
 
 /// Sleep for "msec" milliseconds, but return early on CTRL-C.
-void do_sleep(int64_t msec)
+///
+/// @param hide_cursor  hide the cursor if true
+void do_sleep(int64_t msec, bool hide_cursor)
 {
+  if (hide_cursor) {
+    ui_busy_start();
+  }
+
   ui_flush();  // flush before waiting
   LOOP_PROCESS_EVENTS_UNTIL(&main_loop, main_loop.events, msec, got_int);
 
@@ -6114,6 +6189,10 @@ void do_sleep(int64_t msec)
   // input buffer, otherwise a following call to input() fails.
   if (got_int) {
     vpeekc();
+  }
+
+  if (hide_cursor) {
+    ui_busy_stop();
   }
 }
 
@@ -6229,6 +6308,20 @@ static void ex_put(exarg_T *eap)
          PUT_LINE|PUT_CURSLINE);
 }
 
+/// ":iput".
+static void ex_iput(exarg_T *eap)
+{
+  // ":0iput" works like ":1iput!".
+  if (eap->line2 == 0) {
+    eap->line2 = 1;
+    eap->forceit = true;
+  }
+  curwin->w_cursor.lnum = eap->line2;
+  check_cursor_col(curwin);
+  do_put(eap->regname, NULL, eap->forceit ? BACKWARD : FORWARD, 1L,
+         PUT_LINE|PUT_CURSLINE|PUT_FIXINDENT);
+}
+
 /// Handle ":copy" and ":move".
 static void ex_copymove(exarg_T *eap)
 {
@@ -6266,7 +6359,7 @@ void ex_may_print(exarg_T *eap)
 {
   if (eap->flags != 0) {
     print_line(curwin->w_cursor.lnum, (eap->flags & EXFLAG_NR),
-               (eap->flags & EXFLAG_LIST));
+               (eap->flags & EXFLAG_LIST), true);
     ex_no_reprint = true;
   }
 }
@@ -6990,14 +7083,35 @@ static void ex_ptag(exarg_T *eap)
 static void ex_pedit(exarg_T *eap)
 {
   win_T *curwin_save = curwin;
-
-  // Open the preview window or popup and make it the current window.
-  g_do_tagpreview = (int)p_pvh;
-  prepare_tagpreview(true);
+  prepare_preview_window();
 
   // Edit the file.
   do_exedit(eap, NULL);
 
+  back_to_current_window(curwin_save);
+}
+
+/// ":pbuffer"
+static void ex_pbuffer(exarg_T *eap)
+{
+  win_T *curwin_save = curwin;
+  prepare_preview_window();
+
+  // Go to the buffer.
+  do_exbuffer(eap);
+
+  back_to_current_window(curwin_save);
+}
+
+static void prepare_preview_window(void)
+{
+  // Open the preview window or popup and make it the current window.
+  g_do_tagpreview = (int)p_pvh;
+  prepare_tagpreview(true);
+}
+
+static void back_to_current_window(win_T *curwin_save)
+{
   if (curwin != curwin_save && win_valid(curwin_save)) {
     // Return cursor to where we were
     validate_cursor(curwin);
@@ -7362,8 +7476,7 @@ char *eval_vars(char *src, const char *srcstart, size_t *usedlen, linenr_T *lnum
         *errormsg = _(e_usingsid);
         return NULL;
       }
-      snprintf(strbuf, sizeof(strbuf), "<SNR>%" PRIdSCID "_",
-               current_sctx.sc_sid);
+      snprintf(strbuf, sizeof(strbuf), "<SNR>%" PRIdSCID "_", current_sctx.sc_sid);
       result = strbuf;
       break;
 
@@ -7696,8 +7809,8 @@ static void ex_checkhealth(exarg_T *eap)
     return;
   }
 
-  const char *vimruntime_env = os_getenv("VIMRUNTIME");
-  if (vimruntime_env == NULL) {
+  char *vimruntime_env = os_getenv_noalloc("VIMRUNTIME");
+  if (!vimruntime_env) {
     emsg(_("E5009: $VIMRUNTIME is empty or unset"));
   } else {
     bool rtp_ok = NULL != strstr(p_rtp, vimruntime_env);
@@ -7707,7 +7820,7 @@ static void ex_checkhealth(exarg_T *eap)
       emsg(_("E5009: Invalid 'runtimepath'"));
     }
   }
-  semsg_multiline(err.msg);
+  semsg_multiline("emsg", err.msg);
   api_clear_error(&err);
 }
 
@@ -7736,7 +7849,7 @@ static void ex_terminal(exarg_T *eap)
   if (*eap->arg != NUL) {  // Run {cmd} in 'shell'.
     char *name = vim_strsave_escaped(eap->arg, "\"\\");
     snprintf(ex_cmd + len, sizeof(ex_cmd) - len,
-             " | call termopen(\"%s\")", name);
+             " | call jobstart(\"%s\",{'term':v:true})", name);
     xfree(name);
   } else {  // No {cmd}: run the job with tokenized 'shell'.
     if (*p_sh == NUL) {
@@ -7759,7 +7872,7 @@ static void ex_terminal(exarg_T *eap)
     shell_free_argv(argv);
 
     snprintf(ex_cmd + len, sizeof(ex_cmd) - len,
-             " | call termopen([%s])", shell_argv + 1);
+             " | call jobstart([%s], {'term':v:true})", shell_argv + 1);
   }
 
   do_cmdline_cmd(ex_cmd);

@@ -3141,7 +3141,7 @@ static void spell_soundfold_wsal(slang_T *slang, const char *inword, char *res)
               c = *ws;
             }
             if (strstr(s, "^^") != NULL) {
-              if (c != NUL) {
+              if (c != NUL && reslen < MAXWLEN) {
                 wres[reslen++] = c;
               }
               memmove(word, word + i + 1, sizeof(int) * (size_t)(wordlen - (i + 1) + 1));
@@ -3483,7 +3483,7 @@ static void dump_word(slang_T *slang, char *word, char *pat, Direction *dir, int
               ? mb_strnicmp(p, pat, strlen(pat)) == 0
               : strncmp(p, pat, strlen(pat)) == 0)
              && ins_compl_add_infercase(p, (int)strlen(p),
-                                        p_ic, NULL, *dir, false) == OK) {
+                                        p_ic, NULL, *dir, false, 0) == OK) {
     // if dir was BACKWARD then honor it just once
     *dir = FORWARD;
   }

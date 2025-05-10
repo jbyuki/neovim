@@ -9,6 +9,8 @@
 #include <string.h>
 
 #include "auto/config.h"
+#include "nvim/api/private/defs.h"
+#include "nvim/api/private/helpers.h"
 #include "nvim/ascii_defs.h"
 #include "nvim/assert_defs.h"
 #include "nvim/charset.h"
@@ -20,12 +22,12 @@
 #include "nvim/garray.h"
 #include "nvim/garray_defs.h"
 #include "nvim/gettext_defs.h"
-#include "nvim/globals.h"
 #include "nvim/macros_defs.h"
 #include "nvim/math.h"
 #include "nvim/mbyte.h"
 #include "nvim/mbyte_defs.h"
 #include "nvim/memory.h"
+#include "nvim/memory_defs.h"
 #include "nvim/message.h"
 #include "nvim/option.h"
 #include "nvim/plines.h"
@@ -473,6 +475,28 @@ bool striequal(const char *a, const char *b)
   return (a == NULL && b == NULL) || (a && b && STRICMP(a, b) == 0);
 }
 
+/// Compare two ASCII strings, for length "len", ignoring case, ignoring locale.
+///
+/// @return 0 for match, < 0 for smaller, > 0 for bigger
+int vim_strnicmp_asc(const char *s1, const char *s2, size_t len)
+  FUNC_ATTR_PURE FUNC_ATTR_WARN_UNUSED_RESULT
+{
+  int i = 0;
+  while (len > 0) {
+    i = TOLOWER_ASC(*s1) - TOLOWER_ASC(*s2);
+    if (i != 0) {
+      break;                       // this character is different
+    }
+    if (*s1 == NUL) {
+      break;                       // strings match until NUL
+    }
+    s1++;
+    s2++;
+    len--;
+  }
+  return i;
+}
+
 /// strchr() version which handles multibyte strings
 ///
 /// @param[in]  string  String to search in.
@@ -494,20 +518,6 @@ char *vim_strchr(const char *const string, const int c)
     u8char[len] = NUL;
     return strstr(string, u8char);
   }
-}
-
-// Sized version of strchr that can handle embedded NULs.
-// Adjusts n to the new size.
-char *strnchr(const char *p, size_t *n, int c)
-{
-  while (*n > 0) {
-    if (*p == c) {
-      return (char *)p;
-    }
-    p++;
-    (*n)--;
-  }
-  return NULL;
 }
 
 // Sort an array of strings.
@@ -1017,7 +1027,7 @@ static void format_overflow_error(const char *pstart)
   xfree(argcopy);
 }
 
-enum { MAX_ALLOWED_STRING_WIDTH = 6400, };
+enum { MAX_ALLOWED_STRING_WIDTH = 1048576, };  // 1MiB
 
 static int get_unsigned_int(const char *pstart, const char **p, unsigned *uj, bool overflow_err)
 {
@@ -1680,8 +1690,6 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap_st
       }
 
       switch (fmt_spec) {
-      case 'b':
-      case 'B':
       case 'd':
       case 'u':
       case 'o':
@@ -1805,6 +1813,13 @@ int vim_vsnprintf_typval(char *str, size_t str_m, const char *fmt, va_list ap_st
           if (ptr_arg) {
             arg_sign = 1;
           }
+        } else if (fmt_spec == 'b' || fmt_spec == 'B') {
+          uarg = (tvs
+                  ? (unsigned long long)tv_nr(tvs, &arg_idx)  // NOLINT(runtime/int)
+                  : (skip_to_arg(ap_types, ap_start, &ap, &arg_idx,
+                                 &arg_cur, fmt),
+                     va_arg(ap, unsigned long long)));  // NOLINT(runtime/int)
+          arg_sign = (uarg != 0);
         } else if (fmt_spec == 'd') {
           // signed
           switch (length_modifier) {

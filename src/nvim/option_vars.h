@@ -3,6 +3,7 @@
 #include "nvim/macros_defs.h"
 #include "nvim/os/os_defs.h"
 #include "nvim/sign_defs.h"
+#include "nvim/statusline_defs.h"
 #include "nvim/types_defs.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
@@ -12,15 +13,15 @@
 // option_vars.h: definition of global variables for settable options
 
 #define HIGHLIGHT_INIT \
-  "8:SpecialKey,~:EndOfBuffer,z:TermCursor,Z:TermCursorNC,@:NonText,d:Directory,e:ErrorMsg," \
-  "i:IncSearch,l:Search,y:CurSearch,m:MoreMsg,M:ModeMsg,n:LineNr,a:LineNrAbove,b:LineNrBelow," \
-  "N:CursorLineNr,G:CursorLineSign,O:CursorLineFold,r:Question,s:StatusLine,S:StatusLineNC," \
-  "c:VertSplit,t:Title,v:Visual,V:VisualNOS,w:WarningMsg,W:WildMenu,f:Folded,F:FoldColumn," \
-  "A:DiffAdd,C:DiffChange,D:DiffDelete,T:DiffText,>:SignColumn,-:Conceal,B:SpellBad,P:SpellCap," \
+  "8:SpecialKey,~:EndOfBuffer,z:TermCursor,@:NonText,d:Directory,e:ErrorMsg,i:IncSearch,l:Search," \
+  "y:CurSearch,m:MoreMsg,M:ModeMsg,n:LineNr,a:LineNrAbove,b:LineNrBelow,N:CursorLineNr," \
+  "G:CursorLineSign,O:CursorLineFold,r:Question,s:StatusLine,S:StatusLineNC,c:VertSplit,t:Title," \
+  "v:Visual,V:VisualNOS,w:WarningMsg,W:WildMenu,f:Folded,F:FoldColumn,A:DiffAdd,C:DiffChange," \
+  "D:DiffDelete,T:DiffText,E:DiffTextAdd,>:SignColumn,-:Conceal,B:SpellBad,P:SpellCap," \
   "R:SpellRare,L:SpellLocal,+:Pmenu,=:PmenuSel,k:PmenuMatch,<:PmenuMatchSel,[:PmenuKind," \
   "]:PmenuKindSel,{:PmenuExtra,}:PmenuExtraSel,x:PmenuSbar,X:PmenuThumb,*:TabLine,#:TabLineSel," \
   "_:TabLineFill,!:CursorColumn,.:CursorLine,o:ColorColumn,q:QuickFixLine,z:StatusLineTerm," \
-  "Z:StatusLineTermNC,g:MsgArea,0:Whitespace,I:NormalNC"
+  "Z:StatusLineTermNC,g:MsgArea,h:ComplMatchIns,0:Whitespace,I:NormalNC"
 
 // Default values for 'errorformat'.
 // The "%f|%l| %m" one is used for when the contents of the quickfix window is
@@ -212,49 +213,6 @@ enum {
 #define COM_ALL         "nbsmexflrO"    // all flags for 'comments' option
 #define COM_MAX_LEN     50              // maximum length of a part
 
-/// 'statusline' option flags
-enum {
-  STL_FILEPATH        = 'f',  ///< Path of file in buffer.
-  STL_FULLPATH        = 'F',  ///< Full path of file in buffer.
-  STL_FILENAME        = 't',  ///< Last part (tail) of file path.
-  STL_COLUMN          = 'c',  ///< Column og cursor.
-  STL_VIRTCOL         = 'v',  ///< Virtual column.
-  STL_VIRTCOL_ALT     = 'V',  ///< - with 'if different' display.
-  STL_LINE            = 'l',  ///< Line number of cursor.
-  STL_NUMLINES        = 'L',  ///< Number of lines in buffer.
-  STL_BUFNO           = 'n',  ///< Current buffer number.
-  STL_KEYMAP          = 'k',  ///< 'keymap' when active.
-  STL_OFFSET          = 'o',  ///< Offset of character under cursor.
-  STL_OFFSET_X        = 'O',  ///< - in hexadecimal.
-  STL_BYTEVAL         = 'b',  ///< Byte value of character.
-  STL_BYTEVAL_X       = 'B',  ///< - in hexadecimal.
-  STL_ROFLAG          = 'r',  ///< Readonly flag.
-  STL_ROFLAG_ALT      = 'R',  ///< - other display.
-  STL_HELPFLAG        = 'h',  ///< Window is showing a help file.
-  STL_HELPFLAG_ALT    = 'H',  ///< - other display.
-  STL_FILETYPE        = 'y',  ///< 'filetype'.
-  STL_FILETYPE_ALT    = 'Y',  ///< - other display.
-  STL_PREVIEWFLAG     = 'w',  ///< Window is showing the preview buf.
-  STL_PREVIEWFLAG_ALT = 'W',  ///< - other display.
-  STL_MODIFIED        = 'm',  ///< Modified flag.
-  STL_MODIFIED_ALT    = 'M',  ///< - other display.
-  STL_QUICKFIX        = 'q',  ///< Quickfix window description.
-  STL_PERCENTAGE      = 'p',  ///< Percentage through file.
-  STL_ALTPERCENT      = 'P',  ///< Percentage as TOP BOT ALL or NN%.
-  STL_ARGLISTSTAT     = 'a',  ///< Argument list status as (x of y).
-  STL_PAGENUM         = 'N',  ///< Page number (when printing).
-  STL_SHOWCMD         = 'S',  ///< 'showcmd' buffer
-  STL_FOLDCOL         = 'C',  ///< Fold column for 'statuscolumn'
-  STL_SIGNCOL         = 's',  ///< Sign column for 'statuscolumn'
-  STL_VIM_EXPR        = '{',  ///< Start of expression to substitute.
-  STL_SEPARATE        = '=',  ///< Separation between alignment sections.
-  STL_TRUNCMARK       = '<',  ///< Truncation mark if line is too long.
-  STL_USER_HL         = '*',  ///< Highlight from (User)1..9 or 0.
-  STL_HIGHLIGHT       = '#',  ///< Highlight name.
-  STL_TABPAGENR       = 'T',  ///< Tab page label nr.
-  STL_TABCLOSENR      = 'X',  ///< Tab page close nr.
-  STL_CLICK_FUNC      = '@',  ///< Click region start.
-};
 /// C string containing all 'statusline' option flags
 #define STL_ALL ((char[]) { \
     STL_FILEPATH, STL_FULLPATH, STL_FILENAME, STL_COLUMN, STL_VIRTCOL, \
@@ -336,8 +294,10 @@ EXTERN char *p_cms;             ///< 'commentstring'
 EXTERN char *p_cpt;             ///< 'complete'
 EXTERN OptInt p_columns;        ///< 'columns'
 EXTERN int p_confirm;           ///< 'confirm'
+EXTERN char *p_cfc;             ///< 'completefuzzycollect'
+EXTERN unsigned cfc_flags;      ///< flags from 'completefuzzycollect'
 EXTERN char *p_cia;             ///< 'completeitemalign'
-EXTERN unsigned cia_flags;      ///<  order flags of 'completeitemalign'
+EXTERN unsigned cia_flags;      ///< order flags of 'completeitemalign'
 EXTERN char *p_cot;             ///< 'completeopt'
 EXTERN unsigned cot_flags;      ///< flags from 'completeopt'
 #ifdef BACKSLASH_IN_FILENAME
@@ -346,6 +306,7 @@ EXTERN char *p_csl;             ///< 'completeslash'
 EXTERN OptInt p_pb;             ///< 'pumblend'
 EXTERN OptInt p_ph;             ///< 'pumheight'
 EXTERN OptInt p_pw;             ///< 'pumwidth'
+EXTERN OptInt p_pmw;            ///< 'pummaxwidth'
 EXTERN char *p_com;             ///< 'comments'
 EXTERN char *p_cpo;             ///< 'cpoptions'
 EXTERN char *p_debug;           ///< 'debug'
@@ -413,6 +374,7 @@ EXTERN int p_is;                ///< 'incsearch'
 EXTERN char *p_inde;            ///< 'indentexpr'
 EXTERN char *p_indk;            ///< 'indentkeys'
 EXTERN char *p_icm;             ///< 'inccommand'
+EXTERN char *p_ise;             ///< 'isexpand'
 EXTERN char *p_isf;             ///< 'isfname'
 EXTERN char *p_isi;             ///< 'isident'
 EXTERN char *p_isk;             ///< 'iskeyword'
@@ -448,6 +410,7 @@ EXTERN OptInt p_mfd;            ///< 'maxfuncdepth'
 EXTERN OptInt p_mmd;            ///< 'maxmapdepth'
 EXTERN OptInt p_mmp;            ///< 'maxmempattern'
 EXTERN OptInt p_mis;            ///< 'menuitems'
+EXTERN char *p_mopt;            ///< 'messagesopt'
 EXTERN char *p_msm;             ///< 'mkspellmem'
 EXTERN int p_ml;                ///< 'modeline'
 EXTERN int p_mle;               ///< 'modelineexpr'
@@ -464,7 +427,6 @@ EXTERN OptInt p_mousescroll_vert INIT( = MOUSESCROLL_VERT_DFLT);
 EXTERN OptInt p_mousescroll_hor INIT( = MOUSESCROLL_HOR_DFLT);
 EXTERN OptInt p_mouset;         ///< 'mousetime'
 EXTERN int p_more;              ///< 'more'
-EXTERN OptInt p_mhi;            ///< 'msghistory'
 EXTERN char *p_nf;              ///< 'nrformats'
 EXTERN char *p_opfunc;          ///< 'operatorfunc'
 EXTERN char *p_para;            ///< 'paragraphs'
@@ -483,6 +445,7 @@ EXTERN OptInt p_rdt;            ///< 'redrawtime'
 EXTERN OptInt p_re;             ///< 'regexpengine'
 EXTERN OptInt p_report;         ///< 'report'
 EXTERN OptInt p_pvh;            ///< 'previewheight'
+EXTERN OptInt p_chi;            ///< 'chistory'
 EXTERN int p_ari;               ///< 'allowrevins'
 EXTERN int p_ri;                ///< 'revins'
 EXTERN int p_ru;                ///< 'ruler'
@@ -609,6 +572,7 @@ EXTERN OptInt p_wcm;            ///< 'wildcharm'
 EXTERN int p_wic;               ///< 'wildignorecase'
 EXTERN char *p_wim;             ///< 'wildmode'
 EXTERN int p_wmnu;              ///< 'wildmenu'
+EXTERN char *p_winborder;       ///< 'winborder'
 EXTERN OptInt p_wh;             ///< 'winheight'
 EXTERN OptInt p_wmh;            ///< 'winminheight'
 EXTERN OptInt p_wmw;            ///< 'winminwidth'

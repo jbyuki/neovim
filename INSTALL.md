@@ -15,9 +15,10 @@ Install from download
 Downloads are available on the [Releases](https://github.com/neovim/neovim/releases) page.
 
 * Latest [stable release](https://github.com/neovim/neovim/releases/latest)
-    * [macOS x86](https://github.com/neovim/neovim/releases/latest/download/nvim-macos-x86_64.tar.gz)
-    * [macOS arm](https://github.com/neovim/neovim/releases/latest/download/nvim-macos-arm64.tar.gz)
-    * [Linux](https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz)
+    * [macOS x86_64](https://github.com/neovim/neovim/releases/latest/download/nvim-macos-x86_64.tar.gz)
+    * [macOS arm64](https://github.com/neovim/neovim/releases/latest/download/nvim-macos-arm64.tar.gz)
+    * [Linux x86_64](https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz)
+    * [Linux arm64](https://github.com/neovim/neovim/releases/latest/download/nvim-linux-arm64.tar.gz)
     * [Windows](https://github.com/neovim/neovim/releases/latest/download/nvim-win64.msi)
 * Latest [development prerelease](https://github.com/neovim/neovim/releases/nightly)
 
@@ -61,7 +62,7 @@ Several Neovim GUIs are available from scoop (extras): [scoop.sh/#/apps?q=neovim
 
 - Add the `bin` folder (e.g. `C:\Program Files\nvim\bin`) to your PATH.
     - This makes it easy to run `nvim` from anywhere.
-- If `:set spell` does not work, create the `C:/Users/foo/AppData/Local/nvim/site/spell` folder.
+- If `:set spell` does not work, create the `%LOCALAPPDATA%/nvim-data/site/spell` folder.
   You can then copy your spell files over (for English, located
   [here](https://github.com/vim/vim/blob/master/runtime/spell/en.utf-8.spl) and
   [here](https://github.com/vim/vim/blob/master/runtime/spell/en.utf-8.sug));
@@ -107,35 +108,35 @@ For arm64:
 The [Releases](https://github.com/neovim/neovim/releases) page provides pre-built binaries for Linux systems.
 
 ```sh
-curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux64.tar.gz
+curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz
 sudo rm -rf /opt/nvim
-sudo tar -C /opt -xzf nvim-linux64.tar.gz
+sudo tar -C /opt -xzf nvim-linux-x86_64.tar.gz
 ```
 
 Then add this to your shell config (`~/.bashrc`, `~/.zshrc`, ...):
 
-    export PATH="$PATH:/opt/nvim-linux64/bin"
+    export PATH="$PATH:/opt/nvim-linux-x86_64/bin"
 
 ### AppImage ("universal" Linux package)
 
-The [Releases](https://github.com/neovim/neovim/releases) page provides an [AppImage](https://appimage.org) that runs on most Linux systems. No installation is needed, just download `nvim.appimage` and run it. (It might not work if your Linux distribution is more than 4 years old.)
+The [Releases](https://github.com/neovim/neovim/releases) page provides an [AppImage](https://appimage.org) that runs on most Linux systems. No installation is needed, just download `nvim-linux-x86_64.appimage` and run it. (It might not work if your Linux distribution is more than 4 years old.) The following instructions assume an `x86_64` architecture; on ARM Linux replace with `arm64`.
 
-    curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim.appimage
-    chmod u+x nvim.appimage
-    ./nvim.appimage
+    curl -LO https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.appimage
+    chmod u+x nvim-linux-x86_64.appimage
+    ./nvim-linux-x86_64.appimage
 
 To expose nvim globally:
 
     mkdir -p /opt/nvim
-    mv nvim.appimage /opt/nvim/nvim
+    mv nvim-linux-x86_64.appimage /opt/nvim/nvim
 
 And the following line to your shell config (`~/.bashrc`, `~/.zshrc`, ...):
 
     export PATH="$PATH:/opt/nvim/"
 
-If the `./nvim.appimage` command fails, try:
+If the `./nvim-linux-x86_64.appimage` command fails, try:
 ```sh
-./nvim.appimage --appimage-extract
+./nvim-linux-x86_64.appimage --appimage-extract
 ./squashfs-root/AppRun --version
 
 # Optional: exposing nvim globally.
@@ -302,7 +303,7 @@ Neovim nightly and stable are available on the [snap store](https://snapcraft.io
 **Stable Builds**
 
 ```sh
-sudo snap install --beta nvim --classic
+sudo snap install nvim --classic
 ```
 
 **Nightly Builds**

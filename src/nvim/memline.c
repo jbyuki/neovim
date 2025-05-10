@@ -63,7 +63,6 @@
 #include "nvim/getchar.h"
 #include "nvim/gettext_defs.h"
 #include "nvim/globals.h"
-#include "nvim/highlight.h"
 #include "nvim/highlight_defs.h"
 #include "nvim/input.h"
 #include "nvim/macros_defs.h"
@@ -805,8 +804,7 @@ void ml_recover(bool checkext)
       // list the names of the swapfiles
       recover_names(fname, true, NULL, 0, NULL);
       msg_putchar('\n');
-      msg_puts(_("Enter number of swap file to use (0 to quit): "));
-      i = get_number(false, NULL);
+      i = prompt_for_input(_("Enter number of swap file to use (0 to quit): "), 0, false, NULL);
       if (i < 1 || i > len) {
         goto theend;
       }
@@ -1862,7 +1860,7 @@ int gchar_pos(pos_T *pos)
   FUNC_ATTR_NONNULL_ARG(1)
 {
   // When searching columns is sometimes put at the end of a line.
-  if (pos->col == MAXCOL) {
+  if (pos->col == MAXCOL || pos->col > ml_get_len(pos->lnum)) {
     return NUL;
   }
   return utf_ptr2char(ml_get_pos(pos));
@@ -1876,6 +1874,11 @@ static char *ml_get_buf_impl(buf_T *buf, linenr_T lnum, bool will_change)
 {
   static int recursive = 0;
   static char questions[4];
+
+  if (buf->b_ml.ml_mfp == NULL) {       // there are no lines
+    buf->b_ml.ml_line_len = 1;
+    return "";
+  }
 
   if (lnum > buf->b_ml.ml_line_count) {  // invalid line number
     if (recursive == 0) {
@@ -1893,11 +1896,6 @@ errorret:
     return questions;
   }
   lnum = MAX(lnum, 1);  // pretend line 0 is line 1
-
-  if (buf->b_ml.ml_mfp == NULL) {       // there are no lines
-    buf->b_ml.ml_line_len = 1;
-    return "";
-  }
 
   // See if it is the same line as requested last time.
   // Otherwise may need to flush last used line.
@@ -2090,6 +2088,9 @@ static int ml_append_int(buf_T *buf, linenr_T lnum, char *line, colnr_T len, boo
     dp = hp->bh_data;
   }
 
+  if (buf->b_prev_line_count == 0) {
+    buf->b_prev_line_count = buf->b_ml.ml_line_count;
+  }
   buf->b_ml.ml_line_count++;
 
   if ((int)dp->db_free >= space_needed) {       // enough room in data block
@@ -2575,6 +2576,9 @@ static int ml_delete_int(buf_T *buf, linenr_T lnum, bool message)
   int count = buf->b_ml.ml_locked_high - buf->b_ml.ml_locked_low + 2;
   int idx = lnum - buf->b_ml.ml_locked_low;
 
+  if (buf->b_prev_line_count == 0) {
+    buf->b_prev_line_count = buf->b_ml.ml_line_count;
+  }
   buf->b_ml.ml_line_count--;
 
   int line_start = ((dp->db_index[idx]) & DB_INDEX_MASK);

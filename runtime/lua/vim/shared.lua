@@ -7,8 +7,8 @@
 -- so this wouldn't be a separate case to consider)
 
 ---@nodoc
----@diagnostic disable-next-line: lowercase-global
-vim = vim or {}
+_G.vim = _G.vim or {} --[[@as table]]
+-- TODO(lewis6991): better fix for flaky luals
 
 ---@generic T
 ---@param orig T
@@ -95,7 +95,7 @@ end
 ---
 --- @see |string.gmatch()|
 --- @see |vim.split()|
---- @see |lua-patterns|
+--- @see |lua-pattern|s
 --- @see https://www.lua.org/pil/20.2.html
 --- @see http://lua-users.org/wiki/StringLibraryTutorial
 ---
@@ -366,7 +366,7 @@ local function can_merge(v)
 end
 
 --- Recursive worker for tbl_extend
---- @param behavior 'error'|'keep'|'force'
+--- @param behavior 'error'|'keep'|'force'|fun(key:any, prev_value:any?, value:any): any
 --- @param deep_extend boolean
 --- @param ... table<any,any>
 local function tbl_extend_rec(behavior, deep_extend, ...)
@@ -381,6 +381,8 @@ local function tbl_extend_rec(behavior, deep_extend, ...)
       for k, v in pairs(tbl) do
         if deep_extend and can_merge(v) and can_merge(ret[k]) then
           ret[k] = tbl_extend_rec(behavior, true, ret[k], v)
+        elseif type(behavior) == 'function' then
+          ret[k] = behavior(k, ret[k], v)
         elseif behavior ~= 'force' and ret[k] ~= nil then
           if behavior == 'error' then
             error('key found in more than one map: ' .. k)
@@ -395,11 +397,16 @@ local function tbl_extend_rec(behavior, deep_extend, ...)
   return ret
 end
 
---- @param behavior 'error'|'keep'|'force'
+--- @param behavior 'error'|'keep'|'force'|fun(key:any, prev_value:any?, value:any): any
 --- @param deep_extend boolean
 --- @param ... table<any,any>
 local function tbl_extend(behavior, deep_extend, ...)
-  if behavior ~= 'error' and behavior ~= 'keep' and behavior ~= 'force' then
+  if
+    behavior ~= 'error'
+    and behavior ~= 'keep'
+    and behavior ~= 'force'
+    and type(behavior) ~= 'function'
+  then
     error('invalid "behavior": ' .. tostring(behavior))
   end
 
@@ -420,10 +427,12 @@ end
 ---
 ---@see |extend()|
 ---
----@param behavior 'error'|'keep'|'force' Decides what to do if a key is found in more than one map:
+---@param behavior 'error'|'keep'|'force'|fun(key:any, prev_value:any?, value:any): any Decides what to do if a key is found in more than one map:
 ---      - "error": raise an error
 ---      - "keep":  use value from the leftmost map
 ---      - "force": use value from the rightmost map
+---      - If a function, it receives the current key, the previous value in the currently merged table (if present), the current value and should
+---        return the value for the given key in the merged table.
 ---@param ... table Two or more tables
 ---@return table : Merged table
 function vim.tbl_extend(behavior, ...)
@@ -441,10 +450,12 @@ end
 ---
 ---@generic T1: table
 ---@generic T2: table
----@param behavior 'error'|'keep'|'force' Decides what to do if a key is found in more than one map:
+---@param behavior 'error'|'keep'|'force'|fun(key:any, prev_value:any?, value:any): any Decides what to do if a key is found in more than one map:
 ---      - "error": raise an error
 ---      - "keep":  use value from the leftmost map
 ---      - "force": use value from the rightmost map
+---      - If a function, it receives the current key, the previous value in the currently merged table (if present), the current value and should
+---        return the value for the given key in the merged table.
 ---@param ... T2 Two or more tables
 ---@return T1|T2 (table) Merged table
 function vim.tbl_deep_extend(behavior, ...)
@@ -527,15 +538,15 @@ end
 ---@param ... any Optional keys (0 or more, variadic) via which to index the table
 ---@return any # Nested value indexed by key (if it exists), else nil
 function vim.tbl_get(o, ...)
-  local keys = { ... }
-  if #keys == 0 then
+  local nargs = select('#', ...)
+  if nargs == 0 then
     return nil
   end
-  for i, k in ipairs(keys) do
-    o = o[k] --- @type any
+  for i = 1, nargs do
+    o = o[select(i, ...)] --- @type any
     if o == nil then
       return nil
-    elseif type(o) ~= 'table' and next(keys, i) then
+    elseif type(o) ~= 'table' and i ~= nargs then
       return nil
     end
   end
@@ -737,9 +748,54 @@ function vim.list_slice(list, start, finish)
   return new_list
 end
 
+--- Efficiently insert items into the middle of a list.
+---
+--- Calling table.insert() in a loop will re-index the tail of the table on
+--- every iteration, instead this function will re-index  the table exactly
+--- once.
+---
+--- Based on https://stackoverflow.com/questions/12394841/safely-remove-items-from-an-array-table-while-iterating/53038524#53038524
+---
+---@param t any[]
+---@param first integer
+---@param last integer
+---@param v any
+function vim._list_insert(t, first, last, v)
+  local n = #t
+
+  -- Shift table forward
+  for i = n - first, 0, -1 do
+    t[last + 1 + i] = t[first + i]
+  end
+
+  -- Fill in new values
+  for i = first, last do
+    t[i] = v
+  end
+end
+
+--- Efficiently remove items from middle of a list.
+---
+--- Calling table.remove() in a loop will re-index the tail of the table on
+--- every iteration, instead this function will re-index  the table exactly
+--- once.
+---
+--- Based on https://stackoverflow.com/questions/12394841/safely-remove-items-from-an-array-table-while-iterating/53038524#53038524
+---
+---@param t any[]
+---@param first integer
+---@param last integer
+function vim._list_remove(t, first, last)
+  local n = #t
+  for i = 0, n - first do
+    t[first + i] = t[last + 1 + i]
+    t[last + 1 + i] = nil
+  end
+end
+
 --- Trim whitespace (Lua pattern "%s") from both sides of a string.
 ---
----@see |lua-patterns|
+---@see |lua-pattern|s
 ---@see https://www.lua.org/pil/20.2.html
 ---@param s string String to trim
 ---@return string String with whitespace removed from its beginning and end
@@ -748,7 +804,7 @@ function vim.trim(s)
   return s:match('^%s*(.*%S)') or ''
 end
 
---- Escapes magic chars in |lua-patterns|.
+--- Escapes magic chars in |lua-pattern|s.
 ---
 ---@see https://github.com/rxi/lume
 ---@param s string String to escape
@@ -809,7 +865,7 @@ do
   --- @param param_name string
   --- @param val any
   --- @param validator vim.validate.Validator
-  --- @param message? string
+  --- @param message? string "Expected" message
   --- @param allow_alias? boolean Allow short type names: 'n', 's', 't', 'b', 'f', 'c'
   --- @return string?
   local function is_valid(param_name, val, validator, message, allow_alias)
@@ -821,18 +877,18 @@ do
       end
 
       if not is_type(val, expected) then
-        return string.format('%s: expected %s, got %s', param_name, expected, type(val))
+        return ('%s: expected %s, got %s'):format(param_name, message or expected, type(val))
       end
     elseif vim.is_callable(validator) then
       -- Check user-provided validation function
       local valid, opt_msg = validator(val)
       if not valid then
-        local err_msg =
-          string.format('%s: expected %s, got %s', param_name, message or '?', tostring(val))
-
-        if opt_msg then
-          err_msg = string.format('%s. Info: %s', err_msg, opt_msg)
-        end
+        local err_msg = ('%s: expected %s, got %s'):format(
+          param_name,
+          message or '?',
+          tostring(val)
+        )
+        err_msg = opt_msg and ('%s. Info: %s'):format(err_msg, opt_msg) or err_msg
 
         return err_msg
       end
@@ -914,7 +970,7 @@ do
   ---       function vim.startswith(s, prefix)
   ---         vim.validate('s', s, 'string')
   ---         vim.validate('prefix', prefix, 'string')
-  ---         ...
+  ---         -- ...
   ---       end
   ---     ```
   ---
@@ -934,7 +990,7 @@ do
   ---           age={age, 'number'},
   ---           hobbies={hobbies, 'table'},
   ---         }
-  ---         ...
+  ---         -- ...
   ---       end
   ---     ```
   ---
@@ -968,7 +1024,7 @@ do
   --- best performance.
   ---
   --- @param name string Argument name
-  --- @param value string Argument value
+  --- @param value any Argument value
   --- @param validator vim.validate.Validator
   ---   - (`string|string[]`): Any value that can be returned from |lua-type()| in addition to
   ---     `'callable'`: `'boolean'`, `'callable'`, `'function'`, `'nil'`, `'number'`, `'string'`, `'table'`,
@@ -1352,6 +1408,26 @@ function vim._with(context, f)
   end
 
   return vim._with_c(context, callback)
+end
+
+--- @param bufnr? integer
+--- @return integer
+function vim._resolve_bufnr(bufnr)
+  if bufnr == nil or bufnr == 0 then
+    return vim.api.nvim_get_current_buf()
+  end
+  vim.validate('bufnr', bufnr, 'number')
+  return bufnr
+end
+
+--- @generic T
+--- @param x elem_or_list<T>?
+--- @return T[]
+function vim._ensure_list(x)
+  if type(x) == 'table' then
+    return x
+  end
+  return { x }
 end
 
 return vim

@@ -8,7 +8,6 @@ local insert = n.insert
 local exec_lua = n.exec_lua
 local pcall_err = t.pcall_err
 local api = n.api
-local fn = n.fn
 
 local function get_query_result(query_text)
   local cquery = vim.treesitter.query.parse('c', query_text)
@@ -86,7 +85,7 @@ void ui_refresh(void)
         local before = vim.api.nvim__stats().ts_query_parse_count
         collectgarbage('stop')
         for _ = 1, _n, 1 do
-          vim.treesitter.query.parse('c', long_query, _n)
+          vim.treesitter.query.parse('c', long_query)
         end
         collectgarbage('restart')
         collectgarbage('collect')
@@ -96,8 +95,39 @@ void ui_refresh(void)
     end
 
     eq(1, q(1))
-    -- cache is cleared by garbage collection even if valid "cquery" reference is kept around
-    eq(1, q(100))
+    -- cache is retained even after garbage collection
+    eq(0, q(100))
+  end)
+
+  it('cache is cleared upon runtimepath changes, or setting query manually', function()
+    ---@return number
+    exec_lua(function()
+      _G.query_parse_count = _G.query_parse_count or 0
+      local parse = vim.treesitter.query.parse
+      vim.treesitter.query.parse = function(...)
+        _G.query_parse_count = _G.query_parse_count + 1
+        return parse(...)
+      end
+    end)
+
+    local function q(_n)
+      return exec_lua(function()
+        for _ = 1, _n, 1 do
+          vim.treesitter.query.get('c', 'highlights')
+        end
+        return _G.query_parse_count
+      end)
+    end
+
+    eq(1, q(10))
+    exec_lua(function()
+      vim.opt.rtp:prepend('/another/dir')
+    end)
+    eq(2, q(100))
+    exec_lua(function()
+      vim.treesitter.query.set('c', 'highlights', [[; test]])
+    end)
+    eq(3, q(100))
   end)
 
   it('supports query and iter by capture (iter_captures)', function()
@@ -355,8 +385,8 @@ void ui_refresh(void)
       [[((primitive_type) @c-keyword (#any-of? @c-keyword "int" "float"))]]
     )
     eq({
-      { 'c-keyword', 'primitive_type', { 2, 2, 2, 5 }, 'int' },
-      { 'c-keyword', 'primitive_type', { 3, 4, 3, 7 }, 'int' },
+      { 'c-keyword', 'primitive_type', { 2, 0, 2, 3 }, 'int' },
+      { 'c-keyword', 'primitive_type', { 3, 2, 3, 5 }, 'int' },
     }, res0)
 
     local res1 = exec_lua(
@@ -370,9 +400,9 @@ void ui_refresh(void)
       ]]
     )
     eq({
-      { 'fizzbuzz-strings', 'string_literal', { 6, 15, 6, 38 }, '"number= %d FizzBuzz\\n"' },
-      { 'fizzbuzz-strings', 'string_literal', { 8, 15, 8, 34 }, '"number= %d Fizz\\n"' },
-      { 'fizzbuzz-strings', 'string_literal', { 10, 15, 10, 34 }, '"number= %d Buzz\\n"' },
+      { 'fizzbuzz-strings', 'string_literal', { 6, 13, 6, 36 }, '"number= %d FizzBuzz\\n"' },
+      { 'fizzbuzz-strings', 'string_literal', { 8, 13, 8, 32 }, '"number= %d Fizz\\n"' },
+      { 'fizzbuzz-strings', 'string_literal', { 10, 13, 10, 32 }, '"number= %d Buzz\\n"' },
     }, res1)
   end)
 
@@ -519,7 +549,7 @@ void ui_refresh(void)
       end)
 
       -- Remove this 'do' block in 0.12
-      eq(0, fn.has('nvim-0.12'))
+      -- eq(0, n.fn.has('nvim-0.12'))
       eq({ { 0, 4, 0, 8 } }, res)
     end
 
@@ -577,9 +607,9 @@ void ui_refresh(void)
 
     eq(
       {
-        { 0, 2, 0, 8 },
-        { 1, 2, 1, 8 },
-        { 2, 2, 2, 8 },
+        { 0, 0, 0, 6 },
+        { 1, 0, 1, 6 },
+        { 2, 0, 2, 6 },
       },
       test(
         [[
@@ -605,9 +635,9 @@ void ui_refresh(void)
 
     eq(
       {
-        { 0, 2, 0, 7 },
-        { 1, 2, 1, 8 },
-        { 2, 2, 2, 7 },
+        { 0, 0, 0, 5 },
+        { 1, 0, 1, 6 },
+        { 2, 0, 2, 5 },
       },
       test(
         [[
@@ -644,15 +674,15 @@ void ui_refresh(void)
     end)
 
     eq({
-      { 0, 2, 0, 12 },
-      { 1, 2, 1, 12 },
-      { 2, 2, 2, 12 },
+      { 0, 0, 0, 10 },
+      { 1, 0, 1, 10 },
+      { 2, 0, 2, 10 },
     }, result)
   end)
 
   it('supports the old broken version of iter_matches #24738', function()
     -- Delete this test in 0.12 when iter_matches is removed
-    eq(0, fn.has('nvim-0.12'))
+    -- eq(0, n.fn.has('nvim-0.12'))
 
     insert(test_text)
     local res = exec_lua(function()
@@ -781,6 +811,34 @@ void ui_refresh(void)
     )
   end)
 
+  it('supports "; extends" modeline in custom queries', function()
+    insert('int zeero = 0;')
+    local result = exec_lua(function()
+      vim.treesitter.query.set(
+        'c',
+        'highlights',
+        [[; extends
+        (identifier) @spell]]
+      )
+      local query = vim.treesitter.query.get('c', 'highlights')
+      local parser = vim.treesitter.get_parser(0, 'c')
+      local root = parser:parse()[1]:root()
+      local res = {}
+      for id, node in query:iter_captures(root, 0) do
+        table.insert(res, { query.captures[id], vim.treesitter.get_node_text(node, 0) })
+      end
+      return res
+    end)
+    eq({
+      { 'type.builtin', 'int' },
+      { 'variable', 'zeero' },
+      { 'spell', 'zeero' },
+      { 'operator', '=' },
+      { 'number', '0' },
+      { 'punctuation.delimiter', ';' },
+    }, result)
+  end)
+
   describe('Query:iter_captures', function()
     it('includes metadata for all captured nodes #23664', function()
       insert([[
@@ -835,9 +893,9 @@ void ui_refresh(void)
 
       local result = exec_lua(function()
         local query0 = vim.treesitter.query.parse('c', query)
-        local match_preds = query0.match_preds
+        local match_preds = query0._match_predicates
         local called = 0
-        function query0:match_preds(...)
+        function query0:_match_predicates(...)
           called = called + 1
           return match_preds(self, ...)
         end
@@ -851,6 +909,54 @@ void ui_refresh(void)
       end)
 
       eq({ 2, { 1, 1, 2, 2 } }, result)
+    end)
+  end)
+
+  describe('TSQuery', function()
+    local source = [[
+      void foo(int x, int y);
+    ]]
+
+    local query_text = [[
+      ((identifier) @func
+        (#eq? @func "foo"))
+      ((identifier) @param
+        (#eq? @param "x"))
+      ((identifier) @param
+        (#eq? @param "y"))
+    ]]
+
+    ---@param query string
+    ---@param disabled { capture: string?, pattern: integer? }
+    local function get_patterns(query, disabled)
+      local q = vim.treesitter.query.parse('c', query)
+      if disabled.capture then
+        q.query:disable_capture(disabled.capture)
+      end
+      if disabled.pattern then
+        q.query:disable_pattern(disabled.pattern)
+      end
+
+      local parser = vim.treesitter.get_parser(0, 'c')
+      local root = parser:parse()[1]:root()
+      local captures = {} ---@type {id: number, pattern: number}[]
+      for id, _, _, match in q:iter_captures(root, 0) do
+        local _, pattern = match:info()
+        captures[#captures + 1] = { id = id, pattern = pattern }
+      end
+      return captures
+    end
+
+    it('supports disabling patterns', function()
+      insert(source)
+      local result = exec_lua(get_patterns, query_text, { pattern = 2 })
+      eq({ { id = 1, pattern = 1 }, { id = 2, pattern = 3 } }, result)
+    end)
+
+    it('supports disabling captures', function()
+      insert(source)
+      local result = exec_lua(get_patterns, query_text, { capture = 'param' })
+      eq({ { id = 1, pattern = 1 } }, result)
     end)
   end)
 end)

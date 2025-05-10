@@ -88,6 +88,7 @@ error('Cannot require a meta file')
 --- @field pattern? string|string[]
 
 --- @class vim.api.keyset.echo_opts
+--- @field err? boolean
 --- @field verbose? boolean
 
 --- @class vim.api.keyset.empty
@@ -116,6 +117,7 @@ error('Cannot require a meta file')
 --- @field group? integer|string
 --- @field pattern? string|string[]
 --- @field buffer? integer|integer[]
+--- @field id? integer
 
 --- @class vim.api.keyset.get_commands
 --- @field builtin? boolean
@@ -227,20 +229,21 @@ error('Cannot require a meta file')
 --- @field do_source? boolean
 
 --- @class vim.api.keyset.set_decoration_provider
---- @field on_start? fun(_: "start", tick: integer)
+--- @field on_start? fun(_: "start", tick: integer): boolean?
 --- @field on_buf? fun(_: "buf", bufnr: integer, tick: integer)
---- @field on_win? fun(_: "win", winid: integer, bufnr: integer, toprow: integer, botrow: integer)
---- @field on_line? fun(_: "line", winid: integer, bufnr: integer, row: integer)
+--- @field on_win? fun(_: "win", winid: integer, bufnr: integer, toprow: integer, botrow: integer): boolean?
+--- @field on_line? fun(_: "line", winid: integer, bufnr: integer, row: integer): boolean?
 --- @field on_end? fun(_: "end", tick: integer)
 --- @field _on_hl_def? fun(_: "hl_def")
 --- @field _on_spell_nav? fun(_: "spell_nav")
+--- @field _on_conceal_line? fun(_: "conceal_line")
 
 --- @class vim.api.keyset.set_extmark
 --- @field id? integer
 --- @field end_line? integer
 --- @field end_row? integer
 --- @field end_col? integer
---- @field hl_group? integer|string
+--- @field hl_group? any
 --- @field virt_text? any[]
 --- @field virt_text_pos? string
 --- @field virt_text_win_col? integer
@@ -256,6 +259,7 @@ error('Cannot require a meta file')
 --- @field virt_lines? any[]
 --- @field virt_lines_above? boolean
 --- @field virt_lines_leftcol? boolean
+--- @field virt_lines_overflow? string
 --- @field strict? boolean
 --- @field sign_text? string
 --- @field sign_hl_group? integer|string
@@ -263,6 +267,7 @@ error('Cannot require a meta file')
 --- @field line_hl_group? integer|string
 --- @field cursorline_hl_group? integer|string
 --- @field conceal? string
+--- @field conceal_lines? string
 --- @field spell? boolean
 --- @field ui_watched? boolean
 --- @field undo_restore? boolean
@@ -288,9 +293,9 @@ error('Cannot require a meta file')
 --- @field col? number
 --- @field width? integer
 --- @field height? integer
---- @field anchor? string
---- @field relative? string
---- @field split? string
+--- @field anchor? 'NW'|'NE'|'SW'|'SE'
+--- @field relative? 'cursor'|'editor'|'laststatus'|'mouse'|'tabline'|'win'
+--- @field split? 'left'|'right'|'above'|'below'
 --- @field win? integer
 --- @field bufpos? integer[]
 --- @field external? boolean
@@ -298,21 +303,23 @@ error('Cannot require a meta file')
 --- @field mouse? boolean
 --- @field vertical? boolean
 --- @field zindex? integer
---- @field border? any
+--- @field border? 'none'|'single'|'double'|'rounded'|'solid'|'shadow'|string[]
 --- @field title? any
---- @field title_pos? string
+--- @field title_pos? 'center'|'left'|'right'
 --- @field footer? any
---- @field footer_pos? string
---- @field style? string
+--- @field footer_pos? 'center'|'left'|'right'
+--- @field style? 'minimal'
 --- @field noautocmd? boolean
 --- @field fixed? boolean
 --- @field hide? boolean
+--- @field _cmdline_offset? integer
 
 --- @class vim.api.keyset.win_text_height
 --- @field start_row? integer
 --- @field end_row? integer
 --- @field start_vcol? integer
 --- @field end_vcol? integer
+--- @field max_height? integer
 
 --- @class vim.api.keyset.xdl_diff
 --- @field on_hunk? fun(start_a: integer, count_a: integer, start_b: integer, count_b: integer): integer?

@@ -19,6 +19,26 @@ describe('thread', function()
     screen = Screen.new(50, 10)
   end)
 
+  it('non-string error()', function()
+    exec_lua [[
+      local thread = vim.uv.new_thread(function()
+        error()
+      end)
+      vim.uv.thread_join(thread)
+    ]]
+
+    screen:expect([[
+                                                        |
+      {1:~                                                 }|*5
+      {3:                                                  }|
+      {9:Luv thread:}                                       |
+      {9:[NULL]}                                            |
+      {6:Press ENTER or type command to continue}^           |
+    ]])
+    feed('<cr>')
+    assert_alive()
+  end)
+
   it('entry func is executed in protected mode', function()
     exec_lua [[
       local thread = vim.uv.new_thread(function()
@@ -31,7 +51,7 @@ describe('thread', function()
                                                         |
       {1:~                                                 }|*5
       {3:                                                  }|
-      {9:Error in luv thread:}                              |
+      {9:Luv thread:}                                       |
       {9:[string "<nvim>"]:2: Error in thread entry func}   |
       {6:Press ENTER or type command to continue}^           |
     ]])
@@ -58,7 +78,7 @@ describe('thread', function()
                                                         |
       {1:~                                                 }|*5
       {3:                                                  }|
-      {9:Error in luv callback, thread:}                    |
+      {9:Luv callback, thread:}                             |
       {9:[string "<nvim>"]:6: Error in thread callback}     |
       {6:Press ENTER or type command to continue}^           |
     ]])
@@ -266,7 +286,7 @@ describe('threadpool', function()
                                                         |
       {1:~                                                 }|*5
       {3:                                                  }|
-      {9:Error in luv thread:}                              |
+      {9:Luv thread:}                                       |
       {9:Error: thread arg not support type 'table' at 1}   |
       {6:Press ENTER or type command to continue}^           |
     ]])

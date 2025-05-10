@@ -15,7 +15,7 @@ vim.v.argv = ...
 --- Argument for evaluating 'formatexpr' and used for the typed
 --- character when using <expr> in an abbreviation `:map-<expr>`.
 --- It is also used by the `InsertCharPre` and `InsertEnter` events.
---- @type any
+--- @type string
 vim.v.char = ...
 
 --- The name of the character encoding of a file to be converted.
@@ -60,7 +60,7 @@ vim.v.collate = ...
 --- mode.
 --- Note: Plugins can modify the value to emulate the builtin
 --- `CompleteDone` event behavior.
---- @type any
+--- @type vim.v.completed_item
 vim.v.completed_item = ...
 
 --- The count given for the last Normal mode command.  Can be used
@@ -90,7 +90,7 @@ vim.v.count1 = ...
 --- This variable can not be set directly, use the `:language`
 --- command.
 --- See `multi-lang`.
---- @type any
+--- @type string
 vim.v.ctype = ...
 
 --- Normally zero.  When a deadly signal is caught it's set to
@@ -160,48 +160,50 @@ vim.v.errors = ...
 ---                    an aborting condition (e.g. `c_Esc` or
 ---                    `c_CTRL-C` for `CmdlineLeave`).
 ---   chan             `channel-id`
----   info             Dict of arbitrary event data.
+---   changed_window   Is `v:true` if the event fired while
+---                    changing window  (or tab) on `DirChanged`.
 ---   cmdlevel         Level of cmdline.
 ---   cmdtype          Type of cmdline, `cmdline-char`.
+---   col              Column count of popup menu on `CompleteChanged`,
+---                    relative to screen.
+---   complete_type    See `complete_info_mode`
+---   complete_word    The selected word, or empty if completion
+---                    was abandoned/discarded.
+---   completed_item   Current selected item on `CompleteChanged`,
+---                    or `{}` if no item selected.
 ---   cwd              Current working directory.
+---   height           Height of popup menu on `CompleteChanged`
 ---   inclusive        Motion is `inclusive`, else exclusive.
----   scope            Event-specific scope name.
+---   info             Dict of arbitrary event data.
 ---   operator         Current `operator`.  Also set for Ex
 ---                    commands (unlike `v:operator`). For
 ---                    example if `TextYankPost` is triggered
 ---                    by the `:yank` Ex command then
 ---                    `v:event.operator` is "y".
+---   reason           `CompleteDone` reason.
 ---   regcontents      Text stored in the register as a
 ---                    `readfile()`-style list of lines.
----   regname          Requested register (e.g "x" for "xyy)
----                    or the empty string for an unnamed
----                    operation.
+---   regname          Requested register (e.g "x" for "xyy), or
+---                    empty string for an unnamed operation.
 ---   regtype          Type of register as returned by
 ---                    `getregtype()`.
----   visual           Selection is visual (as opposed to,
----                    e.g., via motion).
----   completed_item   Current selected complete item on
----                    `CompleteChanged`, Is `{}` when no complete
----                    item selected.
----   height           Height of popup menu on `CompleteChanged`
----   width            Width of popup menu on `CompleteChanged`
 ---   row              Row count of popup menu on `CompleteChanged`,
 ---                    relative to screen.
----   col              Col count of popup menu on `CompleteChanged`,
----                    relative to screen.
+---   scope            Event-specific scope name.
+---   scrollbar        `v:true` if popup menu has a scrollbar, or
+---                    `v:false` if not.
 ---   size             Total number of completion items on
 ---                    `CompleteChanged`.
----   scrollbar        Is `v:true` if popup menu have scrollbar, or
----                    `v:false` if not.
----   changed_window   Is `v:true` if the event fired while
----                    changing window  (or tab) on `DirChanged`.
 ---   status           Job status or exit code, -1 means "unknown". `TermClose`
----   reason           Reason for completion being done. `CompleteDone`
---- @type any
+---   visual           Selection is visual (as opposed to e.g. a motion range).
+---   width            Width of popup menu on `CompleteChanged`
+---   windows          List of window IDs that changed on `WinResized`
+--- @type vim.v.event
 vim.v.event = ...
 
 --- The value of the exception most recently caught and not
---- finished.  See also `v:throwpoint` and `throw-variables`.
+--- finished.  See also `v:stacktrace`, `v:throwpoint`, and
+--- `throw-variables`.
 --- Example:
 ---
 --- ```vim
@@ -223,7 +225,7 @@ vim.v.exception = ...
 --- ```vim
 ---   :au VimLeave * echo "Exit value is " .. v:exiting
 --- ```
---- @type any
+--- @type integer?
 vim.v.exiting = ...
 
 --- Special value used to put "false" in JSON and msgpack.  See
@@ -419,7 +421,7 @@ vim.v.mouse_winid = ...
 --- and `msgpackdump()`. All types inside dictionary are fixed
 --- (not editable) empty lists. To check whether some list is one
 --- of msgpack types, use `is` operator.
---- @type any
+--- @type table
 vim.v.msgpack_types = ...
 
 --- Special value used to put "null" in JSON and NIL in msgpack.
@@ -563,7 +565,7 @@ vim.v.relnum = ...
 --- typed command.
 --- This can be used to find out why your script causes the
 --- hit-enter prompt.
---- @type any
+--- @type string
 vim.v.scrollstart = ...
 
 --- Search direction:  1 after a forward search, 0 after a
@@ -584,17 +586,24 @@ vim.v.searchforward = ...
 --- Read-only.
 ---
 ---                                                      *$NVIM*
---- $NVIM is set by `terminal` and `jobstart()`, and is thus
---- a hint that the current environment is a subprocess of Nvim.
---- Example:
+--- $NVIM is set to v:servername by `terminal` and `jobstart()`,
+--- and is thus a hint that the current environment is a child
+--- (direct subprocess) of Nvim.
 ---
---- ```vim
----   if $NVIM
----     echo nvim_get_chan_info(v:parent)
----   endif
+--- Example: a child Nvim process can detect and make requests to
+--- its parent Nvim:
+---
+--- ```lua
+---
+---   if vim.env.NVIM then
+---     local ok, chan = pcall(vim.fn.sockconnect, 'pipe', vim.env.NVIM, {rpc=true})
+---     if ok and chan then
+---       local client = vim.api.nvim_get_chan_info(chan).client
+---       local rv = vim.rpcrequest(chan, 'nvim_exec_lua', [[return ... + 1]], { 41 })
+---       vim.print(('got "%s" from parent Nvim'):format(rv))
+---     end
+---   end
 --- ```
----
---- Note the contents of $NVIM may change in the future.
 --- @type string
 vim.v.servername = ...
 
@@ -613,6 +622,13 @@ vim.v.servername = ...
 --- ```
 --- @type integer
 vim.v.shell_error = ...
+
+--- The stack trace of the exception most recently caught and
+--- not finished.  Refer to `getstacktrace()` for the structure of
+--- stack trace.  See also `v:exception`, `v:throwpoint`, and
+--- `throw-variables`.
+--- @type table[]
+vim.v.stacktrace = ...
 
 --- Last given status message.
 --- Modifiable (can be set).
@@ -690,7 +706,7 @@ vim.v.t_number = ...
 --- @type integer
 vim.v.t_string = ...
 
---- The value of the most recent OSC or DCS control sequence
+--- The value of the most recent OSC, DCS or APC control sequence
 --- sent from a process running in the embedded `terminal`.
 --- This can be read in a `TermRequest` event handler to respond
 --- to queries from embedded applications.
@@ -705,18 +721,18 @@ vim.v.termrequest = ...
 vim.v.termresponse = ...
 
 --- Must be set before using `test_garbagecollect_now()`.
---- @type any
+--- @type integer
 vim.v.testing = ...
 
 --- Full filename of the last loaded or saved session file.
 --- Empty when no session file has been saved.  See `:mksession`.
 --- Modifiable (can be set).
---- @type any
+--- @type string
 vim.v.this_session = ...
 
 --- The point where the exception most recently caught and not
 --- finished was thrown.  Not set when commands are typed.  See
---- also `v:exception` and `throw-variables`.
+--- also `v:exception`, `v:stacktrace`, and `throw-variables`.
 --- Example:
 ---
 --- ```vim
@@ -728,7 +744,7 @@ vim.v.this_session = ...
 --- ```
 ---
 --- Output: "Exception from test.vim, line 2"
---- @type any
+--- @type string
 vim.v.throwpoint = ...
 
 --- Special value used to put "true" in JSON and msgpack.  See

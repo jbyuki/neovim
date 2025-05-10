@@ -38,7 +38,6 @@
 #include "nvim/getchar.h"
 #include "nvim/gettext_defs.h"
 #include "nvim/globals.h"
-#include "nvim/highlight.h"
 #include "nvim/highlight_defs.h"
 #include "nvim/iconv_defs.h"
 #include "nvim/log.h"
@@ -55,7 +54,6 @@
 #include "nvim/option.h"
 #include "nvim/option_defs.h"
 #include "nvim/option_vars.h"
-#include "nvim/optionstr.h"
 #include "nvim/os/fs.h"
 #include "nvim/os/fs_defs.h"
 #include "nvim/os/input.h"
@@ -355,10 +353,9 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
     }
   }
 
-  if (!read_buffer && !read_stdin && !read_fifo) {
+  if (!read_stdin && fname != NULL) {
     perm = os_getperm(fname);
-    // On Unix it is possible to read a directory, so we have to
-    // check for it before os_open().
+  }
 
 #ifdef OPEN_CHR_FILES
 # define IS_CHR_DEV(perm, fname) S_ISCHR(perm) && is_dev_fd_file(fname)
@@ -366,12 +363,15 @@ int readfile(char *fname, char *sfname, linenr_T from, linenr_T lines_to_skip,
 # define IS_CHR_DEV(perm, fname) false
 #endif
 
+  if (!read_stdin && !read_buffer && !read_fifo) {
     if (perm >= 0 && !S_ISREG(perm)                 // not a regular file ...
         && !S_ISFIFO(perm)                          // ... or fifo
         && !S_ISSOCK(perm)                          // ... or socket
         && !(IS_CHR_DEV(perm, fname))
         // ... or a character special file named /dev/fd/<n>
         ) {
+      // On Unix it is possible to read a directory, so we have to
+      // check for it before os_open().
       if (S_ISDIR(perm)) {
         if (!silent) {
           filemess(curbuf, fname, _(msg_is_a_directory));
@@ -3041,7 +3041,7 @@ int buf_check_timestamp(buf_T *buf)
         }
         msg_clr_eos();
         msg_end();
-        if (emsg_silent == 0 && !in_assert_fails) {
+        if (emsg_silent == 0 && !in_assert_fails && !ui_has(kUIMessages)) {
           ui_flush();
           // give the user some time to think about it
           os_delay(1004, true);
@@ -3278,7 +3278,11 @@ static void vim_mktempdir(void)
     expand_env((char *)temp_dirs[i], tmp, TEMP_FILE_PATH_MAXLEN - 64);
     if (!os_isdir(tmp)) {
       if (strequal("$TMPDIR", temp_dirs[i])) {
-        WLOG("$TMPDIR tempdir not a directory (or does not exist): %s", tmp);
+        if (!os_env_exists("TMPDIR", true)) {
+          DLOG("$TMPDIR is unset");
+        } else {
+          WLOG("$TMPDIR tempdir not a directory (or does not exist): \"%s\"", tmp);
+        }
       }
       continue;
     }

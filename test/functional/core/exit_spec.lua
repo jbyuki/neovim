@@ -8,8 +8,6 @@ local feed = n.feed
 local eval = n.eval
 local eq = t.eq
 local run = n.run
-local fn = n.fn
-local nvim_prog = n.nvim_prog
 local pcall_err = t.pcall_err
 local exec_capture = n.exec_capture
 local poke_eventloop = n.poke_eventloop
@@ -69,8 +67,8 @@ describe(':cquit', function()
       poke_eventloop()
       assert_alive()
     else
-      fn.system({ nvim_prog, '-u', 'NONE', '-i', 'NONE', '--headless', '--cmd', cmdline })
-      eq(exit_code, eval('v:shell_error'))
+      local p = n.spawn_wait('--cmd', cmdline)
+      eq(exit_code, p.status)
     end
   end
 
@@ -99,14 +97,26 @@ describe(':cquit', function()
   end)
 
   it('exits with redir msg for multiple exit codes after :cquit 1 2', function()
-    test_cq('cquit 1 2', nil, 'nvim_exec2(): Vim(cquit):E488: Trailing characters: 2: cquit 1 2')
+    test_cq(
+      'cquit 1 2',
+      nil,
+      'nvim_exec2(), line 1: Vim(cquit):E488: Trailing characters: 2: cquit 1 2'
+    )
   end)
 
   it('exits with redir msg for non-number exit code after :cquit X', function()
-    test_cq('cquit X', nil, 'nvim_exec2(): Vim(cquit):E488: Trailing characters: X: cquit X')
+    test_cq(
+      'cquit X',
+      nil,
+      'nvim_exec2(), line 1: Vim(cquit):E488: Trailing characters: X: cquit X'
+    )
   end)
 
   it('exits with redir msg for negative exit code after :cquit -1', function()
-    test_cq('cquit -1', nil, 'nvim_exec2(): Vim(cquit):E488: Trailing characters: -1: cquit -1')
+    test_cq(
+      'cquit -1',
+      nil,
+      'nvim_exec2(), line 1: Vim(cquit):E488: Trailing characters: -1: cquit -1'
+    )
   end)
 end)

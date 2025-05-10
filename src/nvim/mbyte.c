@@ -26,6 +26,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <iconv.h>
+#include <limits.h>
 #include <locale.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -51,7 +52,6 @@
 #include "nvim/gettext_defs.h"
 #include "nvim/globals.h"
 #include "nvim/grid.h"
-#include "nvim/grid_defs.h"
 #include "nvim/iconv_defs.h"
 #include "nvim/keycodes.h"
 #include "nvim/macros_defs.h"
@@ -417,11 +417,11 @@ void remove_bom(char *s)
   }
 }
 
-// Get class of pointer:
-// 0 for blank or NUL
-// 1 for punctuation
-// 2 for an (ASCII) word character
-// >2 for other word characters
+/// Get class of pointer:
+/// 0 for blank or NUL
+/// 1 for punctuation
+/// 2 for an alphanumeric word character
+/// >2 for other word characters, including CJK and emoji
 int mb_get_class(const char *p)
   FUNC_ATTR_PURE
 {
@@ -2251,24 +2251,6 @@ int mb_charlen(const char *str)
   return count;
 }
 
-int mb_charlen2bytelen(const char *str, int charlen)
-{
-  const char *p = str;
-  int count = 0;
-
-  if (p == NULL) {
-    return 0;
-  }
-
-  for (int i = 0; *p != NUL && i < charlen; i++) {
-    int b = utfc_ptr2len(p);
-    p += b;
-    count += b;
-  }
-
-  return count;
-}
-
 /// Like mb_charlen() but for a string with specified length.
 int mb_charlen_len(const char *str, int len)
 {
@@ -2430,14 +2412,15 @@ char *enc_locale(void)
   char buf[50];
 
   const char *s;
+
 #ifdef HAVE_NL_LANGINFO_CODESET
   if (!(s = nl_langinfo(CODESET)) || *s == NUL)
 #endif
   {
     if (!(s = setlocale(LC_CTYPE, NULL)) || *s == NUL) {
-      if ((s = os_getenv("LC_ALL"))) {
-        if ((s = os_getenv("LC_CTYPE"))) {
-          s = os_getenv("LANG");
+      if ((s = os_getenv_noalloc("LC_ALL"))) {
+        if ((s = os_getenv_noalloc("LC_CTYPE"))) {
+          s = os_getenv_noalloc("LANG");
         }
       }
     }

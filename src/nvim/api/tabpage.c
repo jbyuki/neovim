@@ -7,16 +7,17 @@
 #include "nvim/api/vim.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/globals.h"
-#include "nvim/memory.h"
+#include "nvim/memory_defs.h"
+#include "nvim/types_defs.h"
 #include "nvim/window.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
-# include "api/tabpage.c.generated.h"
+# include "api/tabpage.c.generated.h"  // IWYU pragma: keep
 #endif
 
 /// Gets the windows in a tabpage
 ///
-/// @param tabpage  Tabpage handle, or 0 for current tabpage
+/// @param tabpage  |tab-ID|, or 0 for current tabpage
 /// @param[out] err Error details, if any
 /// @return List of windows in `tabpage`
 ArrayOf(Window) nvim_tabpage_list_wins(Tabpage tabpage, Arena *arena, Error *err)
@@ -45,7 +46,7 @@ ArrayOf(Window) nvim_tabpage_list_wins(Tabpage tabpage, Arena *arena, Error *err
 
 /// Gets a tab-scoped (t:) variable
 ///
-/// @param tabpage  Tabpage handle, or 0 for current tabpage
+/// @param tabpage  |tab-ID|, or 0 for current tabpage
 /// @param name     Variable name
 /// @param[out] err Error details, if any
 /// @return Variable value
@@ -63,7 +64,7 @@ Object nvim_tabpage_get_var(Tabpage tabpage, String name, Arena *arena, Error *e
 
 /// Sets a tab-scoped (t:) variable
 ///
-/// @param tabpage  Tabpage handle, or 0 for current tabpage
+/// @param tabpage  |tab-ID|, or 0 for current tabpage
 /// @param name     Variable name
 /// @param value    Variable value
 /// @param[out] err Error details, if any
@@ -81,7 +82,7 @@ void nvim_tabpage_set_var(Tabpage tabpage, String name, Object value, Error *err
 
 /// Removes a tab-scoped (t:) variable
 ///
-/// @param tabpage  Tabpage handle, or 0 for current tabpage
+/// @param tabpage  |tab-ID|, or 0 for current tabpage
 /// @param name     Variable name
 /// @param[out] err Error details, if any
 void nvim_tabpage_del_var(Tabpage tabpage, String name, Error *err)
@@ -98,9 +99,9 @@ void nvim_tabpage_del_var(Tabpage tabpage, String name, Error *err)
 
 /// Gets the current window in a tabpage
 ///
-/// @param tabpage  Tabpage handle, or 0 for current tabpage
+/// @param tabpage  |tab-ID|, or 0 for current tabpage
 /// @param[out] err Error details, if any
-/// @return Window handle
+/// @return |window-ID|
 Window nvim_tabpage_get_win(Tabpage tabpage, Error *err)
   FUNC_API_SINCE(1)
 {
@@ -124,8 +125,8 @@ Window nvim_tabpage_get_win(Tabpage tabpage, Error *err)
 
 /// Sets the current window in a tabpage
 ///
-/// @param tabpage  Tabpage handle, or 0 for current tabpage
-/// @param win Window handle, must already belong to {tabpage}
+/// @param tabpage  |tab-ID|, or 0 for current tabpage
+/// @param win |window-ID|, must already belong to {tabpage}
 /// @param[out] err Error details, if any
 void nvim_tabpage_set_win(Tabpage tabpage, Window win, Error *err)
   FUNC_API_SINCE(12)
@@ -146,11 +147,9 @@ void nvim_tabpage_set_win(Tabpage tabpage, Window win, Error *err)
   }
 
   if (tp == curtab) {
-    try_start();
-    win_goto(wp);
-    if (!try_end(err) && curwin != wp) {
-      api_set_error(err, kErrorTypeException, "Failed to switch to window %d", win);
-    }
+    TRY_WRAP(err, {
+      win_goto(wp);
+    });
   } else if (tp->tp_curwin != wp) {
     tp->tp_prevwin = tp->tp_curwin;
     tp->tp_curwin = wp;
@@ -159,7 +158,7 @@ void nvim_tabpage_set_win(Tabpage tabpage, Window win, Error *err)
 
 /// Gets the tabpage number
 ///
-/// @param tabpage  Tabpage handle, or 0 for current tabpage
+/// @param tabpage  |tab-ID|, or 0 for current tabpage
 /// @param[out] err Error details, if any
 /// @return Tabpage number
 Integer nvim_tabpage_get_number(Tabpage tabpage, Error *err)
@@ -176,7 +175,7 @@ Integer nvim_tabpage_get_number(Tabpage tabpage, Error *err)
 
 /// Checks if a tabpage is valid
 ///
-/// @param tabpage  Tabpage handle, or 0 for current tabpage
+/// @param tabpage  |tab-ID|, or 0 for current tabpage
 /// @return true if the tabpage is valid, false otherwise
 Boolean nvim_tabpage_is_valid(Tabpage tabpage)
   FUNC_API_SINCE(1)

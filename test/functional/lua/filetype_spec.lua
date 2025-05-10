@@ -173,6 +173,23 @@ describe('vim.filetype', function()
 
     eq(buf, api.nvim_get_current_buf())
   end)
+
+  it('matches full paths', function()
+    mkdir('Xfiletype')
+    command('lcd Xfiletype')
+    eq(
+      'Xfiletype',
+      exec_lua(function()
+        vim.filetype.add({
+          pattern = {
+            ['.*/Xfiletype/Xfilename'] = 'Xfiletype',
+          },
+        })
+        return vim.filetype.match({ filename = 'Xfilename' })
+      end)
+    )
+    rmdir('Xfiletype')
+  end)
 end)
 
 describe('filetype.lua', function()
@@ -208,7 +225,7 @@ describe('filetype.lua', function()
     eq('gitconfig', api.nvim_get_option_value('filetype', {}))
   end)
 
-  pending('works with :doautocmd BufRead #31306', function()
+  it('works with :doautocmd BufRead #31306', function()
     clear({ args = { '--clean' } })
     eq('', api.nvim_get_option_value('filetype', {}))
     command('doautocmd BufRead README.md')

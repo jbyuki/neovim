@@ -205,7 +205,9 @@ local function try_query_terminal_color(color)
     once = true,
     callback = function(args)
       hex = '#'
-        .. table.concat({ args.data:match('\027%]%d+;%d*;?rgb:(%w%w)%w%w/(%w%w)%w%w/(%w%w)%w%w') })
+        .. table.concat({
+          args.data.sequence:match('\027%]%d+;%d*;?rgb:(%w%w)%w%w/(%w%w)%w%w/(%w%w)%w%w'),
+        })
     end,
   })
   if type(color) == 'number' then
@@ -317,7 +319,7 @@ end
 --- @return nil|integer
 local function register_hl(state, hl)
   if type(hl) == 'table' then
-    hl = hl[#hl]
+    hl = hl[#hl] --- @type string|integer
   end
   if type(hl) == 'nil' then
     return
@@ -492,7 +494,7 @@ local function _styletable_extmarks_highlight(state, extmark, namespaces)
   end
   ---TODO(altermo) LSP semantic tokens (and some other extmarks) are only
   ---generated in visible lines, and not in the whole buffer.
-  if (namespaces[extmark[4].ns_id] or ''):find('vim_lsp_semantic_tokens') then
+  if (namespaces[extmark[4].ns_id] or ''):find('nvim.lsp.semantic_tokens') then
     notify('lsp semantic tokens are not supported, HTML may be incorrect')
     return
   end
@@ -514,7 +516,7 @@ local function _styletable_extmarks_virt_text(state, extmark, namespaces)
   end
   ---TODO(altermo) LSP semantic tokens (and some other extmarks) are only
   ---generated in visible lines, and not in the whole buffer.
-  if (namespaces[extmark[4].ns_id] or ''):find('vim_lsp_inlayhint') then
+  if (namespaces[extmark[4].ns_id] or ''):find('nvim.lsp.inlayhint') then
     notify('lsp inlay hints are not supported, HTML may be incorrect')
     return
   end
@@ -1162,7 +1164,9 @@ local function extend_pre(out, state)
       s = s .. _pre_text_to_html(state, row)
     end
     local true_line_len = #line + 1
-    for k in pairs(style_line) do
+    for k in
+      pairs(style_line --[[@as table<string,any>]])
+    do
       if type(k) == 'number' and k > true_line_len then
         true_line_len = k
       end
@@ -1368,6 +1372,7 @@ local function win_to_html(winid, opt)
   state_generate_style(state)
 
   local html = {}
+  table.insert(html, '<!-- vim: set nomodeline: -->')
   extend_html(html, function()
     extend_head(html, global_state)
     extend_body(html, function()

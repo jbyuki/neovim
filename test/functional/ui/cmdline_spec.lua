@@ -91,25 +91,27 @@ local function test_cmdline(linegrid)
       {1:~                        }|*3
                                |
     ]],
+      cmdline = { { abort = true } },
     }
   end)
 
   it('works with input()', function()
     feed(':call input("input", "default")<cr>')
-    screen:expect {
+    screen:expect({
       grid = [[
-      ^                         |
-      {1:~                        }|*3
-                               |
-    ]],
+        ^                         |
+        {1:~                        }|*3
+                                 |
+      ]],
       cmdline = {
         {
-          prompt = 'input',
           content = { { 'default' } },
+          hl_id = 0,
           pos = 7,
+          prompt = 'input',
         },
       },
-    }
+    })
 
     feed('<cr>')
     screen:expect {
@@ -118,6 +120,7 @@ local function test_cmdline(linegrid)
       {1:~                        }|*3
                                |
     ]],
+      cmdline = { { abort = false } },
     }
   end)
 
@@ -210,6 +213,7 @@ local function test_cmdline(linegrid)
           content = { { 'xx3' } },
           pos = 3,
         },
+        { abort = false },
       },
     }
 
@@ -220,6 +224,7 @@ local function test_cmdline(linegrid)
       {1:~                        }|*3
                                |
     ]],
+      cmdline = { { abort = true } },
     }
   end)
 
@@ -294,6 +299,7 @@ local function test_cmdline(linegrid)
       {1:~                        }|*3
                                |
     ]],
+      cmdline = { { abort = false } },
     }
 
     -- Try once more, to check buffer is reinitialized. #8007
@@ -324,6 +330,7 @@ local function test_cmdline(linegrid)
       {1:~                        }|*3
                                |
     ]],
+      cmdline = { { abort = false } },
     }
   end)
 
@@ -353,6 +360,7 @@ local function test_cmdline(linegrid)
       {3:[Command Line]           }|
                                |
     ]],
+      cmdline = { { abort = false } },
     }
 
     -- nested cmdline
@@ -404,6 +412,7 @@ local function test_cmdline(linegrid)
       {3:[Command Line]           }|
                                |
     ]],
+      cmdline = { [2] = { abort = true } },
     }
 
     feed('<c-c>')
@@ -452,6 +461,7 @@ local function test_cmdline(linegrid)
       cmdline = {
         {
           prompt = 'secret:',
+          hl_id = 0,
           content = { { '******' } },
           pos = 6,
         },
@@ -495,6 +505,7 @@ local function test_cmdline(linegrid)
       cmdline = {
         {
           prompt = '>',
+          hl_id = 0,
           content = {
             { '(', 30 },
             { 'a' },
@@ -797,11 +808,14 @@ local function test_cmdline(linegrid)
     -- This used to send an invalid event where pos where larger than the total
     -- length of content. Checked in _handle_cmdline_show.
     feed('<esc>')
-    screen:expect([[
-      ^                         |
-      {1:~                        }|*3
-                               |
-    ]])
+    screen:expect({
+      grid = [[
+        ^                         |
+        {1:~                        }|*3
+                                 |
+      ]],
+      cmdline = { { abort = true } },
+    })
   end)
 
   it('does not move cursor to curwin #20309', function()
@@ -826,6 +840,97 @@ local function test_cmdline(linegrid)
         pos = 0,
       } },
     }
+  end)
+
+  it('show prompt hl_id', function()
+    screen:expect([[
+      ^                         |
+      {1:~                        }|*3
+                               |
+    ]])
+    feed(':echohl Error | call input("Prompt:")<CR>')
+    screen:expect({
+      grid = [[
+        ^                         |
+        {1:~                        }|*3
+                                 |
+      ]],
+      cmdline = {
+        {
+          content = { { '' } },
+          hl_id = 245,
+          pos = 0,
+          prompt = 'Prompt:',
+        },
+      },
+    })
+  end)
+
+  it('works with conditionals', function()
+    local s1 = [[
+      ^                         |
+      {1:~                        }|*3
+                               |
+    ]]
+    screen:expect(s1)
+    feed(':if 1<CR>')
+    screen:expect({
+      grid = s1,
+      cmdline = {
+        {
+          content = { { '' } },
+          firstc = ':',
+          indent = 2,
+          pos = 0,
+        },
+      },
+      cmdline_block = { { { 'if 1' } } },
+    })
+    feed('let x = 1<CR>')
+    screen:expect({
+      grid = s1,
+      cmdline = {
+        {
+          content = { { '' } },
+          firstc = ':',
+          indent = 2,
+          pos = 0,
+        },
+      },
+      cmdline_block = { { { 'if 1' } }, { { '  let x = 1' } } },
+    })
+    feed('<CR>')
+    eq('let x = 1', eval('@:'))
+    screen:expect({
+      grid = s1,
+      cmdline = {
+        {
+          content = { { '' } },
+          firstc = ':',
+          indent = 2,
+          pos = 0,
+        },
+      },
+      cmdline_block = { { { 'if 1' } }, { { '  let x = 1' } }, { { '  ' } } },
+    })
+    feed('endif')
+    screen:expect({
+      grid = s1,
+      cmdline = {
+        {
+          content = { { 'endif' } },
+          firstc = ':',
+          indent = 2,
+          pos = 5,
+        },
+      },
+      cmdline_block = { { { 'if 1' } }, { { '  let x = 1' } }, { { '  ' } } },
+    })
+    feed('<CR>')
+    screen:expect({
+      grid = s1,
+      cmdline = { { abort = false } },
+    })
   end)
 end
 
@@ -999,6 +1104,36 @@ describe('cmdline redraw', function()
       kcor s'tel/              |
     ]],
     }
+  end)
+
+  it('silent prompt', function()
+    command([[nmap <silent> T :call confirm("Save changes?", "&Yes\n&No\n&Cancel")<CR>]])
+    feed('T')
+    screen:expect([[
+                               |
+      {3:                         }|
+                               |
+      {6:Save changes?}            |
+      {6:[Y]es, (N)o, (C)ancel: }^  |
+    ]])
+  end)
+
+  it('substitute confirm prompt does not scroll', function()
+    screen:try_resize(75, screen._height)
+    command('call setline(1, "foo")')
+    command('set report=0')
+    feed(':%s/foo/bar/c<CR>')
+    screen:expect([[
+      {2:foo}                                                                        |
+      {1:~                                                                          }|*3
+      {6:replace with bar? (y)es/(n)o/(a)ll/(q)uit/(l)ast/scroll up(^E)/down(^Y)}^    |
+    ]])
+    feed('y')
+    screen:expect([[
+      ^bar                                                                        |
+      {1:~                                                                          }|*3
+      1 substitution on 1 line                                                   |
+    ]])
   end)
 end)
 
@@ -1231,6 +1366,12 @@ describe('cmdline height', function()
     -- cmdheight unchanged.
     eq(1, eval('&cmdheight'))
   end)
+
+  it('not increased to 0 from 1 with wincmd _', function()
+    command('set cmdheight=0 laststatus=0')
+    command('wincmd _')
+    eq(0, eval('&cmdheight'))
+  end)
 end)
 
 describe('cmdheight=0', function()
@@ -1447,31 +1588,29 @@ describe('cmdheight=0', function()
   it('when substitute text', function()
     command('set cmdheight=0 noruler laststatus=3')
     feed('ifoo<ESC>')
-    screen:expect {
-      grid = [[
+    screen:try_resize(screen._width, 7)
+    screen:expect([[
       fo^o                      |
-      {1:~                        }|*3
+      {1:~                        }|*5
       {3:[No Name] [+]            }|
-    ]],
-    }
+    ]])
 
     feed(':%s/foo/bar/gc<CR>')
-    screen:expect {
-      grid = [[
+    screen:expect([[
       {2:foo}                      |
-      {1:~                        }|*3
-      {6:replace wi...q/l/^E/^Y)?}^ |
-    ]],
-    }
+      {3:                         }|
+                               |*2
+      {6:replace with bar? (y)es/(}|
+      {6:n)o/(a)ll/(q)uit/(l)ast/s}|
+      {6:croll up(^E)/down(^Y)}^    |
+    ]])
 
     feed('y')
-    screen:expect {
-      grid = [[
+    screen:expect([[
       ^bar                      |
-      {1:~                        }|*3
+      {1:~                        }|*5
       {3:[No Name] [+]            }|
-    ]],
-    }
+    ]])
 
     assert_alive()
   end)

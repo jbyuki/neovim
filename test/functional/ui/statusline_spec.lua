@@ -317,15 +317,15 @@ describe('global statusline', function()
     screen:expect([[
                           │                │ │^                    |
       {1:~                   }│{1:~               }│{1:~}│{1:~                   }|*3
-      {1:~                   }│{2:< Name] 0,0-1   }│{1:~}│{1:~                   }|
+      {1:~                   }│{2:<-1          All}│{1:~}│{1:~                   }|
       {1:~                   }│                │{1:~}│{1:~                   }|
       {1:~                   }│{1:~               }│{1:~}│{1:~                   }|
-      {1:~                   }│{1:~               }│{1:~}│{3:<No Name] 0,0-1  All}|
+      {1:~                   }│{1:~               }│{1:~}│{3:< 0,0-1          All}|
       {1:~                   }│{1:~               }│{1:~}│                    |
-      {2:<No Name] 0,0-1  All < Name] 0,0-1    <}│{1:~                   }|
+      {2:< 0,0-1          All <-1          All <}│{1:~                   }|
                                              │{1:~                   }|
       {1:~                                      }│{1:~                   }|*3
-      {2:[No Name]            0,0-1          All <No Name] 0,0-1  All}|
+      {2:[No Name]            0,0-1          All < 0,0-1          All}|
                                                                   |
     ]])
 
@@ -349,12 +349,12 @@ describe('global statusline', function()
     screen:expect([[
                           │                │ │^                    |
       {1:~                   }│{1:~               }│{1:~}│{1:~                   }|*3
-      {1:~                   }│{2:< Name] 0,0-1   }│{1:~}│{1:~                   }|
+      {1:~                   }│{2:<-1          All}│{1:~}│{1:~                   }|
       {1:~                   }│                │{1:~}│{1:~                   }|
       {1:~                   }│{1:~               }│{1:~}│{1:~                   }|
-      {1:~                   }│{1:~               }│{1:~}│{3:<No Name] 0,0-1  All}|
+      {1:~                   }│{1:~               }│{1:~}│{3:< 0,0-1          All}|
       {1:~                   }│{1:~               }│{1:~}│                    |
-      {2:<No Name] 0,0-1  All < Name] 0,0-1    <}│{1:~                   }|
+      {2:< 0,0-1          All <-1          All <}│{1:~                   }|
                                              │{1:~                   }|
       {1:~                                      }│{1:~                   }|*4
                                                 0,0-1         All |
@@ -507,268 +507,296 @@ describe('global statusline', function()
   end)
 end)
 
-it('statusline does not crash if it has Arabic characters #19447', function()
-  clear()
-  api.nvim_set_option_value('statusline', 'غً', {})
-  api.nvim_set_option_value('laststatus', 2, {})
-  command('redraw!')
-  assert_alive()
+describe('statusline', function()
+  local screen
+  before_each(function()
+    clear()
+    screen = Screen.new(40, 8)
+    screen:add_extra_attr_ids {
+      [100] = { bold = true, reverse = true, foreground = Screen.colors.Blue },
+      [101] = { reverse = true, bold = true, foreground = Screen.colors.SlateBlue },
+    }
+  end)
+
+  it('does not crash if it has Arabic characters #19447', function()
+    api.nvim_set_option_value('statusline', 'غً', {})
+    api.nvim_set_option_value('laststatus', 2, {})
+    command('redraw!')
+    assert_alive()
+  end)
+
+  it('is redrawn with :resize from <Cmd> mapping #19629', function()
+    exec([[
+      set laststatus=2
+      nnoremap <Up> <cmd>resize -1<CR>
+      nnoremap <Down> <cmd>resize +1<CR>
+    ]])
+    feed('<Up>')
+    screen:expect([[
+      ^                                        |
+      {1:~                                       }|*4
+      {3:[No Name]                               }|
+                                              |*2
+    ]])
+    feed('<Down>')
+    screen:expect([[
+      ^                                        |
+      {1:~                                       }|*5
+      {3:[No Name]                               }|
+                                              |
+    ]])
+  end)
+
+  it('does not contain showmcd with showcmdloc=statusline when too narrow', function()
+    command('set showcmd')
+    command('set showcmdloc=statusline')
+    command('1vsplit')
+    screen:expect([[
+      ^ │                                      |
+      {1:~}│{1:~                                     }|*5
+      {3:< }{2:[No Name]                             }|
+                                              |
+    ]])
+    feed('1234')
+    screen:expect_unchanged()
+  end)
+
+  it('does not redraw unnecessarily after K_EVENT', function()
+    -- does not redraw on vim.schedule (#17937)
+    command([[
+      set laststatus=2
+      let g:counter = 0
+      func Status()
+        let g:counter += 1
+        lua vim.schedule(function() end)
+        return g:counter
+      endfunc
+      set statusline=%!Status()
+    ]])
+    sleep(50)
+    eq(1, eval('g:counter < 50'), 'g:counter=' .. eval('g:counter'))
+    -- also in insert mode
+    feed('i')
+    sleep(50)
+    eq(1, eval('g:counter < 50'), 'g:counter=' .. eval('g:counter'))
+    -- does not redraw on timer call (#14303)
+    command([[
+      let g:counter = 0
+      func Timer(timer)
+      endfunc
+      call timer_start(1, 'Timer', {'repeat': 100})
+    ]])
+    sleep(50)
+    eq(1, eval('g:counter < 50'), 'g:counter=' .. eval('g:counter'))
+  end)
+
+  it('is redrawn on various state changes', function()
+    -- recording state change #22683
+    command('set ls=2 stl=%{repeat(reg_recording(),5)}')
+    local s1 = [[
+      ^                                        |
+      {1:~                                       }|*5
+      {3:                                        }|
+                                              |
+    ]]
+    screen:expect(s1)
+    feed('qQ')
+    screen:expect([[
+      ^                                        |
+      {1:~                                       }|*5
+      {3:QQQQQ                                   }|
+      {5:recording @Q}                            |
+    ]])
+    feed('q')
+    screen:expect(s1)
+
+    -- Visual mode change #23932
+    command('set ls=2 stl=%{mode(1)}')
+    local s2 = [[
+      ^                                        |
+      {1:~                                       }|*5
+      {3:n                                       }|
+                                              |
+    ]]
+    screen:expect(s2)
+    feed('v')
+    screen:expect([[
+      ^                                        |
+      {1:~                                       }|*5
+      {3:v                                       }|
+      {5:-- VISUAL --}                            |
+    ]])
+    feed('V')
+    screen:expect([[
+      ^                                        |
+      {1:~                                       }|*5
+      {3:V                                       }|
+      {5:-- VISUAL LINE --}                       |
+    ]])
+    feed('<C-V>')
+    screen:expect([[
+      ^                                        |
+      {1:~                                       }|*5
+      {3:^V                                      }|
+      {5:-- VISUAL BLOCK --}                      |
+    ]])
+    feed('<Esc>')
+    screen:expect(s2)
+  end)
+
+  it('ruler is redrawn in cmdline with redrawstatus #22804', function()
+    command([[
+      let g:n = 'initial value'
+      set ls=1 ru ruf=%{g:n}
+      redraw
+      let g:n = 'other value'
+      redrawstatus
+    ]])
+    screen:expect([[
+      ^                                        |
+      {1:~                                       }|*6
+                            other value       |
+    ]])
+  end)
+
+  it('hidden moves ruler to cmdline', function()
+    -- Use long ruler to check 'ruler' with 'rulerformat' set has correct width.
+    command [[
+      set ruler rulerformat=%{winnr()}longlonglong ls=0 winwidth=10
+      split
+      wincmd b
+      vsplit
+      wincmd t
+      wincmd |
+      mode
+    ]]
+    -- Window 1 is current. It has a statusline, so cmdline should show the
+    -- last window's ruler, which has no statusline.
+    command '1wincmd w'
+    screen:expect([[
+      ^                                        |
+      {1:~                                       }|*2
+      {3:[No Name]                  1longlonglong}|
+                          │                   |
+      {1:~                   }│{1:~                  }|*2
+                            3longlonglong     |
+    ]])
+    -- Window 2 is current. It has no statusline, so cmdline should show its
+    -- ruler instead.
+    command '2wincmd w'
+    screen:expect([[
+                                              |
+      {1:~                                       }|*2
+      {2:[No Name]                  1longlonglong}|
+      ^                    │                   |
+      {1:~                   }│{1:~                  }|*2
+                            2longlonglong     |
+    ]])
+    -- Window 3 is current. Cmdline should again show its ruler.
+    command '3wincmd w'
+    screen:expect([[
+                                              |
+      {1:~                                       }|*2
+      {2:[No Name]                  1longlonglong}|
+                          │^                   |
+      {1:~                   }│{1:~                  }|*2
+                            3longlonglong     |
+    ]])
+  end)
+
+  it('uses "stl" and "stlnc" fillchars even if they are the same #19803', function()
+    command('hi clear StatusLine')
+    command('hi clear StatusLineNC')
+    command('vsplit')
+    screen:expect([[
+      ^                    │                   |
+      {1:~                   }│{1:~                  }|*5
+      [No Name]            [No Name]          |
+                                              |
+    ]])
+  end)
+
+  it('showcmdloc=statusline works with vertical splits', function()
+    command('rightbelow vsplit')
+    command('set showcmd showcmdloc=statusline')
+    feed('1234')
+    screen:expect([[
+                         │^                    |
+      {1:~                  }│{1:~                   }|*5
+      {2:[No Name]           }{3:<o Name] 1234       }|
+                                              |
+    ]])
+    feed('<Esc>')
+    command('set laststatus=3')
+    feed('1234')
+    screen:expect([[
+                         │^                    |
+      {1:~                  }│{1:~                   }|*5
+      {3:[No Name]                    1234       }|
+                                              |
+    ]])
+  end)
+
+  it('keymap is shown with vertical splits #27269', function()
+    command('setlocal keymap=dvorak')
+    command('rightbelow vsplit')
+    screen:expect([[
+                         │^                    |
+      {1:~                  }│{1:~                   }|*5
+      {2:[No Name]  <en-dv>  }{3:[No Name]   <en-dv> }|
+                                              |
+    ]])
+
+    command('set laststatus=3')
+    screen:expect([[
+                         │^                    |
+      {1:~                  }│{1:~                   }|*5
+      {3:[No Name]                       <en-dv> }|
+                                              |
+    ]])
+  end)
+
+  it("nested call from nvim_eval_statusline() doesn't overwrite items #32259", function()
+    exec_lua('vim.o.laststatus = 2')
+    exec_lua([[vim.o.statusline = '%#Special#B:%{nvim_eval_statusline("%f", []).str}']])
+    screen:expect([[
+      ^                                        |
+      {1:~                                       }|*5
+      {101:B:[No Name]                             }|
+                                              |
+    ]])
+  end)
 end)
 
-it('statusline is redrawn with :resize from <Cmd> mapping #19629', function()
-  clear()
-  local screen = Screen.new(40, 8)
-  exec([[
-    set laststatus=2
-    nnoremap <Up> <cmd>resize -1<CR>
-    nnoremap <Down> <cmd>resize +1<CR>
-  ]])
-  feed('<Up>')
-  screen:expect([[
-    ^                                        |
-    {1:~                                       }|*4
-    {3:[No Name]                               }|
-                                            |*2
-  ]])
-  feed('<Down>')
-  screen:expect([[
-    ^                                        |
-    {1:~                                       }|*5
-    {3:[No Name]                               }|
-                                            |
-  ]])
-end)
+describe('default statusline', function()
+  local screen
 
-it('showcmdloc=statusline does not show if statusline is too narrow', function()
-  clear()
-  local screen = Screen.new(40, 8)
-  command('set showcmd')
-  command('set showcmdloc=statusline')
-  command('1vsplit')
-  screen:expect([[
-    ^ │                                      |
-    {1:~}│{1:~                                     }|*5
-    {3:< }{2:[No Name]                             }|
-                                            |
-  ]])
-  feed('1234')
-  screen:expect_unchanged()
-end)
+  before_each(function()
+    clear()
+    screen = Screen.new(60, 16)
+    screen:add_extra_attr_ids {
+      [100] = { foreground = Screen.colors.Magenta1, bold = true },
+    }
+    command('set laststatus=2')
+    command('set ruler')
+  end)
 
-it('K_EVENT does not trigger a statusline redraw unnecessarily', function()
-  clear()
-  local _ = Screen.new(40, 8)
-  -- does not redraw on vim.schedule (#17937)
-  command([[
-    set laststatus=2
-    let g:counter = 0
-    func Status()
-      let g:counter += 1
-      lua vim.schedule(function() end)
-      return g:counter
-    endfunc
-    set statusline=%!Status()
-  ]])
-  sleep(50)
-  eq(1, eval('g:counter < 50'), 'g:counter=' .. eval('g:counter'))
-  -- also in insert mode
-  feed('i')
-  sleep(50)
-  eq(1, eval('g:counter < 50'), 'g:counter=' .. eval('g:counter'))
-  -- does not redraw on timer call (#14303)
-  command([[
-    let g:counter = 0
-    func Timer(timer)
-    endfunc
-    call timer_start(1, 'Timer', {'repeat': 100})
-  ]])
-  sleep(50)
-  eq(1, eval('g:counter < 50'), 'g:counter=' .. eval('g:counter'))
-end)
+  it('setting statusline to empty string sets default statusline', function()
+    exec_lua("vim.o.statusline = 'asdf'")
+    eq('asdf', eval('&statusline'))
 
-it('statusline is redrawn on various state changes', function()
-  clear()
-  local screen = Screen.new(40, 4)
+    local default_statusline =
+      "%<%f %h%w%m%r %=%{% &showcmdloc == 'statusline' ? '%-10.S ' : '' %}%{% exists('b:keymap_name') ? '<'..b:keymap_name..'> ' : '' %}%{% &ruler ? ( &rulerformat == '' ? '%-14.(%l,%c%V%) %P' : &rulerformat ) : '' %}"
 
-  -- recording state change #22683
-  command('set ls=2 stl=%{repeat(reg_recording(),5)}')
-  screen:expect([[
-    ^                                        |
-    {1:~                                       }|
-    {3:                                        }|
-                                            |
-  ]])
-  feed('qQ')
-  screen:expect([[
-    ^                                        |
-    {1:~                                       }|
-    {3:QQQQQ                                   }|
-    {5:recording @Q}                            |
-  ]])
-  feed('q')
-  screen:expect([[
-    ^                                        |
-    {1:~                                       }|
-    {3:                                        }|
-                                            |
-  ]])
+    exec_lua("vim.o.statusline = ''")
 
-  -- Visual mode change #23932
-  command('set ls=2 stl=%{mode(1)}')
-  screen:expect([[
-    ^                                        |
-    {1:~                                       }|
-    {3:n                                       }|
-                                            |
-  ]])
-  feed('v')
-  screen:expect([[
-    ^                                        |
-    {1:~                                       }|
-    {3:v                                       }|
-    {5:-- VISUAL --}                            |
-  ]])
-  feed('V')
-  screen:expect([[
-    ^                                        |
-    {1:~                                       }|
-    {3:V                                       }|
-    {5:-- VISUAL LINE --}                       |
-  ]])
-  feed('<C-V>')
-  screen:expect([[
-    ^                                        |
-    {1:~                                       }|
-    {3:^V                                      }|
-    {5:-- VISUAL BLOCK --}                      |
-  ]])
-  feed('<Esc>')
-  screen:expect([[
-    ^                                        |
-    {1:~                                       }|
-    {3:n                                       }|
-                                            |
-  ]])
-end)
+    eq(default_statusline, eval('&statusline'))
 
-it('ruler is redrawn in cmdline with redrawstatus #22804', function()
-  clear()
-  local screen = Screen.new(40, 2)
-  command([[
-    let g:n = 'initial value'
-    set ls=1 ru ruf=%{g:n}
-    redraw
-    let g:n = 'other value'
-    redrawstatus
-  ]])
-  screen:expect([[
-    ^                                        |
-                          other value       |
-  ]])
-end)
-
-it('shows correct ruler in cmdline with no statusline', function()
-  clear()
-  local screen = Screen.new(30, 8)
-  -- Use long ruler to check 'ruler' with 'rulerformat' set has correct width.
-  command [[
-    set ruler rulerformat=%{winnr()}longlonglong ls=0 winwidth=10
-    split
-    wincmd b
-    vsplit
-    wincmd t
-    wincmd |
-    mode
-  ]]
-  -- Window 1 is current. It has a statusline, so cmdline should show the
-  -- last window's ruler, which has no statusline.
-  command '1wincmd w'
-  screen:expect [[
-    ^                              |
-    {1:~                             }|*2
-    {3:[No Name]      1longlonglong  }|
-                   │              |
-    {1:~              }│{1:~             }|*2
-                   3longlonglong  |
-  ]]
-  -- Window 2 is current. It has no statusline, so cmdline should show its
-  -- ruler instead.
-  command '2wincmd w'
-  screen:expect [[
-                                  |
-    {1:~                             }|*2
-    {2:[No Name]      1longlonglong  }|
-    ^               │              |
-    {1:~              }│{1:~             }|*2
-                   2longlonglong  |
-  ]]
-  -- Window 3 is current. Cmdline should again show its ruler.
-  command '3wincmd w'
-  screen:expect [[
-                                  |
-    {1:~                             }|*2
-    {2:[No Name]      1longlonglong  }|
-                   │^              |
-    {1:~              }│{1:~             }|*2
-                   3longlonglong  |
-  ]]
-end)
-
-it('uses "stl" and "stlnc" fillchars even if they are the same #19803', function()
-  clear()
-  local screen = Screen.new(53, 4)
-  command('hi clear StatusLine')
-  command('hi clear StatusLineNC')
-  command('vsplit')
-  screen:expect {
-    grid = [[
-    ^                          │                          |
-    {1:~                         }│{1:~                         }|
-    [No Name]                  [No Name]                 |
-                                                         |
-  ]],
-  }
-end)
-
-it('showcmdloc=statusline works with vertical splits', function()
-  clear()
-  local screen = Screen.new(53, 4)
-  command('rightbelow vsplit')
-  command('set showcmd showcmdloc=statusline')
-  feed('1234')
-  screen:expect([[
-                              │^                          |
-    {1:~                         }│{1:~                         }|
-    {2:[No Name]                  }{3:[No Name]      1234       }|
-                                                         |
-  ]])
-  feed('<Esc>')
-  command('set laststatus=3')
-  feed('1234')
-  screen:expect([[
-                              │^                          |
-    {1:~                         }│{1:~                         }|
-    {3:[No Name]                                 1234       }|
-                                                         |
-  ]])
-end)
-
-it('keymap is shown with vertical splits #27269', function()
-  clear()
-  local screen = Screen.new(53, 4)
-  command('setlocal keymap=dvorak')
-  command('rightbelow vsplit')
-  screen:expect([[
-                              │^                          |
-    {1:~                         }│{1:~                         }|
-    {2:[No Name]         <en-dv>  }{3:[No Name]         <en-dv> }|
-                                                         |
-  ]])
-  command('set laststatus=3')
-  screen:expect([[
-                              │^                          |
-    {1:~                         }│{1:~                         }|
-    {3:[No Name]                                    <en-dv> }|
-                                                         |
-  ]])
+    screen:expect([[
+      ^                                                            |
+      {1:~                                                           }|*13
+      {3:[No Name]                                 0,0-1          All}|
+                                                                  |
+    ]])
+  end)
 end)

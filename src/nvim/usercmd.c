@@ -18,7 +18,6 @@
 #include "nvim/garray.h"
 #include "nvim/gettext_defs.h"
 #include "nvim/globals.h"
-#include "nvim/highlight.h"
 #include "nvim/highlight_defs.h"
 #include "nvim/keycodes.h"
 #include "nvim/lua/executor.h"
@@ -26,6 +25,7 @@
 #include "nvim/mapping.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
+#include "nvim/memory_defs.h"
 #include "nvim/menu.h"
 #include "nvim/message.h"
 #include "nvim/option_vars.h"
@@ -72,6 +72,7 @@ static const char *command_complete[] = {
   [EXPAND_FILES] = "file",
   [EXPAND_FILES_IN_PATH] = "file_in_path",
   [EXPAND_FILETYPE] = "filetype",
+  [EXPAND_FILETYPECMD] = "filetypecmd",
   [EXPAND_FUNCTIONS] = "function",
   [EXPAND_HELP] = "help",
   [EXPAND_HIGHLIGHT] = "highlight",

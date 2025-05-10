@@ -58,6 +58,10 @@ jobs:
         run: cmake --build build --target lintlua-stylua
 
       - if: success() || failure() && steps.abort_job.outputs.status == 'success'
+        name: luals
+        run: cmake --build build --target luals
+
+      - if: success() || failure() && steps.abort_job.outputs.status == 'success'
         name: luacheck
         run: cmake --build build --target lintlua-luacheck
 
@@ -106,7 +110,8 @@ jobs:
           [
             { runner: ubuntu-24.04, os: ubuntu, flavor: asan, cc: clang, flags: -D ENABLE_ASAN_UBSAN=ON },
             { runner: ubuntu-24.04, os: ubuntu, flavor: tsan, cc: clang, flags: -D ENABLE_TSAN=ON },
-            { runner: ubuntu-24.04, os: ubuntu, cc: gcc },
+            { runner: ubuntu-24.04, os: ubuntu, flavor: release, cc: gcc, flags: -D CMAKE_BUILD_TYPE=Release -D ENABLE_TRANSLATIONS=ON },
+            # { runner: ubuntu-24.04-arm, os: ubuntu, flavor: arm, cc: gcc, flags: -D CMAKE_BUILD_TYPE=RelWithDebInfo },
             { runner: macos-13, os: macos, flavor: intel, cc: clang, flags: -D CMAKE_FIND_FRAMEWORK=NEVER, deps_flags: -D CMAKE_FIND_FRAMEWORK=NEVER },
             { runner: macos-15, os: macos, flavor: arm, cc: clang, flags: -D CMAKE_FIND_FRAMEWORK=NEVER, deps_flags: -D CMAKE_FIND_FRAMEWORK=NEVER },
             { runner: ubuntu-24.04, os: ubuntu, flavor: puc-lua, cc: gcc, deps_flags: -D USE_BUNDLED_LUAJIT=OFF -D USE_BUNDLED_LUA=ON, flags: -D PREFER_LUA=ON },
@@ -138,12 +143,12 @@ jobs:
           echo "Install neovim RubyGem."
           gem install --no-document --bindir "$BIN_DIR" --user-install --pre neovim
 
-          echo "Install neovim npm package"
-          npm install -g neovim
-          npm link neovim
-
           sudo cpanm -n Neovim::Ext || cat "$HOME/.cpanm/build.log"
           perl -W -e 'use Neovim::Ext; print $Neovim::Ext::VERSION'
+
+      - name: Remove .git directory
+        if: ${{ matrix.build.os == 'ubuntu' }}
+        run: cmake -E rm -rf -- .git
 
       - name: Build third-party deps
         run: |
@@ -155,9 +160,15 @@ jobs:
           cmake --preset ci -D CMAKE_BUILD_TYPE=Debug -D CMAKE_INSTALL_PREFIX:PATH=$INSTALL_PREFIX ${{ matrix.build.flags }}
           cmake --build build
 
-      - name: ${{ matrix.test }}
+      - if: ${{ matrix.test == 'oldtest' }}
+        name: ${{ matrix.test }}
         timeout-minutes: 20
-        run: make ${{ matrix.test }}
+        run: make -C test/old/testdir NVIM_PRG=$(realpath build)/bin/nvim
+
+      - if: ${{ matrix.test != 'oldtest' }}
+        name: ${{ matrix.test }}
+        timeout-minutes: 20
+        run: cmake --build build --target ${{ matrix.test }}
 
       - name: Install
         run: |
@@ -190,42 +201,22 @@ jobs:
         name: Show logs
         run: cat $(find "$LOG_DIR" -type f)
 
-  windows:
-    uses: ./.github/workflows/test_windows.yml
-
-  # This job tests the following things:
-  # - Check if Release, MinSizeRel and RelWithDebInfo compiles correctly.
-  # - Test the above build types with the GCC compiler specifically.
-  #   Empirically the difference in warning levels between GCC and other
-  #   compilers is particularly big.
-  # - Test if the build works with multi-config generators. We mostly use
-  #   single-config generators so it's nice to have a small sanity check for
-  #   multi-config.
-  build-types:
+  zig-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    env:
-      CC: gcc
+    timeout-minutes: 45
+    name: build using zig build
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup
+      - uses: mlugg/setup-zig@v1
+        with:
+         version: 0.14.0
+      - run: sudo apt-get install -y inotify-tools
+      - run: zig build test_nlua0
+      - run: zig build nvim_bin && ./zig-out/bin/nvim --version
+      - run: zig build functionaltest
 
-      - name: Build third-party deps
-        run: |
-          cmake -S cmake.deps -B .deps -G "Ninja Multi-Config"
-          cmake --build .deps
-
-      - name: Configure
-        run: cmake --preset ci -G "Ninja Multi-Config"
-
-      - name: Release
-        run: cmake --build build --config Release
-
-      - name: RelWithDebInfo
-        run: cmake --build build --config RelWithDebInfo
-
-      - name: MinSizeRel
-        run: cmake --build build --config MinSizeRel
+  windows:
+    uses: ./.github/workflows/test_windows.yml
 
   with-external-deps:
     runs-on: ubuntu-24.04

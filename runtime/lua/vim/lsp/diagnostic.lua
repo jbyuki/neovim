@@ -1,5 +1,6 @@
 local protocol = require('vim.lsp.protocol')
 local ms = protocol.Methods
+local util = vim.lsp.util
 
 local Tangle = require"vim.tangle"
 
@@ -7,7 +8,13 @@ local api = vim.api
 
 local M = {}
 
-local augroup = api.nvim_create_augroup('vim_lsp_diagnostic', {})
+local augroup = api.nvim_create_augroup('nvim.lsp.diagnostic', {})
+
+---@class (private) vim.lsp.diagnostic.BufState
+---@field enabled boolean Whether diagnostics are enabled for this buffer
+---@field client_result_id table<integer, string?> Latest responded `resultId`
+---@type table<integer, vim.lsp.diagnostic.BufState?>
+local bufstates = {}
 
 local DEFAULT_CLIENT_ID = -1
 
@@ -22,7 +29,7 @@ end
 ---@return lsp.DiagnosticSeverity
 local function severity_vim_to_lsp(severity)
   if type(severity) == 'string' then
-    severity = vim.diagnostic.severity[severity]
+    severity = vim.diagnostic.severity[severity] --- @type integer
   end
   return severity
 end
@@ -91,15 +98,20 @@ local function diagnostic_lsp_to_vim(diagnostics, bufnr, client_id)
         string.format('Unsupported Markup message from LSP client %d', client_id),
         vim.lsp.log_levels.ERROR
       )
+      --- @diagnostic disable-next-line: undefined-field,no-unknown
       message = diagnostic.message.value
     end
     local line = buf_lines and buf_lines[start.line + 1] or ''
+    local end_line = line
+    if _end.line > start.line then
+      end_line = buf_lines and buf_lines[_end.line + 1] or ''
+    end
     --- @type vim.Diagnostic
     return {
       lnum = start.line,
       col = vim.str_byteindex(line, position_encoding, start.character, false),
       end_lnum = _end.line,
-      end_col = vim.str_byteindex(line, position_encoding, _end.character, false),
+      end_col = vim.str_byteindex(end_line, position_encoding, _end.character, false),
       severity = severity_lsp_to_vim(diagnostic.severity),
       message = message,
       source = diagnostic.source,
@@ -201,16 +213,9 @@ function M.get_namespace(client_id, is_pull)
   end
 end
 
-local function convert_severity(opt)
-  if type(opt) == 'table' and not opt.severity and opt.severity_limit then
-    vim.deprecate('severity_limit', '{min = severity} See vim.diagnostic.severity', '0.11')
-    opt.severity = { min = severity_lsp_to_vim(opt.severity_limit) }
-  end
-end
-
 --- @param uri string
 --- @param client_id? integer
---- @param diagnostics vim.Diagnostic[]
+--- @param diagnostics lsp.Diagnostic[]
 --- @param is_pull boolean
 local function handle_diagnostics(uri, client_id, diagnostics, is_pull)
   local fname = vim.uri_to_fname(uri)
@@ -249,10 +254,10 @@ end
 --- See |vim.diagnostic.config()| for configuration options.
 ---
 ---@param _ lsp.ResponseError?
----@param result lsp.PublishDiagnosticsParams
+---@param params lsp.PublishDiagnosticsParams
 ---@param ctx lsp.HandlerContext
-function M.on_publish_diagnostics(_, result, ctx)
-  handle_diagnostics(result.uri, ctx.client_id, result.diagnostics, false)
+function M.on_publish_diagnostics(_, params, ctx)
+  handle_diagnostics(params.uri, ctx.client_id, params.diagnostics, false)
 end
 
 --- |lsp-handler| for the method "textDocument/diagnostic"
@@ -275,7 +280,12 @@ function M.on_diagnostic(error, result, ctx)
     return
   end
 
-  handle_diagnostics(ctx.params.textDocument.uri, ctx.client_id, result.items, true)
+  local client_id = ctx.client_id
+  handle_diagnostics(ctx.params.textDocument.uri, client_id, result.items, true)
+
+  local bufnr = assert(ctx.bufnr)
+  local bufstate = assert(bufstates[bufnr])
+  bufstate.client_result_id[client_id] = result.resultId
 end
 
 --- Clear push diagnostics and diagnostic cache.
@@ -315,7 +325,6 @@ end
 ---@private
 function M.get_line_diagnostics(bufnr, line_nr, opts, client_id)
   vim.deprecate('vim.lsp.diagnostic.get_line_diagnostics', 'vim.diagnostic.get', '0.12')
-  convert_severity(opts)
   local diag_opts = {} --- @type vim.diagnostic.GetOpts
 
   if opts and opts.severity then
@@ -339,11 +348,6 @@ local function clear(bufnr)
   end
 end
 
----@class (private) lsp.diagnostic.bufstate
----@field enabled boolean Whether inlay hints are enabled for this buffer
----@type table<integer, lsp.diagnostic.bufstate>
-local bufstates = {}
-
 --- Disable pull diagnostics for a buffer
 --- @param bufnr integer
 --- @private
@@ -356,25 +360,48 @@ local function disable(bufnr)
 end
 
 --- Refresh diagnostics, only if we have attached clients that support it
----@param bufnr (integer) buffer number
----@param opts? table Additional options to pass to util._refresh
+---@param bufnr integer buffer number
+---@param client_id? integer Client ID to refresh (default: all clients)
+---@param only_visible? boolean Whether to only refresh for the visible regions of the buffer (default: false)
 ---@private
-local function _refresh(bufnr, opts)
-  opts = opts or {}
-  opts['bufnr'] = bufnr
-  vim.lsp.util._refresh(ms.textDocument_diagnostic, opts)
+local function _refresh(bufnr, client_id, only_visible)
+  if
+    only_visible
+    and vim.iter(api.nvim_list_wins()):all(function(window)
+      return api.nvim_win_get_buf(window) ~= bufnr
+    end)
+  then
+    return
+  end
+
+  local method = ms.textDocument_diagnostic
+  local clients = vim.lsp.get_clients({ bufnr = bufnr, method = method, id = client_id })
+  local bufstate = assert(bufstates[bufnr])
+
+  util._cancel_requests({
+    bufnr = bufnr,
+    clients = clients,
+    method = method,
+    type = 'pending',
+  })
+  for _, client in ipairs(clients) do
+    ---@type lsp.DocumentDiagnosticParams
+    local params = {
+      textDocument = util.make_text_document_params(bufnr),
+      previousResultId = bufstate.client_result_id[client.id],
+    }
+    client:request(method, params, nil, bufnr)
+  end
 end
 
 --- Enable pull diagnostics for a buffer
 ---@param bufnr (integer) Buffer handle, or 0 for current
 ---@private
 function M._enable(bufnr)
-  if bufnr == nil or bufnr == 0 then
-    bufnr = api.nvim_get_current_buf()
-  end
+  bufnr = vim._resolve_bufnr(bufnr)
 
   if not bufstates[bufnr] then
-    bufstates[bufnr] = { enabled = true }
+    bufstates[bufnr] = { enabled = true, client_result_id = {} }
 
     api.nvim_create_autocmd('LspNotify', {
       buffer = bufnr,
@@ -387,7 +414,7 @@ function M._enable(bufnr)
         end
         if bufstates[bufnr] and bufstates[bufnr].enabled then
           local client_id = opts.data.client_id --- @type integer?
-          _refresh(bufnr, { only_visible = true, client_id = client_id })
+          _refresh(bufnr, client_id, true)
         end
       end,
       group = augroup,

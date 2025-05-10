@@ -110,7 +110,7 @@ append({lnum}, {text})                                                *append()*
 <
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
                   • {text} (`string|string[]`)
 
                 Return: ~
@@ -1038,15 +1038,16 @@ chdir({dir})                                                           *chdir()*
                   (`string`)
 
 cindent({lnum})                                                      *cindent()*
-		Get the amount of indent for line {lnum} according the C
-		indenting rules, as with 'cindent'.
+		Get the amount of indent for line {lnum} according the
+		|C-indenting| rules, as with 'cindent'.
 		The indent is counted in spaces, the value of 'tabstop' is
 		relevant.  {lnum} is used just like in |getline()|.
 		When {lnum} is invalid -1 is returned.
-		See |C-indenting|.
+
+		To get or set indent of lines in a string, see |vim.text.indent()|.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
 
                 Return: ~
                   (`integer`)
@@ -1059,6 +1060,29 @@ clearmatches([{win}])                                           *clearmatches()*
 
                 Parameters: ~
                   • {win} (`integer?`)
+
+cmdcomplete_info()                                          *cmdcomplete_info()*
+		Returns a |Dictionary| with information about cmdline
+		completion.  See |cmdline-completion|.
+		The items are:
+		   cmdline_orig	The original command-line string before
+				completion began.
+		   pum_visible	|TRUE| if popup menu is visible.
+				See |pumvisible()|.
+		   matches	List of all completion candidates. Each item
+				is a string.
+		   selected	Selected item index.  First index is zero.
+				Index is -1 if no item is selected (showing
+				typed text only, or the last completion after
+				no item is selected when using the <Up> or
+				<Down> keys)
+
+		Returns an empty |Dictionary| if no completion was attempted,
+		if there was only one candidate and it was fully completed, or
+		if an error occurred.
+
+                Return: ~
+                  (`table<string,any>`)
 
 col({expr} [, {winid}])                                                  *col()*
 		The result is a Number, which is the byte index of the column
@@ -1174,16 +1198,22 @@ complete_info([{what}])                                        *complete_info()*
 				See |complete_info_mode| for the values.
 		   pum_visible	|TRUE| if popup menu is visible.
 				See |pumvisible()|.
-		   items	List of completion matches.  Each item is a
-				dictionary containing the entries "word",
+		   items	List of all completion candidates.  Each item
+				is a dictionary containing the entries "word",
 				"abbr", "menu", "kind", "info" and "user_data".
 				See |complete-items|.
+		   matches	Same as "items", but only returns items that
+				are matching current query. If both "matches"
+				and "items" are in "what", the returned list
+				will still be named "items", but each item
+				will have an additional "match" field.
 		   selected	Selected item index.  First index is zero.
 				Index is -1 if no item is selected (showing
 				typed text only, or the last completion after
 				no item is selected when using the <Up> or
 				<Down> keys)
-		   inserted	Inserted string. [NOT IMPLEMENTED YET]
+		   completed	Return a dictionary containing the entries of
+				the currently selected index item.
 		   preview_winid     Info floating preview window id.
 		   preview_bufnr     Info floating preview buffer id.
 
@@ -1229,6 +1259,56 @@ complete_info([{what}])                                        *complete_info()*
 
                 Parameters: ~
                   • {what} (`any[]?`)
+
+                Return: ~
+                  (`table`)
+
+complete_match([{lnum}, {col}])                               *complete_match()*
+		Searches backward from the given position and returns a List
+		of matches according to the 'isexpand' option. When no
+		arguments are provided, uses the current cursor position.
+
+		Each match is represented as a List containing
+		[startcol, trigger_text] where:
+		- startcol: column position where completion should start,
+		  or -1 if no trigger position is found. For multi-character
+		  triggers, returns the column of the first character.
+		- trigger_text: the matching trigger string from 'isexpand',
+		  or empty string if no match was found or when using the
+		  default 'iskeyword' pattern.
+
+		When 'isexpand' is empty, uses the 'iskeyword' pattern
+		"\k\+$" to find the start of the current keyword.
+
+		Examples: >vim
+		  set isexpand=.,->,/,/*,abc
+		  func CustomComplete()
+		    let res = complete_match()
+		    if res->len() == 0 | return | endif
+		    let [col, trigger] = res[0]
+		    let items = []
+		    if trigger == '/*'
+		      let items = ['/** */']
+		    elseif trigger == '/'
+		      let items = ['/*! */', '// TODO:', '// fixme:']
+		    elseif trigger == '.'
+		      let items = ['length()']
+		    elseif trigger =~ '^\->'
+		      let items = ['map()', 'reduce()']
+		    elseif trigger =~ '^\abc'
+		      let items = ['def', 'ghk']
+		    endif
+		    if items->len() > 0
+		      let startcol = trigger =~ '^/' ? col : col + len(trigger)
+		      call complete(startcol, items)
+		    endif
+		  endfunc
+		  inoremap <Tab> <Cmd>call CustomComplete()<CR>
+<
+
+                Parameters: ~
+                  • {lnum} (`integer?`)
+                  • {col} (`integer?`)
 
                 Return: ~
                   (`table`)
@@ -1305,10 +1385,10 @@ copy({expr})                                                            *copy()*
 		Also see |deepcopy()|.
 
                 Parameters: ~
-                  • {expr} (`any`)
+                  • {expr} (`T`)
 
                 Return: ~
-                  (`any`)
+                  (`T`)
 
 cos({expr})                                                              *cos()*
 		Return the cosine of {expr}, measured in radians, as a |Float|.
@@ -1407,7 +1487,7 @@ ctxset({context} [, {index}])                                         *ctxset()*
                   • {index} (`integer?`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 ctxsize()                                                            *ctxsize()*
 		Returns the size of the |context-stack|.
@@ -1490,11 +1570,11 @@ deepcopy({expr} [, {noref}])                                   *deepcopy()* *E69
 		Also see |copy()|.
 
                 Parameters: ~
-                  • {expr} (`any`)
+                  • {expr} (`T`)
                   • {noref} (`boolean?`)
 
                 Return: ~
-                  (`any`)
+                  (`T`)
 
 delete({fname} [, {flags}])                                           *delete()*
 		Without {flags} or with {flags} empty: Deletes the file by the
@@ -1618,7 +1698,7 @@ did_filetype()                                                  *did_filetype()*
 		file.
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 diff_filler({lnum})                                              *diff_filler()*
 		Returns the number of filler lines above line {lnum}.
@@ -1630,10 +1710,10 @@ diff_filler({lnum})                                              *diff_filler()*
 		Returns 0 if the current window is not in diff mode.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 diff_hlID({lnum}, {col})                                           *diff_hlID()*
 		Returns the highlight ID for diff mode at line {lnum} column
@@ -1647,7 +1727,7 @@ diff_hlID({lnum}, {col})                                           *diff_hlID()*
 		syntax information about the highlighting.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
                   • {col} (`integer`)
 
                 Return: ~
@@ -1674,7 +1754,7 @@ digraph_get({chars})                                       *digraph_get()* *E121
                   • {chars} (`string`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 digraph_getlist([{listall}])                                 *digraph_getlist()*
 		Return a list of digraphs.  If the {listall} argument is given
@@ -1695,7 +1775,7 @@ digraph_getlist([{listall}])                                 *digraph_getlist()*
                   • {listall} (`boolean?`)
 
                 Return: ~
-                  (`any`)
+                  (`string[][]`)
 
 digraph_set({chars}, {digraph})                                  *digraph_set()*
 		Add digraph {chars} to the list.  {chars} must be a string
@@ -1756,7 +1836,7 @@ empty({expr})                                                          *empty()*
                   • {expr} (`any`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 environ()                                                            *environ()*
 		Return all of environment variables as dictionary. You can
@@ -1783,7 +1863,7 @@ escape({string}, {chars})                                             *escape()*
                   • {chars} (`string`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 eval({string})                                                          *eval()*
 		Evaluate {string} and return the result.  Especially useful to
@@ -2161,7 +2241,8 @@ extend({expr1}, {expr2} [, {expr3}])                                  *extend()*
 		When {expr3} is omitted then "force" is assumed.
 
 		{expr1} is changed when {expr2} is not empty.  If necessary
-		make a copy of {expr1} first.
+		make a copy of {expr1} first or use |extendnew()| to return a
+		new List/Dictionary.
 		{expr2} remains unchanged.
 		When {expr1} is locked and {expr2} is not empty the operation
 		fails.
@@ -2376,7 +2457,7 @@ finddir({name} [, {path} [, {count}]])                               *finddir()*
                   • {count} (`integer?`)
 
                 Return: ~
-                  (`any`)
+                  (`string|string[]`)
 
 findfile({name} [, {path} [, {count}]])                             *findfile()*
 		Just like |finddir()|, but find a file instead of a directory.
@@ -2389,10 +2470,10 @@ findfile({name} [, {path} [, {count}]])                             *findfile()*
                 Parameters: ~
                   • {name} (`string`)
                   • {path} (`string?`)
-                  • {count} (`any?`)
+                  • {count} (`integer?`)
 
                 Return: ~
-                  (`any`)
+                  (`string|string[]`)
 
 flatten({list} [, {maxdepth}])                                       *flatten()*
 		Flatten {list} up to {maxdepth} levels.  Without {maxdepth}
@@ -2555,7 +2636,7 @@ foldclosed({lnum})                                                *foldclosed()*
 		line, "'m" mark m, etc.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
 
                 Return: ~
                   (`integer`)
@@ -2568,7 +2649,7 @@ foldclosedend({lnum})                                          *foldclosedend()*
 		line, "'m" mark m, etc.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
 
                 Return: ~
                   (`integer`)
@@ -2586,7 +2667,7 @@ foldlevel({lnum})                                                  *foldlevel()*
 		line, "'m" mark m, etc.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
 
                 Return: ~
                   (`integer`)
@@ -2621,7 +2702,7 @@ foldtextresult({lnum})                                        *foldtextresult()*
 		Useful when exporting folded text, e.g., to HTML.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
 
                 Return: ~
                   (`string`)
@@ -2666,7 +2747,7 @@ foreach({expr1}, {expr2})                                            *foreach()*
                   • {expr2} (`string|function`)
 
                 Return: ~
-                  (`any`)
+                  (`string|table`)
 
 fullcommand({name})                                              *fullcommand()*
 		Get the full command name from a short abbreviated command
@@ -2997,10 +3078,10 @@ getbufline({buf}, {lnum} [, {end}])                               *getbufline()*
                 Parameters: ~
                   • {buf} (`integer|string`)
                   • {lnum} (`integer`)
-                  • {end_} (`integer?`)
+                  • {end} (`integer?`)
 
                 Return: ~
-                  (`any`)
+                  (`string[]`)
 
 getbufoneline({buf}, {lnum})                                   *getbufoneline()*
 		Just like `getbufline()` but only get one line and return it
@@ -3073,14 +3154,16 @@ getchangelist([{buf}])                                         *getchangelist()*
                 Return: ~
                   (`table[]`)
 
-getchar([{expr}])                                                    *getchar()*
+getchar([{expr} [, {opts}]])                                         *getchar()*
 		Get a single character from the user or input stream.
-		If {expr} is omitted, wait until a character is available.
+		If {expr} is omitted or is -1, wait until a character is
+			available.
 		If {expr} is 0, only get a character when one is available.
 			Return zero otherwise.
 		If {expr} is 1, only check if a character is available, it is
 			not consumed.  Return zero if no character available.
-		If you prefer always getting a string use |getcharstr()|.
+		If you prefer always getting a string use |getcharstr()|, or
+		specify |FALSE| as "number" in {opts}.
 
 		Without {expr} and when {expr} is 0 a whole character or
 		special key is returned.  If it is a single character, the
@@ -3090,7 +3173,8 @@ getchar([{expr}])                                                    *getchar()*
 		starting with 0x80 (decimal: 128).  This is the same value as
 		the String "\<Key>", e.g., "\<Left>".  The returned value is
 		also a String when a modifier (shift, control, alt) was used
-		that is not included in the character.
+		that is not included in the character.  |keytrans()| can also
+		be used to convert a returned String into a readable form.
 
 		When {expr} is 0 and Esc is typed, there will be a short delay
 		while Vim waits to see if this is the start of an escape
@@ -3101,6 +3185,32 @@ getchar([{expr}])                                                    *getchar()*
 		Use nr2char() to convert it to a String.
 
 		Use getcharmod() to obtain any additional modifiers.
+
+		The optional argument {opts} is a Dict and supports the
+		following items:
+
+			cursor		A String specifying cursor behavior
+					when waiting for a character.
+					"hide": hide the cursor.
+					"keep": keep current cursor unchanged.
+					"msg": move cursor to message area.
+					(default: automagically decide
+					between "keep" and "msg")
+
+			number		If |TRUE|, return a Number when getting
+					a single character.
+					If |FALSE|, the return value is always
+					converted to a String, and an empty
+					String (instead of 0) is returned when
+					no character is available.
+					(default: |TRUE|)
+
+			simplify	If |TRUE|, include modifiers in the
+					character if possible.  E.g., return
+					the same value for CTRL-I and <Tab>.
+					If |FALSE|, don't include modifiers in
+					the character.
+					(default: |TRUE|)
 
 		When the user clicks a mouse button, the mouse event will be
 		returned.  The position can then be found in |v:mouse_col|,
@@ -3139,10 +3249,11 @@ getchar([{expr}])                                                    *getchar()*
 <
 
                 Parameters: ~
-                  • {expr} (`0|1?`)
+                  • {expr} (`-1|0|1?`)
+                  • {opts} (`table?`)
 
                 Return: ~
-                  (`integer`)
+                  (`integer|string`)
 
 getcharmod()                                                      *getcharmod()*
 		The result is a Number which is the state of the modifiers for
@@ -3206,20 +3317,13 @@ getcharsearch()                                                *getcharsearch()*
                 Return: ~
                   (`table`)
 
-getcharstr([{expr}])                                              *getcharstr()*
-		Get a single character from the user or input stream as a
-		string.
-		If {expr} is omitted, wait until a character is available.
-		If {expr} is 0 or false, only get a character when one is
-			available.  Return an empty string otherwise.
-		If {expr} is 1 or true, only check if a character is
-			available, it is not consumed.  Return an empty string
-			if no character is available.
-		Otherwise this works like |getchar()|, except that a number
-		result is converted to a string.
+getcharstr([{expr} [, {opts}]])                                   *getcharstr()*
+		The same as |getchar()|, except that this always returns a
+		String, and "number" isn't allowed in {opts}.
 
                 Parameters: ~
-                  • {expr} (`0|1?`)
+                  • {expr} (`-1|0|1?`)
+                  • {opts} (`table?`)
 
                 Return: ~
                   (`string`)
@@ -3295,7 +3399,7 @@ getcmdscreenpos()                                            *getcmdscreenpos()*
 		|setcmdline()|.
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 getcmdtype()                                                      *getcmdtype()*
 		Return the current command-line type. Possible return values
@@ -3347,6 +3451,7 @@ getcompletion({pat}, {type} [, {filtered}])                    *getcompletion()*
 		file		file and directory names
 		file_in_path	file and directory names in |'path'|
 		filetype	filetype names |'filetype'|
+		filetypecmd	|:filetype| suboptions
 		function	function name
 		help		help subjects
 		highlight	highlight groups
@@ -3635,7 +3740,7 @@ getline({lnum} [, {end}])                                            *getline()*
 
                 Parameters: ~
                   • {lnum} (`integer|string`)
-                  • {end_} (`nil|false?`)
+                  • {end} (`nil|false?`)
 
                 Return: ~
                   (`string`)
@@ -4177,6 +4282,21 @@ getscriptinfo([{opts}])                                        *getscriptinfo()*
                 Return: ~
                   (`vim.fn.getscriptinfo.ret[]`)
 
+getstacktrace()                                                *getstacktrace()*
+		Returns the current stack trace of Vim scripts.
+		Stack trace is a |List|, of which each item is a |Dictionary|
+		with the following items:
+		    funcref	The funcref if the stack is at a function,
+				otherwise this item is omitted.
+		    event	The string of the event description if the
+				stack is at an autocmd event, otherwise this
+				item is omitted.
+		    lnum	The line number in the script on the stack.
+		    filepath	The file path of the script on the stack.
+
+                Return: ~
+                  (`table[]`)
+
 gettabinfo([{tabnr}])                                             *gettabinfo()*
 		If {tabnr} is not specified, then information about all the
 		tab pages is returned as a |List|. Each List item is a
@@ -4299,7 +4419,7 @@ gettext({text})                                                      *gettext()*
                   • {text} (`string`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 getwininfo([{winid}])                                             *getwininfo()*
 		Returns information about windows as a |List| with Dictionaries.
@@ -4467,7 +4587,7 @@ glob2regpat({string})                                            *glob2regpat()*
                   • {string} (`string`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 globpath({path}, {expr} [, {nosuf} [, {list} [, {allinks}]]])       *globpath()*
 		Perform glob() for String {expr} on all directories in {path}
@@ -4553,6 +4673,7 @@ has({feature})                                                           *has()*
 			fname_case	Case in file names matters (for Darwin and MS-Windows
 					this is not present).
 			gui_running	Nvim has a GUI.
+			hurd		GNU/Hurd system.
 			iconv		Can use |iconv()| for conversion.
 			linux		Linux system.
 			mac		MacOS system.
@@ -4824,7 +4945,7 @@ iconv({string}, {from}, {to})                                          *iconv()*
                   • {to} (`string`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 id({expr})                                                                *id()*
 		Returns a |String| which is a unique identifier of the
@@ -4847,7 +4968,7 @@ id({expr})                                                                *id()*
                   • {expr} (`any`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 indent({lnum})                                                        *indent()*
 		The result is a Number, which is indent of line {lnum} in the
@@ -4855,6 +4976,8 @@ indent({lnum})                                                        *indent()*
 		of 'tabstop' is relevant.  {lnum} is used just like in
 		|getline()|.
 		When {lnum} is invalid -1 is returned.
+
+		To get or set indent of lines in a string, see |vim.text.indent()|.
 
                 Parameters: ~
                   • {lnum} (`integer|string`)
@@ -4897,7 +5020,7 @@ index({object}, {expr} [, {start} [, {ic}]])                           *index()*
                   • {ic} (`boolean?`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 indexof({object}, {expr} [, {opts}])                                 *indexof()*
 		Returns the index of an item in {object} where {expr} is
@@ -4944,7 +5067,7 @@ indexof({object}, {expr} [, {opts}])                                 *indexof()*
                   • {opts} (`table?`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 input({prompt} [, {text} [, {completion}]])                            *input()*
 
@@ -4954,7 +5077,7 @@ input({prompt} [, {text} [, {completion}]])                            *input()*
                   • {completion} (`string?`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 input({opts})
 		The result is a String, which is whatever the user typed on
@@ -5071,7 +5194,7 @@ input({opts})
                   • {opts} (`table`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 inputlist({textlist})                                              *inputlist()*
 		{textlist} must be a |List| of strings.  This |List| is
@@ -5103,7 +5226,7 @@ inputrestore()                                                  *inputrestore()*
 		Returns TRUE when there is nothing to restore, FALSE otherwise.
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 inputsave()                                                        *inputsave()*
 		Preserve typeahead (also from mappings) and clear it, so that
@@ -5114,7 +5237,7 @@ inputsave()                                                        *inputsave()*
 		Returns TRUE when out of memory, FALSE otherwise.
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 inputsecret({prompt} [, {text}])                                 *inputsecret()*
 		This function acts much like the |input()| function with but
@@ -5132,7 +5255,7 @@ inputsecret({prompt} [, {text}])                                 *inputsecret()*
                   • {text} (`string?`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 insert({object}, {item} [, {idx}])                                    *insert()*
 		When {object} is a |List| or a |Blob| insert {item} at the start
@@ -5183,10 +5306,10 @@ invert({expr})                                                        *invert()*
 <
 
                 Parameters: ~
-                  • {expr} (`number`)
+                  • {expr} (`integer`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 isabsolutepath({path})                                        *isabsolutepath()*
 		The result is a Number, which is |TRUE| when {path} is an
@@ -5281,7 +5404,7 @@ items({dict})                                                          *items()*
 		the index.
 
                 Parameters: ~
-                  • {dict} (`any`)
+                  • {dict} (`table`)
 
                 Return: ~
                   (`any`)
@@ -5309,7 +5432,7 @@ jobresize({job}, {width}, {height})                                *jobresize()*
                   (`any`)
 
 jobstart({cmd} [, {opts}])                                          *jobstart()*
-		Note: Prefer |vim.system()| in Lua (unless using the `pty` option).
+		Note: Prefer |vim.system()| in Lua (unless using `rpc`, `pty`, or `term`).
 
 		Spawns {cmd} as a job.
 		If {cmd} is a List it runs directly (no 'shell').
@@ -5317,8 +5440,11 @@ jobstart({cmd} [, {opts}])                                          *jobstart()*
 		  call jobstart(split(&shell) + split(&shellcmdflag) + ['{cmd}'])
 <		(See |shell-unquoting| for details.)
 
-		Example: >vim
-		  call jobstart('nvim -h', {'on_stdout':{j,d,e->append(line('.'),d)}})
+		Example: start a job and handle its output: >vim
+		  call jobstart(['nvim', '-h'], {'on_stdout':{j,d,e->append(line('.'),d)}})
+<
+		Example: start a job in a |terminal| connected to the current buffer: >vim
+		  call jobstart(['nvim', '-h'], {'term':v:true})
 <
 		Returns |job-id| on success, 0 on invalid arguments (or job
 		table is full), -1 if {cmd}[0] or 'shell' is not executable.
@@ -5383,6 +5509,10 @@ jobstart({cmd} [, {opts}])                                          *jobstart()*
 		  stdin:      (string) Either "pipe" (default) to connect the
 			      job's stdin to a channel or "null" to disconnect
 			      stdin.
+		  term:	    (boolean) Spawns {cmd} in a new pseudo-terminal session
+		          connected to the current (unmodified) buffer. Implies "pty".
+		          Default "height" and "width" are set to the current window
+		          dimensions. |jobstart()|. Defaults $TERM to "xterm-256color".
 		  width:      (number) Width of the `pty` terminal.
 
 		{opts} is passed as |self| dictionary to the callback; the
@@ -5399,7 +5529,7 @@ jobstart({cmd} [, {opts}])                                          *jobstart()*
                   • {opts} (`table?`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 jobstop({id})                                                        *jobstop()*
 		Stop |job-id| {id} by sending SIGTERM to the job process. If
@@ -5415,7 +5545,7 @@ jobstop({id})                                                        *jobstop()*
                   • {id} (`integer`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 jobwait({jobs} [, {timeout}])                                        *jobwait()*
 		Waits for jobs and their |on_exit| handlers to complete.
@@ -5443,7 +5573,7 @@ jobwait({jobs} [, {timeout}])                                        *jobwait()*
                   • {timeout} (`integer?`)
 
                 Return: ~
-                  (`any`)
+                  (`integer[]`)
 
 join({list} [, {sep}])                                                  *join()*
 		Join the items in {list} together into one String.
@@ -5461,7 +5591,7 @@ join({list} [, {sep}])                                                  *join()*
                   • {sep} (`string?`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 json_decode({expr})                                              *json_decode()*
 		Convert {expr} from JSON object.  Accepts |readfile()|-style
@@ -5500,7 +5630,7 @@ json_encode({expr})                                              *json_encode()*
                   • {expr} (`any`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 keys({dict})                                                            *keys()*
 		Return a |List| with all the keys of {dict}.  The |List| is in
@@ -5510,7 +5640,7 @@ keys({dict})                                                            *keys()*
                   • {dict} (`table`)
 
                 Return: ~
-                  (`any`)
+                  (`string[]`)
 
 keytrans({string})                                                  *keytrans()*
 		Turn the internal byte representation of keys into a form that
@@ -5523,7 +5653,7 @@ keytrans({string})                                                  *keytrans()*
                   • {string} (`string`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 len({expr})                                                         *len()* *E701*
 		The result is a Number, which is the length of the argument.
@@ -5537,10 +5667,10 @@ len({expr})                                                         *len()* *E70
 		Otherwise an error is given and returns zero.
 
                 Parameters: ~
-                  • {expr} (`any`)
+                  • {expr} (`any[]`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 libcall({libname}, {funcname}, {argument})                 *libcall()* *E364* *E368*
 		Call function {funcname} in the run-time library {libname}
@@ -5650,7 +5780,7 @@ line2byte({lnum})                                                  *line2byte()*
 		Also see |byte2line()|, |go| and |:goto|.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
 
                 Return: ~
                   (`integer`)
@@ -5663,10 +5793,10 @@ lispindent({lnum})                                                *lispindent()*
 		When {lnum} is invalid, -1 is returned.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 list2blob({list})                                                  *list2blob()*
 		Return a Blob concatenating all the number values in {list}.
@@ -5682,7 +5812,7 @@ list2blob({list})                                                  *list2blob()*
                   • {list} (`any[]`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 list2str({list} [, {utf8}])                                         *list2str()*
 		Convert each number in {list} to a character string can
@@ -5705,14 +5835,14 @@ list2str({list} [, {utf8}])                                         *list2str()*
                   • {utf8} (`boolean?`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 localtime()                                                        *localtime()*
 		Return the current time, measured as seconds since 1st Jan
 		1970.  See also |strftime()|, |strptime()| and |getftime()|.
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 log({expr})                                                              *log()*
 		Return the natural logarithm (base e) of {expr} as a |Float|.
@@ -5729,7 +5859,7 @@ log({expr})                                                              *log()*
                   • {expr} (`number`)
 
                 Return: ~
-                  (`any`)
+                  (`number`)
 
 log10({expr})                                                          *log10()*
 		Return the logarithm of Float {expr} to base 10 as a |Float|.
@@ -5745,11 +5875,13 @@ log10({expr})                                                          *log10()*
                   • {expr} (`number`)
 
                 Return: ~
-                  (`any`)
+                  (`number`)
 
 luaeval({expr} [, {expr}])                                           *luaeval()*
 		Evaluate Lua expression {expr} and return its result converted
-		to Vim data structures. See |lua-eval| for more details.
+		to Vim data structures. See |lua-eval| for details.
+
+		See also |v:lua-call|.
 
                 Parameters: ~
                   • {expr} (`string`)
@@ -5850,9 +5982,8 @@ maparg({name} [, {mode} [, {abbr} [, {dict}]]])                       *maparg()*
 		When {abbr} is there and it is |TRUE| use abbreviations
 		instead of mappings.
 
-		When {dict} is there and it is |TRUE| return a dictionary
-		containing all the information of the mapping with the
-		following items:			*mapping-dict*
+		When {dict} is |TRUE|, return a dictionary describing the
+		mapping, with these items:		*mapping-dict*
 		  "lhs"	     The {lhs} of the mapping as it would be typed
 		  "lhsraw"   The {lhs} of the mapping as raw bytes
 		  "lhsrawalt" The {lhs} of the mapping as raw bytes, alternate
@@ -6033,7 +6164,7 @@ mapset({dict})
 <
 
                 Parameters: ~
-                  • {dict} (`boolean`)
+                  • {dict} (`table<string,any>`)
 
                 Return: ~
                   (`any`)
@@ -6292,7 +6423,7 @@ matchbufline({buf}, {pat}, {lnum}, {end}, [, {dict}])           *matchbufline()*
                   • {buf} (`string|integer`)
                   • {pat} (`string`)
                   • {lnum} (`string|integer`)
-                  • {end_} (`string|integer`)
+                  • {end} (`string|integer`)
                   • {dict} (`table?`)
 
                 Return: ~
@@ -6353,6 +6484,9 @@ matchfuzzy({list}, {str} [, {dict}])                              *matchfuzzy()*
 				given sequence.
 		    limit	Maximum number of matches in {list} to be
 				returned.  Zero means no limit.
+		    camelcase	Use enhanced camel case scoring making results
+				better suited for completion related to
+				programming languages.  Defaults to v:true.
 
 		If {list} is a list of dictionaries, then the optional {dict}
 		argument supports the following additional items:
@@ -6407,7 +6541,7 @@ matchfuzzy({list}, {str} [, {dict}])                              *matchfuzzy()*
                 Parameters: ~
                   • {list} (`any[]`)
                   • {str} (`string`)
-                  • {dict} (`string?`)
+                  • {dict} (`table?`)
 
                 Return: ~
                   (`any`)
@@ -6437,7 +6571,7 @@ matchfuzzypos({list}, {str} [, {dict}])                        *matchfuzzypos()*
                 Parameters: ~
                   • {list} (`any[]`)
                   • {str} (`string`)
-                  • {dict} (`string?`)
+                  • {dict} (`table?`)
 
                 Return: ~
                   (`any`)
@@ -6567,7 +6701,7 @@ max({expr})                                                              *max()*
                   • {expr} (`any`)
 
                 Return: ~
-                  (`any`)
+                  (`number`)
 
 menu_get({path} [, {modes}])                                        *menu_get()*
 		Returns a |List| of |Dictionaries| describing |menus| (defined
@@ -6714,7 +6848,7 @@ min({expr})                                                              *min()*
                   • {expr} (`any`)
 
                 Return: ~
-                  (`any`)
+                  (`number`)
 
 mkdir({name} [, {flags} [, {prot}]])                              *mkdir()* *E739*
 		Create directory {name}.
@@ -6741,10 +6875,9 @@ mkdir({name} [, {flags} [, {prot}]])                              *mkdir()* *E73
 		If {prot} is given it is used to set the protection bits of
 		the new directory.  The default is 0o755 (rwxr-xr-x: r/w for
 		the user, readable for others).  Use 0o700 to make it
-		unreadable for others.
-
-		{prot} is applied for all parts of {name}.  Thus if you create
-		/tmp/foo/bar then /tmp/foo will be created with 0o700. Example: >vim
+		unreadable for others.  This is used for the newly created
+		directories.  Note: umask is applied to {prot} (on Unix).
+		Example: >vim
 			call mkdir($HOME .. "/tmp/foo/bar", "p", 0o700)
 
 <		This function is not available in the |sandbox|.
@@ -6762,7 +6895,7 @@ mkdir({name} [, {flags} [, {prot}]])                              *mkdir()* *E73
                   • {prot} (`string?`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 mode([{expr}])                                                          *mode()*
 		Return a string that indicates the current mode.
@@ -6934,10 +7067,10 @@ nextnonblank({lnum})                                            *nextnonblank()*
 		See also |prevnonblank()|.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 nr2char({expr} [, {utf8}])                                           *nr2char()*
 		Return a string with a single character, which has the number
@@ -6959,7 +7092,7 @@ nr2char({expr} [, {utf8}])                                           *nr2char()*
                   • {utf8} (`boolean?`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 nvim_...({...})                                      *nvim_...()* *E5555* *eval-api*
 		Call nvim |api| functions. The type checking of arguments will
@@ -7016,7 +7149,7 @@ pathshorten({path} [, {len}])                                    *pathshorten()*
                   • {len} (`integer?`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 perleval({expr})                                                    *perleval()*
 		Evaluate |perl| expression {expr} and return its result
@@ -7056,7 +7189,7 @@ pow({x}, {y})                                                            *pow()*
                   • {y} (`number`)
 
                 Return: ~
-                  (`any`)
+                  (`number`)
 
 prevnonblank({lnum})                                            *prevnonblank()*
 		Return the line number of the first line at or above {lnum}
@@ -7068,10 +7201,10 @@ prevnonblank({lnum})                                            *prevnonblank()*
 		Also see |nextnonblank()|.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 printf({fmt}, {expr1} ...)                                            *printf()*
 		Return a String with {fmt}, where "%" items are replaced by
@@ -7336,7 +7469,8 @@ printf({fmt}, {expr1} ...)                                            *printf()*
 <		      1.41
 
 		You will get an overflow error |E1510|, when the field-width
-		or precision will result in a string longer than 6400 chars.
+		or precision will result in a string longer than 1 MB
+		(1024*1024 = 1048576) chars.
 
 							*E1500*
 		You cannot mix positional and non-positional arguments: >vim
@@ -7447,6 +7581,7 @@ prompt_setcallback({buf}, {expr})                         *prompt_setcallback()*
 		     endif
 		   endfunc
 		   call prompt_setcallback(bufnr(), function('s:TextEntered'))
+<
 
                 Parameters: ~
                   • {buf} (`integer|string`)
@@ -7733,11 +7868,11 @@ reduce({object}, {func} [, {initial}])                           *reduce()* *E99
 
                 Parameters: ~
                   • {object} (`any`)
-                  • {func} (`function`)
+                  • {func} (`fun(accumulator: T, current: any): any`)
                   • {initial} (`any?`)
 
                 Return: ~
-                  (`any`)
+                  (`T`)
 
 reg_executing()                                                *reg_executing()*
 		Returns the single letter name of the register being executed.
@@ -7786,7 +7921,7 @@ reltime({start}, {end})
 
                 Parameters: ~
                   • {start} (`any?`)
-                  • {end_} (`any?`)
+                  • {end} (`any?`)
 
                 Return: ~
                   (`any`)
@@ -7847,7 +7982,7 @@ remove({list}, {idx}, {end})
                 Parameters: ~
                   • {list} (`any[]`)
                   • {idx} (`integer`)
-                  • {end_} (`integer?`)
+                  • {end} (`integer?`)
 
                 Return: ~
                   (`any`)
@@ -7869,7 +8004,7 @@ remove({blob}, {idx}, {end})
                 Parameters: ~
                   • {blob} (`any`)
                   • {idx} (`integer`)
-                  • {end_} (`integer?`)
+                  • {end} (`integer?`)
 
                 Return: ~
                   (`any`)
@@ -7901,7 +8036,7 @@ rename({from}, {to})                                                  *rename()*
                   • {to} (`string`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 repeat({expr}, {count})                                               *repeat()*
 		Repeat {expr} {count} times and return the concatenated
@@ -7937,7 +8072,7 @@ resolve({filename})                                             *resolve()* *E65
                   • {filename} (`string`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 reverse({object})                                                    *reverse()*
 		Reverse the order of items in {object}.  {object} can be a
@@ -7951,10 +8086,10 @@ reverse({object})                                                    *reverse()*
 <
 
                 Parameters: ~
-                  • {object} (`any`)
+                  • {object} (`T[]`)
 
                 Return: ~
-                  (`any`)
+                  (`T[]`)
 
 round({expr})                                                          *round()*
 		Round off {expr} to the nearest integral value and return it
@@ -7974,7 +8109,7 @@ round({expr})                                                          *round()*
                   • {expr} (`number`)
 
                 Return: ~
-                  (`any`)
+                  (`number`)
 
 rpcnotify({channel}, {event} [, {args}...])                        *rpcnotify()*
 		Sends {event} to {channel} via |RPC| and returns immediately.
@@ -7986,10 +8121,10 @@ rpcnotify({channel}, {event} [, {args}...])                        *rpcnotify()*
                 Parameters: ~
                   • {channel} (`integer`)
                   • {event} (`string`)
-                  • {args} (`any?`)
+                  • {...} (`any`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 rpcrequest({channel}, {method} [, {args}...])                     *rpcrequest()*
 		Sends a request to {channel} to invoke {method} via
@@ -8001,7 +8136,7 @@ rpcrequest({channel}, {method} [, {args}...])                     *rpcrequest()*
                 Parameters: ~
                   • {channel} (`integer`)
                   • {method} (`string`)
-                  • {args} (`any?`)
+                  • {...} (`any`)
 
                 Return: ~
                   (`any`)
@@ -8033,7 +8168,7 @@ screenattr({row}, {col})                                          *screenattr()*
                   • {col} (`integer`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 screenchar({row}, {col})                                          *screenchar()*
 		The result is a Number, which is the character at position
@@ -8050,7 +8185,7 @@ screenchar({row}, {col})                                          *screenchar()*
                   • {col} (`integer`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 screenchars({row}, {col})                                        *screenchars()*
 		The result is a |List| of Numbers.  The first number is the same
@@ -8064,7 +8199,7 @@ screenchars({row}, {col})                                        *screenchars()*
                   • {col} (`integer`)
 
                 Return: ~
-                  (`any`)
+                  (`integer[]`)
 
 screencol()                                                        *screencol()*
 		The result is a Number, which is the current screen column of
@@ -8082,7 +8217,7 @@ screencol()                                                        *screencol()*
 <
 
                 Return: ~
-                  (`any`)
+                  (`integer[]`)
 
 screenpos({winid}, {lnum}, {col})                                  *screenpos()*
 		The result is a Dict with the screen position of the text
@@ -8125,7 +8260,7 @@ screenrow()                                                        *screenrow()*
 		Note: Same restrictions as with |screencol()|.
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 screenstring({row}, {col})                                      *screenstring()*
 		The result is a String that contains the base character and
@@ -8140,7 +8275,7 @@ screenstring({row}, {col})                                      *screenstring()*
                   • {col} (`integer`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 search({pattern} [, {flags} [, {stopline} [, {timeout} [, {skip}]]]]) *search()*
 		Search for regexp pattern {pattern}.  The search starts at the
@@ -8255,7 +8390,7 @@ search({pattern} [, {flags} [, {stopline} [, {timeout} [, {skip}]]]]) *search()*
                   • {skip} (`string|function?`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 searchcount([{options}])                                         *searchcount()*
 		Get or update the last search count, like what is displayed
@@ -8500,7 +8635,7 @@ searchpair({start}, {middle}, {end} [, {flags} [, {skip} [, {stopline} [, {timeo
                 Parameters: ~
                   • {start} (`string`)
                   • {middle} (`string`)
-                  • {end_} (`string`)
+                  • {end} (`string`)
                   • {flags} (`string?`)
                   • {skip} (`string|function?`)
                   • {stopline} (`integer?`)
@@ -8524,7 +8659,7 @@ searchpairpos({start}, {middle}, {end} [, {flags} [, {skip} [, {stopline} [, {ti
                 Parameters: ~
                   • {start} (`string`)
                   • {middle} (`string`)
-                  • {end_} (`string`)
+                  • {end} (`string`)
                   • {flags} (`string?`)
                   • {skip} (`string|function?`)
                   • {stopline} (`integer?`)
@@ -8567,7 +8702,7 @@ serverlist()                                                      *serverlist()*
 <
 
                 Return: ~
-                  (`any`)
+                  (`string[]`)
 
 serverstart([{address}])                                         *serverstart()*
 		Opens a socket or named pipe at {address} and listens for
@@ -8607,7 +8742,7 @@ serverstart([{address}])                                         *serverstart()*
                   • {address} (`string?`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 serverstop({address})                                             *serverstop()*
 		Closes the pipe or socket at {address}.
@@ -8619,7 +8754,7 @@ serverstop({address})                                             *serverstop()*
                   • {address} (`string`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 setbufline({buf}, {lnum}, {text})                                 *setbufline()*
 		Set line {lnum} to {text} in buffer {buf}.  This works like
@@ -8652,7 +8787,7 @@ setbufline({buf}, {lnum}, {text})                                 *setbufline()*
                   • {text} (`string|string[]`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 setbufvar({buf}, {varname}, {val})                                 *setbufvar()*
 		Set option or local variable {varname} in buffer {buf} to
@@ -8772,7 +8907,7 @@ setcmdline({str} [, {pos}])                                       *setcmdline()*
                   • {pos} (`integer?`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 setcmdpos({pos})                                                   *setcmdpos()*
 		Set the cursor position in the command line to byte position
@@ -8806,6 +8941,8 @@ setcursorcharpos({list})
 <		positions the cursor on the third character '세'. >vim
 			call cursor(4, 3)
 <		positions the cursor on the first character '여'.
+
+		Returns 0 when the position could be set, -1 otherwise.
 
                 Parameters: ~
                   • {list} (`integer[]`)
@@ -8880,7 +9017,7 @@ setline({lnum}, {text})                                              *setline()*
 <		Note: The '[ and '] marks are not set.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
                   • {text} (`any`)
 
                 Return: ~
@@ -9104,7 +9241,7 @@ setqflist({list} [, {action} [, {what}]])                          *setqflist()*
                   • {what} (`vim.fn.setqflist.what?`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 setreg({regname}, {value} [, {options}])                              *setreg()*
 		Set the register {regname} to {value}.
@@ -9275,7 +9412,7 @@ sha256({string})                                                      *sha256()*
                   • {string} (`string`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 shellescape({string} [, {special}])                              *shellescape()*
 		Escape {string} for use as a shell command argument.
@@ -9314,7 +9451,7 @@ shellescape({string} [, {special}])                              *shellescape()*
                   • {special} (`boolean?`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 shiftwidth([{col}])                                               *shiftwidth()*
 		Returns the effective value of 'shiftwidth'. This is the
@@ -9792,7 +9929,7 @@ simplify({filename})                                                *simplify()*
                   • {filename} (`string`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 sin({expr})                                                              *sin()*
 		Return the sine of {expr}, measured in radians, as a |Float|.
@@ -9808,7 +9945,7 @@ sin({expr})                                                              *sin()*
                   • {expr} (`number`)
 
                 Return: ~
-                  (`any`)
+                  (`number`)
 
 sinh({expr})                                                            *sinh()*
 		Return the hyperbolic sine of {expr} as a |Float| in the range
@@ -9840,7 +9977,7 @@ slice({expr}, {start} [, {end}])                                       *slice()*
                 Parameters: ~
                   • {expr} (`any`)
                   • {start} (`integer`)
-                  • {end_} (`integer?`)
+                  • {end} (`integer?`)
 
                 Return: ~
                   (`any`)
@@ -9952,12 +10089,12 @@ sort({list} [, {how} [, {dict}]])                                  *sort()* *E70
 <
 
                 Parameters: ~
-                  • {list} (`any`)
+                  • {list} (`T[]`)
                   • {how} (`string|function?`)
                   • {dict} (`any?`)
 
                 Return: ~
-                  (`any`)
+                  (`T[]`)
 
 soundfold({word})                                                  *soundfold()*
 		Return the sound-folded equivalent of {word}.  Uses the first
@@ -9971,7 +10108,7 @@ soundfold({word})                                                  *soundfold()*
                   • {word} (`string`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 spellbadword([{sentence}])                                      *spellbadword()*
 		Without argument: The result is the badly spelled word under
@@ -10030,7 +10167,7 @@ spellsuggest({word} [, {max} [, {capital}]])                    *spellsuggest()*
                   • {capital} (`boolean?`)
 
                 Return: ~
-                  (`any`)
+                  (`string[]`)
 
 split({string} [, {pattern} [, {keepempty}]])                          *split()*
 		Make a |List| out of {string}.  When {pattern} is omitted or
@@ -10063,7 +10200,7 @@ split({string} [, {pattern} [, {keepempty}]])                          *split()*
                   • {keepempty} (`boolean?`)
 
                 Return: ~
-                  (`any`)
+                  (`string[]`)
 
 sqrt({expr})                                                            *sqrt()*
 		Return the non-negative square root of Float {expr} as a
@@ -10170,7 +10307,9 @@ stdioopen({opts})                                                  *stdioopen()*
 
 stdpath({what})                                                *stdpath()* *E6100*
 		Returns |standard-path| locations of various default files and
-		directories.
+		directories. The locations are driven by |base-directories|
+		which you can configure via |$NVIM_APPNAME| or the `$XDG_…`
+		environment variables.
 
 		{what}       Type    Description ~
 		cache        String  Cache directory: arbitrary temporary
@@ -10234,6 +10373,7 @@ str2list({string} [, {utf8}])                                       *str2list()*
 		and exists only for backwards-compatibility.
 		With UTF-8 composing characters are handled properly: >vim
 			echo str2list("á")		" returns [97, 769]
+<
 
                 Parameters: ~
                   • {string} (`string`)
@@ -10791,7 +10931,7 @@ synID({lnum}, {col}, {trans})                                          *synID()*
 <
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
                   • {col} (`integer`)
                   • {trans} (`0|1`)
 
@@ -10896,7 +11036,7 @@ synconcealed({lnum}, {col})                                     *synconcealed()*
 		mechanisms |syntax-vs-match|.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
                   • {col} (`integer`)
 
                 Return: ~
@@ -10922,7 +11062,7 @@ synstack({lnum}, {col})                                             *synstack()*
 		valid positions.
 
                 Parameters: ~
-                  • {lnum} (`integer`)
+                  • {lnum} (`integer|string`)
                   • {col} (`integer`)
 
                 Return: ~
@@ -11166,28 +11306,6 @@ tempname()                                                          *tempname()*
 
                 Return: ~
                   (`string`)
-
-termopen({cmd} [, {opts}])                                          *termopen()*
-		Spawns {cmd} in a new pseudo-terminal session connected
-		to the current (unmodified) buffer. Parameters and behavior
-		are the same as |jobstart()| except "pty", "width", "height",
-		and "TERM" are ignored: "height" and "width" are taken from
-		the current window. Note that termopen() implies a "pty" arg
-		to jobstart(), and thus has the implications documented at
-		|jobstart()|.
-
-		Returns the same values as jobstart().
-
-		Terminal environment is initialized as in |jobstart-env|,
-		except $TERM is set to "xterm-256color". Full behavior is
-		described in |terminal|.
-
-                Parameters: ~
-                  • {cmd} (`string|string[]`)
-                  • {opts} (`table?`)
-
-                Return: ~
-                  (`any`)
 
 test_garbagecollect_now()                            *test_garbagecollect_now()*
 		Like |garbagecollect()|, but executed right away.  This must
@@ -11648,7 +11766,7 @@ virtcol2col({winid}, {lnum}, {col})                              *virtcol2col()*
                   • {col} (`integer`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 visualmode([{expr}])                                              *visualmode()*
 		The result is a String, which describes the last Visual mode
@@ -11672,7 +11790,7 @@ visualmode([{expr}])                                              *visualmode()*
                   • {expr} (`boolean?`)
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 wait({timeout}, {condition} [, {interval}])                             *wait()*
 		Waits until {condition} evaluates to |TRUE|, where {condition}
@@ -11814,7 +11932,7 @@ win_id2win({expr})                                                *win_id2win()*
                   • {expr} (`integer`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 win_move_separator({nr}, {offset})                        *win_move_separator()*
 		Move window {nr}'s vertical separator (i.e., the right border)
@@ -11934,14 +12052,13 @@ windowsversion()                                              *windowsversion()*
                   (`string`)
 
 winheight({nr})                                                    *winheight()*
-		The result is a Number, which is the height of window {nr}.
-		{nr} can be the window number or the |window-ID|.
-		When {nr} is zero, the height of the current window is
-		returned.  When window {nr} doesn't exist, -1 is returned.
-		An existing window always has a height of zero or more.
-		This excludes any window toolbar line.
+		Gets the height of |window-ID| {nr} (zero for "current
+		window"), excluding any 'winbar' and 'statusline'. Returns -1
+		if window {nr} doesn't exist. An existing window always has
+		a height of zero or more.
+
 		Examples: >vim
-		  echo "The current window has " .. winheight(0) .. " lines."
+		  echo "Current window has " .. winheight(0) .. " lines."
 <
 
                 Parameters: ~
@@ -11991,7 +12108,7 @@ winlayout([{tabnr}])                                               *winlayout()*
                   • {tabnr} (`integer?`)
 
                 Return: ~
-                  (`any`)
+                  (`vim.fn.winlayout.ret`)
 
 winline()                                                            *winline()*
 		The result is a Number, which is the screen line of the cursor
@@ -12039,7 +12156,7 @@ winnr([{arg}])                                                         *winnr()*
                   • {arg} (`string|integer?`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 winrestcmd()                                                      *winrestcmd()*
 		Returns a sequence of |:resize| commands that should restore
@@ -12053,7 +12170,7 @@ winrestcmd()                                                      *winrestcmd()*
 <
 
                 Return: ~
-                  (`any`)
+                  (`string`)
 
 winrestview({dict})                                              *winrestview()*
 		Uses the |Dictionary| returned by |winsaveview()| to restore
@@ -12108,24 +12225,27 @@ winsaveview()                                                    *winsaveview()*
                   (`vim.fn.winsaveview.ret`)
 
 winwidth({nr})                                                      *winwidth()*
-		The result is a Number, which is the width of window {nr}.
-		{nr} can be the window number or the |window-ID|.
-		When {nr} is zero, the width of the current window is
-		returned.  When window {nr} doesn't exist, -1 is returned.
-		An existing window always has a width of zero or more.
-		Examples: >vim
-		  echo "The current window has " .. winwidth(0) .. " columns."
+		Gets the width of |window-ID| {nr} (zero for "current
+		window"), including columns (|sign-column|, 'statuscolumn',
+		etc.). Returns -1 if window {nr} doesn't exist. An existing
+		window always has a width of zero or more.
+
+		Example: >vim
+		  echo "Current window has " .. winwidth(0) .. " columns."
 		  if winwidth(0) <= 50
 		    50 wincmd |
 		  endif
-<		For getting the terminal or screen size, see the 'columns'
-		option.
+<
+		To get the buffer "viewport", use |getwininfo()|: >vim
+		    :echo getwininfo(win_getid())[0].width - getwininfo(win_getid())[0].textoff
+<
+		To get the Nvim screen size, see the 'columns' option.
 
                 Parameters: ~
                   • {nr} (`integer`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 wordcount()                                                        *wordcount()*
 		The result is a dictionary of byte/chars/word statistics for
@@ -12215,11 +12335,11 @@ xor({expr}, {expr})                                                      *xor()*
 <
 
                 Parameters: ~
-                  • {expr} (`number`)
-                  • {expr1} (`number`)
+                  • {expr} (`integer`)
+                  • {expr1} (`integer`)
 
                 Return: ~
-                  (`any`)
+                  (`integer`)
 
 ==============================================================================
 2. Matching a pattern in a String			*string-match*

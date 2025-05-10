@@ -2,7 +2,6 @@
 // file, manipulations with redo buffer and stuff buffer.
 
 #include <assert.h>
-#include <lauxlib.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -11,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "klib/kvec.h"
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/helpers.h"
 #include "nvim/api/vim.h"
@@ -29,6 +29,7 @@
 #include "nvim/ex_cmds.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/ex_getln.h"
+#include "nvim/ex_getln_defs.h"
 #include "nvim/garray.h"
 #include "nvim/garray_defs.h"
 #include "nvim/getchar.h"
@@ -38,6 +39,7 @@
 #include "nvim/insexpand.h"
 #include "nvim/keycodes.h"
 #include "nvim/lua/executor.h"
+#include "nvim/macros_defs.h"
 #include "nvim/main.h"
 #include "nvim/mapping.h"
 #include "nvim/mapping_defs.h"
@@ -45,6 +47,7 @@
 #include "nvim/mbyte_defs.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
+#include "nvim/memory_defs.h"
 #include "nvim/message.h"
 #include "nvim/mouse.h"
 #include "nvim/move.h"
@@ -53,6 +56,7 @@
 #include "nvim/ops.h"
 #include "nvim/option_vars.h"
 #include "nvim/os/fileio.h"
+#include "nvim/os/fileio_defs.h"
 #include "nvim/os/input.h"
 #include "nvim/os/os.h"
 #include "nvim/os/os_defs.h"
@@ -223,6 +227,10 @@ char *get_recorded(void)
 {
   size_t len;
   char *p = get_buffcont(&recordbuff, true, &len);
+  if (p == NULL) {
+    return NULL;
+  }
+
   free_buff(&recordbuff);
 
   // Remove the characters that were added the last time, these must be the
@@ -243,9 +251,11 @@ char *get_recorded(void)
 
 /// Return the contents of the redo buffer as a single string.
 /// K_SPECIAL in the returned string is escaped.
-char *get_inserted(void)
+String get_inserted(void)
 {
-  return get_buffcont(&redobuff, false, NULL);
+  size_t len = 0;
+  char *str = get_buffcont(&redobuff, false, &len);
+  return cbuf_as_string(str, len);
 }
 
 /// Add string after the current block of the given buffer
@@ -1513,7 +1523,7 @@ int merge_modifiers(int c_arg, int *modifiers)
   int c = c_arg;
 
   if (*modifiers & MOD_MASK_CTRL) {
-    if ((c >= '`' && c <= 0x7f) || (c >= '@' && c <= '_')) {
+    if (c >= '@' && c <= 0x7f) {
       c &= 0x1f;
       if (c == NUL) {
         c = K_ZERO;
@@ -1862,29 +1872,73 @@ bool char_avail(void)
   return retval != NUL;
 }
 
+static int no_reduce_keys = 0;  ///< Do not apply modifiers to the key.
+
 /// "getchar()" and "getcharstr()" functions
-static void getchar_common(typval_T *argvars, typval_T *rettv)
+static void getchar_common(typval_T *argvars, typval_T *rettv, bool allow_number)
   FUNC_ATTR_NONNULL_ALL
 {
-  varnumber_T n;
+  varnumber_T n = 0;
+  const int called_emsg_start = called_emsg;
   bool error = false;
+  bool simplify = true;
+  char cursor_flag = NUL;
+
+  if (argvars[0].v_type != VAR_UNKNOWN
+      && tv_check_for_opt_dict_arg(argvars, 1) == FAIL) {
+    return;
+  }
+
+  if (argvars[0].v_type != VAR_UNKNOWN && argvars[1].v_type == VAR_DICT) {
+    dict_T *d = argvars[1].vval.v_dict;
+
+    if (allow_number) {
+      allow_number = tv_dict_get_bool(d, "number", true);
+    } else if (tv_dict_has_key(d, "number")) {
+      semsg(_(e_invarg2), "number");
+    }
+
+    simplify = tv_dict_get_bool(d, "simplify", true);
+
+    const char *cursor_str = tv_dict_get_string(d, "cursor", false);
+    if (cursor_str != NULL) {
+      if (strcmp(cursor_str, "hide") != 0
+          && strcmp(cursor_str, "keep") != 0
+          && strcmp(cursor_str, "msg") != 0) {
+        semsg(_(e_invargNval), "cursor", cursor_str);
+      } else {
+        cursor_flag = cursor_str[0];
+      }
+    }
+  }
+
+  if (called_emsg != called_emsg_start) {
+    return;
+  }
+
+  if (cursor_flag == 'h') {
+    ui_busy_start();
+  }
 
   no_mapping++;
   allow_keys++;
+  if (!simplify) {
+    no_reduce_keys++;
+  }
   while (true) {
-    if (msg_col > 0) {
-      // Position the cursor. Needed after a message that ends in a space.
+    if (cursor_flag == 'm' || (cursor_flag == NUL && msg_col > 0)) {
       ui_cursor_goto(msg_row, msg_col);
     }
 
-    if (argvars[0].v_type == VAR_UNKNOWN) {
+    if (argvars[0].v_type == VAR_UNKNOWN
+        || (argvars[0].v_type == VAR_NUMBER && argvars[0].vval.v_number == -1)) {
       // getchar(): blocking wait.
       // TODO(bfredl): deduplicate shared logic with state_enter ?
       if (!char_avail()) {
         // Flush screen updates before blocking.
         ui_flush();
         input_get(NULL, 0, -1, typebuf.tb_change_cnt, main_loop.events);
-        if (!multiqueue_empty(main_loop.events)) {
+        if (!input_available() && !multiqueue_empty(main_loop.events)) {
           state_handle_k_event();
           continue;
         }
@@ -1912,14 +1966,20 @@ static void getchar_common(typval_T *argvars, typval_T *rettv)
   }
   no_mapping--;
   allow_keys--;
+  if (!simplify) {
+    no_reduce_keys--;
+  }
+
+  if (cursor_flag == 'h') {
+    ui_busy_stop();
+  }
 
   set_vim_var_nr(VV_MOUSE_WIN, 0);
   set_vim_var_nr(VV_MOUSE_WINID, 0);
   set_vim_var_nr(VV_MOUSE_LNUM, 0);
   set_vim_var_nr(VV_MOUSE_COL, 0);
 
-  rettv->vval.v_number = n;
-  if (n != 0 && (IS_SPECIAL(n) || mod_mask != 0)) {
+  if (n != 0 && (!allow_number || IS_SPECIAL(n) || mod_mask != 0)) {
     char temp[10];                // modifier: 3, mbyte-char: 6, NUL: 1
     int i = 0;
 
@@ -1966,35 +2026,23 @@ static void getchar_common(typval_T *argvars, typval_T *rettv)
         set_vim_var_nr(VV_MOUSE_COL, col + 1);
       }
     }
+  } else if (!allow_number) {
+    rettv->v_type = VAR_STRING;
+  } else {
+    rettv->vval.v_number = n;
   }
 }
 
 /// "getchar()" function
 void f_getchar(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 {
-  getchar_common(argvars, rettv);
+  getchar_common(argvars, rettv, true);
 }
 
 /// "getcharstr()" function
 void f_getcharstr(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
 {
-  getchar_common(argvars, rettv);
-
-  if (rettv->v_type != VAR_NUMBER) {
-    return;
-  }
-
-  char temp[7];   // mbyte-char: 6, NUL: 1
-  const varnumber_T n = rettv->vval.v_number;
-  int i = 0;
-
-  if (n != 0) {
-    i += utf_char2bytes((int)n, temp);
-  }
-  assert(i < 7);
-  temp[i] = NUL;
-  rettv->v_type = VAR_STRING;
-  rettv->vval.v_string = xmemdupz(temp, (size_t)i);
+  getchar_common(argvars, rettv, false);
 }
 
 /// "getcharmod()" function
@@ -2052,6 +2100,12 @@ static bool at_ins_compl_key(void)
 /// @return  the length of the replaced bytes, 0 if nothing changed, -1 for error.
 static int check_simplify_modifier(int max_offset)
 {
+  // We want full modifiers in Terminal mode so that the key can be correctly
+  // encoded
+  if ((State & MODE_TERMINAL) || no_reduce_keys > 0) {
+    return 0;
+  }
+
   for (int offset = 0; offset < max_offset; offset++) {
     if (offset + 3 >= typebuf.tb_len) {
       break;
@@ -2695,8 +2749,8 @@ static int vgetorpeek(bool advance)
                 }
 
                 curwin->w_wrow = curwin->w_cline_row
-                                 + curwin->w_wcol / curwin->w_width_inner;
-                curwin->w_wcol %= curwin->w_width_inner;
+                                 + curwin->w_wcol / curwin->w_view_width;
+                curwin->w_wcol %= curwin->w_view_width;
                 curwin->w_wcol += win_col_off(curwin);
                 col = 0;  // no correction needed
               } else {
@@ -2705,7 +2759,7 @@ static int vgetorpeek(bool advance)
               }
             } else if (curwin->w_p_wrap && curwin->w_wrow) {
               curwin->w_wrow--;
-              curwin->w_wcol = curwin->w_width_inner - 1;
+              curwin->w_wcol = curwin->w_view_width - 1;
               col = curwin->w_cursor.col - 1;
             }
             if (col > 0 && curwin->w_wcol > 0) {
@@ -3200,7 +3254,7 @@ bool map_execute_lua(bool may_repeat)
   Array args = ARRAY_DICT_INIT;
   nlua_call_ref(ref, NULL, args, kRetNilBool, NULL, &err);
   if (ERROR_SET(&err)) {
-    semsg_multiline("E5108: %s", err.msg);
+    semsg_multiline("emsg", "E5108: %s", err.msg);
     api_clear_error(&err);
   }
 

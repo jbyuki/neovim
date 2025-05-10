@@ -129,6 +129,7 @@ EXTERN const char e_missingparen[] INIT(= N_("E107: Missing parentheses: %s"));
 EXTERN const char e_empty_buffer[] INIT(= N_("E749: Empty buffer"));
 EXTERN const char e_nobufnr[] INIT(= N_("E86: Buffer %" PRId64 " does not exist"));
 
+EXTERN const char e_unknown_function_str[] INIT(= N_("E117: Unknown function: %s"));
 EXTERN const char e_str_not_inside_function[] INIT(= N_("E193: %s not inside a function"));
 
 EXTERN const char e_invalpat[] INIT(= N_("E682: Invalid search pattern or delimiter"));
@@ -187,6 +188,7 @@ INIT(= N_("E5767: Cannot use :undo! to redo or move to a different undo branch")
 EXTERN const char e_winfixbuf_cannot_go_to_buffer[]
 INIT(= N_("E1513: Cannot switch buffer. 'winfixbuf' is enabled"));
 EXTERN const char e_invalid_return_type_from_findfunc[] INIT( = N_("E1514: 'findfunc' did not return a List type"));
+EXTERN const char e_cannot_switch_to_a_closing_buffer[] INIT( = N_("E1546: Cannot switch to a closing buffer"));
 
 EXTERN const char e_trustfile[] INIT(= N_("E5570: Cannot update trust file: %s"));
 

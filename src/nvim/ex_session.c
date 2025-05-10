@@ -9,10 +9,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "klib/kvec.h"
 #include "nvim/arglist.h"
 #include "nvim/arglist_defs.h"
 #include "nvim/ascii_defs.h"
 #include "nvim/autocmd.h"
+#include "nvim/autocmd_defs.h"
 #include "nvim/buffer.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/errors.h"
@@ -466,7 +468,7 @@ static int put_view(FILE *fd, win_T *wp, int add_edit, unsigned *flagp, int curr
   if (do_cursor) {
     // Restore the cursor line in the file and relatively in the
     // window.  Don't use "G", it changes the jumplist.
-    if (wp->w_height_inner <= 0) {
+    if (wp->w_view_height <= 0) {
       if (fprintf(fd, "let s:l = %" PRIdLINENR "\n", wp->w_cursor.lnum) < 0) {
         return FAIL;
       }
@@ -475,8 +477,8 @@ static int put_view(FILE *fd, win_T *wp, int add_edit, unsigned *flagp, int curr
                        " * winheight(0) + %d) / %d)\n",
                        wp->w_cursor.lnum,
                        wp->w_cursor.lnum - wp->w_topline,
-                       (wp->w_height_inner / 2),
-                       wp->w_height_inner) < 0) {
+                       (wp->w_view_height / 2),
+                       wp->w_view_height) < 0) {
       return FAIL;
     }
     if (fprintf(fd,
@@ -659,9 +661,8 @@ static int makeopens(FILE *fd, char *dirnow)
         && buf->b_fname != NULL
         && buf->b_p_bl) {
       if (fprintf(fd, "badd +%" PRId64 " ",
-                  buf->b_wininfo == NULL
-                  ? 1
-                  : (int64_t)buf->b_wininfo->wi_mark.mark.lnum) < 0
+                  kv_size(buf->b_wininfo) == 0
+                  ? 1 : (int64_t)kv_A(buf->b_wininfo, 0)->wi_mark.mark.lnum) < 0
           || ses_fname(fd, buf, &ssop_flags, true) == FAIL) {
         return FAIL;
       }

@@ -2,11 +2,11 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "nvim/ascii_defs.h"
 #include "nvim/charset.h"
 #include "nvim/errors.h"
 #include "nvim/ex_cmds_defs.h"
 #include "nvim/gettext_defs.h"
-#include "nvim/globals.h"
 #include "nvim/lua/executor.h"
 #include "nvim/lua/secure.h"
 #include "nvim/memory.h"
@@ -26,7 +26,7 @@ char *nlua_read_secure(const char *path)
   lua_getfield(lstate, -1, "read");
   lua_pushstring(lstate, path);
   if (nlua_pcall(lstate, 1, 1)) {
-    nlua_error(lstate, _("Error executing vim.secure.read: %.*s"));
+    nlua_error(lstate, _("vim.secure.read: %.*s"));
     lua_settop(lstate, top);
     return NULL;
   }
@@ -68,7 +68,7 @@ static bool nlua_trust(const char *action, const char *path)
   }
 
   if (nlua_pcall(lstate, 1, 2)) {
-    nlua_error(lstate, _("Error executing vim.secure.trust: %.*s"));
+    nlua_error(lstate, _("vim.secure.trust: %.*s"));
     lua_settop(lstate, top);
     return false;
   }

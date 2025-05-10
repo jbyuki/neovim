@@ -1,5 +1,7 @@
 local api = vim.api
 
+local Range = require('vim.treesitter._range')
+
 local M = {}
 
 ---@class (private) vim.treesitter.dev.TSTreeView
@@ -76,7 +78,9 @@ end
 ---
 ---@package
 function TSTreeView:new(bufnr, lang)
-  local parser = vim.treesitter.get_parser(bufnr or 0, lang, { error = false })
+  bufnr = bufnr or 0
+  lang = lang or vim.treesitter.language.get_lang(vim.bo[bufnr].filetype)
+  local parser = vim.treesitter.get_parser(bufnr, lang, { error = false })
   if not parser then
     return nil,
       string.format(
@@ -94,16 +98,20 @@ function TSTreeView:new(bufnr, lang)
 
   parser:for_each_tree(function(parent_tree, parent_ltree)
     local parent = parent_tree:root()
+    local parent_range = { parent:range() }
     for _, child in pairs(parent_ltree:children()) do
       for _, tree in pairs(child:trees()) do
         local r = tree:root()
-        local node = assert(parent:named_descendant_for_range(r:range()))
-        local id = node:id()
-        if not injections[id] or r:byte_length() > injections[id].root:byte_length() then
-          injections[id] = {
-            lang = child:lang(),
-            root = r,
-          }
+        local r_range = { r:range() }
+        if Range.contains(parent_range, r_range) then
+          local node = assert(parent:named_descendant_for_range(r:range()))
+          local id = node:id()
+          if not injections[id] or r:byte_length() > injections[id].root:byte_length() then
+            injections[id] = {
+              lang = child:lang(),
+              root = r,
+            }
+          end
         end
       end
     end
@@ -119,7 +127,7 @@ function TSTreeView:new(bufnr, lang)
   end
 
   local t = {
-    ns = api.nvim_create_namespace('treesitter/dev-inspect'),
+    ns = api.nvim_create_namespace('nvim.treesitter.dev_inspect'),
     nodes = nodes,
     named = named,
     ---@type vim.treesitter.dev.TSTreeViewOpts
@@ -135,15 +143,7 @@ function TSTreeView:new(bufnr, lang)
   return t
 end
 
-local decor_ns = api.nvim_create_namespace('ts.dev')
-
----@param range Range4
----@return string
-local function range_to_string(range)
-  ---@type integer, integer, integer, integer
-  local row, col, end_row, end_col = unpack(range)
-  return string.format('[%d, %d] - [%d, %d]', row, col, end_row, end_col)
-end
+local decor_ns = api.nvim_create_namespace('nvim.treesitter.dev')
 
 ---@param w integer
 ---@return boolean closed Whether the window was closed.
@@ -227,14 +227,17 @@ function TSTreeView:draw(bufnr)
   local lang_hl_marks = {} ---@type table[]
 
   for i, item in self:iter() do
-    local range_str = range_to_string({ item.node:range() })
+    local range_str = ('[%d, %d] - [%d, %d]'):format(item.node:range())
     local lang_str = self.opts.lang and string.format(' %s', item.lang) or ''
 
     local text ---@type string
     if item.node:named() then
-      text = string.format('(%s', item.node:type())
+      text = string.format('(%s%s', item.node:missing() and 'MISSING ' or '', item.node:type())
     else
       text = string.format('%q', item.node:type()):gsub('\n', 'n')
+      if item.node:missing() then
+        text = string.format('(MISSING %s)', text)
+      end
     end
     if item.field then
       text = string.format('%s: %s', item.field, text)
@@ -339,7 +342,13 @@ function M.inspect_tree(opts)
 
   -- window id for source buffer
   local win = api.nvim_get_current_win()
-  local treeview = assert(TSTreeView:new(buf, opts.lang))
+  local treeview, err = TSTreeView:new(buf, opts.lang)
+  if err and err:match('no parser for lang') then
+    vim.api.nvim_echo({ { err, 'WarningMsg' } }, true, {})
+    return
+  elseif not treeview then
+    error(err)
+  end
 
   -- Close any existing inspector window
   if vim.b[buf].dev_inspect then
@@ -442,7 +451,9 @@ function M.inspect_tree(opts)
     end,
   })
 
-  local group = api.nvim_create_augroup('treesitter/dev', {})
+  api.nvim_buf_set_keymap(b, 'n', 'q', '<C-w>c', { desc = 'Close language tree window' })
+
+  local group = api.nvim_create_augroup('nvim.treesitter.dev', {})
 
   api.nvim_create_autocmd('CursorMoved', {
     group = group,
@@ -547,7 +558,7 @@ function M.inspect_tree(opts)
   })
 end
 
-local edit_ns = api.nvim_create_namespace('treesitter/dev-edit')
+local edit_ns = api.nvim_create_namespace('nvim.treesitter.dev_edit')
 
 ---@param query_win integer
 ---@param base_win integer
@@ -633,7 +644,7 @@ function M.edit_query(lang)
   -- can infer the language later.
   api.nvim_buf_set_name(query_buf, string.format('%s/query_editor.scm', lang))
 
-  local group = api.nvim_create_augroup('treesitter/dev-edit', {})
+  local group = api.nvim_create_augroup('nvim.treesitter.dev_edit', {})
   api.nvim_create_autocmd({ 'TextChanged', 'InsertLeave' }, {
     group = group,
     buffer = query_buf,

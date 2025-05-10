@@ -9,21 +9,29 @@ do
   end, { desc = 'Inspect highlights and extmarks at the cursor', bang = true })
 
   vim.api.nvim_create_user_command('InspectTree', function(cmd)
+    local opts = { lang = cmd.fargs[1] }
+
     if cmd.mods ~= '' or cmd.count ~= 0 then
       local count = cmd.count ~= 0 and cmd.count or ''
       local new = cmd.mods ~= '' and 'new' or 'vnew'
 
-      vim.treesitter.inspect_tree({
-        command = ('%s %s%s'):format(cmd.mods, count, new),
-      })
-    else
-      vim.treesitter.inspect_tree()
+      opts.command = ('%s %s%s'):format(cmd.mods, count, new)
     end
-  end, { desc = 'Inspect treesitter language tree for buffer', count = true })
+
+    vim.treesitter.inspect_tree(opts)
+  end, { desc = 'Inspect treesitter language tree for buffer', count = true, nargs = '?' })
 
   vim.api.nvim_create_user_command('EditQuery', function(cmd)
     vim.treesitter.query.edit(cmd.fargs[1])
   end, { desc = 'Edit treesitter query', nargs = '?' })
+
+  vim.api.nvim_create_user_command('Open', function(cmd)
+    vim.ui.open(cmd.fargs[1])
+  end, {
+    desc = 'Open file with system default handler. See :help vim.ui.open()',
+    nargs = 1,
+    complete = 'file',
+  })
 end
 
 --- Default mappings
@@ -32,27 +40,53 @@ do
   ---
   --- See |v_star-default| and |v_#-default|
   do
-    local function _visual_search(cmd)
-      assert(cmd == '/' or cmd == '?')
-      local chunks =
-        vim.fn.getregion(vim.fn.getpos('.'), vim.fn.getpos('v'), { type = vim.fn.mode() })
+    local function _visual_search(forward)
+      assert(forward == 0 or forward == 1)
+      local pos = vim.fn.getpos('.')
+      local vpos = vim.fn.getpos('v')
+      local mode = vim.fn.mode()
+      local chunks = vim.fn.getregion(pos, vpos, { type = mode })
       local esc_chunks = vim
         .iter(chunks)
         :map(function(v)
-          return vim.fn.escape(v, cmd == '/' and [[/\]] or [[?\]])
+          return vim.fn.escape(v, [[\]])
         end)
         :totable()
       local esc_pat = table.concat(esc_chunks, [[\n]])
-      local search_cmd = ([[%s\V%s%s]]):format(cmd, esc_pat, '\n')
-      return '\27' .. search_cmd
+      if #esc_pat == 0 then
+        vim.api.nvim_echo({ { 'E348: No string under cursor' } }, true, { err = true })
+        return '<Esc>'
+      end
+      local search = [[\V]] .. esc_pat
+
+      vim.fn.setreg('/', search)
+      vim.fn.histadd('/', search)
+      vim.v.searchforward = forward
+
+      -- The count has to be adjusted when searching backwards and the cursor
+      -- isn't positioned at the beginning of the selection
+      local count = vim.v.count1
+      if forward == 0 then
+        local _, line, col, _ = unpack(pos)
+        local _, vline, vcol, _ = unpack(vpos)
+        if
+          line > vline
+          or mode == 'v' and line == vline and col > vcol
+          or mode == 'V' and col ~= 1
+          or mode == '\22' and col > vcol
+        then
+          count = count + 1
+        end
+      end
+      return '<Esc>' .. count .. 'n'
     end
 
     vim.keymap.set('x', '*', function()
-      return _visual_search('/')
-    end, { desc = ':help v_star-default', expr = true, silent = true })
+      return _visual_search(1)
+    end, { desc = ':help v_star-default', expr = true })
     vim.keymap.set('x', '#', function()
-      return _visual_search('?')
-    end, { desc = ':help v_#-default', expr = true, silent = true })
+      return _visual_search(0)
+    end, { desc = ':help v_#-default', expr = true })
   end
 
   --- Map Y to y$. This mimics the behavior of D and C. See |Y-default|
@@ -184,6 +218,27 @@ do
     end, { desc = 'vim.lsp.buf.signature_help()' })
   end
 
+  do
+    ---@param direction vim.snippet.Direction
+    ---@param key string
+    local function set_snippet_jump(direction, key)
+      vim.keymap.set({ 'i', 's' }, key, function()
+        if vim.snippet.active({ direction = direction }) then
+          return string.format('<Cmd>lua vim.snippet.jump(%d)<CR>', direction)
+        else
+          return key
+        end
+      end, {
+        desc = 'vim.snippet.jump if active, otherwise ' .. key,
+        expr = true,
+        silent = true,
+      })
+    end
+
+    set_snippet_jump(1, '<Tab>')
+    set_snippet_jump(-1, '<S-Tab>')
+  end
+
   --- Map [d and ]d to move to the previous/next diagnostic. Map <C-W>d to open a floating window
   --- for the diagnostic under the cursor.
   ---
@@ -224,7 +279,7 @@ do
     local function cmd(opts)
       local ok, err = pcall(vim.api.nvim_cmd, opts, {})
       if not ok then
-        vim.api.nvim_err_writeln(err:sub(#'Vim:' + 1))
+        vim.api.nvim_echo({ { err:sub(#'Vim:' + 1) } }, true, { err = true })
       end
     end
 
@@ -383,9 +438,12 @@ end
 do
   --- Right click popup menu
   vim.cmd([[
-    anoremenu PopUp.Go\ to\ definition      <Cmd>lua vim.lsp.buf.definition()<CR>
     amenu     PopUp.Open\ in\ web\ browser  gx
     anoremenu PopUp.Inspect                 <Cmd>Inspect<CR>
+    anoremenu PopUp.Go\ to\ definition      <Cmd>lua vim.lsp.buf.definition()<CR>
+    anoremenu PopUp.Show\ Diagnostics       <Cmd>lua vim.diagnostic.open_float()<CR>
+    anoremenu PopUp.Show\ All\ Diagnostics  <Cmd>lua vim.diagnostic.setqflist()<CR>
+    anoremenu PopUp.Configure\ Diagnostics  <Cmd>help vim.diagnostic.config()<CR>
     anoremenu PopUp.-1-                     <Nop>
     vnoremenu PopUp.Cut                     "+x
     vnoremenu PopUp.Copy                    "+y
@@ -399,43 +457,58 @@ do
     anoremenu PopUp.How-to\ disable\ mouse  <Cmd>help disable-mouse<CR>
   ]])
 
-  local function enable_ctx_menu(ctx)
+  local function enable_ctx_menu()
     vim.cmd([[
       amenu disable PopUp.Go\ to\ definition
       amenu disable PopUp.Open\ in\ web\ browser
+      amenu disable PopUp.Show\ Diagnostics
+      amenu disable PopUp.Show\ All\ Diagnostics
+      amenu disable PopUp.Configure\ Diagnostics
     ]])
 
-    if ctx == 'url' then
+    local urls = require('vim.ui')._get_urls()
+    if vim.startswith(urls[1], 'http') then
       vim.cmd([[amenu enable PopUp.Open\ in\ web\ browser]])
-    elseif ctx == 'lsp' then
+    elseif vim.lsp.get_clients({ bufnr = 0 })[1] then
       vim.cmd([[anoremenu enable PopUp.Go\ to\ definition]])
+    end
+
+    local lnum = vim.fn.getcurpos()[2] - 1 ---@type integer
+    local diagnostic = false
+    if next(vim.diagnostic.get(0, { lnum = lnum })) ~= nil then
+      diagnostic = true
+      vim.cmd([[anoremenu enable PopUp.Show\ Diagnostics]])
+    end
+
+    if diagnostic or next(vim.diagnostic.count(0)) ~= nil then
+      vim.cmd([[
+        anoremenu enable PopUp.Show\ All\ Diagnostics
+        anoremenu enable PopUp.Configure\ Diagnostics
+      ]])
     end
   end
 
-  local nvim_popupmenu_augroup = vim.api.nvim_create_augroup('nvim_popupmenu', {})
+  local nvim_popupmenu_augroup = vim.api.nvim_create_augroup('nvim.popupmenu', {})
   vim.api.nvim_create_autocmd('MenuPopup', {
     pattern = '*',
     group = nvim_popupmenu_augroup,
     desc = 'Mouse popup menu',
     -- nested = true,
     callback = function()
-      local urls = require('vim.ui')._get_urls()
-      local url = vim.startswith(urls[1], 'http')
-      local ctx = url and 'url' or (vim.lsp.get_clients({ bufnr = 0 })[1] and 'lsp' or nil)
-      enable_ctx_menu(ctx)
+      enable_ctx_menu()
     end,
   })
 end
 
 --- Default autocommands. See |default-autocmds|
 do
-  local nvim_terminal_augroup = vim.api.nvim_create_augroup('nvim_terminal', {})
+  local nvim_terminal_augroup = vim.api.nvim_create_augroup('nvim.terminal', {})
   vim.api.nvim_create_autocmd('BufReadCmd', {
     pattern = 'term://*',
     group = nvim_terminal_augroup,
     desc = 'Treat term:// buffers as terminal buffers',
     nested = true,
-    command = "if !exists('b:term_title')|call termopen(matchstr(expand(\"<amatch>\"), '\\c\\mterm://\\%(.\\{-}//\\%(\\d\\+:\\)\\?\\)\\?\\zs.*'), {'cwd': expand(get(matchlist(expand(\"<amatch>\"), '\\c\\mterm://\\(.\\{-}\\)//'), 1, ''))})",
+    command = "if !exists('b:term_title')|call jobstart(matchstr(expand(\"<amatch>\"), '\\c\\mterm://\\%(.\\{-}//\\%(\\d\\+:\\)\\?\\)\\?\\zs.*'), {'term': v:true, 'cwd': expand(get(matchlist(expand(\"<amatch>\"), '\\c\\mterm://\\(.\\{-}\\)//'), 1, ''))})",
   })
 
   vim.api.nvim_create_autocmd({ 'TermClose' }, {
@@ -463,8 +536,8 @@ do
       if channel == 0 then
         return
       end
-      local fg_request = args.data == '\027]10;?'
-      local bg_request = args.data == '\027]11;?'
+      local fg_request = args.data.sequence == '\027]10;?'
+      local bg_request = args.data.sequence == '\027]11;?'
       if fg_request or bg_request then
         -- WARN: This does not return the actual foreground/background color,
         -- but rather returns:
@@ -482,16 +555,65 @@ do
     end,
   })
 
+  local nvim_terminal_prompt_ns = vim.api.nvim_create_namespace('nvim.terminal.prompt')
+  vim.api.nvim_create_autocmd('TermRequest', {
+    group = nvim_terminal_augroup,
+    desc = 'Mark shell prompts indicated by OSC 133 sequences for navigation',
+    callback = function(args)
+      if string.match(args.data.sequence, '^\027]133;A') then
+        local lnum = args.data.cursor[1] ---@type integer
+        vim.api.nvim_buf_set_extmark(args.buf, nvim_terminal_prompt_ns, lnum - 1, 0, {})
+      end
+    end,
+  })
+
+  ---@param ns integer
+  ---@param buf integer
+  ---@param count integer
+  local function jump_to_prompt(ns, win, buf, count)
+    local row, col = unpack(vim.api.nvim_win_get_cursor(win))
+    local start = -1
+    local end_ ---@type 0|-1
+    if count > 0 then
+      start = row
+      end_ = -1
+    elseif count < 0 then
+      -- Subtract 2 because row is 1-based, but extmarks are 0-based
+      start = row - 2
+      end_ = 0
+    end
+
+    if start < 0 then
+      return
+    end
+
+    local extmarks = vim.api.nvim_buf_get_extmarks(
+      buf,
+      ns,
+      { start, col },
+      end_,
+      { limit = math.abs(count) }
+    )
+    if #extmarks > 0 then
+      local extmark = extmarks[math.min(#extmarks, math.abs(count))]
+      vim.api.nvim_win_set_cursor(win, { extmark[2] + 1, extmark[3] })
+    end
+  end
+
   vim.api.nvim_create_autocmd('TermOpen', {
     group = nvim_terminal_augroup,
     desc = 'Default settings for :terminal buffers',
-    callback = function()
-      vim.bo.modifiable = false
-      vim.bo.undolevels = -1
-      vim.bo.scrollback = vim.o.scrollback < 0 and 10000 or math.max(1, vim.o.scrollback)
-      vim.bo.textwidth = 0
+    callback = function(args)
+      vim.bo[args.buf].modifiable = false
+      vim.bo[args.buf].undolevels = -1
+      vim.bo[args.buf].scrollback = vim.o.scrollback < 0 and 10000 or math.max(1, vim.o.scrollback)
+      vim.bo[args.buf].textwidth = 0
       vim.wo[0][0].wrap = false
       vim.wo[0][0].list = false
+      vim.wo[0][0].number = false
+      vim.wo[0][0].relativenumber = false
+      vim.wo[0][0].signcolumn = 'no'
+      vim.wo[0][0].foldcolumn = '0'
 
       -- This is gross. Proper list options support when?
       local winhl = vim.o.winhighlight
@@ -499,20 +621,27 @@ do
         winhl = winhl .. ','
       end
       vim.wo[0][0].winhighlight = winhl .. 'StatusLine:StatusLineTerm,StatusLineNC:StatusLineTermNC'
+
+      vim.keymap.set({ 'n', 'x', 'o' }, '[[', function()
+        jump_to_prompt(nvim_terminal_prompt_ns, 0, args.buf, -vim.v.count1)
+      end, { buffer = args.buf, desc = 'Jump [count] shell prompts backward' })
+      vim.keymap.set({ 'n', 'x', 'o' }, ']]', function()
+        jump_to_prompt(nvim_terminal_prompt_ns, 0, args.buf, vim.v.count1)
+      end, { buffer = args.buf, desc = 'Jump [count] shell prompts forward' })
     end,
   })
 
   vim.api.nvim_create_autocmd('CmdwinEnter', {
     pattern = '[:>]',
     desc = 'Limit syntax sync to maxlines=1 in the command window',
-    group = vim.api.nvim_create_augroup('nvim_cmdwin', {}),
+    group = vim.api.nvim_create_augroup('nvim.cmdwin', {}),
     command = 'syntax sync minlines=1 maxlines=1',
   })
 
   vim.api.nvim_create_autocmd('SwapExists', {
     pattern = '*',
     desc = 'Skip the swapfile prompt when the swapfile is owned by a running Nvim process',
-    group = vim.api.nvim_create_augroup('nvim_swapfile', {}),
+    group = vim.api.nvim_create_augroup('nvim.swapfile', {}),
     callback = function()
       local info = vim.fn.swapinfo(vim.v.swapname)
       local user = vim.uv.os_get_passwd().username
@@ -539,7 +668,7 @@ do
   end
 
   if tty then
-    local group = vim.api.nvim_create_augroup('nvim_tty', {})
+    local group = vim.api.nvim_create_augroup('nvim.tty', {})
 
     --- Set an option after startup (so that OptionSet is fired), but only if not
     --- already set by the user.
@@ -648,7 +777,7 @@ do
 
       -- This autocommand updates the value of 'background' anytime we receive
       -- an OSC 11 response from the terminal emulator. If the user has set
-      -- 'background' explictly then we will delete this autocommand,
+      -- 'background' explicitly then we will delete this autocommand,
       -- effectively disabling automatic background setting.
       local force = false
       local id = vim.api.nvim_create_autocmd('TermResponse', {
@@ -656,7 +785,7 @@ do
         nested = true,
         desc = "Update the value of 'background' automatically based on the terminal emulator's background color",
         callback = function(args)
-          local resp = args.data ---@type string
+          local resp = args.data.sequence ---@type string
           local r, g, b = parseosc11(resp)
           if r and g and b then
             local rr = parsecolor(r)
@@ -732,7 +861,7 @@ do
           group = group,
           nested = true,
           callback = function(args)
-            local resp = args.data ---@type string
+            local resp = args.data.sequence ---@type string
             local decrqss = resp:match('^\027P1%$r([%d;:]+)m$')
 
             if decrqss then
@@ -778,9 +907,7 @@ do
         -- terminal responds to the DECRQSS with the same SGR sequence that we
         -- sent then the terminal supports truecolor.
         local decrqss = '\027P$qm\027\\'
-        if os.getenv('TMUX') then
-          decrqss = string.format('\027Ptmux;%s\027\\', decrqss:gsub('\027', '\027\027'))
-        end
+
         -- Reset attributes first, as other code may have set attributes.
         io.stdout:write(string.format('\027[0m\027[48;2;%d;%d;%dm%s', r, g, b, decrqss))
 

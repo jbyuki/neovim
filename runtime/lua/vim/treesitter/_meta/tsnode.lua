@@ -10,8 +10,6 @@ error('Cannot require a meta file')
 
 ---@nodoc
 ---@class TSNode: userdata
----@field named_children fun(self: TSNode): TSNode[]
----@field __has_ancestor fun(self: TSNode, node_types: string[]): boolean
 local TSNode = {} -- luacheck: no unused
 
 --- Get the node's immediate parent.
@@ -43,7 +41,7 @@ function TSNode:prev_named_sibling() end
 --- @return fun(): TSNode, string
 function TSNode:iter_children() end
 
---- Returns a table of the nodes corresponding to the {name} field.
+--- Returns a list of all the node's children that have the given field name.
 --- @param name string
 --- @return TSNode[]
 function TSNode:field(name) end
@@ -62,17 +60,20 @@ function TSNode:child(index) end
 --- @return integer
 function TSNode:named_child_count() end
 
+--- Returns a list of the node's named children.
+--- @return TSNode[]
+function TSNode:named_children() end
+
+--- Check if the node has any of the given node types as its ancestor.
+--- @param node_types string[]
+--- @return boolean
+function TSNode:__has_ancestor(node_types) end
+
 --- Get the node's named child at the given {index}, where zero represents the
 --- first named child.
 --- @param index integer
 --- @return TSNode?
 function TSNode:named_child(index) end
-
---- Get the node's child that contains {descendant}.
---- @param descendant TSNode
---- @return TSNode?
---- @deprecated
-function TSNode:child_containing_descendant(descendant) end
 
 --- Get the node's child that contains {descendant} (includes {descendant}).
 ---
@@ -109,17 +110,9 @@ function TSNode:end_() end
 --- - end row
 --- - end column
 --- - end byte (if {include_bytes} is `true`)
---- @param include_bytes boolean?
-function TSNode:range(include_bytes) end
-
---- @nodoc
 --- @param include_bytes false?
 --- @return integer, integer, integer, integer
-function TSNode:range(include_bytes) end
-
---- @nodoc
---- @param include_bytes true
---- @return integer, integer, integer, integer, integer, integer
+--- @overload fun(self: TSNode, include_bytes: true): integer, integer, integer, integer, integer, integer
 function TSNode:range(include_bytes) end
 
 --- Get the node's type as a string.

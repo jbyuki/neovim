@@ -12,7 +12,6 @@ local command = n.command
 local insert = n.insert
 local expect = n.expect
 local exc_exec = n.exc_exec
-local os_kill = n.os_kill
 local pcall_err = t.pcall_err
 local is_os = t.is_os
 
@@ -394,7 +393,7 @@ describe('system()', function()
   it("with a program that doesn't close stdout will exit properly after passing input", function()
     local out = eval(string.format("system('%s', 'clip-data')", testprg('streams-test')))
     assert(out:sub(0, 5) == 'pid: ', out)
-    os_kill(out:match('%d+'))
+    eq(0, vim.uv.kill(assert(tonumber(out:match('%d+'))), 'sigkill'))
   end)
 end)
 
@@ -538,7 +537,7 @@ describe('systemlist()', function()
   it("with a program that doesn't close stdout will exit properly after passing input", function()
     local out = eval(string.format("systemlist('%s', 'clip-data')", testprg('streams-test')))
     assert(out[1]:sub(0, 5) == 'pid: ', out)
-    os_kill(out[1]:match('%d+'))
+    eq(0, vim.uv.kill(assert(tonumber(out[1]:match('%d+'))), 'sigkill'))
   end)
 
   it('powershell w/ UTF-8 text #13713', function()
@@ -559,9 +558,12 @@ end)
 describe('shell :!', function()
   before_each(clear)
 
-  it(':{range}! with powershell filter/redirect #16271 #19250', function()
+  it(':{range}! with powershell using "commands" filter/redirect #16271 #19250', function()
+    if not n.has_powershell() then
+      return
+    end
     local screen = Screen.new(500, 8)
-    local found = n.set_shell_powershell(true)
+    n.set_shell_powershell()
     insert([[
       3
       1
@@ -570,23 +572,44 @@ describe('shell :!', function()
     if is_os('win') then
       feed(':4verbose %!sort /R<cr>')
       screen:expect {
-        any = [[Executing command: .?& { Get%-Content .* | & sort /R } 2>&1 | %%{ "$_" } | Out%-File .*; exit $LastExitCode"]],
+        any = [[Executing command: " $input | sort /R".*]],
       }
     else
       feed(':4verbose %!sort -r<cr>')
       screen:expect {
-        any = [[Executing command: .?& { Get%-Content .* | & sort %-r } 2>&1 | %%{ "$_" } | Out%-File .*; exit $LastExitCode"]],
+        any = [[Executing command: " $input | sort %-r".*]],
       }
     end
     feed('<CR>')
-    if found then
-      -- Not using fake powershell, so we can test the result.
-      expect([[
-        4
-        3
-        2
-        1]])
+    expect([[
+      4
+      3
+      2
+      1]])
+  end)
+
+  it(':{range}! with powershell using "cmdlets" filter/redirect #16271 #19250', function()
+    if not n.has_powershell() then
+      pending('powershell not found', function() end)
+      return
     end
+    local screen = Screen.new(500, 8)
+    n.set_shell_powershell()
+    insert([[
+      3
+      1
+      4
+      2]])
+    feed(':4verbose %!Sort-Object -Descending<cr>')
+    screen:expect {
+      any = [[Executing command: " $input | Sort%-Object %-Descending".*]],
+    }
+    feed('<CR>')
+    expect([[
+      4
+      3
+      2
+      1]])
   end)
 
   it(':{range}! without redirecting to buffer', function()
@@ -597,20 +620,19 @@ describe('shell :!', function()
       4
       2]])
     feed(':4verbose %w !sort<cr>')
-    if is_os('win') then
-      screen:expect {
-        any = [[Executing command: .?sort %< .*]],
-      }
-    else
-      screen:expect {
-        any = [[Executing command: .?%(sort%) %< .*]],
-      }
-    end
+    screen:expect {
+      any = [[Executing command: "sort".*]],
+    }
     feed('<CR>')
+
+    if not n.has_powershell() then
+      return
+    end
+
     n.set_shell_powershell(true)
     feed(':4verbose %w !sort<cr>')
     screen:expect {
-      any = [[Executing command: .?& { Get%-Content .* | & sort }]],
+      any = [[Executing command: " $input | sort".*]],
     }
     feed('<CR>')
     n.expect_exit(command, 'qall!')

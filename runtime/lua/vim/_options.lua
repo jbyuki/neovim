@@ -229,10 +229,8 @@ end
 --- global value of a |global-local| option, see |:setglobal|.
 --- </pre>
 
---- Get or set |options|. Like `:set`. Invalid key is an error.
----
---- Note: this works on both buffer-scoped and window-scoped options using the
---- current buffer and window.
+--- Get or set |options|. Works like `:set`, so buffer/window-scoped options target the current
+--- buffer/window. Invalid key is an error.
 ---
 --- Example:
 ---
@@ -690,6 +688,7 @@ local function remove_value(info, current, new)
 end
 
 local function create_option_accessor(scope)
+  --- @diagnostic disable-next-line: no-unknown
   local option_mt
 
   local function make_option(name, value)
@@ -698,6 +697,7 @@ local function create_option_accessor(scope)
     if type(value) == 'table' and getmetatable(value) == option_mt then
       assert(name == value._name, "must be the same value, otherwise that's weird.")
 
+      --- @diagnostic disable-next-line: no-unknown
       value = value._value
     end
 
@@ -721,6 +721,7 @@ local function create_option_accessor(scope)
     end,
 
     append = function(self, right)
+      --- @diagnostic disable-next-line: no-unknown
       self._value = add_value(self._info, self._value, right)
       self:_set()
     end,
@@ -730,6 +731,7 @@ local function create_option_accessor(scope)
     end,
 
     prepend = function(self, right)
+      --- @diagnostic disable-next-line: no-unknown
       self._value = prepend_value(self._info, self._value, right)
       self:_set()
     end,
@@ -739,6 +741,7 @@ local function create_option_accessor(scope)
     end,
 
     remove = function(self, right)
+      --- @diagnostic disable-next-line: no-unknown
       self._value = remove_value(self._info, self._value, right)
       self:_set()
     end,
@@ -770,7 +773,7 @@ end
 ---
 ---
 --- A special interface |vim.opt| exists for conveniently interacting with list-
---- and map-style option from Lua: It allows accessing them as Lua tables and
+--- and map-style options from Lua: It allows accessing them as Lua tables and
 --- offers object-oriented method for adding and removing entries.
 ---
 ---     Examples: ~
@@ -919,11 +922,11 @@ function Option:prepend(value) end -- luacheck: no unused
 ---@diagnostic disable-next-line:unused-local used for gen_vimdoc
 function Option:remove(value) end -- luacheck: no unused
 
----@private
+--- @nodoc
 vim.opt = create_option_accessor()
 
----@private
+--- @nodoc
 vim.opt_local = create_option_accessor('local')
 
----@private
+--- @nodoc
 vim.opt_global = create_option_accessor('global')

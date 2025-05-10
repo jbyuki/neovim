@@ -55,7 +55,10 @@ describe('startup', function()
     clear()
     local screen
     screen = Screen.new(84, 3)
-    fn.termopen({ nvim_prog, '-u', 'NONE', '--server', eval('v:servername'), '--remote-ui' })
+    fn.jobstart(
+      { nvim_prog, '-u', 'NONE', '--server', eval('v:servername'), '--remote-ui' },
+      { term = true }
+    )
     screen:expect([[
       ^Cannot attach UI of :terminal child to its parent. (Unset $NVIM to skip this check) |
                                                                                           |*2
@@ -74,22 +77,9 @@ describe('startup', function()
   end)
 
   it('--startuptime does not crash on error #31125', function()
-    eq(
-      "E484: Can't open file .",
-      fn.system({
-        nvim_prog,
-        '-u',
-        'NONE',
-        '-i',
-        'NONE',
-        '--headless',
-        '--startuptime',
-        '.',
-        '-c',
-        '42cquit',
-      })
-    )
-    eq(42, api.nvim_get_vvar('shell_error'))
+    local p = n.spawn_wait('--startuptime', '.', '-c', '42cquit')
+    eq("E484: Can't open file .", p.stderr)
+    eq(42, p.status)
   end)
 
   it('-D does not hang #12647', function()
@@ -98,7 +88,7 @@ describe('startup', function()
     screen = Screen.new(60, 7)
     -- not the same colors on windows for some reason
     screen._default_attr_ids = nil
-    local id = fn.termopen({
+    local id = fn.jobstart({
       nvim_prog,
       '-u',
       'NONE',
@@ -108,6 +98,7 @@ describe('startup', function()
       'set noruler',
       '-D',
     }, {
+      term = true,
       env = {
         VIMRUNTIME = os.getenv('VIMRUNTIME'),
       },
@@ -145,13 +136,18 @@ describe('startup', function()
       vim.list_extend(args, { '-l', (script or 'test/functional/fixtures/startup.lua') })
       vim.list_extend(args, lua_args or {})
       local out = fn.system(args, input):gsub('\r\n', '\n')
-      return eq(dedent(expected), out)
+      if type(expected) == 'function' then
+        return expected(out)
+      else
+        return eq(dedent(expected), out)
+      end
     end
 
     it('failure modes', function()
       -- nvim -l <empty>
-      matches('nvim%.?e?x?e?: Argument missing after: "%-l"', fn.system({ nvim_prog, '-l' }))
-      eq(1, eval('v:shell_error'))
+      local proc = n.spawn_wait('-l')
+      matches('nvim%.?e?x?e?: Argument missing after: "%-l"', proc.stderr)
+      eq(1, proc.status)
     end)
 
     it('os.exit() sets Nvim exitcode', function()
@@ -178,12 +174,12 @@ describe('startup', function()
     end)
 
     it('Lua-error sets Nvim exitcode', function()
+      local proc = n.spawn_wait('-l', 'test/functional/fixtures/startup-fail.lua')
+      matches('E5113: .* my pearls!!', proc:output())
+      eq(0, proc.signal)
+      eq(1, proc.status)
+
       eq(0, eval('v:shell_error'))
-      matches(
-        'E5113: .* my pearls!!',
-        fn.system({ nvim_prog, '-l', 'test/functional/fixtures/startup-fail.lua' })
-      )
-      eq(1, eval('v:shell_error'))
       matches(
         'E5113: .* %[string "error%("whoa"%)"%]:1: whoa',
         fn.system({ nvim_prog, '-l', '-' }, 'error("whoa")')
@@ -291,14 +287,30 @@ describe('startup', function()
       eq(0, eval('v:shell_error'))
     end)
 
-    it('disables swapfile/shada/config/plugins', function()
+    it('disables swapfile/shada/config/plugins unless overridden', function()
+      local script = [[print(('updatecount=%d shadafile=%s loadplugins=%s scripts=%d'):format(
+                       vim.o.updatecount, vim.o.shadafile, tostring(vim.o.loadplugins), math.max(1, #vim.fn.getscriptinfo())))]]
+      finally(function()
+        os.remove('Xtest_shada')
+      end)
+
       assert_l_out(
         'updatecount=0 shadafile=NONE loadplugins=false scripts=1\n',
         nil,
         nil,
         '-',
-        [[print(('updatecount=%d shadafile=%s loadplugins=%s scripts=%d'):format(
-          vim.o.updatecount, vim.o.shadafile, tostring(vim.o.loadplugins), math.max(1, #vim.fn.getscriptinfo())))]]
+        script
+      )
+
+      -- User can override.
+      assert_l_out(
+        function(out)
+          return matches('updatecount=99 shadafile=Xtest_shada loadplugins=true scripts=2%d\n', out)
+        end,
+        { '+set updatecount=99', '-i', 'Xtest_shada', '+set loadplugins', '-u', 'NORC' },
+        nil,
+        '-',
+        script
       )
     end)
   end)
@@ -360,7 +372,7 @@ describe('startup', function()
       command([[set shellcmdflag=/s\ /c shellxquote=\"]])
     end
     -- Running in :terminal
-    fn.termopen({
+    fn.jobstart({
       nvim_prog,
       '-u',
       'NONE',
@@ -371,6 +383,7 @@ describe('startup', function()
       '-c',
       'echo has("ttyin") has("ttyout")',
     }, {
+      term = true,
       env = {
         VIMRUNTIME = os.getenv('VIMRUNTIME'),
       },
@@ -393,13 +406,14 @@ describe('startup', function()
       os.remove('Xtest_startup_ttyout')
     end)
     -- Running in :terminal
-    fn.termopen(
+    fn.jobstart(
       (
         [["%s" -u NONE -i NONE --cmd "%s"]]
         .. [[ -c "call writefile([has('ttyin'), has('ttyout')], 'Xtest_startup_ttyout')"]]
         .. [[ -c q | cat -v]]
       ):format(nvim_prog, nvim_set),
       {
+        term = true,
         env = {
           VIMRUNTIME = os.getenv('VIMRUNTIME'),
         },
@@ -424,7 +438,7 @@ describe('startup', function()
       os.remove('Xtest_startup_ttyout')
     end)
     -- Running in :terminal
-    fn.termopen(
+    fn.jobstart(
       (
         [[echo foo | ]] -- Input from a pipe.
         .. [["%s" -u NONE -i NONE --cmd "%s"]]
@@ -432,6 +446,7 @@ describe('startup', function()
         .. [[ -c q -- -]]
       ):format(nvim_prog, nvim_set),
       {
+        term = true,
         env = {
           VIMRUNTIME = os.getenv('VIMRUNTIME'),
         },
@@ -454,13 +469,14 @@ describe('startup', function()
       command([[set shellcmdflag=/s\ /c shellxquote=\"]])
     end
     -- Running in :terminal
-    fn.termopen(
+    fn.jobstart(
       (
         [[echo foo | ]]
         .. [["%s" -u NONE -i NONE --cmd "%s"]]
         .. [[ -c "echo has('ttyin') has('ttyout')"]]
       ):format(nvim_prog, nvim_set),
       {
+        term = true,
         env = {
           VIMRUNTIME = os.getenv('VIMRUNTIME'),
         },
@@ -577,19 +593,21 @@ describe('startup', function()
     eq('  encoding=utf-8\n', fn.system({ nvim_prog, '-n', '-es' }, { 'set encoding', '' }))
   end)
 
-  it('-es/-Es disables swapfile, user config #8540', function()
+  it('-es/-Es disables swapfile/shada/config #8540', function()
     for _, arg in ipairs({ '-es', '-Es' }) do
       local out = fn.system({
         nvim_prog,
         arg,
-        '+set swapfile? updatecount? shadafile?',
+        '+set updatecount? shadafile? loadplugins?',
         '+put =map(getscriptinfo(), {-> v:val.name})',
         '+%print',
       })
       local line1 = string.match(out, '^.-\n')
       -- updatecount=0 means swapfile was disabled.
-      eq('  swapfile  updatecount=0  shadafile=\n', line1)
-      -- Standard plugins were loaded, but not user config.
+      eq('  updatecount=0  shadafile=NONE  loadplugins\n', line1)
+      -- Standard plugins were loaded, but not user config. #31878
+      local nrlines = #vim.split(out, '\n')
+      ok(nrlines > 20, '>20', nrlines)
       ok(string.find(out, 'man.lua') ~= nil)
       ok(string.find(out, 'init.vim') == nil)
     end
@@ -598,15 +616,15 @@ describe('startup', function()
   it('fails on --embed with -es/-Es/-l', function()
     matches(
       'nvim[.exe]*: %-%-embed conflicts with %-es/%-Es/%-l',
-      fn.system({ nvim_prog, '--embed', '-es' })
+      n.spawn_wait('--embed', '-es').stderr
     )
     matches(
       'nvim[.exe]*: %-%-embed conflicts with %-es/%-Es/%-l',
-      fn.system({ nvim_prog, '--embed', '-Es' })
+      n.spawn_wait('--embed', '-Es').stderr
     )
     matches(
       'nvim[.exe]*: %-%-embed conflicts with %-es/%-Es/%-l',
-      fn.system({ nvim_prog, '--embed', '-l', 'foo.lua' })
+      n.spawn_wait('--embed', '-l', 'foo.lua').stderr
     )
   end)
 
@@ -614,7 +632,7 @@ describe('startup', function()
     local screen
     screen = Screen.new(60, 6)
     screen._default_attr_ids = nil
-    local id = fn.termopen({
+    local id = fn.jobstart({
       nvim_prog,
       '-u',
       'NONE',
@@ -625,6 +643,7 @@ describe('startup', function()
       '--cmd',
       'let g:foo = g:bar',
     }, {
+      term = true,
       env = {
         VIMRUNTIME = os.getenv('VIMRUNTIME'),
       },
@@ -632,7 +651,7 @@ describe('startup', function()
     screen:expect([[
       ^                                                            |
                                                                   |
-      Error detected while processing pre-vimrc command line:     |
+      Error in pre-vimrc command line:                            |
       E121: Undefined variable: g:bar                             |
       Press ENTER or type command to continue                     |
                                                                   |
@@ -689,20 +708,8 @@ describe('startup', function()
   end)
 
   it('get command line arguments from v:argv', function()
-    local out = fn.system({
-      nvim_prog,
-      '-u',
-      'NONE',
-      '-i',
-      'NONE',
-      '--headless',
-      '--cmd',
-      nvim_set,
-      '-c',
-      [[echo v:argv[-1:] len(v:argv) > 1]],
-      '+q',
-    })
-    eq("['+q'] 1", out)
+    local p = n.spawn_wait('--cmd', nvim_set, '-c', [[echo v:argv[-1:] len(v:argv) > 1]], '+q')
+    eq("['+q'] 1", p.stderr)
   end)
 end)
 
@@ -1144,7 +1151,8 @@ describe('user config init', function()
 
         local screen = Screen.new(50, 8)
         screen._default_attr_ids = nil
-        fn.termopen({ nvim_prog }, {
+        fn.jobstart({ nvim_prog }, {
+          term = true,
           env = {
             VIMRUNTIME = os.getenv('VIMRUNTIME'),
           },
@@ -1153,7 +1161,7 @@ describe('user config init', function()
         -- `i` to enter Terminal mode, `a` to allow
         feed('ia')
         screen:expect([[
-                                                            |
+          ^                                                  |
           ~                                                 |*4
           [No Name]                       0,0-1          All|
                                                             |
@@ -1162,7 +1170,7 @@ describe('user config init', function()
         feed(':echo g:exrc_file<CR>')
         screen:expect(string.format(
           [[
-                                                            |
+          ^                                                  |
           ~                                                 |*4
           [No Name]                       0,0-1          All|
           %s%s|
@@ -1418,7 +1426,7 @@ describe('inccommand on ex mode', function()
     clear()
     local screen
     screen = Screen.new(60, 10)
-    local id = fn.termopen({
+    local id = fn.jobstart({
       nvim_prog,
       '-u',
       'NONE',
@@ -1429,6 +1437,7 @@ describe('inccommand on ex mode', function()
       '-E',
       'test/README.md',
     }, {
+      term = true,
       env = { VIMRUNTIME = os.getenv('VIMRUNTIME') },
     })
     fn.chansend(id, '%s/N')

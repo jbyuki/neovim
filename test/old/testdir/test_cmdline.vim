@@ -212,6 +212,37 @@ func Test_wildmenu_screendump()
   call StopVimInTerminal(buf)
 endfunc
 
+func Test_wildmenu_with_input_func()
+  CheckScreendump
+
+  let buf = RunVimInTerminal('-c "set wildmenu"', {'rows': 8})
+
+  call term_sendkeys(buf, ":call input('Command? ', '', 'command')\<CR>")
+  call VerifyScreenDump(buf, 'Test_wildmenu_input_func_1', {})
+  call term_sendkeys(buf, "ech\<Tab>")
+  call VerifyScreenDump(buf, 'Test_wildmenu_input_func_2', {})
+  call term_sendkeys(buf, "\<Space>")
+  call VerifyScreenDump(buf, 'Test_wildmenu_input_func_3', {})
+  call term_sendkeys(buf, "bufn\<Tab>")
+  call VerifyScreenDump(buf, 'Test_wildmenu_input_func_4', {})
+  call term_sendkeys(buf, "\<CR>")
+
+  call term_sendkeys(buf, ":set wildoptions+=pum\<CR>")
+
+  call term_sendkeys(buf, ":call input('Command? ', '', 'command')\<CR>")
+  call VerifyScreenDump(buf, 'Test_wildmenu_input_func_5', {})
+  call term_sendkeys(buf, "ech\<Tab>")
+  call VerifyScreenDump(buf, 'Test_wildmenu_input_func_6', {})
+  call term_sendkeys(buf, "\<Space>")
+  call VerifyScreenDump(buf, 'Test_wildmenu_input_func_7', {})
+  call term_sendkeys(buf, "bufn\<Tab>")
+  call VerifyScreenDump(buf, 'Test_wildmenu_input_func_8', {})
+  call term_sendkeys(buf, "\<CR>")
+
+  " clean up
+  call StopVimInTerminal(buf)
+endfunc
+
 func Test_redraw_in_autocmd()
   CheckScreendump
 
@@ -291,8 +322,8 @@ func Test_changing_cmdheight()
   call term_sendkeys(buf, ":resize -3\<CR>")
   call VerifyScreenDump(buf, 'Test_changing_cmdheight_1', {})
 
-  " using the space available doesn't change the status line
-  call term_sendkeys(buf, ":set cmdheight+=3\<CR>")
+  " :resize now also changes 'cmdheight' accordingly
+  call term_sendkeys(buf, ":set cmdheight+=1\<CR>")
   call VerifyScreenDump(buf, 'Test_changing_cmdheight_2', {})
 
   " using more space moves the status line up
@@ -300,10 +331,10 @@ func Test_changing_cmdheight()
   call VerifyScreenDump(buf, 'Test_changing_cmdheight_3', {})
 
   " reducing cmdheight moves status line down
-  call term_sendkeys(buf, ":set cmdheight-=2\<CR>")
+  call term_sendkeys(buf, ":set cmdheight-=3\<CR>")
   call VerifyScreenDump(buf, 'Test_changing_cmdheight_4', {})
 
-  " reducing window size and then setting cmdheight 
+  " reducing window size and then setting cmdheight
   call term_sendkeys(buf, ":resize -1\<CR>")
   call term_sendkeys(buf, ":set cmdheight=1\<CR>")
   call VerifyScreenDump(buf, 'Test_changing_cmdheight_5', {})
@@ -315,6 +346,10 @@ func Test_changing_cmdheight()
   " increasing 'cmdheight' doesn't clear the messages that need hit-enter
   call term_sendkeys(buf, ":call EchoOne()\<CR>")
   call VerifyScreenDump(buf, 'Test_changing_cmdheight_7', {})
+
+  " window commands do not reduce 'cmdheight' to value lower than :set by user
+  call term_sendkeys(buf, "\<CR>:wincmd _\<CR>")
+  call VerifyScreenDump(buf, 'Test_changing_cmdheight_8', {})
 
   " clean up
   call StopVimInTerminal(buf)
@@ -512,6 +547,13 @@ func Test_getcompletion()
   call assert_true(index(l, 'executable(') >= 0)
   let l = getcompletion('kill', 'expression')
   call assert_equal([], l)
+
+  let l = getcompletion('', 'filetypecmd')
+  call assert_equal(["indent", "off", "on", "plugin"], l)
+  let l = getcompletion('not', 'filetypecmd')
+  call assert_equal([], l)
+  let l = getcompletion('o', 'filetypecmd')
+  call assert_equal(['off', 'on'], l)
 
   let l = getcompletion('tag', 'function')
   call assert_true(index(l, 'taglist(') >= 0)
@@ -2164,22 +2206,58 @@ func Wildmode_tests()
   call assert_equal('AAA    AAAA   AAAAA', g:Sline)
   call assert_equal('"b A', @:)
 
+  " When 'wildmenu' is not set, 'noselect' completes first item
+  set wildmode=noselect
+  call feedkeys(":MyCmd o\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"MyCmd oneA', @:)
+
+  " When 'noselect' is present, do not complete first <tab>.
+  set wildmenu
+  set wildmode=noselect
+  call feedkeys(":MyCmd o\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"MyCmd o', @:)
+  call feedkeys(":MyCmd o\t\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"MyCmd o', @:)
+  call feedkeys(":MyCmd o\t\t\<C-Y>\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"MyCmd o', @:)
+
+  " When 'full' is present, complete after first <tab>.
+  set wildmode=noselect,full
+  call feedkeys(":MyCmd o\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"MyCmd o', @:)
+  call feedkeys(":MyCmd o\t\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"MyCmd oneA', @:)
+  call feedkeys(":MyCmd o\t\t\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"MyCmd oneB', @:)
+  call feedkeys(":MyCmd o\t\t\t\<C-Y>\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"MyCmd oneB', @:)
+
+  " 'noselect' has no effect when 'longest' is present.
+  set wildmode=noselect:longest
+  call feedkeys(":MyCmd o\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"MyCmd one', @:)
+
+  " Complete 'noselect' value in 'wildmode' option
+  set wildmode&
+  call feedkeys(":set wildmode=n\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"set wildmode=noselect', @:)
+  call feedkeys(":set wildmode=\t\t\t\t\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"set wildmode=noselect', @:)
+
   " when using longest completion match, matches shorter than the argument
   " should be ignored (happens with :help)
   set wildmode=longest,full
-  set wildmenu
   call feedkeys(":help a*\t\<C-B>\"\<CR>", 'xt')
   call assert_equal('"help a', @:)
   " non existing file
   call feedkeys(":e a1b2y3z4\t\<C-B>\"\<CR>", 'xt')
   call assert_equal('"e a1b2y3z4', @:)
-  set wildmenu&
 
   " Test for longest file name completion with 'fileignorecase'
   " On MS-Windows, file names are case insensitive.
   if has('unix')
-    call writefile([], 'XTESTfoo')
-    call writefile([], 'Xtestbar')
+    call writefile([], 'XTESTfoo', 'D')
+    call writefile([], 'Xtestbar', 'D')
     set nofileignorecase
     call feedkeys(":e XT\<Tab>\<C-B>\"\<CR>", 'xt')
     call assert_equal('"e XTESTfoo', @:)
@@ -2191,9 +2269,22 @@ func Wildmode_tests()
     call feedkeys(":e Xt\<Tab>\<C-B>\"\<CR>", 'xt')
     call assert_equal('"e Xtest', @:)
     set fileignorecase&
-    call delete('XTESTfoo')
-    call delete('Xtestbar')
   endif
+
+  " If 'noselect' is present, single item menu should not insert item
+  func! T(a, c, p)
+    return "oneA"
+  endfunc
+  command! -nargs=1 -complete=custom,T MyCmd
+  set wildmode=noselect,full
+  call feedkeys(":MyCmd o\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"MyCmd o', @:)
+  call feedkeys(":MyCmd o\t\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"MyCmd oneA', @:)
+  " 'nowildmenu' should make 'noselect' ineffective
+  set nowildmenu
+  call feedkeys(":MyCmd o\t\<C-B>\"\<CR>", 'xt')
+  call assert_equal('"MyCmd oneA', @:)
 
   %argdelete
   delcommand MyCmd
@@ -2972,6 +3063,28 @@ func Test_wildmenu_pum_rightleft()
   call StopVimInTerminal(buf)
 endfunc
 
+" Test highlighting when pattern matches non-first character of item
+func Test_wildmenu_pum_hl_nonfirst()
+  CheckScreendump
+  let lines =<< trim END
+    set wildoptions=pum wildchar=<tab> wildmode=noselect,full
+    hi PmenuMatchSel  ctermfg=6 ctermbg=7
+    hi PmenuMatch     ctermfg=4 ctermbg=225
+    func T(a, c, p)
+      return ["oneA", "o neBneB", "aoneC"]
+    endfunc
+    command -nargs=1 -complete=customlist,T MyCmd
+  END
+
+  call writefile(lines, 'Xwildmenu_pum_hl_nonf', 'D')
+  let buf = RunVimInTerminal('-S Xwildmenu_pum_hl_nonf', #{rows: 10, cols: 50})
+
+  call term_sendkeys(buf, ":MyCmd ne\<tab>")
+  call VerifyScreenDump(buf, 'Test_wildmenu_pum_hl_match_nonf', {})
+  call term_sendkeys(buf, "\<Esc>")
+  call StopVimInTerminal(buf)
+endfunc
+
 " Test highlighting matched text in cmdline completion popup menu.
 func Test_wildmenu_pum_hl_match()
   CheckScreendump
@@ -3131,6 +3244,26 @@ func Test_fuzzy_completion_behave()
   call feedkeys(":behave win\<C-D>\<F4>\<C-B>\"\<CR>", 'tx')
   call assert_equal('mswin', g:Sline)
   call assert_equal('"behave win', @:)
+  set wildoptions&
+endfunc
+
+" :filetype suboptions completion
+func Test_completion_filetypecmd()
+  set wildoptions&
+  call feedkeys(":filetype \<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"filetype indent off on plugin', @:)
+  call feedkeys(":filetype plugin \<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"filetype plugin indent off on', @:)
+  call feedkeys(":filetype indent \<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"filetype indent off on plugin', @:)
+  call feedkeys(":filetype i\<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"filetype indent', @:)
+  call feedkeys(":filetype p\<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"filetype plugin', @:)
+  call feedkeys(":filetype o\<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"filetype off on', @:)
+  call feedkeys(":filetype indent of\<C-A>\<C-B>\"\<CR>", 'tx')
+  call assert_equal('"filetype indent off', @:)
   set wildoptions&
 endfunc
 
@@ -4181,30 +4314,50 @@ func Test_cd_bslash_completion_windows()
   let &shellslash = save_shellslash
 endfunc
 
-func Test_msghistory()
-  " After setting 'msghistory' to 2 and outputting a message 4 times with
-  " :echomsg, is the number of output lines of :messages 2?
-  set msghistory=2
-  echomsg 'foo'
-  echomsg 'bar'
-  echomsg 'baz'
-  echomsg 'foobar'
-  call assert_equal(['baz', 'foobar'], GetMessages())
+" Test cmdcomplete_info() with CmdlineLeavePre autocmd
+func Test_cmdcomplete_info()
+  augroup test_CmdlineLeavePre
+    autocmd!
+    " Calling expand() should not interfere with cmdcomplete_info().
+    autocmd CmdlineLeavePre * call expand('test_cmdline.*')
+    autocmd CmdlineLeavePre * let g:cmdcomplete_info = string(cmdcomplete_info())
+  augroup END
+  new
+  call assert_equal({}, cmdcomplete_info())
+  call feedkeys(":h echom\<cr>", "tx") " No expansion
+  call assert_equal('{}', g:cmdcomplete_info)
+  call feedkeys(":h echoms\<tab>\<cr>", "tx")
+  call assert_equal('{''cmdline_orig'': '''', ''pum_visible'': 0, ''matches'': [], ''selected'': 0}', g:cmdcomplete_info)
+  call feedkeys(":h echom\<tab>\<cr>", "tx")
+  call assert_equal(
+        \ '{''cmdline_orig'': ''h echom'', ''pum_visible'': 0, ''matches'': ['':echom'', '':echomsg''], ''selected'': 0}',
+        \ g:cmdcomplete_info)
+  call feedkeys(":h echom\<tab>\<tab>\<cr>", "tx")
+  call assert_equal(
+        \ '{''cmdline_orig'': ''h echom'', ''pum_visible'': 0, ''matches'': ['':echom'', '':echomsg''], ''selected'': 1}',
+        \ g:cmdcomplete_info)
+  call feedkeys(":h echom\<tab>\<tab>\<tab>\<cr>", "tx")
+  call assert_equal(
+        \ '{''cmdline_orig'': ''h echom'', ''pum_visible'': 0, ''matches'': ['':echom'', '':echomsg''], ''selected'': -1}',
+        \ g:cmdcomplete_info)
 
-  " When the number of messages is 10 and 'msghistory' is changed to 5, is the
-  " number of output lines of :messages 5?
-  set msghistory=10
-  for num in range(1, 10)
-    echomsg num
-  endfor
-  set msghistory=5
-  call assert_equal(5, len(GetMessages()))
-
-  " Check empty list
-  set msghistory=0
-  call assert_true(empty(GetMessages()))
-
-  set msghistory&
+  set wildoptions=pum
+  call feedkeys(":h echoms\<tab>\<cr>", "tx")
+  call assert_equal('{''cmdline_orig'': '''', ''pum_visible'': 0, ''matches'': [], ''selected'': 0}', g:cmdcomplete_info)
+  call feedkeys(":h echom\<tab>\<cr>", "tx")
+  call assert_equal(
+        \ '{''cmdline_orig'': ''h echom'', ''pum_visible'': 1, ''matches'': ['':echom'', '':echomsg''], ''selected'': 0}',
+        \ g:cmdcomplete_info)
+  call feedkeys(":h echom\<tab>\<tab>\<cr>", "tx")
+  call assert_equal(
+        \ '{''cmdline_orig'': ''h echom'', ''pum_visible'': 1, ''matches'': ['':echom'', '':echomsg''], ''selected'': 1}',
+        \ g:cmdcomplete_info)
+  call feedkeys(":h echom\<tab>\<tab>\<tab>\<cr>", "tx")
+  call assert_equal(
+        \ '{''cmdline_orig'': ''h echom'', ''pum_visible'': 1, ''matches'': ['':echom'', '':echomsg''], ''selected'': -1}',
+        \ g:cmdcomplete_info)
+  bw!
+  set wildoptions&
 endfunc
 
 " vim: shiftwidth=2 sts=2 expandtab

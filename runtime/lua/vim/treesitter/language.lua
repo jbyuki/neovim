@@ -5,6 +5,7 @@ local M = {}
 ---@type table<string,string>
 local ft_to_lang = {
   help = 'vimdoc',
+  checkhealth = 'vimdoc',
 }
 
 --- Returns the filetypes for which a parser named {lang} is used.
@@ -133,8 +134,9 @@ function M.add(lang, opts)
     path = paths[1]
   end
 
-  return loadparser(path, lang, symbol_name) or nil,
-    string.format('Cannot load parser %s for language "%s"', path, lang)
+  local res = loadparser(path, lang, symbol_name)
+  return res,
+    res == nil and string.format('Cannot load parser %s for language "%s"', path, lang) or nil
 end
 
 --- @param x string|string[]
@@ -166,15 +168,19 @@ end
 
 --- Inspects the provided language.
 ---
---- Inspecting provides some useful information on the language like node and field names, ABI
---- version, and whether the language came from a WASM module.
+--- Inspecting provides some useful information on the language like ABI version, parser state count
+--- (a measure of parser complexity), node and field names, and whether the language came from a
+--- WASM module.
 ---
 --- Node names are returned in a table mapping each node name to a `boolean` indicating whether or
 --- not the node is named (i.e., not anonymous). Anonymous nodes are surrounded with double quotes
 --- (`"`).
 ---
+--- For ABI 15 parsers, also show parser metadata (major, minor, patch version) and a table of
+--- supertypes with their respective subtypes.
+---
 ---@param lang string Language
----@return table
+---@return TSLangInfo
 function M.inspect(lang)
   M.add(lang)
   return vim._ts_inspect_language(lang)

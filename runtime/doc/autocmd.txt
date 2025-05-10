@@ -352,10 +352,14 @@ BufWritePost			After writing the whole buffer to a file
 							*ChanInfo*
 ChanInfo			State of channel changed, for instance the
 				client of a RPC channel described itself.
+				This is triggered even when inside an
+				autocommand defined without |autocmd-nested|.
 				Sets these |v:event| keys:
 				    info	as from |nvim_get_chan_info()|
 							*ChanOpen*
 ChanOpen			Just after a channel was opened.
+				This is triggered even when inside an
+				autocommand defined without |autocmd-nested|.
 				Sets these |v:event| keys:
 				    info	as from |nvim_get_chan_info()|
 							*CmdUndefined*
@@ -364,6 +368,8 @@ CmdUndefined			When a user command is used but it isn't
 				when it's used.  The pattern is matched
 				against the command name.  Both <amatch> and
 				<afile> expand to the command name.
+				This is triggered even when inside an
+				autocommand defined without |autocmd-nested|.
 				NOTE: Autocompletion won't work until the
 				command is defined.  An alternative is to
 				always define the user command and have it
@@ -394,6 +400,16 @@ CmdlineLeave			Before leaving the command-line (including
 				Note: `abort` can only be changed from false
 				to true: cannot execute an already aborted
 				cmdline by changing it to false.
+							*CmdlineLeavePre*
+CmdlineLeavePre			Just before leaving the command line, and
+				before |CmdlineLeave|.  Useful for capturing
+				completion info with |cmdcomplete_info()|, as
+				this information is cleared before
+				|CmdlineLeave| is triggered.  Triggered for
+				non-interactive use of ":" in a mapping, but
+				not when using |<Cmd>|.  Also triggered when
+				abandoning the command line by typing CTRL-C
+				or <Esc>.  <afile> is set to |cmdline-char|.
 							*CmdwinEnter*
 CmdwinEnter			After entering the command-line window.
 				Useful for setting options specifically for
@@ -446,31 +462,34 @@ CompleteChanged						*CompleteChanged*
 
 							*CompleteDonePre*
 CompleteDonePre			After Insert mode completion is done.  Either
-				when something was completed or abandoning
-				completion. |ins-completion|
-				|complete_info()| can be used, the info is
-				cleared after triggering CompleteDonePre.
-				The |v:completed_item| variable contains
-				information about the completed item.
+				when something was completed or discarded.
+				|ins-completion|
+				|complete_info()| is valid during this event.
+				|v:completed_item| gives the completed item.
 
 							*CompleteDone*
 CompleteDone			After Insert mode completion is done.  Either
-				when something was completed or abandoning
-				completion. |ins-completion|
-				|complete_info()| cannot be used, the info is
-				cleared before triggering CompleteDone.  Use
+				when something was completed or discarded.
+				|ins-completion|
+				|complete_info()| is cleared before this; use
 				CompleteDonePre if you need it.
-				|v:completed_item| gives the completed item.
+				|v:completed_item| gives the completed item,
+				or empty dict if completion was discarded.
 
 				Sets these |v:event| keys:
+				    complete_word	The word that was
+							selected, empty if
+							completion was
+							abandoned (discarded).
+				    complete_type	|complete_info_mode|
 				    reason	Reason for completion being
 						done. Can be one of:
 						- "accept": completion was
-						  accepted using |complete_CTRL-Y|.
-						- "cancel": completion was cancelled
-						  using |complete_CTRL-E|, pressing
-						  a non-keyword character, or
-						  triggering a new completion.
+						  accepted by |complete_CTRL-Y|.
+						- "cancel": completion was
+						  stopped by |complete_CTRL-E|.
+						- "discard": completion was
+						  abandoned for other reason.
 
 							*CursorHold*
 CursorHold			When the user doesn't press a key for the time
@@ -686,6 +705,8 @@ FuncUndefined			When a user function is used but it isn't
 				when it's used.  The pattern is matched
 				against the function name.  Both <amatch> and
 				<afile> are set to the name of the function.
+				This is triggered even when inside an
+				autocommand defined without |autocmd-nested|.
 				NOTE: When writing Vim scripts a better
 				alternative is to use an autoloaded function.
 				See |autoload-functions|.
@@ -732,6 +753,12 @@ InsertLeavePre			Just before leaving Insert mode.  Also when
 							*InsertLeave*
 InsertLeave			Just after leaving Insert mode.  Also when
 				using CTRL-O |i_CTRL-O|.  But not for |i_CTRL-C|.
+LspAttach			See |LspAttach|
+LspDetach			See |LspDetach|
+LspNotify			See |LspNotify|
+LspProgress			See |LspProgress|
+LspRequest			See |LspRequest|
+LspTokenUpdate			See |LspTokenUpdate|
 							*MenuPopup*
 MenuPopup			Just before showing the popup menu (under the
 				right mouse button).  Useful for adjusting the
@@ -907,7 +934,10 @@ ShellCmdPost			After executing a shell command with |:!cmd|,
 							*Signal*
 Signal				After Nvim receives a signal. The pattern is
 				matched against the signal name. Only
-				"SIGUSR1" and "SIGWINCH" are supported.  Example: >
+				"SIGUSR1" and "SIGWINCH" are supported.
+				This is triggered even when inside an
+				autocommand defined without |autocmd-nested|.
+				Example: >vim
 				    autocmd Signal SIGUSR1 call some#func()
 <							*ShellFilterPost*
 ShellFilterPost			After executing a shell command with
@@ -1000,23 +1030,41 @@ TermClose			When a |terminal| job ends.
 				Sets these |v:event| keys:
 				    status
 							*TermRequest*
-TermRequest			When a |:terminal| child process emits an OSC
-				or DCS sequence. Sets |v:termrequest|. The
-				|event-data| is the request string.
+TermRequest			When a |:terminal| child process emits an OSC,
+				DCS, or APC sequence. Sets |v:termrequest|. The
+				|event-data| is a table with the following
+				fields:
+
+				- sequence: the received sequence
+				- cursor: (1,0)-indexed, buffer-relative
+				  position of the cursor when the sequence was
+				  received
+
+				This is triggered even when inside an
+				autocommand defined without |autocmd-nested|.
+
 							*TermResponse*
 TermResponse			When Nvim receives an OSC or DCS response from
 				the host terminal. Sets |v:termresponse|. The
-				|event-data| is the response string. May be
-				triggered during another event (file I/O,
-				a shell command, or anything else that takes
-				time). Example: >lua
+				|event-data| is a table with the following fields:
+
+				- sequence: the received sequence
+
+				This is triggered even when inside an
+				autocommand defined without |autocmd-nested|.
+
+				May be triggered during another event (file
+				I/O, a shell command, or anything else that
+				takes time).
+
+				Example: >lua
 
 				-- Query the terminal palette for the RGB value of color 1
 				-- (red) using OSC 4
 				vim.api.nvim_create_autocmd('TermResponse', {
 				  once = true,
 				  callback = function(args)
-				    local resp = args.data
+				    local resp = args.data.sequence
 				    local r, g, b = resp:match("\027%]4;1;rgb:(%w+)/(%w+)/(%w+)")
 				  end,
 				})
@@ -1096,9 +1144,8 @@ VimLeave			Before exiting Vim, just after writing the
 				Not triggered if |v:dying| is 2 or more.
 							*VimLeavePre*
 VimLeavePre			Before exiting Vim, just before writing the
-				.shada file.  This is executed only once,
-				if there is a match with the name of what
-				happens to be the current buffer when exiting.
+				|shada| file.  Executed only once, if the
+				pattern matches the current buffer on exit.
 				Mostly useful with a "*" pattern. >
 				   :autocmd VimLeavePre * call CleanupStuff()
 <				Use |v:dying| to detect an abnormal exit.
@@ -1148,6 +1195,13 @@ WinScrolled			After any window in the current tab page
 				scrolled the text (horizontally or vertically)
 				or changed width or height.  See
 				|win-scrolled-resized|.
+
+				Note: This can not be skipped with
+				`:noautocmd`, because it triggers after
+				processing normal commands when Vim is back in
+				the main loop.  If you want to disable this,
+				consider setting the 'eventignore' option
+				instead.
 
 				The pattern is matched against the |window-ID|
 				of the first window that scrolled or resized.
@@ -1388,8 +1442,8 @@ vimrc file again).
 						*FileExplorer*
 There is one group that is recognized by Vim: FileExplorer.  If this group
 exists Vim assumes that editing a directory is possible and will trigger a
-plugin that lists the files in that directory.  This is used by the |netrw|
-plugin.  This allows you to do: >
+plugin that lists the files in that directory.  This is used by directory
+browser plugins.  This allows you to do: >
 	browse edit
 
 ==============================================================================
@@ -1663,7 +1717,7 @@ and "++ff=" argument that are effective.  These should be used for the command
 that reads/writes the file.  The |v:cmdbang| variable is one when "!" was
 used, zero otherwise.
 
-See the $VIMRUNTIME/plugin/netrwPlugin.vim for examples.
+See the $VIMRUNTIME/pack/dist/opt/netrw/plugin/netrwPlugin.vim for examples.
 
 ==============================================================================
 11. Disabling autocommands				*autocmd-disable*
@@ -1671,6 +1725,9 @@ See the $VIMRUNTIME/plugin/netrwPlugin.vim for examples.
 To disable autocommands for some time use the 'eventignore' option.  Note that
 this may cause unexpected behavior, make sure you restore 'eventignore'
 afterwards, using a |:try| block with |:finally|.
+
+To disable autocmds indefinitely in a specific window use the 'eventignorewin'
+option.  This can only be used to ignore window and buffer related events.
 
 							*:noautocmd* *:noa*
 To disable autocommands for just one command use the ":noautocmd" command

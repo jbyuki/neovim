@@ -1,11 +1,14 @@
 " Vim syntax file
 " Language:     hyprlang
 " Maintainer:   Luca Saccarola <github.e41mv@aleeas.com>
-" Last Change:  2024 nov 15
+" Last Change:  2025 Mar 26
 
 if exists("b:current_syntax")
   finish
 endif
+let s:cpo= &cpo
+set cpo&vim
+
 let b:current_syntax = "hyprlang"
 
 syn case ignore
@@ -21,7 +24,8 @@ syn region hyprCategory matchgroup=hyprCategoryD start='^\s*\k\+\s*{' end='^\s*}
 " Variables Types
 syn match   hyprNumber  '\%[-+]\<\d\+\>\%[%]' contained
 syn match   hyprFloat   '\%[-+]\<\d\+\.\d\+\>\%[%]' contained
-syn match   hyprString  '["\'].*["\']' contained
+syn match   hyprString  "'[^']*'" contained
+syn match   hyprString  '"[^"]*"' contained
 syn match   hyprColor   'rgb(\(\w\|\d\)\{6})' contained
 syn match   hyprColor   'rgba(\(\w\|\d\)\{8})' contained
 syn match   hyprColor   '0x\(\w\|\d\)\{8}' contained
@@ -55,4 +59,6 @@ hi def link hyprString    String
 hi def link hyprColor     Structure
 hi def link hyprCommand   Keyword
 
+let &cpo = s:cpo
+unlet s:cpo
 " vim: ts=8 sts=2 sw=2 et

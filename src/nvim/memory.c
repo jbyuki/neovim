@@ -34,7 +34,6 @@
 #include "nvim/memory.h"
 #include "nvim/message.h"
 #include "nvim/option_vars.h"
-#include "nvim/os/input.h"
 #include "nvim/sign.h"
 #include "nvim/state_defs.h"
 #include "nvim/statusline.h"
@@ -789,7 +788,6 @@ void free_all_mem(void)
   free_all_marks();
   alist_clear(&global_alist);
   free_homedir();
-  free_envmap();
   free_users();
   free_search_patterns();
   free_old_sub();
@@ -857,11 +855,7 @@ void free_all_mem(void)
   first_tabpage = NULL;
 
   // message history
-  while (true) {
-    if (delete_first_msg() == FAIL) {
-      break;
-    }
-  }
+  msg_hist_clear(0);
 
   channel_free_all_mem();
   eval_clear();

@@ -1,4 +1,25 @@
--- Logger for language client plugin.
+--- @brief
+--- The `vim.lsp.log` module provides logging for the Nvim LSP client.
+---
+--- When debugging language servers, it is helpful to enable extra-verbose logging of the LSP client
+--- RPC events. Example:
+--- ```lua
+--- vim.lsp.set_log_level 'trace'
+--- require('vim.lsp.log').set_format_func(vim.inspect)
+--- ```
+---
+--- Then try to run the language server, and open the log with:
+--- ```vim
+--- :lua vim.cmd('tabnew ' .. vim.lsp.get_log_path())
+--- ```
+---
+--- (Or use `:LspLog` if you have nvim-lspconfig installed.)
+---
+--- Note:
+--- - Remember to DISABLE verbose logging ("debug" or "trace" level), else you may encounter
+---   performance issues.
+--- - "ERROR" messages containing "stderr" only indicate that the log was sent to stderr. Many
+---   servers send harmless messages via stderr.
 
 local log = {}
 
@@ -43,6 +64,11 @@ vim.fn.mkdir(vim.fn.stdpath('log') --[[@as string]], 'p')
 ---@return string log filename
 function log.get_filename()
   return logfilename
+end
+
+--- @param s string
+function log._set_filename(s)
+  logfilename = s
 end
 
 --- @type file*?, string?
@@ -143,7 +169,7 @@ log.trace = create_logger('TRACE', log_levels.TRACE)
 log.warn = create_logger('WARN', log_levels.WARN)
 
 --- Sets the current log level.
----@param level (string|integer) One of `vim.lsp.log.levels`
+---@param level (string|integer) One of |vim.log.levels|
 function log.set_level(level)
   if type(level) == 'string' then
     current_log_level =

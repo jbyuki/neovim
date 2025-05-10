@@ -30,20 +30,20 @@
 #include "nvim/message.h"
 #include "nvim/msgpack_rpc/unpacker.h"
 #include "nvim/pos_defs.h"
+#include "nvim/runtime.h"
 #include "nvim/types_defs.h"
-#include "nvim/ui.h"
-#include "nvim/ui_defs.h"
-#include "nvim/version.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "api/private/api_metadata.generated.h"
-# include "api/private/helpers.c.generated.h"
+# include "api/private/helpers.c.generated.h"  // IWYU pragma: keep
 #endif
 
 /// Start block that may cause Vimscript exceptions while evaluating another code
 ///
-/// Used when caller is supposed to be operating when other Vimscript code is being
-/// processed and that “other Vimscript code” must not be affected.
+/// Used just in case caller is supposed to be operating when other Vimscript code
+/// is being processed and that “other Vimscript code” must not be affected.
+///
+/// @warning Avoid calling directly; use TRY_WRAP instead.
 ///
 /// @param[out]  tstate  Location where try state should be saved.
 void try_enter(TryState *const tstate)
@@ -55,74 +55,33 @@ void try_enter(TryState *const tstate)
     .current_exception = current_exception,
     .msg_list = (const msglist_T *const *)msg_list,
     .private_msg_list = NULL,
-    .trylevel = trylevel,
     .got_int = got_int,
     .did_throw = did_throw,
     .need_rethrow = need_rethrow,
     .did_emsg = did_emsg,
   };
+  // `msg_list` controls the collection of abort-causing non-exception errors,
+  // which would otherwise be ignored.  This pattern is from do_cmdline().
   msg_list = &tstate->private_msg_list;
   current_exception = NULL;
-  trylevel = 1;
   got_int = false;
   did_throw = false;
   need_rethrow = false;
   did_emsg = false;
-}
-
-/// End try block, set the error message if any and restore previous state
-///
-/// @warning Return is consistent with most functions (false on error), not with
-///          try_end (true on error).
-///
-/// @param[in]  tstate  Previous state to restore.
-/// @param[out]  err  Location where error should be saved.
-///
-/// @return false if error occurred, true otherwise.
-bool try_leave(const TryState *const tstate, Error *const err)
-  FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT
-{
-  const bool ret = !try_end(err);
-  assert(trylevel == 0);
-  assert(!need_rethrow);
-  assert(!got_int);
-  assert(!did_throw);
-  assert(!did_emsg);
-  assert(msg_list == &tstate->private_msg_list);
-  assert(*msg_list == NULL);
-  assert(current_exception == NULL);
-  msg_list = (msglist_T **)tstate->msg_list;
-  current_exception = tstate->current_exception;
-  trylevel = tstate->trylevel;
-  got_int = tstate->got_int;
-  did_throw = tstate->did_throw;
-  need_rethrow = tstate->need_rethrow;
-  did_emsg = tstate->did_emsg;
-  return ret;
-}
-
-/// Start block that may cause vimscript exceptions
-///
-/// Each try_start() call should be mirrored by try_end() call.
-///
-/// To be used as a replacement of `:try … catch … endtry` in C code, in cases
-/// when error flag could not already be set. If there may be pending error
-/// state at the time try_start() is executed which needs to be preserved,
-/// try_enter()/try_leave() pair should be used instead.
-void try_start(void)
-{
   trylevel++;
 }
 
-/// End try block, set the error message if any and return true if an error
-/// occurred.
+/// Ends a `try_enter` block; sets error message if any.
 ///
-/// @param err Pointer to the stack-allocated error object
-/// @return true if an error occurred
-bool try_end(Error *err)
+/// @warning Avoid calling directly; use TRY_WRAP instead.
+///
+/// @param[out] err Pointer to the stack-allocated error object
+void try_leave(const TryState *const tstate, Error *const err)
+  FUNC_ATTR_NONNULL_ALL
 {
   // Note: all globals manipulated here should be saved/restored in
   // try_enter/try_leave.
+  assert(trylevel > 0);
   trylevel--;
 
   // Set by emsg(), affects aborting().  See also enter_cleanup().
@@ -165,7 +124,13 @@ bool try_end(Error *err)
     discard_current_exception();
   }
 
-  return ERROR_SET(err);
+  // Restore the exception context.
+  msg_list = (msglist_T **)tstate->msg_list;
+  current_exception = tstate->current_exception;
+  got_int = tstate->got_int;
+  did_throw = tstate->did_throw;
+  need_rethrow = tstate->need_rethrow;
+  did_emsg = tstate->did_emsg;
 }
 
 /// Recursively expands a vimscript value in a dict
@@ -507,7 +472,7 @@ int64_t normalize_index(buf_T *buf, int64_t index, bool end_exclusive, bool *oob
 
 /// Returns a substring of a buffer line
 ///
-/// @param buf          Buffer handle
+/// @param buf          Buffer id
 /// @param lnum         Line number (1-based)
 /// @param start_col    Starting byte offset into line (0-based)
 /// @param end_col      Ending byte offset into line (0-based, exclusive)
@@ -805,7 +770,7 @@ char *api_typename(ObjectType t)
   UNREACHABLE;
 }
 
-HlMessage parse_hl_msg(Array chunks, Error *err)
+HlMessage parse_hl_msg(Array chunks, bool is_err, Error *err)
 {
   HlMessage hl_msg = KV_INITIAL_VALUE;
   for (size_t i = 0; i < chunks.size; i++) {
@@ -820,7 +785,7 @@ HlMessage parse_hl_msg(Array chunks, Error *err)
 
     String str = copy_string(chunk.items[0].data.string, NULL);
 
-    int hl_id = 0;
+    int hl_id = is_err ? HLF_E : 0;
     if (chunk.size == 2) {
       hl_id = object_to_hl_id(chunk.items[1], "text highlight", err);
     }
@@ -1085,32 +1050,26 @@ const char *get_default_stl_hl(win_T *wp, bool use_winbar, int stc_hl_id)
   }
 }
 
-int find_sid(uint64_t channel_id)
-{
-  switch (channel_id) {
-  case VIML_INTERNAL_CALL:
-  // TODO(autocmd): Figure out what this should be
-  // return SID_API_CLIENT;
-  case LUA_INTERNAL_CALL:
-    return SID_LUA;
-  default:
-    return SID_API_CLIENT;
-  }
-}
-
 /// Sets sctx for API calls.
 ///
-/// @param channel_id     api clients id. Used to determine if it's a internal
-///                       call or a rpc call.
-/// @return returns       previous value of current_sctx. To be used
-///                       to be used for restoring sctx to previous state.
+/// @param channel_id  api client id to determine if it's a internal or RPC call.
+///
+/// @return  previous value of current_sctx. To be used later for restoring sctx.
 sctx_T api_set_sctx(uint64_t channel_id)
 {
   sctx_T old_current_sctx = current_sctx;
+  // The script context is already properly set when calling an API from Vimscript.
   if (channel_id != VIML_INTERNAL_CALL) {
-    current_sctx.sc_sid =
-      channel_id == LUA_INTERNAL_CALL ? SID_LUA : SID_API_CLIENT;
     current_sctx.sc_lnum = 0;
+    if (channel_id == LUA_INTERNAL_CALL) {
+      // When the current script is a Lua script, don't override sc_sid.
+      if (!script_is_lua(current_sctx.sc_sid)) {
+        current_sctx.sc_sid = SID_LUA;
+      }
+    } else {
+      current_sctx.sc_sid = SID_API_CLIENT;
+      current_sctx.sc_chan = channel_id;
+    }
   }
   return old_current_sctx;
 }

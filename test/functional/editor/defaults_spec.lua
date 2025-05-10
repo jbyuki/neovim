@@ -10,7 +10,7 @@ local Screen = require('test.functional.ui.screen')
 
 describe('default', function()
   describe('autocommands', function()
-    it('nvim_terminal.TermClose closes terminal with default shell on success', function()
+    it('nvim.terminal.TermClose closes terminal with default shell on success', function()
       n.clear()
       n.api.nvim_set_option_value('shell', n.testprg('shell-test'), {})
       n.command('set shellcmdflag=EXIT shellredir= shellpipe= shellquote= shellxquote=')
@@ -32,7 +32,7 @@ describe('default', function()
   describe('popupmenu', function()
     it('can be disabled by user', function()
       n.clear {
-        args = { '+autocmd! nvim_popupmenu', '+aunmenu PopUp' },
+        args = { '+autocmd! nvim.popupmenu', '+aunmenu PopUp' },
       }
       local screen = Screen.new(40, 8)
       n.insert([[
@@ -94,8 +94,80 @@ describe('default', function()
   end)
 
   describe('key mappings', function()
+    describe('Visual mode search mappings', function()
+      it('handle various chars properly', function()
+        n.clear({ args_rm = { '--cmd' } })
+        local screen = Screen.new(60, 8)
+        screen:set_default_attr_ids({
+          [1] = { foreground = Screen.colors.NvimDarkGray4 },
+          [2] = {
+            foreground = Screen.colors.NvimDarkGray3,
+            background = Screen.colors.NvimLightGray3,
+          },
+          [3] = {
+            foreground = Screen.colors.NvimLightGrey1,
+            background = Screen.colors.NvimDarkYellow,
+          },
+          [4] = {
+            foreground = Screen.colors.NvimDarkGrey1,
+            background = Screen.colors.NvimLightYellow,
+          },
+        })
+        n.api.nvim_buf_set_lines(0, 0, -1, true, {
+          [[testing <CR> /?\!1]],
+          [[testing <CR> /?\!2]],
+          [[testing <CR> /?\!3]],
+          [[testing <CR> /?\!4]],
+        })
+        n.feed('gg0vf!')
+        n.poke_eventloop()
+        n.feed('*')
+        screen:expect([[
+          {3:testing <CR> /?\!}1                                          |
+          {4:^testing <CR> /?\!}2                                          |
+          {3:testing <CR> /?\!}3                                          |
+          {3:testing <CR> /?\!}4                                          |
+          {1:~                                                           }|*2
+          {2:[No Name] [+]                             2,1            All}|
+          /\Vtesting <CR> /?\\!                     [2/4]             |
+        ]])
+        n.feed('n')
+        screen:expect([[
+          {3:testing <CR> /?\!}1                                          |
+          {3:testing <CR> /?\!}2                                          |
+          {4:^testing <CR> /?\!}3                                          |
+          {3:testing <CR> /?\!}4                                          |
+          {1:~                                                           }|*2
+          {2:[No Name] [+]                             3,1            All}|
+          /\Vtesting <CR> /?\\!                     [3/4]             |
+        ]])
+        n.feed('G0vf!')
+        n.poke_eventloop()
+        n.feed('#')
+        screen:expect([[
+          {3:testing <CR> /?\!}1                                          |
+          {3:testing <CR> /?\!}2                                          |
+          {4:^testing <CR> /?\!}3                                          |
+          {3:testing <CR> /?\!}4                                          |
+          {1:~                                                           }|*2
+          {2:[No Name] [+]                             3,1            All}|
+          ?\Vtesting <CR> /?\\!                     [3/4]             |
+        ]])
+        n.feed('n')
+        screen:expect([[
+          {3:testing <CR> /?\!}1                                          |
+          {4:^testing <CR> /?\!}2                                          |
+          {3:testing <CR> /?\!}3                                          |
+          {3:testing <CR> /?\!}4                                          |
+          {1:~                                                           }|*2
+          {2:[No Name] [+]                             2,1            All}|
+          ?\Vtesting <CR> /?\\!                     [2/4]             |
+        ]])
+      end)
+    end)
+
     describe('unimpaired-style mappings', function()
-      it('show the command ouptut when successful', function()
+      it('show the command output when successful', function()
         n.clear({ args_rm = { '--cmd' } })
         local screen = Screen.new(40, 8)
         n.fn.setqflist({

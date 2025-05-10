@@ -267,38 +267,163 @@ describe('vim.lsp.util', function()
 
         eq(56, opts.height)
       end)
-
-      describe('vim.lsp.util.open_floating_preview', function()
-        local var_name = 'lsp_floating_preview'
-        local curbuf = api.nvim_get_current_buf()
-
-        it('clean bufvar after fclose', function()
-          exec_lua(function()
-            vim.lsp.util.open_floating_preview({ 'test' }, '', { height = 5, width = 2 })
-          end)
-          eq(true, api.nvim_win_is_valid(api.nvim_buf_get_var(curbuf, var_name)))
-          command('fclose')
-          eq(
-            'Key not found: lsp_floating_preview',
-            pcall_err(api.nvim_buf_get_var, curbuf, var_name)
-          )
-        end)
-
-        it('clean bufvar after CursorMoved', function()
-          local result = exec_lua(function()
-            vim.lsp.util.open_floating_preview({ 'test' }, '', { height = 5, width = 2 })
-            local winnr = vim.b[vim.api.nvim_get_current_buf()].lsp_floating_preview
-            local result = vim.api.nvim_win_is_valid(winnr)
-            vim.api.nvim_feedkeys(vim.keycode('G'), 'txn', false)
-            return result
-          end)
-          eq(true, result)
-          eq(
-            'Key not found: lsp_floating_preview',
-            pcall_err(api.nvim_buf_get_var, curbuf, var_name)
-          )
-        end)
-      end)
     end)
+  end)
+
+  describe('open_floating_preview', function()
+    before_each(function()
+      n.clear()
+      Screen.new(10, 10)
+      feed('9i<CR><Esc>G4k')
+    end)
+
+    local var_name = 'lsp_floating_preview'
+    local curbuf = api.nvim_get_current_buf()
+
+    it('clean bufvar after fclose', function()
+      exec_lua(function()
+        vim.lsp.util.open_floating_preview({ 'test' }, '', { height = 5, width = 2 })
+      end)
+      eq(true, api.nvim_win_is_valid(api.nvim_buf_get_var(curbuf, var_name)))
+      command('fclose')
+      eq('Key not found: lsp_floating_preview', pcall_err(api.nvim_buf_get_var, curbuf, var_name))
+    end)
+
+    it('clean bufvar after CursorMoved', function()
+      local result = exec_lua(function()
+        vim.lsp.util.open_floating_preview({ 'test' }, '', { height = 5, width = 2 })
+        local winnr = vim.b[vim.api.nvim_get_current_buf()].lsp_floating_preview
+        local result = vim.api.nvim_win_is_valid(winnr)
+        vim.api.nvim_feedkeys(vim.keycode('G'), 'txn', false)
+        return result
+      end)
+      eq(true, result)
+      eq('Key not found: lsp_floating_preview', pcall_err(api.nvim_buf_get_var, curbuf, var_name))
+    end)
+  end)
+
+  it('open_floating_preview zindex greater than current window', function()
+    local screen = Screen.new()
+    exec_lua(function()
+      vim.api.nvim_open_win(0, true, {
+        relative = 'editor',
+        border = 'single',
+        height = 11,
+        width = 51,
+        row = 2,
+        col = 2,
+      })
+      vim.keymap.set('n', 'K', function()
+        vim.lsp.util.open_floating_preview({ 'foo' }, '', { border = 'single' })
+      end, {})
+    end)
+    feed('K')
+    screen:expect([[
+      ┌───────────────────────────────────────────────────┐|
+      │{4:^                                                   }│|
+      │┌───┐{11:                                              }│|
+      ││{4:foo}│{11:                                              }│|
+      │└───┘{11:                                              }│|
+      │{11:~                                                  }│|*7
+      └───────────────────────────────────────────────────┘|
+                                                           |
+    ]])
+  end)
+
+  it('open_floating_preview height reduced for concealed lines', function()
+    local screen = Screen.new()
+    screen:add_extra_attr_ids({
+      [100] = {
+        background = Screen.colors.LightMagenta,
+        foreground = Screen.colors.Brown,
+        bold = true,
+      },
+      [101] = { background = Screen.colors.LightMagenta, foreground = Screen.colors.Blue },
+      [102] = { background = Screen.colors.LightMagenta, foreground = Screen.colors.DarkCyan },
+    })
+    exec_lua([[
+      vim.g.syntax_on = false
+      vim.lsp.util.open_floating_preview({ '```lua', 'local foo', '```' }, 'markdown', {
+        border = 'single',
+        focus = false,
+      })
+    ]])
+    screen:expect([[
+      ^                                                     |
+      ┌─────────┐{1:                                          }|
+      │{100:local}{101: }{102:foo}│{1:                                          }|
+      └─────────┘{1:                                          }|
+      {1:~                                                    }|*9
+                                                           |
+    ]])
+    -- Entering window keeps lines concealed and doesn't end up below inner window size.
+    feed('<C-w>wG')
+    screen:expect([[
+                                                           |
+      ┌─────────┐{1:                                          }|
+      │{100:^local}{101: }{102:foo}│{1:                                          }|
+      └─────────┘{1:                                          }|
+      {1:~                                                    }|*9
+                                                           |
+    ]])
+    -- Correct height when float inherits 'conceallevel' >= 2 #32639
+    command('close | set conceallevel=2')
+    feed('<Ignore>') -- Prevent CursorMoved closing the next float immediately
+    exec_lua([[
+      vim.lsp.util.open_floating_preview({ '```lua', 'local foo', '```' }, 'markdown', {
+        border = 'single',
+        focus = false,
+      })
+    ]])
+    screen:expect([[
+      ^                                                     |
+      ┌─────────┐{1:                                          }|
+      │{100:local}{101: }{102:foo}│{1:                                          }|
+      └─────────┘{1:                                          }|
+      {1:~                                                    }|*9
+                                                           |
+    ]])
+    -- This tests the valid winline code path (why doesn't the above?).
+    exec_lua([[
+      vim.cmd.only()
+      vim.lsp.util.open_floating_preview({ 'foo', '```lua', 'local bar', '```' }, 'markdown', {
+        border = 'single',
+        focus = false,
+      })
+    ]])
+    feed('<C-W>wG')
+    screen:expect([[
+                                                           |
+      ┌─────────┐{1:                                          }|
+      │{4:foo      }│{1:                                          }|
+      │{100:^local}{101: }{102:bar}│{1:                                          }|
+      └─────────┘{1:                                          }|
+      {1:~                                                    }|*8
+                                                           |
+    ]])
+  end)
+
+  it('open_floating_preview height does not exceed max_height', function()
+    local screen = Screen.new()
+    exec_lua([[
+      vim.lsp.util.open_floating_preview(vim.fn.range(1, 10), 'markdown', {
+        border = 'single',
+        width = 5,
+        max_height = 5,
+        focus = false,
+      })
+    ]])
+    screen:expect([[
+      ^                                                     |
+      ┌─────┐{1:                                              }|
+      │{4:1    }│{1:                                              }|
+      │{4:2    }│{1:                                              }|
+      │{4:3    }│{1:                                              }|
+      │{4:4    }│{1:                                              }|
+      │{4:5    }│{1:                                              }|
+      └─────┘{1:                                              }|
+      {1:~                                                    }|*5
+                                                           |
+    ]])
   end)
 end)

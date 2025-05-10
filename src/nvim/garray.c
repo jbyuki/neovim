@@ -7,12 +7,13 @@
 
 #include "nvim/garray.h"
 #include "nvim/log.h"
+#include "nvim/macros_defs.h"
 #include "nvim/memory.h"
 #include "nvim/path.h"
 #include "nvim/strings.h"
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
-# include "garray.c.generated.h"
+# include "garray.c.generated.h"  // IWYU pragma: keep
 #endif
 
 /// Clear an allocated growing array.
@@ -197,12 +198,13 @@ void ga_concat(garray_T *gap, const char *restrict s)
 void ga_concat_len(garray_T *const gap, const char *restrict s, const size_t len)
   FUNC_ATTR_NONNULL_ALL
 {
-  if (len) {
-    ga_grow(gap, (int)len);
-    char *data = gap->ga_data;
-    memcpy(data + gap->ga_len, s, len);
-    gap->ga_len += (int)len;
+  if (len == 0) {
+    return;
   }
+  ga_grow(gap, (int)len);
+  char *data = gap->ga_data;
+  memcpy(data + gap->ga_len, s, len);
+  gap->ga_len += (int)len;
 }
 
 /// Append one byte to a growarray which contains bytes.

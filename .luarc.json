@@ -5,11 +5,11 @@
   },
   "workspace": {
     "library": [
-      "runtime/lua",
-      "${3rd}/busted/library",
-      "${3rd}/luv/library"
+      "${3rd}/busted/library"
     ],
     "ignoreDir": [
+      ".deps",
+      "build",
       "test"
     ],
     "checkThirdParty": "Disable"

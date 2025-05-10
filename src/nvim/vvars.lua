@@ -10,6 +10,7 @@ M.vars = {
     ]=],
   },
   char = {
+    type = 'string',
     desc = [=[
       Argument for evaluating 'formatexpr' and used for the typed
       character when using <expr> in an abbreviation |:map-<expr>|.
@@ -63,6 +64,7 @@ M.vars = {
     ]=],
   },
   completed_item = {
+    type = 'vim.v.completed_item',
     desc = [=[
       Dictionary containing the |complete-items| for the most
       recently completed word after |CompleteDone|.  Empty if the
@@ -94,6 +96,7 @@ M.vars = {
     ]=],
   },
   ctype = {
+    type = 'string',
     desc = [=[
       The current locale setting for characters of the runtime
       environment.  This allows Vim scripts to be aware of the
@@ -158,6 +161,7 @@ M.vars = {
     ]=],
   },
   event = {
+    type = 'vim.v.event',
     desc = [=[
       Dictionary of event data for the current |autocommand|.  Valid
       only during the event lifetime; storing or passing v:event is
@@ -171,50 +175,52 @@ M.vars = {
                          an aborting condition (e.g. |c_Esc| or
                          |c_CTRL-C| for |CmdlineLeave|).
         chan             |channel-id|
-        info             Dict of arbitrary event data.
+        changed_window   Is |v:true| if the event fired while
+                         changing window  (or tab) on |DirChanged|.
         cmdlevel         Level of cmdline.
         cmdtype          Type of cmdline, |cmdline-char|.
+        col              Column count of popup menu on |CompleteChanged|,
+                         relative to screen.
+        complete_type    See |complete_info_mode|
+        complete_word    The selected word, or empty if completion
+                         was abandoned/discarded.
+        completed_item   Current selected item on |CompleteChanged|,
+                         or `{}` if no item selected.
         cwd              Current working directory.
+        height           Height of popup menu on |CompleteChanged|
         inclusive        Motion is |inclusive|, else exclusive.
-        scope            Event-specific scope name.
+        info             Dict of arbitrary event data.
         operator         Current |operator|.  Also set for Ex
                          commands (unlike |v:operator|). For
                          example if |TextYankPost| is triggered
                          by the |:yank| Ex command then
                          `v:event.operator` is "y".
+        reason           |CompleteDone| reason.
         regcontents      Text stored in the register as a
                          |readfile()|-style list of lines.
-        regname          Requested register (e.g "x" for "xyy)
-                         or the empty string for an unnamed
-                         operation.
+        regname          Requested register (e.g "x" for "xyy), or
+                         empty string for an unnamed operation.
         regtype          Type of register as returned by
                          |getregtype()|.
-        visual           Selection is visual (as opposed to,
-                         e.g., via motion).
-        completed_item   Current selected complete item on
-                         |CompleteChanged|, Is `{}` when no complete
-                         item selected.
-        height           Height of popup menu on |CompleteChanged|
-        width            Width of popup menu on |CompleteChanged|
         row              Row count of popup menu on |CompleteChanged|,
                          relative to screen.
-        col              Col count of popup menu on |CompleteChanged|,
-                         relative to screen.
+        scope            Event-specific scope name.
+        scrollbar        |v:true| if popup menu has a scrollbar, or
+                         |v:false| if not.
         size             Total number of completion items on
                          |CompleteChanged|.
-        scrollbar        Is |v:true| if popup menu have scrollbar, or
-                         |v:false| if not.
-        changed_window   Is |v:true| if the event fired while
-                         changing window  (or tab) on |DirChanged|.
         status           Job status or exit code, -1 means "unknown". |TermClose|
-        reason           Reason for completion being done. |CompleteDone|
+        visual           Selection is visual (as opposed to e.g. a motion range).
+        width            Width of popup menu on |CompleteChanged|
+        windows          List of window IDs that changed on |WinResized|
     ]=],
   },
   exception = {
     type = 'string',
     desc = [=[
       The value of the exception most recently caught and not
-      finished.  See also |v:throwpoint| and |throw-variables|.
+      finished.  See also |v:stacktrace|, |v:throwpoint|, and
+      |throw-variables|.
       Example: >vim
         try
           throw "oops"
@@ -236,6 +242,7 @@ M.vars = {
     ]=],
   },
   exiting = {
+    type = 'integer?',
     desc = [=[
       Exit code, or |v:null| before invoking the |VimLeavePre|
       and |VimLeave| autocmds.  See |:q|, |:x| and |:cquit|.
@@ -468,6 +475,7 @@ M.vars = {
     ]=],
   },
   msgpack_types = {
+    type = 'table',
     desc = [=[
       Dictionary containing msgpack types used by |msgpackparse()|
       and |msgpackdump()|. All types inside dictionary are fixed
@@ -633,6 +641,7 @@ M.vars = {
     ]=],
   },
   scrollstart = {
+    type = 'string',
     desc = [=[
       String describing the script or function that caused the
       screen to scroll up.  It's only set when it is empty, thus the
@@ -665,15 +674,22 @@ M.vars = {
       Read-only.
 
                                                            *$NVIM*
-      $NVIM is set by |terminal| and |jobstart()|, and is thus
-      a hint that the current environment is a subprocess of Nvim.
-      Example: >vim
-        if $NVIM
-          echo nvim_get_chan_info(v:parent)
-        endif
-      <
+      $NVIM is set to v:servername by |terminal| and |jobstart()|,
+      and is thus a hint that the current environment is a child
+      (direct subprocess) of Nvim.
 
-      Note the contents of $NVIM may change in the future.
+      Example: a child Nvim process can detect and make requests to
+      its parent Nvim: >lua
+
+        if vim.env.NVIM then
+          local ok, chan = pcall(vim.fn.sockconnect, 'pipe', vim.env.NVIM, {rpc=true})
+          if ok and chan then
+            local client = vim.api.nvim_get_chan_info(chan).client
+            local rv = vim.rpcrequest(chan, 'nvim_exec_lua', [[return ... + 1]], { 41 })
+            vim.print(('got "%s" from parent Nvim'):format(rv))
+          end
+        end
+      <
     ]=],
   },
   shell_error = {
@@ -690,6 +706,15 @@ M.vars = {
           echo 'could not rename "foo" to "bar"!'
         endif
       <
+    ]=],
+  },
+  stacktrace = {
+    type = 'table[]',
+    desc = [=[
+      The stack trace of the exception most recently caught and
+      not finished.  Refer to |getstacktrace()| for the structure of
+      stack trace.  See also |v:exception|, |v:throwpoint|, and
+      |throw-variables|.
     ]=],
   },
   statusmsg = {
@@ -780,7 +805,7 @@ M.vars = {
   termrequest = {
     type = 'string',
     desc = [=[
-      The value of the most recent OSC or DCS control sequence
+      The value of the most recent OSC, DCS or APC control sequence
       sent from a process running in the embedded |terminal|.
       This can be read in a |TermRequest| event handler to respond
       to queries from embedded applications.
@@ -796,11 +821,13 @@ M.vars = {
     ]=],
   },
   testing = {
+    type = 'integer',
     desc = [=[
       Must be set before using `test_garbagecollect_now()`.
     ]=],
   },
   this_session = {
+    type = 'string',
     desc = [=[
       Full filename of the last loaded or saved session file.
       Empty when no session file has been saved.  See |:mksession|.
@@ -808,10 +835,11 @@ M.vars = {
     ]=],
   },
   throwpoint = {
+    type = 'string',
     desc = [=[
       The point where the exception most recently caught and not
       finished was thrown.  Not set when commands are typed.  See
-      also |v:exception| and |throw-variables|.
+      also |v:exception|, |v:stacktrace|, and |throw-variables|.
       Example: >vim
         try
           throw "oops"

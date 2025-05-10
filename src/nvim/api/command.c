@@ -26,6 +26,7 @@
 #include "nvim/macros_defs.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
+#include "nvim/memory_defs.h"
 #include "nvim/ops.h"
 #include "nvim/pos_defs.h"
 #include "nvim/regexp.h"
@@ -109,9 +110,9 @@ Dict(cmd) nvim_parse_cmd(String str, Dict(empty) *opts, Arena *arena, Error *err
 
   if (!parse_cmdline(cmdline, &ea, &cmdinfo, &errormsg)) {
     if (errormsg != NULL) {
-      api_set_error(err, kErrorTypeException, "Error while parsing command line: %s", errormsg);
+      api_set_error(err, kErrorTypeException, "Parsing command-line: %s", errormsg);
     } else {
-      api_set_error(err, kErrorTypeException, "Error while parsing command line");
+      api_set_error(err, kErrorTypeException, "Parsing command-line");
     }
     goto end;
   }
@@ -153,14 +154,12 @@ Dict(cmd) nvim_parse_cmd(String str, Dict(empty) *opts, Arena *arena, Error *err
   char *name = (cmd != NULL ? cmd->uc_name : get_command_name(NULL, ea.cmdidx));
   PUT_KEY(result, cmd, cmd, cstr_as_string(name));
 
-  if (ea.argt & EX_RANGE) {
+  if ((ea.argt & EX_RANGE) && ea.addr_count > 0) {
     Array range = arena_array(arena, 2);
-    if (ea.addr_count > 0) {
-      if (ea.addr_count > 1) {
-        ADD_C(range, INTEGER_OBJ(ea.line1));
-      }
-      ADD_C(range, INTEGER_OBJ(ea.line2));
+    if (ea.addr_count > 1) {
+      ADD_C(range, INTEGER_OBJ(ea.line1));
     }
+    ADD_C(range, INTEGER_OBJ(ea.line2));
     PUT_KEY(result, cmd, range, range);
   }
 
@@ -503,7 +502,9 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Arena
     VALIDATE((regname != '='), "%s", "Cannot use register \"=", {
       goto end;
     });
-    VALIDATE(valid_yank_reg(regname, ea.cmdidx != CMD_put && !IS_USER_CMDIDX(ea.cmdidx)),
+    VALIDATE(valid_yank_reg(regname,
+                            (!IS_USER_CMDIDX(ea.cmdidx)
+                             && ea.cmdidx != CMD_put && ea.cmdidx != CMD_iput)),
              "Invalid register: \"%c", regname, {
       goto end;
     });
@@ -632,6 +633,22 @@ String nvim_cmd(uint64_t channel_id, Dict(cmd) *cmd, Dict(cmd_opts) *opts, Arena
   // This also sets the values of ea.cmd, ea.arg, ea.args and ea.arglens.
   build_cmdline_str(&cmdline, &ea, &cmdinfo, args);
   ea.cmdlinep = &cmdline;
+
+  // Check for "++opt=val" argument.
+  if (ea.argt & EX_ARGOPT) {
+    while (ea.arg[0] == '+' && ea.arg[1] == '+') {
+      char *orig_arg = ea.arg;
+      int result = getargopt(&ea);
+      VALIDATE_S(result != FAIL || is_cmd_ni(ea.cmdidx), "argument ", orig_arg, {
+        goto end;
+      });
+    }
+  }
+
+  // Check for "+command" argument.
+  if ((ea.argt & EX_CMDARG) && !ea.usefilter) {
+    ea.do_ecmd_cmd = getargcmd(&ea.arg);
+  }
 
   garray_T capture_local;
   const int save_msg_silent = msg_silent;
@@ -896,7 +913,7 @@ void nvim_del_user_command(String name, Error *err)
 
 /// Creates a buffer-local command |user-commands|.
 ///
-/// @param  buffer  Buffer handle, or 0 for current buffer.
+/// @param  buffer  Buffer id, or 0 for current buffer.
 /// @param[out] err Error details, if any.
 /// @see nvim_create_user_command
 void nvim_buf_create_user_command(uint64_t channel_id, Buffer buffer, String name, Object command,
@@ -919,7 +936,7 @@ void nvim_buf_create_user_command(uint64_t channel_id, Buffer buffer, String nam
 /// Only commands created with |:command-buffer| or
 /// |nvim_buf_create_user_command()| can be deleted with this function.
 ///
-/// @param  buffer  Buffer handle, or 0 for current buffer.
+/// @param  buffer  Buffer id, or 0 for current buffer.
 /// @param  name    Name of the command to delete.
 /// @param[out] err Error details, if any.
 void nvim_buf_del_user_command(Buffer buffer, String name, Error *err)
@@ -930,6 +947,9 @@ void nvim_buf_del_user_command(Buffer buffer, String name, Error *err)
     gap = &ucmds;
   } else {
     buf_T *buf = find_buffer_by_handle(buffer, err);
+    if (ERROR_SET(err)) {
+      return;
+    }
     gap = &buf->b_ucmds;
   }
 
@@ -1174,7 +1194,7 @@ Dict nvim_get_commands(Dict(get_commands) *opts, Arena *arena, Error *err)
 
 /// Gets a map of buffer-local |user-commands|.
 ///
-/// @param  buffer  Buffer handle, or 0 for current buffer
+/// @param  buffer  Buffer id, or 0 for current buffer
 /// @param  opts  Optional parameters. Currently not used.
 /// @param[out]  err   Error details, if any.
 ///

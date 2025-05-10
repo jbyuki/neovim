@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <lauxlib.h>
 #include <stddef.h>
@@ -22,7 +23,6 @@
 #include "nvim/event/proc.h"
 #include "nvim/event/rstream.h"
 #include "nvim/event/socket.h"
-#include "nvim/event/stream.h"
 #include "nvim/event/wstream.h"
 #include "nvim/garray.h"
 #include "nvim/gettext_defs.h"
@@ -32,6 +32,7 @@
 #include "nvim/main.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
+#include "nvim/memory_defs.h"
 #include "nvim/message.h"
 #include "nvim/msgpack_rpc/channel.h"
 #include "nvim/msgpack_rpc/server.h"
@@ -218,6 +219,7 @@ Channel *channel_alloc(ChannelStreamType type)
   chan->refcount = 1;
   chan->exit_status = -1;
   chan->streamtype = type;
+  chan->detach = false;
   assert(chan->id <= VARNUMBER_MAX);
   pmap_put(uint64_t)(&channels, chan->id, chan);
   return chan;
@@ -512,8 +514,7 @@ void channel_from_connection(SocketWatcher *watcher)
   channel_create_event(channel, watcher->addr);
 }
 
-/// Creates an API channel from stdin/stdout. This is used when embedding
-/// Neovim
+/// Creates an API channel from stdin/stdout. Used when embedding Nvim.
 uint64_t channel_from_stdio(bool rpc, CallbackReader on_output, const char **error)
   FUNC_ATTR_NONNULL_ALL
 {
@@ -895,7 +896,7 @@ static void set_info_event(void **argv)
   tv_dict_add_dict(dict, S_LEN("info"), retval.vval.v_dict);
   tv_dict_set_keys_readonly(dict);
 
-  apply_autocmds(event, NULL, NULL, false, curbuf);
+  apply_autocmds(event, NULL, NULL, true, curbuf);
 
   restore_v_event(dict, &save_v_event);
   arena_mem_free(arena_finish(&arena));

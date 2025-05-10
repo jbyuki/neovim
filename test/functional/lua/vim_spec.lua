@@ -970,6 +970,7 @@ describe('lua stdlib', function()
     )
     eq(NIL, exec_lua("return vim.tbl_get({}, 'missing_key')"))
     eq(NIL, exec_lua('return vim.tbl_get({})'))
+    eq(NIL, exec_lua("return vim.tbl_get({}, nil, 'key')"))
     eq(1, exec_lua("return select('#', vim.tbl_get({}))"))
     eq(1, exec_lua("return select('#', vim.tbl_get({ nested = {} }, 'nested', 'missing_key'))"))
   end)
@@ -1033,6 +1034,20 @@ describe('lua stdlib', function()
       for _ in pairs(c) do count = count + 1 end
 
       return c.x.a == 1 and c.x.b == 2 and c.x.c == nil and count == 1
+    ]]))
+
+    ok(exec_lua([[
+      local a = { a = 1, b = 2, c = 1 }
+      local b = { a = -1, b = 5, c = 3, d = 4 }
+      -- Return the maximum value for each key.
+      local c = vim.tbl_extend(function(k, prev_v, v)
+        if prev_v then
+          return v > prev_v and v or prev_v
+        else
+          return v
+        end
+      end, a, b)
+      return vim.deep_equal(c, { a = 1, b = 5, c = 3, d = 4 })
     ]]))
 
     matches(
@@ -1174,6 +1189,20 @@ describe('lua stdlib', function()
       local b = { sub = { 'b', 'c' } }
       local c = vim.tbl_deep_extend('force', a, b)
       return vim.deep_equal(c, { sub = { 'b', 'c' } })
+    ]]))
+
+    ok(exec_lua([[
+      local a = { a = 1, b = 2, c = { d = 1, e = -2} }
+      local b = { a = -1, b = 5, c = { d = 6 } }
+      -- Return the maximum value for each key.
+      local c = vim.tbl_deep_extend(function(k, prev_v, v)
+        if prev_v then
+          return v > prev_v and v or prev_v
+        else
+          return v
+        end
+      end, a, b)
+      return vim.deep_equal(c, { a = 1, b = 5, c = { d = 6, e = -2 } })
     ]]))
 
     matches('invalid "behavior": nil', pcall_err(exec_lua, [[return vim.tbl_deep_extend()]]))
@@ -1527,10 +1556,15 @@ describe('lua stdlib', function()
       pcall_err(exec_lua, "vim.validate('arg1', nil, {'number', 'string'})")
     )
 
-    -- Pass an additional message back.
+    -- Validator func can return an extra "Info" message.
     matches(
       'arg1: expected %?, got 3. Info: TEST_MSG',
       pcall_err(exec_lua, "vim.validate('arg1', 3, function(a) return a == 1, 'TEST_MSG' end)")
+    )
+    -- Caller can override the "expected" message.
+    eq(
+      'arg1: expected TEST_MSG, got nil',
+      pcall_err(exec_lua, "vim.validate('arg1', nil, 'table', 'TEST_MSG')")
     )
   end)
 
@@ -2099,9 +2133,9 @@ describe('lua stdlib', function()
     eq(false, fn.luaeval "vim.v['false']")
     eq(NIL, fn.luaeval 'vim.v.null')
     matches([[attempt to index .* nil value]], pcall_err(exec_lua, 'return vim.v[0].progpath'))
-    eq('Key is read-only: count', pcall_err(exec_lua, [[vim.v.count = 42]]))
-    eq('Dict is locked', pcall_err(exec_lua, [[vim.v.nosuchvar = 42]]))
-    eq('Key is fixed: errmsg', pcall_err(exec_lua, [[vim.v.errmsg = nil]]))
+    matches('Key is read%-only: count$', pcall_err(exec_lua, [[vim.v.count = 42]]))
+    matches('Dict is locked$', pcall_err(exec_lua, [[vim.v.nosuchvar = 42]]))
+    matches('Key is fixed: errmsg$', pcall_err(exec_lua, [[vim.v.errmsg = nil]]))
     exec_lua([[vim.v.errmsg = 'set by Lua']])
     eq('set by Lua', eval('v:errmsg'))
     exec_lua([[vim.v.errmsg = 42]])
@@ -2110,7 +2144,10 @@ describe('lua stdlib', function()
     eq({ 'one', 'two' }, eval('v:oldfiles'))
     exec_lua([[vim.v.oldfiles = {}]])
     eq({}, eval('v:oldfiles'))
-    eq('Setting v:oldfiles to value with wrong type', pcall_err(exec_lua, [[vim.v.oldfiles = 'a']]))
+    matches(
+      'Setting v:oldfiles to value with wrong type$',
+      pcall_err(exec_lua, [[vim.v.oldfiles = 'a']])
+    )
     eq({}, eval('v:oldfiles'))
 
     feed('i foo foo foo<Esc>0/foo<CR>')
@@ -3344,7 +3381,7 @@ describe('lua stdlib', function()
       local errmsg = api.nvim_get_vvar('errmsg')
       matches(
         [[
-^Error executing vim%.on%_key%(%) callbacks:.*
+^vim%.on%_key%(%) callbacks:.*
 With ns%_id %d+: .*: Dumb Error
 stack traceback:
 .*: in function 'error'
@@ -3435,7 +3472,6 @@ stack traceback:
     end)
 
     it('can discard input', function()
-      clear()
       -- discard every other normal 'x' command
       exec_lua [[
         n_key = 0
@@ -3461,7 +3497,6 @@ stack traceback:
     end)
 
     it('callback invalid return', function()
-      clear()
       -- second key produces an error which removes the callback
       exec_lua [[
         n_call = 0
@@ -3476,19 +3511,13 @@ stack traceback:
 
       api.nvim_buf_set_lines(0, 0, -1, true, { '54321' })
 
-      local function cleanup_msg(msg)
-        return msg:gsub('^Error .*\nWith ns%_id %d+: ', '')
-      end
-
       feed('x')
       eq(1, exec_lua [[ return n_call ]])
-
       eq(1, exec_lua [[ return vim.on_key(nil, nil) ]])
-
-      eq('', cleanup_msg(eval('v:errmsg')))
+      eq('', eval('v:errmsg'))
       feed('x')
       eq(2, exec_lua [[ return n_call ]])
-      eq('return string must be empty', cleanup_msg(eval('v:errmsg')))
+      matches('return string must be empty', eval('v:errmsg'))
       command('let v:errmsg = ""')
 
       eq(0, exec_lua [[ return vim.on_key(nil, nil) ]])
@@ -3496,7 +3525,7 @@ stack traceback:
       feed('x')
       eq(2, exec_lua [[ return n_call ]])
       expect('21')
-      eq('', cleanup_msg(eval('v:errmsg')))
+      eq('', eval('v:errmsg'))
     end)
   end)
 
@@ -3955,6 +3984,17 @@ stack traceback:
       eq(win2, val)
     end)
 
+    it('failure modes', function()
+      matches(
+        'nvim_exec2%(%), line 1: Vim:E492: Not an editor command: fooooo',
+        pcall_err(exec_lua, [[vim.api.nvim_win_call(0, function() vim.cmd 'fooooo' end)]])
+      )
+      eq(
+        'Lua: [string "<nvim>"]:0: fooooo',
+        pcall_err(exec_lua, [[vim.api.nvim_win_call(0, function() error('fooooo') end)]])
+      )
+    end)
+
     it('does not cause ml_get errors with invalid visual selection', function()
       -- Add lines to the current buffer and make another window looking into an empty buffer.
       exec_lua [[
@@ -4001,9 +4041,9 @@ stack traceback:
       ]]
       screen:expect [[
         19                            |
-        {2:[No Name] [+]  20,1         3%}|
+        {2:< Name] [+] 20,1            3%}|
         ^19                            |
-        {3:[No Name] [+]  20,1         3%}|
+        {3:< Name] [+] 20,1            3%}|
                                       |
       ]]
       exec_lua [[
@@ -4012,9 +4052,9 @@ stack traceback:
       ]]
       screen:expect [[
         99                            |
-        {2:[No Name] [+]  100,1       19%}|
+        {2:< Name] [+] 100,1          19%}|
         ^19                            |
-        {3:[No Name] [+]  20,1         3%}|
+        {3:< Name] [+] 20,1            3%}|
                                       |
       ]]
     end)

@@ -6,7 +6,7 @@
 ---
 --- >lua
 ---   if vim.uv.fs_stat(file) then
----     vim.print("file exists")
+---     vim.print('file exists')
 ---   end
 --- <
 
@@ -19,21 +19,21 @@ local sysname = uv.os_uname().sysname:lower()
 local iswin = not not (sysname:find('windows') or sysname:find('mingw'))
 local os_sep = iswin and '\\' or '/'
 
---- Iterate over all the parents of the given path.
+--- Iterate over all the parents of the given path (not expanded/resolved, the caller must do that).
 ---
 --- Example:
 ---
 --- ```lua
 --- local root_dir
 --- for dir in vim.fs.parents(vim.api.nvim_buf_get_name(0)) do
----   if vim.fn.isdirectory(dir .. "/.git") == 1 then
+---   if vim.fn.isdirectory(dir .. '/.git') == 1 then
 ---     root_dir = dir
 ---     break
 ---   end
 --- end
 ---
 --- if root_dir then
----   print("Found git repository at", root_dir)
+---   print('Found git repository at', root_dir)
 --- end
 --- ```
 ---
@@ -55,7 +55,7 @@ function M.parents(start)
     start
 end
 
---- Return the parent directory of the given path
+--- Gets the parent directory of the given path (not expanded/resolved, the caller must do that).
 ---
 ---@since 10
 ---@generic T : string|nil
@@ -105,14 +105,23 @@ function M.basename(file)
   return file:match('/$') and '' or (file:match('[^/]*$'))
 end
 
---- Concatenate directories and/or file paths into a single path with normalization
---- (e.g., `"foo/"` and `"bar"` get joined to `"foo/bar"`)
+--- Concatenates partial paths (one absolute or relative path followed by zero or more relative
+--- paths). Slashes are normalized: redundant slashes are removed, and (on Windows) backslashes are
+--- replaced with forward-slashes.
+---
+--- Examples:
+--- - "foo/", "/bar" => "foo/bar"
+--- - Windows: "a\foo\", "\bar" => "a/foo/bar"
 ---
 ---@since 12
 ---@param ... string
 ---@return string
 function M.joinpath(...)
-  return (table.concat({ ... }, '/'):gsub('//+', '/'))
+  local path = table.concat({ ... }, '/')
+  if iswin then
+    path = path:gsub('\\', '/')
+  end
+  return (path:gsub('//+', '/'))
 end
 
 ---@alias Iterator fun(): string?, string?
@@ -127,6 +136,7 @@ end
 ---             - skip: (fun(dir_name: string): boolean)|nil Predicate
 ---               to control traversal. Return false to stop searching the current directory.
 ---               Only useful when depth > 1
+---             - follow: boolean|nil Follow symbolic links. (default: false)
 ---
 ---@return Iterator over items in {path}. Each iteration yields two values: "name" and "type".
 ---        "name" is the basename of the item relative to {path}.
@@ -138,6 +148,7 @@ function M.dir(path, opts)
   vim.validate('path', path, 'string')
   vim.validate('depth', opts.depth, 'number', true)
   vim.validate('skip', opts.skip, 'function', true)
+  vim.validate('follow', opts.follow, 'boolean', true)
 
   path = M.normalize(path)
   if not opts.depth or opts.depth == 1 then
@@ -168,7 +179,9 @@ function M.dir(path, opts)
         if
           opts.depth
           and level < opts.depth
-          and t == 'directory'
+          and (t == 'directory' or (t == 'link' and opts.follow and (vim.uv.fs_stat(
+            M.joinpath(path, f)
+          ) or {}).type == 'directory'))
           and (not opts.skip or opts.skip(f) ~= false)
         then
           dirs[#dirs + 1] = { f, level + 1 }
@@ -202,6 +215,10 @@ end
 --- Use `math.huge` to place no limit on the number of matches.
 --- (default: `1`)
 --- @field limit? number
+---
+--- Follow symbolic links.
+--- (default: `false`)
+--- @field follow? boolean
 
 --- Find files or directories (or other items as specified by `opts.type`) in the given path.
 ---
@@ -217,16 +234,17 @@ end
 --- Examples:
 ---
 --- ```lua
---- -- list all test directories under the runtime directory
---- local test_dirs = vim.fs.find(
----   {'test', 'tst', 'testdir'},
----   {limit = math.huge, type = 'directory', path = './runtime/'}
+--- -- List all test directories under the runtime directory.
+--- local dirs = vim.fs.find(
+---   { 'test', 'tst', 'testdir' },
+---   { limit = math.huge, type = 'directory', path = './runtime/' }
 --- )
 ---
---- -- get all files ending with .cpp or .hpp inside lib/
---- local cpp_hpp = vim.fs.find(function(name, path)
----   return name:match('.*%.[ch]pp$') and path:match('[/\\\\]lib$')
---- end, {limit = math.huge, type = 'file'})
+--- -- Get all "lib/*.cpp" and "lib/*.hpp" files, using Lua patterns.
+--- -- Or use `vim.glob.to_lpeg(…):match(…)` for glob/wildcard matching.
+--- local files = vim.fs.find(function(name, path)
+---   return name:match('.*%.[ch]pp$') and path:match('[/\\]lib$')
+--- end, { limit = math.huge, type = 'file' })
 --- ```
 ---
 ---@since 10
@@ -235,6 +253,7 @@ end
 ---             If {names} is a function, it is called for each traversed item with args:
 ---             - name: base name of the current item
 ---             - path: full path of the current item
+---
 ---             The function should return `true` if the given item is considered a match.
 ---
 ---@param opts vim.fs.find.Opts Optional keyword arguments:
@@ -247,6 +266,7 @@ function M.find(names, opts)
   vim.validate('stop', opts.stop, 'string', true)
   vim.validate('type', opts.type, 'string', true)
   vim.validate('limit', opts.limit, 'number', true)
+  vim.validate('follow', opts.follow, 'boolean', true)
 
   if type(names) == 'string' then
     names = { names }
@@ -336,7 +356,10 @@ function M.find(names, opts)
           end
         end
 
-        if type_ == 'directory' then
+        if
+          type_ == 'directory'
+          or (type_ == 'link' and opts.follow and (vim.uv.fs_stat(f) or {}).type == 'directory')
+        then
           dirs[#dirs + 1] = f
         end
       end
@@ -505,6 +528,27 @@ local function path_resolve_dot(path)
   return (is_path_absolute and '/' or '') .. table.concat(new_path_components, '/')
 end
 
+--- Expand tilde (~) character at the beginning of the path to the user's home directory.
+---
+--- @param path string Path to expand.
+--- @param sep string|nil Path separator to use. Uses os_sep by default.
+--- @return string Expanded path.
+local function expand_home(path, sep)
+  sep = sep or os_sep
+
+  if vim.startswith(path, '~') then
+    local home = uv.os_homedir() or '~' --- @type string
+
+    if home:sub(-1) == sep then
+      home = home:sub(1, -2)
+    end
+
+    path = home .. path:sub(2) --- @type string
+  end
+
+  return path
+end
+
 --- @class vim.fs.normalize.Opts
 --- @inlinedoc
 ---
@@ -568,18 +612,12 @@ function M.normalize(path, opts)
     return ''
   end
 
-  -- Expand ~ to users home directory
-  if vim.startswith(path, '~') then
-    local home = uv.os_homedir() or '~'
-    if home:sub(-1) == os_sep_local then
-      home = home:sub(1, -2)
-    end
-    path = home .. path:sub(2)
-  end
+  -- Expand ~ to user's home directory
+  path = expand_home(path, os_sep_local)
 
   -- Expand environment variables if `opts.expand_env` isn't `false`
   if opts.expand_env == nil or opts.expand_env then
-    path = path:gsub('%$([%w_]+)', uv.os_getenv)
+    path = path:gsub('%$([%w_]+)', uv.os_getenv) --- @type string
   end
 
   if win then
@@ -605,8 +643,8 @@ function M.normalize(path, opts)
       return prefix .. path
     end
 
-    -- Remove extraneous slashes from the prefix
-    prefix = prefix:gsub('/+', '/')
+    -- Ensure capital drive and remove extraneous slashes from the prefix
+    prefix = prefix:gsub('^%a:', string.upper):gsub('/+', '/')
   end
 
   if not opts._fast then
@@ -677,6 +715,77 @@ function M.rm(path, opts)
   elseif not opts.force or errnm ~= 'ENOENT' then
     error(err)
   end
+end
+
+--- Convert path to an absolute path. A tilde (~) character at the beginning of the path is expanded
+--- to the user's home directory. Does not check if the path exists, normalize the path, resolve
+--- symlinks or hardlinks (including `.` and `..`), or expand environment variables. If the path is
+--- already absolute, it is returned unchanged. Also converts `\` path separators to `/`.
+---
+--- @param path string Path
+--- @return string Absolute path
+function M.abspath(path)
+  vim.validate('path', path, 'string')
+
+  -- Expand ~ to user's home directory
+  path = expand_home(path)
+
+  -- Convert path separator to `/`
+  path = path:gsub(os_sep, '/')
+
+  local prefix = ''
+
+  if iswin then
+    prefix, path = split_windows_path(path)
+  end
+
+  if prefix == '//' or vim.startswith(path, '/') then
+    -- Path is already absolute, do nothing
+    return prefix .. path
+  end
+
+  -- Windows allows paths like C:foo/bar, these paths are relative to the current working directory
+  -- of the drive specified in the path
+  local cwd = (iswin and prefix:match('^%w:$')) and uv.fs_realpath(prefix) or uv.cwd()
+  assert(cwd ~= nil)
+  -- Convert cwd path separator to `/`
+  cwd = cwd:gsub(os_sep, '/')
+
+  -- Prefix is not needed for expanding relative paths, as `cwd` already contains it.
+  return M.joinpath(cwd, path)
+end
+
+--- Gets `target` path relative to `base`, or `nil` if `base` is not an ancestor.
+---
+--- Example:
+---
+--- ```lua
+--- vim.fs.relpath('/var', '/var/lib') -- 'lib'
+--- vim.fs.relpath('/var', '/usr/bin') -- nil
+--- ```
+---
+--- @param base string
+--- @param target string
+--- @param opts table? Reserved for future use
+--- @return string|nil
+function M.relpath(base, target, opts)
+  vim.validate('base', base, 'string')
+  vim.validate('target', target, 'string')
+  vim.validate('opts', opts, 'table', true)
+
+  base = vim.fs.normalize(vim.fs.abspath(base))
+  target = vim.fs.normalize(vim.fs.abspath(target))
+  if base == target then
+    return '.'
+  end
+
+  local prefix = ''
+  if iswin then
+    prefix, base = split_windows_path(base)
+  end
+  base = prefix .. base .. (base ~= '/' and '/' or '')
+
+  return vim.startswith(target, base) and target:sub(#base + 1) or nil
 end
 
 return M

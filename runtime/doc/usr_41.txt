@@ -921,6 +921,7 @@ Command line:					*command-line-functions*
 	getcmdwintype()		return the current command-line window type
 	getcompletion()		list of command-line completion matches
 	fullcommand()		get full command name
+	cmdcomplete_info()	get command-line completion information
 
 Quickfix and location lists:			*quickfix-functions*
 	getqflist()		list of quickfix errors
@@ -933,6 +934,8 @@ Insert mode completion:				*completion-functions*
 	complete_add()		add to found matches
 	complete_check()	check if completion should be aborted
 	complete_info()		get current completion information
+	complete_match()	get insert completion start match col and
+				trigger text
 	pumvisible()		check if the popup menu is displayed
 	pum_getpos()		position and size of popup menu if visible
 
@@ -1103,7 +1106,8 @@ Various:					*various-functions*
 	did_filetype()		check if a FileType autocommand was used
 	eventhandler()		check if invoked by an event handler
 	getpid()		get process ID of Vim
-	getscriptinfo()		get list of sourced vim scripts
+	getscriptinfo()		get list of sourced Vim scripts
+	getstacktrace()		get current stack trace of Vim scripts
 
 	libcall()		call a function in an external library
 	libcallnr()		idem, returning a number

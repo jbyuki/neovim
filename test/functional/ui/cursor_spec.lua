@@ -190,6 +190,19 @@ describe('ui/cursor', function()
         attr_lm = {},
         short_name = 'sm',
       },
+      [18] = {
+        blinkoff = 500,
+        blinkon = 500,
+        blinkwait = 0,
+        cell_percentage = 0,
+        cursor_shape = 'block',
+        name = 'terminal',
+        hl_id = 3,
+        id_lm = 3,
+        attr = { reverse = true },
+        attr_lm = { reverse = true },
+        short_name = 't',
+      },
     }
 
     screen:expect(function()
@@ -249,13 +262,16 @@ describe('ui/cursor', function()
         m.attr = { background = Screen.colors.DarkGray }
       end
       if m.id_lm then
-        m.id_lm = 73
+        m.id_lm = 75
+        m.attr_lm = {}
       end
     end
 
     -- Assert the new expectation.
     screen:expect(function()
-      eq(expected_mode_info, screen._mode_info)
+      for i, v in ipairs(expected_mode_info) do
+        eq(v, screen._mode_info[i])
+      end
       eq(true, screen._cursor_style_enabled)
       eq('normal', screen.mode)
     end)
@@ -360,5 +376,51 @@ describe('ui/cursor', function()
         end
       end
     end)
+  end)
+
+  it(':sleep does not hide cursor when sleeping', function()
+    n.feed(':sleep 300m | echo 42')
+    screen:expect([[
+                               |
+      {1:~                        }|*3
+      :sleep 300m | echo 42^    |
+    ]])
+    n.feed('\n')
+    screen:expect({
+      grid = [[
+      ^                         |
+      {1:~                        }|*3
+      :sleep 300m | echo 42    |
+    ]],
+      timeout = 100,
+    })
+    screen:expect([[
+      ^                         |
+      {1:~                        }|*3
+      42                       |
+    ]])
+  end)
+
+  it(':sleep! hides cursor when sleeping', function()
+    n.feed(':sleep! 300m | echo 42')
+    screen:expect([[
+                               |
+      {1:~                        }|*3
+      :sleep! 300m | echo 42^   |
+    ]])
+    n.feed('\n')
+    screen:expect({
+      grid = [[
+                               |
+      {1:~                        }|*3
+      :sleep! 300m | echo 42   |
+    ]],
+      timeout = 100,
+    })
+    screen:expect([[
+      ^                         |
+      {1:~                        }|*3
+      42                       |
+    ]])
   end)
 end)

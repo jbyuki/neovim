@@ -15,12 +15,16 @@
 #include <tree_sitter/api.h>
 #include <uv.h>
 
+#include "nvim/os/time.h"
+
 #ifdef HAVE_WASMTIME
 # include <wasm.h>
+
+# include "nvim/os/fs.h"
 #endif
 
-#include "klib/kvec.h"
 #include "nvim/api/private/helpers.h"
+#include "nvim/ascii_defs.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/globals.h"
 #include "nvim/lua/treesitter.h"
@@ -28,7 +32,6 @@
 #include "nvim/map_defs.h"
 #include "nvim/memline.h"
 #include "nvim/memory.h"
-#include "nvim/os/fs.h"
 #include "nvim/pos_defs.h"
 #include "nvim/strings.h"
 #include "nvim/types_defs.h"
@@ -50,6 +53,11 @@ typedef struct {
 typedef struct {
   TSTree *tree;
 } TSLuaTree;
+
+typedef struct {
+  uint64_t parse_start_time;
+  uint64_t timeout_threshold_ns;
+} TSLuaParserCallbackPayload;
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "lua/treesitter.c.generated.h"
@@ -127,9 +135,9 @@ static const TSLanguage *load_language_from_object(lua_State *L, const char *pat
 {
   uv_lib_t lib;
   if (uv_dlopen(path, &lib)) {
+    xstrlcpy(IObuff, uv_dlerror(&lib), sizeof(IObuff));
     uv_dlclose(&lib);
-    luaL_error(L, "Failed to load parser for language '%s': uv_dlopen: %s",
-               lang_name, uv_dlerror(&lib));
+    luaL_error(L, "Failed to load parser for language '%s': uv_dlopen: %s", lang_name, IObuff);
   }
 
   char symbol_buf[128];
@@ -137,8 +145,9 @@ static const TSLanguage *load_language_from_object(lua_State *L, const char *pat
 
   TSLanguage *(*lang_parser)(void);
   if (uv_dlsym(&lib, symbol_buf, (void **)&lang_parser)) {
+    xstrlcpy(IObuff, uv_dlerror(&lib), sizeof(IObuff));
     uv_dlclose(&lib);
-    luaL_error(L, "Failed to load parser: uv_dlsym: %s", uv_dlerror(&lib));
+    luaL_error(L, "Failed to load parser: uv_dlsym: %s", IObuff);
   }
 
   TSLanguage *lang = lang_parser();
@@ -169,7 +178,7 @@ static const TSLanguage *load_language_from_wasm(lua_State *L, const char *path,
   }
 
   if (werr.kind > 0) {
-    luaL_error(L, "Error creating wasm store: (%s) %s", wasmerr_to_str(werr.kind), werr.message);
+    luaL_error(L, "Failed to create WASM store: (%s) %s", wasmerr_to_str(werr.kind), werr.message);
   }
 
   size_t file_size = 0;
@@ -216,7 +225,7 @@ static int add_language(lua_State *L, bool is_wasm)
                            ? load_language_from_wasm(L, path, lang_name)
                            : load_language_from_object(L, path, lang_name, symbol_name);
 
-  uint32_t lang_version = ts_language_version(lang);
+  uint32_t lang_version = ts_language_abi_version(lang);
   if (lang_version < TREE_SITTER_MIN_COMPATIBLE_LANGUAGE_VERSION
       || lang_version > TREE_SITTER_LANGUAGE_VERSION) {
     return luaL_error(L,
@@ -261,45 +270,92 @@ int tslua_inspect_lang(lua_State *L)
 
   lua_createtable(L, 0, 2);  // [retval]
 
-  uint32_t nsymbols = ts_language_symbol_count(lang);
-  assert(nsymbols < INT_MAX);
+  {  // Symbols
+    uint32_t nsymbols = ts_language_symbol_count(lang);
+    assert(nsymbols < INT_MAX);
 
-  lua_createtable(L, (int)(nsymbols - 1), 1);  // [retval, symbols]
-  for (uint32_t i = 0; i < nsymbols; i++) {
-    TSSymbolType t = ts_language_symbol_type(lang, (TSSymbol)i);
-    if (t == TSSymbolTypeAuxiliary) {
-      // not used by the API
-      continue;
+    lua_createtable(L, (int)(nsymbols - 1), 1);  // [retval, symbols]
+    for (uint32_t i = 0; i < nsymbols; i++) {
+      TSSymbolType t = ts_language_symbol_type(lang, (TSSymbol)i);
+      if (t == TSSymbolTypeAuxiliary) {
+        // not used by the API
+        continue;
+      }
+      const char *name = ts_language_symbol_name(lang, (TSSymbol)i);
+      bool named = t != TSSymbolTypeAnonymous;
+      lua_pushboolean(L, named);  // [retval, symbols, is_named]
+      if (!named) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "\"%s\"", name);
+        lua_setfield(L, -2, buf);  // [retval, symbols]
+      } else {
+        lua_setfield(L, -2, name);  // [retval, symbols]
+      }
     }
-    const char *name = ts_language_symbol_name(lang, (TSSymbol)i);
-    bool named = t != TSSymbolTypeAnonymous;
-    lua_pushboolean(L, named);  // [retval, symbols, is_named]
-    if (!named) {
-      char buf[256];
-      snprintf(buf, sizeof(buf), "\"%s\"", name);
-      lua_setfield(L, -2, buf);  // [retval, symbols]
-    } else {
-      lua_setfield(L, -2, name);  // [retval, symbols]
-    }
+
+    lua_setfield(L, -2, "symbols");  // [retval]
   }
 
-  lua_setfield(L, -2, "symbols");  // [retval]
+  {  // Fields
+    uint32_t nfields = ts_language_field_count(lang);
+    lua_createtable(L, (int)nfields, 1);  // [retval, fields]
+    // Field IDs go from 1 to nfields inclusive (extra index 0 maps to NULL)
+    for (uint32_t i = 1; i <= nfields; i++) {
+      lua_pushstring(L, ts_language_field_name_for_id(lang, (TSFieldId)i));
+      lua_rawseti(L, -2, (int)i);  // [retval, fields]
+    }
 
-  uint32_t nfields = ts_language_field_count(lang);
-  lua_createtable(L, (int)nfields, 1);  // [retval, fields]
-  // Field IDs go from 1 to nfields inclusive (extra index 0 maps to NULL)
-  for (uint32_t i = 1; i <= nfields; i++) {
-    lua_pushstring(L, ts_language_field_name_for_id(lang, (TSFieldId)i));
-    lua_rawseti(L, -2, (int)i);  // [retval, fields]
+    lua_setfield(L, -2, "fields");  // [retval]
   }
-
-  lua_setfield(L, -2, "fields");  // [retval]
 
   lua_pushboolean(L, ts_language_is_wasm(lang));
   lua_setfield(L, -2, "_wasm");
 
-  lua_pushinteger(L, ts_language_version(lang));  // [retval, version]
-  lua_setfield(L, -2, "_abi_version");
+  lua_pushinteger(L, ts_language_abi_version(lang));  // [retval, version]
+  lua_setfield(L, -2, "abi_version");
+
+  {  // Metadata
+    const TSLanguageMetadata *meta = ts_language_metadata(lang);
+
+    if (meta != NULL) {
+      lua_createtable(L, 0, 3);
+
+      lua_pushinteger(L, meta->major_version);
+      lua_setfield(L, -2, "major_version");
+      lua_pushinteger(L, meta->minor_version);
+      lua_setfield(L, -2, "minor_version");
+      lua_pushinteger(L, meta->patch_version);
+      lua_setfield(L, -2, "patch_version");
+
+      lua_setfield(L, -2, "metadata");
+    }
+  }
+
+  lua_pushinteger(L, ts_language_state_count(lang));
+  lua_setfield(L, -2, "state_count");
+
+  {  // Supertypes
+    uint32_t nsupertypes;
+    const TSSymbol *supertypes = ts_language_supertypes(lang, &nsupertypes);
+
+    lua_createtable(L, 0, (int)nsupertypes);  // [retval, supertypes]
+    for (uint32_t i = 0; i < nsupertypes; i++) {
+      const TSSymbol supertype = *(supertypes + i);
+
+      uint32_t nsubtypes;
+      const TSSymbol *subtypes = ts_language_subtypes(lang, supertype, &nsubtypes);
+
+      lua_createtable(L, (int)nsubtypes, 0);
+      for (uint32_t j = 1; j <= nsubtypes; j++) {
+        lua_pushstring(L, ts_language_symbol_name(lang, *(subtypes + j)));
+        lua_rawseti(L, -2, (int)j);
+      }
+
+      lua_setfield(L, -2, ts_language_symbol_name(lang, supertype));
+    }
+
+    lua_setfield(L, -2, "supertypes");  // [retval]
+  }
 
   return 1;
 }
@@ -313,8 +369,6 @@ static struct luaL_Reg parser_meta[] = {
   { "reset", parser_reset },
   { "set_included_ranges", parser_set_ranges },
   { "included_ranges", parser_get_ranges },
-  { "set_timeout", parser_set_timeout },
-  { "timeout", parser_get_timeout },
   { "_set_logger", parser_set_logger },
   { "_logger", parser_get_logger },
   { NULL, NULL }
@@ -438,6 +492,13 @@ static void push_ranges(lua_State *L, const TSRange *ranges, const size_t length
   }
 }
 
+static bool on_parser_progress(TSParseState *state)
+{
+  TSLuaParserCallbackPayload *payload = state->payload;
+  uint64_t parse_time = os_hrtime() - payload->parse_start_time;
+  return parse_time >= payload->timeout_threshold_ns;
+}
+
 static int parser_parse(lua_State *L)
 {
   TSParser *p = parser_check(L, 1);
@@ -474,8 +535,19 @@ static int parser_parse(lua_State *L)
 #undef BUFSIZE
     }
 
-    input = (TSInput){ (void *)buf, input_cb, TSInputEncodingUTF8 };
-    new_tree = ts_parser_parse(p, old_tree, input);
+    input = (TSInput){ (void *)buf, input_cb, TSInputEncodingUTF8, NULL };
+    if (!lua_isnil(L, 5)) {
+      uint64_t timeout_ns = (uint64_t)lua_tointeger(L, 5);
+      TSLuaParserCallbackPayload payload =
+        (TSLuaParserCallbackPayload){ .parse_start_time = os_hrtime(),
+                                      .timeout_threshold_ns = timeout_ns };
+      TSParseOptions parse_options = { .payload = &payload,
+                                       .progress_callback = on_parser_progress };
+      new_tree = ts_parser_parse_with_options(p, old_tree, input, parse_options);
+    } else {
+      // Tree-sitter retains parse options after use, so we must explicitly reset them here.
+      new_tree = ts_parser_parse_with_options(p, old_tree, input, (TSParseOptions) { 0 });
+    }
 
     break;
 
@@ -485,16 +557,20 @@ static int parser_parse(lua_State *L)
 
   bool include_bytes = (lua_gettop(L) >= 4) && lua_toboolean(L, 4);
 
-  // Sometimes parsing fails (timeout, or wrong parser ABI)
-  // In those case, just return an error.
   if (!new_tree) {
-    return luaL_error(L, "An error occurred when parsing.");
+    // Sometimes parsing fails (no language was set, or it was set to one with an incompatible ABI)
+    // In those cases, just return an error.
+    if (!ts_parser_language(p)) {
+      return luaL_error(L, "Language was unset, or has an incompatible ABI.");
+    }
+    return 0;
   }
 
   // The new tree will be pushed to the stack, without copy, ownership is now to the lua GC.
   // Old tree is owned by lua GC since before
   uint32_t n_ranges = 0;
-  TSRange *changed = old_tree ? ts_tree_get_changed_ranges(old_tree, new_tree, &n_ranges) : NULL;
+  TSRange *changed = old_tree ? ts_tree_get_changed_ranges(old_tree, new_tree, &n_ranges)
+                              : ts_tree_included_ranges(new_tree, &n_ranges);
 
   push_tree(L, new_tree);  // [tree]
 
@@ -616,26 +692,6 @@ static int parser_get_ranges(lua_State *L)
   return 1;
 }
 
-static int parser_set_timeout(lua_State *L)
-{
-  TSParser *p = parser_check(L, 1);
-
-  if (lua_gettop(L) < 2) {
-    luaL_error(L, "integer expected");
-  }
-
-  uint32_t timeout = (uint32_t)luaL_checkinteger(L, 2);
-  ts_parser_set_timeout_micros(p, timeout);
-  return 0;
-}
-
-static int parser_get_timeout(lua_State *L)
-{
-  TSParser *p = parser_check(L, 1);
-  lua_pushinteger(L, (lua_Integer)ts_parser_timeout_micros(p));
-  return 1;
-}
-
 static void logger_cb(void *payload, TSLogType logtype, const char *s)
 {
   TSLuaLoggerOpts *opts = (TSLuaLoggerOpts *)payload;
@@ -650,7 +706,7 @@ static void logger_cb(void *payload, TSLogType logtype, const char *s)
   lua_pushstring(lstate, logtype == TSLogTypeParse ? "parse" : "lex");
   lua_pushstring(lstate, s);
   if (lua_pcall(lstate, 2, 0, 0)) {
-    luaL_error(lstate, "Error executing treesitter logger callback");
+    luaL_error(lstate, "treesitter logger callback failed");
   }
 }
 
@@ -831,7 +887,6 @@ static struct luaL_Reg node_meta[] = {
   { "named_descendant_for_range", node_named_descendant_for_range },
   { "parent", node_parent },
   { "__has_ancestor", __has_ancestor },
-  { "child_containing_descendant", node_child_containing_descendant },
   { "child_with_descendant", node_child_with_descendant },
   { "iter_children", node_iter_children },
   { "next_sibling", node_next_sibling },
@@ -992,16 +1047,21 @@ static int node_symbol(lua_State *L)
 static int node_field(lua_State *L)
 {
   TSNode node = node_check(L, 1);
+  uint32_t count = ts_node_child_count(node);
+  int curr_index = 0;
 
   size_t name_len;
   const char *field_name = luaL_checklstring(L, 2, &name_len);
 
-  lua_newtable(L);  // [table]
+  lua_newtable(L);
 
-  TSNode field = ts_node_child_by_field_name(node, field_name, (uint32_t)name_len);
-  if (!ts_node_is_null(field)) {
-    push_node(L, field, 1);  // [table, node]
-    lua_rawseti(L, -2, 1);
+  for (uint32_t i = 0; i < count; i++) {
+    const char *child_field_name = ts_node_field_name_for_child(node, i);
+    if (strequal(field_name, child_field_name)) {
+      TSNode child = ts_node_child(node, i);
+      push_node(L, child, 1);
+      lua_rawseti(L, -2, ++curr_index);
+    }
   }
 
   return 1;
@@ -1172,15 +1232,6 @@ static int __has_ancestor(lua_State *L)
   }
 
   lua_pushboolean(L, false);
-  return 1;
-}
-
-static int node_child_containing_descendant(lua_State *L)
-{
-  TSNode node = node_check(L, 1);
-  TSNode descendant = node_check(L, 2);
-  TSNode child = ts_node_child_containing_descendant(node, descendant);
-  push_node(L, child, 1);
   return 1;
 }
 
@@ -1442,6 +1493,8 @@ static struct luaL_Reg query_meta[] = {
   { "__gc", query_gc },
   { "__tostring", query_tostring },
   { "inspect", query_inspect },
+  { "disable_capture", query_disable_capture },
+  { "disable_pattern", query_disable_pattern },
   { NULL, NULL }
 };
 
@@ -1638,6 +1691,23 @@ static int query_inspect(lua_State *L)
   lua_setfield(L, -2, "captures");  // [retval]
 
   return 1;
+}
+
+static int query_disable_capture(lua_State *L)
+{
+  TSQuery *query = query_check(L, 1);
+  size_t name_len;
+  const char *name = luaL_checklstring(L, 2, &name_len);
+  ts_query_disable_capture(query, name, (uint32_t)name_len);
+  return 0;
+}
+
+static int query_disable_pattern(lua_State *L)
+{
+  TSQuery *query = query_check(L, 1);
+  const uint32_t pattern_index = (uint32_t)luaL_checkinteger(L, 2);
+  ts_query_disable_pattern(query, pattern_index - 1);
+  return 0;
 }
 
 // Library init

@@ -18,11 +18,13 @@
 #include "nvim/api/private/helpers.h"
 #include "nvim/ascii_defs.h"
 #include "nvim/autocmd.h"
+#include "nvim/autocmd_defs.h"
 #include "nvim/buffer_defs.h"
 #include "nvim/eval/typval.h"
 #include "nvim/eval/typval_defs.h"
 #include "nvim/eval/vars.h"
 #include "nvim/eval/window.h"
+#include "nvim/ex_cmds_defs.h"
 #include "nvim/ex_docmd.h"
 #include "nvim/ex_eval.h"
 #include "nvim/fold.h"
@@ -619,41 +621,36 @@ static int nlua_with(lua_State *L)
   int rets = 0;
 
   cmdmod_T save_cmdmod = cmdmod;
+  CLEAR_FIELD(cmdmod);
   cmdmod.cmod_flags = flags;
   apply_cmdmod(&cmdmod);
 
-  if (buf || win) {
-    try_start();
-  }
-
-  aco_save_T aco;
-  win_execute_T win_execute_args;
   Error err = ERROR_INIT;
+  TRY_WRAP(&err, {
+    aco_save_T aco;
+    win_execute_T win_execute_args;
 
-  if (win) {
-    tabpage_T *tabpage = win_find_tabpage(win);
-    if (!win_execute_before(&win_execute_args, win, tabpage)) {
-      goto end;
+    if (win) {
+      tabpage_T *tabpage = win_find_tabpage(win);
+      if (!win_execute_before(&win_execute_args, win, tabpage)) {
+        goto end;
+      }
+    } else if (buf) {
+      aucmd_prepbuf(&aco, buf);
     }
-  } else if (buf) {
-    aucmd_prepbuf(&aco, buf);
-  }
 
-  int s = lua_gettop(L);
-  lua_pushvalue(L, 2);
-  status = lua_pcall(L, 0, LUA_MULTRET, 0);
-  rets = lua_gettop(L) - s;
+    int s = lua_gettop(L);
+    lua_pushvalue(L, 2);
+    status = lua_pcall(L, 0, LUA_MULTRET, 0);
+    rets = lua_gettop(L) - s;
 
-  if (win) {
-    win_execute_after(&win_execute_args);
-  } else if (buf) {
-    aucmd_restbuf(&aco);
-  }
-
-end:
-  if (buf || win) {
-    try_end(&err);
-  }
+    if (win) {
+      win_execute_after(&win_execute_args);
+    } else if (buf) {
+      aucmd_restbuf(&aco);
+    }
+    end:;
+  });
 
   undo_cmdmod(&cmdmod);
   cmdmod = save_cmdmod;

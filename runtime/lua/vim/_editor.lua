@@ -8,7 +8,7 @@
 --       - "opt-in": runtime/pack/dist/opt/
 --    2. runtime/lua/vim/ (the runtime): Lazy-loaded modules. Examples: `inspect`, `lpeg`.
 --    3. runtime/lua/vim/shared.lua: pure Lua functions which always are available. Used in the test
---       runner, as well as worker threads and processes launched from Nvim.
+--       runner, and worker threads/processes launched from Nvim.
 --    4. runtime/lua/vim/_editor.lua: Eager-loaded code which directly interacts with the Nvim
 --       editor state. Only available in the main thread.
 --
@@ -56,8 +56,9 @@ vim._extra = {
   inspect_pos = true,
 }
 
---- @private
+--- @nodoc
 vim.log = {
+  --- @enum vim.log.levels
   levels = {
     TRACE = 0,
     DEBUG = 1,
@@ -92,7 +93,7 @@ local utfs = {
 ---
 --- -- Runs synchronously:
 --- local obj = vim.system({'echo', 'hello'}, { text = true }):wait()
---- -- { code = 0, signal = 0, stdout = 'hello', stderr = '' }
+--- -- { code = 0, signal = 0, stdout = 'hello\n', stderr = '' }
 ---
 --- ```
 ---
@@ -212,7 +213,7 @@ end
 vim.inspect = vim.inspect
 
 do
-  local tdots, tick, got_line1, undo_started, trailing_nl = 0, 0, false, false, false
+  local startpos, tdots, tick, got_line1, undo_started, trailing_nl = nil, 0, 0, false, false, false
 
   --- Paste handler, invoked by |nvim_paste()|.
   ---
@@ -327,7 +328,13 @@ do
       -- message when there are zero dots.
       vim.api.nvim_command(('echo "%s"'):format(dots))
     end
+    if startpos == nil then
+      startpos = vim.fn.getpos("'[")
+    else
+      vim.fn.setpos("'[", startpos)
+    end
     if is_last_chunk then
+      startpos = nil
       vim.api.nvim_command('redraw' .. (tick > 1 and '|echo ""' or ''))
     end
     return true -- Paste will not continue if not returning `true`.
@@ -390,7 +397,7 @@ end
 
 local VIM_CMD_ARG_MAX = 20
 
---- Executes Vim script commands.
+--- Executes Vimscript (|Ex-commands|).
 ---
 --- Note that `vim.cmd` can be indexed with a command name to return a callable function to the
 --- command.
@@ -424,8 +431,9 @@ local VIM_CMD_ARG_MAX = 20
 --- vim.cmd.colorscheme('blue')
 --- ```
 ---
+---@diagnostic disable-next-line: undefined-doc-param
 ---@param command string|table Command(s) to execute.
----                            If a string, executes multiple lines of Vim script at once. In this
+---                            If a string, executes multiple lines of Vimscript at once. In this
 ---                            case, it is an alias to |nvim_exec2()|, where `opts.output` is set
 ---                            to false. Thus it works identical to |:source|.
 ---                            If a table, executes a single command. In this case, it is an alias
@@ -440,10 +448,12 @@ vim.cmd = setmetatable({}, {
       return ''
     end
   end,
+  --- @param t table<string,function>
   __index = function(t, command)
     t[command] = function(...)
-      local opts
+      local opts --- @type vim.api.keyset.cmd
       if select('#', ...) == 1 and type(select(1, ...)) == 'table' then
+        --- @type vim.api.keyset.cmd
         opts = select(1, ...)
 
         -- Move indexed positions in opts to opt.args
@@ -454,6 +464,7 @@ vim.cmd = setmetatable({}, {
               break
             end
             opts.args[i] = opts[i]
+            --- @diagnostic disable-next-line: no-unknown
             opts[i] = nil
           end
         end
@@ -528,7 +539,7 @@ function vim.region(bufnr, pos1, pos2, regtype, inclusive)
   end
 
   if pos1[1] > pos2[1] or (pos1[1] == pos2[1] and pos1[2] > pos2[2]) then
-    pos1, pos2 = pos2, pos1
+    pos1, pos2 = pos2, pos1 --- @type [integer, integer], [integer, integer]
   end
 
   -- getpos() may return {0,0,0,0}
@@ -620,13 +631,8 @@ end
 ---@param opts table|nil Optional parameters. Unused by default.
 ---@diagnostic disable-next-line: unused-local
 function vim.notify(msg, level, opts) -- luacheck: no unused args
-  if level == vim.log.levels.ERROR then
-    vim.api.nvim_err_writeln(msg)
-  elseif level == vim.log.levels.WARN then
-    vim.api.nvim_echo({ { msg, 'WarningMsg' } }, true, {})
-  else
-    vim.api.nvim_echo({ { msg } }, true, {})
-  end
+  local chunks = { { msg, level == vim.log.levels.WARN and 'WarningMsg' or nil } }
+  vim.api.nvim_echo(chunks, true, { err = level == vim.log.levels.ERROR })
 end
 
 do
@@ -705,6 +711,7 @@ function vim._on_key(buf, typed_buf)
   local discard = false
   for k, v in pairs(on_key_cbs) do
     local fn = v[1]
+    --- @type boolean, any
     local ok, rv = xpcall(function()
       return fn(buf, typed_buf)
     end, debug.traceback)
@@ -832,6 +839,7 @@ function vim.str_utfindex(s, encoding, index, strict_indexing)
     -- Return (multiple): ~
     --     (`integer`) UTF-32 index
     --     (`integer`) UTF-16 index
+    --- @diagnostic disable-next-line: redundant-return-value
     return col32, col16
   end
 
@@ -911,8 +919,42 @@ function vim._expand_pat(pat, env)
 
   local match_part = string.sub(last_part, search_index, #last_part)
   local prefix_match_pat = string.sub(pat, 1, #pat - #match_part) or ''
+  local last_char = string.sub(last_part, #last_part)
 
   local final_env = env
+
+  --- @private
+  ---
+  --- Allows submodules to be defined on a `vim.<module>` table without eager-loading the module.
+  ---
+  --- Cmdline completion (`:lua vim.lsp.c<tab>`) accesses `vim.lsp._submodules` when no other candidates.
+  --- Cmdline completion (`:lua vim.lsp.completion.g<tab>`) will eager-load the module anyway. #33007
+  ---
+  --- @param m table
+  --- @param k string
+  --- @return any
+  local function safe_tbl_get(m, k)
+    local val = rawget(m, k)
+    if val ~= nil then
+      return val
+    end
+
+    local mt = getmetatable(m)
+    if not mt then
+      return m == vim and vim._extra[k] or nil
+    end
+
+    -- use mt.__index, _submodules as fallback
+    if type(mt.__index) == 'table' then
+      return rawget(mt.__index, k)
+    end
+
+    local sub = rawget(m, '_submodules')
+    if sub and type(sub) == 'table' and rawget(sub, k) then
+      -- Access the module to force _defer_require() to load the module.
+      return m[k]
+    end
+  end
 
   for _, part in ipairs(parts) do
     if type(final_env) ~= 'table' then
@@ -944,16 +986,7 @@ function vim._expand_pat(pat, env)
 
       key = result
     end
-    local field = rawget(final_env, key)
-    if field == nil then
-      local mt = getmetatable(final_env)
-      if mt and type(mt.__index) == 'table' then
-        field = rawget(mt.__index, key)
-      elseif final_env == vim and (vim._submodules[key] or vim._extra[key]) then
-        field = vim[key] --- @type any
-      end
-    end
-    final_env = field
+    final_env = safe_tbl_get(final_env, key)
 
     if not final_env then
       return {}, 0
@@ -969,6 +1002,7 @@ function vim._expand_pat(pat, env)
         type(k) == 'string'
         and string.sub(k, 1, string.len(match_part)) == match_part
         and k:match('^[_%w]+$') ~= nil -- filter out invalid identifiers for field, e.g. 'foo#bar'
+        and (last_char ~= '.' or string.sub(k, 1, 1) ~= '_') -- don't include private fields after '.'
       then
         keys[k] = true
       end
@@ -982,19 +1016,22 @@ function vim._expand_pat(pat, env)
 
   if type(final_env) == 'table' then
     insert_keys(final_env)
+    local sub = rawget(final_env, '_submodules')
+    if type(sub) == 'table' then
+      insert_keys(sub)
+    end
+    if final_env == vim then
+      insert_keys(vim._extra)
+    end
   end
+
   local mt = getmetatable(final_env)
   if mt and type(mt.__index) == 'table' then
     insert_keys(mt.__index)
   end
 
-  if final_env == vim then
-    insert_keys(vim._submodules)
-    insert_keys(vim._extra)
-  end
-
   -- Completion for dict accessors (special vim variables and vim.fn)
-  if mt and vim.tbl_contains({ vim.g, vim.t, vim.w, vim.b, vim.v, vim.fn }, final_env) then
+  if mt and vim.tbl_contains({ vim.g, vim.t, vim.w, vim.b, vim.v, vim.env, vim.fn }, final_env) then
     local prefix, type = unpack(
       vim.fn == final_env and { '', 'function' }
         or vim.g == final_env and { 'g:', 'var' }
@@ -1002,9 +1039,10 @@ function vim._expand_pat(pat, env)
         or vim.w == final_env and { 'w:', 'var' }
         or vim.b == final_env and { 'b:', 'var' }
         or vim.v == final_env and { 'v:', 'var' }
+        or vim.env == final_env and { '', 'environment' }
         or { nil, nil }
     )
-    assert(prefix, "Can't resolve final_env")
+    assert(prefix and type, "Can't resolve final_env")
     local vars = vim.fn.getcompletion(prefix .. match_part, type) --- @type string[]
     insert_keys(vim
       .iter(vars)
@@ -1138,6 +1176,21 @@ do
   end
 end
 
+--- @param inspect_strings boolean use vim.inspect() for strings
+function vim._print(inspect_strings, ...)
+  local msg = {}
+  for i = 1, select('#', ...) do
+    local o = select(i, ...)
+    if not inspect_strings and type(o) == 'string' then
+      table.insert(msg, o)
+    else
+      table.insert(msg, vim.inspect(o, { newline = '\n', indent = '  ' }))
+    end
+  end
+  print(table.concat(msg, '\n'))
+  return ...
+end
+
 --- "Pretty prints" the given arguments and returns them unmodified.
 ---
 --- Example:
@@ -1151,17 +1204,7 @@ end
 --- @param ... any
 --- @return any # given arguments.
 function vim.print(...)
-  local msg = {}
-  for i = 1, select('#', ...) do
-    local o = select(i, ...)
-    if type(o) == 'string' then
-      table.insert(msg, o)
-    else
-      table.insert(msg, vim.inspect(o, { newline = '\n', indent = '  ' }))
-    end
-  end
-  print(table.concat(msg, '\n'))
-  return ...
+  return vim._print(false, ...)
 end
 
 --- Translates keycodes.

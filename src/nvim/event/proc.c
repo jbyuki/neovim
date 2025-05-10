@@ -1,8 +1,10 @@
 #include <assert.h>
 #include <inttypes.h>
 #include <signal.h>
+#include <string.h>
 #include <uv.h>
 
+#include "klib/kvec.h"
 #include "nvim/event/libuv_proc.h"
 #include "nvim/event/loop.h"
 #include "nvim/event/multiqueue.h"
@@ -13,6 +15,7 @@
 #include "nvim/globals.h"
 #include "nvim/log.h"
 #include "nvim/main.h"
+#include "nvim/memory_defs.h"
 #include "nvim/os/proc.h"
 #include "nvim/os/pty_proc.h"
 #include "nvim/os/shell.h"
@@ -312,10 +315,8 @@ static void decref(Proc *proc)
 static void proc_close(Proc *proc)
   FUNC_ATTR_NONNULL_ARG(1)
 {
-  if (proc_is_tearing_down && (proc->detach || proc->type == kProcTypePty)
-      && proc->closed) {
-    // If a detached/pty process dies while tearing down it might get closed
-    // twice.
+  if (proc_is_tearing_down && proc->closed && (proc->detach || proc->type == kProcTypePty)) {
+    // If a detached/pty process dies while tearing down it might get closed twice.
     return;
   }
   assert(!proc->closed);
@@ -424,20 +425,28 @@ static void exit_event(void **argv)
   }
 }
 
-void exit_from_channel(int status)
+/// Performs self-exit because the primary RPC channel was closed.
+void exit_on_closed_chan(int status)
 {
+  DLOG("self-exit triggered by closed RPC channel...");
   multiqueue_put(main_loop.fast_events, exit_event, (void *)(intptr_t)status);
 }
 
 static void on_proc_exit(Proc *proc)
 {
   Loop *loop = proc->loop;
-  ILOG("exited: pid=%d status=%d stoptime=%" PRIu64, proc->pid, proc->status,
-       proc->stopped_time);
+  ILOG("child exited: pid=%d status=%d" PRIu64, proc->pid, proc->status);
 
+#ifdef MSWIN
+  // XXX: This assumes the TUI never spawns any other processes...?
+  // TODO(justinmk): figure out why rpc_close sometimes(??) isn't called, then remove this jank.
+  // Theories:
+  // - EOF not received in receive_msgpack, then doesn't call chan_close_on_err().
+  // - proc_close_handles not tickled by ui_client.c's LOOP_PROCESS_EVENTS?
   if (ui_client_channel_id) {
-    exit_from_channel(proc->status);
+    exit_on_closed_chan(proc->status);
   }
+#endif
 
   // Process has terminated, but there could still be data to be read from the
   // OS. We are still in the libuv loop, so we cannot call code that polls for

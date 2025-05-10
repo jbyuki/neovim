@@ -83,7 +83,7 @@ a comment.
 ### Commit messages
 
 Follow the [conventional commits guidelines][conventional_commits] to *make reviews easier* and to make
-the VCS/git logs more valuable. The structure of a commit message is:
+the VCS/git logs more valuable (try `make lintcommit`). The structure of a commit message is:
 
     type(scope): subject
 
@@ -129,7 +129,7 @@ Each pull request must pass the automated builds on [Cirrus CI] and [GitHub Acti
   passes various linter checks.
 - CI for FreeBSD runs on [Cirrus CI].
 - To see CI results faster in your PR, you can temporarily set `TEST_FILE` in
-  [test.yml](https://github.com/neovim/neovim/blob/e35b9020b16985eee26e942f9a3f6b045bc3809b/.github/workflows/test.yml#L29).
+  [test.yml](https://github.com/neovim/neovim/blob/ad8e0cfc1dfd937c2577dc032e524c799a772693/.github/workflows/test.yml#L26).
 
 ### Coverity
 
@@ -256,17 +256,17 @@ make lintdoc
 ```
 
 If you need to modify or debug the documentation flow, these are the main files:
-- `./scripts/gen_vimdoc.lua`:
+- `./src/gen/gen_vimdoc.lua`:
   Main doc generator. Parses C and Lua files to render vimdoc files.
-- `./scripts/luacats_parser.lua`:
+- `./src/gen/luacats_parser.lua`:
   Documentation parser for Lua files.
-- `./scripts/cdoc_parser.lua`:
+- `./src/gen/cdoc_parser.lua`:
   Documentation parser for C files.
-- `./scripts/luacats_grammar.lua`:
+- `./src/gen/luacats_grammar.lua`:
   Lpeg grammar for LuaCATS
-- `./scripts/cdoc_grammar.lua`:
+- `./src/gen/cdoc_grammar.lua`:
   Lpeg grammar for C doc comments
-- `./scripts/gen_eval_files.lua`:
+- `./src/gen/gen_eval_files.lua`:
   Generates documentation and Lua type files from metadata files:
   ```
   runtime/lua/vim/*     =>  runtime/doc/lua.txt

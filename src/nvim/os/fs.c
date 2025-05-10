@@ -303,7 +303,7 @@ static bool is_executable_ext(const char *name, char **abspath)
   size_t nameext_len = nameext ? strlen(nameext) : 0;
   xstrlcpy(os_buf, name, sizeof(os_buf));
   char *buf_end = xstrchrnul(os_buf, NUL);
-  const char *pathext = os_getenv("PATHEXT");
+  const char *pathext = os_getenv_noalloc("PATHEXT");
   if (!pathext) {
     pathext = ".com;.exe;.bat;.cmd";
   }
@@ -350,14 +350,14 @@ static bool is_executable_ext(const char *name, char **abspath)
 static bool is_executable_in_path(const char *name, char **abspath)
   FUNC_ATTR_NONNULL_ARG(1)
 {
-  const char *path_env = os_getenv("PATH");
+  char *path_env = os_getenv("PATH");
   if (path_env == NULL) {
     return false;
   }
 
 #ifdef MSWIN
   char *path = NULL;
-  if (!os_env_exists("NoDefaultCurrentDirectoryInExePath")) {
+  if (!os_env_exists("NoDefaultCurrentDirectoryInExePath", false)) {
     // Prepend ".;" to $PATH.
     size_t pathlen = strlen(path_env);
     path = xmallocz(pathlen + 2);
@@ -370,8 +370,8 @@ static bool is_executable_in_path(const char *name, char **abspath)
   char *path = xstrdup(path_env);
 #endif
 
-  size_t buf_len = strlen(name) + strlen(path) + 2;
-  char *buf = xmalloc(buf_len);
+  const size_t bufsize = strlen(name) + strlen(path) + 2;
+  char *buf = xmalloc(bufsize);
 
   // Walk through all entries in $PATH to check if "name" exists there and
   // is an executable file.
@@ -382,7 +382,7 @@ static bool is_executable_in_path(const char *name, char **abspath)
 
     // Combine the $PATH segment with `name`.
     xmemcpyz(buf, p, (size_t)(e - p));
-    (void)append_path(buf, name, buf_len);
+    (void)append_path(buf, name, bufsize);
 
 #ifdef MSWIN
     if (is_executable_ext(buf, abspath)) {
@@ -404,6 +404,7 @@ static bool is_executable_in_path(const char *name, char **abspath)
 end:
   xfree(buf);
   xfree(path);
+  xfree(path_env);
   return rv;
 }
 

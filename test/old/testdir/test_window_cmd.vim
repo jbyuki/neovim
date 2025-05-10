@@ -56,7 +56,6 @@ func Test_window_cmd_cmdwin_with_vsp()
 endfunc
 
 func Test_cmdheight_not_changed()
-  throw 'Skipped: N/A'
   set cmdheight=2
   set winminheight=0
   augroup Maximize
@@ -1185,20 +1184,20 @@ func Run_noroom_for_newwindow_test(dir_arg)
   let dir = (a:dir_arg == 'v') ? 'vert ' : ''
 
   " Open as many windows as possible
-  for i in range(500)
+  while v:true
     try
       exe dir . 'new'
     catch /E36:/
       break
     endtry
-  endfor
+  endwhile
 
-  call writefile(['first', 'second', 'third'], 'Xfile1')
-  call writefile([], 'Xfile2')
-  call writefile([], 'Xfile3')
+  call writefile(['first', 'second', 'third'], 'Xnorfile1')
+  call writefile([], 'Xnorfile2')
+  call writefile([], 'Xnorfile3')
 
   " Argument list related commands
-  args Xfile1 Xfile2 Xfile3
+  args Xnorfile1 Xnorfile2 Xnorfile3
   next
   for cmd in ['sargument 2', 'snext', 'sprevious', 'sNext', 'srewind',
 			\ 'sfirst', 'slast']
@@ -1209,13 +1208,13 @@ func Run_noroom_for_newwindow_test(dir_arg)
   " Buffer related commands
   set modified
   hide enew
-  for cmd in ['sbuffer Xfile1', 'sbnext', 'sbprevious', 'sbNext', 'sbrewind',
+  for cmd in ['sbuffer Xnorfile1', 'sbnext', 'sbprevious', 'sbNext', 'sbrewind',
 		\ 'sbfirst', 'sblast', 'sball', 'sbmodified', 'sunhide']
     call assert_fails(dir .. cmd, 'E36:')
   endfor
 
   " Window related commands
-  for cmd in ['split', 'split Xfile2', 'new', 'new Xfile3', 'sview Xfile1',
+  for cmd in ['split', 'split Xnorfile2', 'new', 'new Xnorfile3', 'sview Xnorfile1',
 		\ 'sfind runtest.vim']
     call assert_fails(dir .. cmd, 'E36:')
   endfor
@@ -1238,7 +1237,8 @@ func Run_noroom_for_newwindow_test(dir_arg)
     call assert_fails(dir .. 'lopen', 'E36:')
 
     " Preview window
-    call assert_fails(dir .. 'pedit Xfile2', 'E36:')
+    call assert_fails(dir .. 'pedit Xnorfile2', 'E36:')
+    call assert_fails(dir .. 'pbuffer', 'E36:')
     call setline(1, 'abc')
     call assert_fails(dir .. 'psearch abc', 'E36:')
   endif
@@ -1246,15 +1246,15 @@ func Run_noroom_for_newwindow_test(dir_arg)
   " Window commands (CTRL-W ^ and CTRL-W f)
   if a:dir_arg == 'h'
     call assert_fails('call feedkeys("\<C-W>^", "xt")', 'E36:')
-    call setline(1, 'Xfile1')
+    call setline(1, 'Xnorfile1')
     call assert_fails('call feedkeys("gg\<C-W>f", "xt")', 'E36:')
   endif
   enew!
 
   " Tag commands (:stag, :stselect and :stjump)
   call writefile(["!_TAG_FILE_ENCODING\tutf-8\t//",
-        \ "second\tXfile1\t2",
-        \ "third\tXfile1\t3",],
+        \ "second\tXnorfile1\t2",
+        \ "third\tXnorfile1\t3",],
         \ 'Xtags')
   set tags=Xtags
   call assert_fails(dir .. 'stag second', 'E36:')
@@ -1276,9 +1276,9 @@ func Run_noroom_for_newwindow_test(dir_arg)
   endif
 
   %bwipe!
-  call delete('Xfile1')
-  call delete('Xfile2')
-  call delete('Xfile3')
+  call delete('Xnorfile1')
+  call delete('Xnorfile2')
+  call delete('Xnorfile3')
   only
 endfunc
 
@@ -1931,6 +1931,18 @@ func Test_splitkeep_misc()
 
   %bwipeout!
   set splitbelow&
+  set splitkeep&
+endfunc
+
+func Test_splitkeep_screen_cursor_pos()
+  new
+  set splitkeep=screen
+  call setline(1, ["longer than the last", "shorter"])
+  norm! $
+  wincmd s
+  close
+  call assert_equal([0, 1, 20, 0], getpos('.'))
+  %bwipeout!
   set splitkeep&
 endfunc
 

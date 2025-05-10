@@ -3,14 +3,11 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 
-#include "nvim/ascii_defs.h"
 #include "nvim/linematch.h"
 #include "nvim/macros_defs.h"
 #include "nvim/memory.h"
 #include "nvim/pos_defs.h"
-#include "nvim/strings.h"
 #include "xdiff/xdiff.h"
 
 #define LN_MAX_BUFS 8
@@ -34,12 +31,8 @@ struct diffcmppath_S {
 static size_t line_len(const mmfile_t *m)
 {
   char *s = m->ptr;
-  size_t n = (size_t)m->size;
-  char *end = strnchr(s, &n, '\n');
-  if (end) {
-    return (size_t)(end - s);
-  }
-  return (size_t)m->size;
+  char *end = memchr(s, '\n', (size_t)m->size);
+  return end ? (size_t)(end - s) : (size_t)m->size;
 }
 
 #define MATCH_CHAR_MAX_LEN 800
@@ -150,9 +143,9 @@ static int count_n_matched_chars(mmfile_t **sp, const size_t n, bool iwhite)
 mmfile_t fastforward_buf_to_lnum(mmfile_t s, linenr_T lnum)
 {
   for (int i = 0; i < lnum - 1; i++) {
-    size_t n = (size_t)s.size;
-    s.ptr = strnchr(s.ptr, &n, '\n');
-    s.size = (int)n;
+    char *line_end = memchr(s.ptr, '\n', (size_t)s.size);
+    s.size = line_end ? (int)(s.size - (line_end - s.ptr)) : 0;
+    s.ptr = line_end;
     if (!s.ptr) {
       break;
     }
@@ -351,10 +344,11 @@ size_t linematch_nbuffers(const mmfile_t **diff_blk, const int *diff_len, const 
   // create the flattened path matrix
   diffcmppath_T *diffcmppath = xmalloc(sizeof(diffcmppath_T) * memsize);
   // allocate memory here
+  size_t n = (size_t)pow(2.0, (double)ndiffs);
   for (size_t i = 0; i < memsize; i++) {
     diffcmppath[i].df_lev_score = 0;
     diffcmppath[i].df_path_n = 0;
-    for (size_t j = 0; j < (size_t)pow(2, (double)ndiffs); j++) {
+    for (size_t j = 0; j < n; j++) {
       diffcmppath[i].df_choice_mem[j] = -1;
     }
   }

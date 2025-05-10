@@ -35,6 +35,11 @@ include(InstallHelpers)
 include(PreventInTreeBuilds)
 include(Util)
 
+if(NOT PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
+  # Auto-create a .gitignore in the specified "build" directory.
+  file(GENERATE OUTPUT .gitignore CONTENT "*")
+endif()
+
 #-------------------------------------------------------------------------------
 # User settings
 #-------------------------------------------------------------------------------
@@ -140,20 +145,15 @@ endif()
 # If not in a git repo (e.g., a tarball) these tokens define the complete
 # version string, else they are combined with the result of `git describe`.
 set(NVIM_VERSION_MAJOR 0)
-set(NVIM_VERSION_MINOR 11)
+set(NVIM_VERSION_MINOR 12)
 set(NVIM_VERSION_PATCH 0)
 set(NVIM_VERSION_PRERELEASE "-dev") # for package maintainers
 
 # API level
-set(NVIM_API_LEVEL 13)        # Bump this after any API/stdlib change.
+set(NVIM_API_LEVEL 14)        # Bump this after any API/stdlib change.
 set(NVIM_API_LEVEL_COMPAT 0)  # Adjust this after a _breaking_ API change.
 set(NVIM_API_PRERELEASE true)
 
-# Build-type: RelWithDebInfo
-# /Og means something different in MSVC
-if(CMAKE_C_COMPILER_ID MATCHES "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
-   set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -Og -g")
-endif()
 # We _want_ assertions in RelWithDebInfo build-type.
 if(CMAKE_C_FLAGS_RELWITHDEBINFO MATCHES DNDEBUG)
   string(REPLACE "-DNDEBUG" "" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
@@ -187,6 +187,7 @@ if(NOT PREFER_LUA)
   find_program(LUA_PRG NAMES luajit)
 endif()
 find_program(LUA_PRG NAMES lua5.1 lua5.2 lua)
+mark_as_advanced(LUA_PRG)
 if(NOT LUA_PRG)
   message(FATAL_ERROR "Failed to find a Lua 5.1-compatible interpreter")
 endif()
@@ -200,6 +201,7 @@ message(STATUS "Using Lua interpreter: ${LUA_PRG}")
 if(NOT LUA_GEN_PRG)
   set(LUA_GEN_PRG "${LUA_PRG}" CACHE FILEPATH "Path to the lua used for code generation.")
 endif()
+mark_as_advanced(LUA_GEN_PRG)
 message(STATUS "Using Lua interpreter for code generation: ${LUA_GEN_PRG}")
 
 option(COMPILE_LUA "Pre-compile Lua sources into bytecode (for sources that are included in the binary)" ON)
@@ -219,6 +221,7 @@ if(COMPILE_LUA AND NOT WIN32)
     endif()
   endif()
 endif()
+mark_as_advanced(LUAC_PRG)
 if(LUAC_PRG)
   message(STATUS "Using Lua compiler: ${LUAC_PRG}")
 endif()
@@ -229,14 +232,16 @@ if(CI_LINT)
   set(LINT_REQUIRED "REQUIRED")
 endif()
 find_program(SHELLCHECK_PRG shellcheck ${LINT_REQUIRED})
+mark_as_advanced(SHELLCHECK_PRG)
 find_program(STYLUA_PRG stylua ${LINT_REQUIRED})
+mark_as_advanced(STYLUA_PRG)
 
 set(STYLUA_DIRS runtime scripts src test contrib)
 
 add_glob_target(
   TARGET lintlua-luacheck
   COMMAND $<TARGET_FILE:nvim_bin>
-  FLAGS -ll ${PROJECT_SOURCE_DIR}/test/lua_runner.lua ${CMAKE_BINARY_DIR}/usr luacheck -q
+  FLAGS -ll ${PROJECT_SOURCE_DIR}/test/lua_runner.lua ${CMAKE_BINARY_DIR}/usr/share/lua/5.1 luacheck -q
   GLOB_DIRS runtime scripts src test
   GLOB_PAT *.lua
   TOUCH_STRATEGY PER_DIR)
@@ -266,7 +271,7 @@ add_custom_target(lintcommit
 add_dependencies(lintcommit nvim_bin)
 
 add_custom_target(lint)
-add_dependencies(lint lintc lintlua lintsh lintcommit)
+add_dependencies(lint lintc lintlua lintsh)
 
 # Format
 add_glob_target(
@@ -276,7 +281,15 @@ add_glob_target(
   GLOB_DIRS ${STYLUA_DIRS}
   GLOB_PAT *.lua
   TOUCH_STRATEGY PER_DIR)
-
+# Special handling of some files (which are ignored in .styluaignore).
+# Workaround because stylua doesn't(?) support file-specific settings.
+add_custom_target(formatlua2
+  COMMAND ${STYLUA_PRG} --config-path "${PROJECT_SOURCE_DIR}/.stylua2.toml"
+    "${PROJECT_SOURCE_DIR}/test/functional/ui/decorations_spec.lua"
+    "${PROJECT_SOURCE_DIR}/test/functional/ui/float_spec.lua"
+    "${PROJECT_SOURCE_DIR}/test/functional/ui/multigrid_spec.lua"
+)
+add_dependencies(formatlua formatlua2)
 add_custom_target(format)
 add_dependencies(format formatc formatlua)
 
@@ -304,6 +317,7 @@ ExternalProject_Add(uncrustify
   DOWNLOAD_DIR ${DEPS_DOWNLOAD_DIR}/uncrustify
   CMAKE_ARGS ${DEPS_CMAKE_ARGS}
     -D CMAKE_RUNTIME_OUTPUT_DIRECTORY=${DEPS_BIN_DIR}
+    -D CMAKE_SKIP_RPATH=true
   EXCLUDE_FROM_ALL TRUE
   ${EXTERNALPROJECT_OPTIONS})
 
@@ -321,3 +335,36 @@ if(USE_BUNDLED_BUSTED)
 else()
   add_custom_target(lua_dev_deps)
 endif()
+
+if (CMAKE_SYSTEM_PROCESSOR MATCHES arm64)
+  set(LUALS_ARCH arm64)
+else()
+  set(LUALS_ARCH x64)
+endif()
+
+set(LUALS_VERSION 3.14.0)
+set(LUALS "lua-language-server-${LUALS_VERSION}-${CMAKE_SYSTEM_NAME}-${LUALS_ARCH}")
+set(LUALS_TARBALL ${LUALS}.tar.gz)
+set(LUALS_URL https://github.com/LuaLS/lua-language-server/releases/download/${LUALS_VERSION}/${LUALS_TARBALL})
+
+ExternalProject_Add(download_luals
+  URL ${LUALS_URL}
+  DOWNLOAD_DIR ${DEPS_DOWNLOAD_DIR}/luals
+  SOURCE_DIR ${DEPS_BIN_DIR}/luals
+  CONFIGURE_COMMAND ""
+  BUILD_COMMAND ""
+  INSTALL_COMMAND ""
+  EXCLUDE_FROM_ALL TRUE
+  DOWNLOAD_NO_PROGRESS TRUE
+  CMAKE_CACHE_ARGS ${DEPS_CMAKE_CACHE_ARGS})
+
+file(GLOB_RECURSE LUAFILES runtime/*.lua)
+add_target(luals
+  COMMAND ${DEPS_BIN_DIR}/luals/bin/lua-language-server
+    --configpath=${PROJECT_SOURCE_DIR}/.luarc.json
+    --check=${PROJECT_SOURCE_DIR}/runtime
+    --checklevel=Hint
+  DEPENDS ${LUAFILES}
+  CUSTOM_COMMAND_ARGS USES_TERMINAL)
+
+add_dependencies(luals download_luals)

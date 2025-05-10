@@ -212,6 +212,10 @@ CTRL-Q		Same as CTRL-V.
 CTRL-SHIFT-V				*i_CTRL-SHIFT-V* *i_CTRL-SHIFT-Q*
 CTRL-SHIFT-Q	Works just like CTRL-V, but do not try to include the CTRL
 		modifier into the key.
+		Note: When CTRL-SHIFT-V is intercepted by your system (e.g.,
+		to paste text) you can often use CTRL-SHIFT-Q instead.
+		However, in some terminals (e.g. GNOME Terminal), CTRL-SHIFT-Q
+		quits the terminal without confirmation.
 
 CTRL-X		Enter CTRL-X mode.  This is a sub-mode where commands can
 		be given to complete words or scroll the window.  See
@@ -637,15 +641,21 @@ CTRL-N (next), and CTRL-P (previous).
 To get the current completion information, |complete_info()| can be used.
 Also see the 'infercase' option if you want to adjust the case of the match.
 
+When inserting a selected candidate word from the |popup-menu|, the part of
+the candidate word that does not match the query is highlighted using
+|hl-ComplMatchIns|.  If fuzzy is enabled in 'completeopt', highlighting will
+not be applied.
+
 							*complete_CTRL-E*
 When completion is active you can use CTRL-E to stop it and go back to the
 originally typed text.  The CTRL-E will not be inserted.
 
 							*complete_CTRL-Y*
-When the popup menu is displayed you can use CTRL-Y to stop completion and
-accept the currently selected entry.  The CTRL-Y is not inserted.  Typing a
-space, Enter, or some other unprintable character will leave completion mode
-and insert that typed character.
+When the popup menu is displayed, CTRL-Y stops completion and accepts the
+currently selected entry.  Typing a space, Enter, or some other unprintable
+character will leave completion mode and insert that typed character. If you
+want to use <Enter> to accept a completion item, use this mapping: >vim
+    inoremap <expr> <cr> pumvisible() ? '<c-y>' : '<cr>'
 
 When the popup menu is displayed there are a few more special keys, see
 |popupmenu-keys|.
@@ -1006,7 +1016,7 @@ CTRL-X CTRL-U		Guess what kind of item is in front of the cursor and
 			previous one.
 
 
-Omni completion						*compl-omni*
+Omni completion					*omnicompletion* *compl-omni*
 
 Completion is done by a function that can be defined by the user with the
 'omnifunc' option.  This is to be used for filetype-specific completion.
@@ -1083,19 +1093,20 @@ CTRL-X CTRL-Z		Stop completion without changing the text.
 
 AUTO-COMPLETION						*compl-autocomplete*
 
-To get basic "autocompletion" without installing a plugin, try this script: >lua
+To get LSP-driven auto-completion, see |lsp-completion|. To get basic
+auto-completion without installing plugins or LSP, try this: >lua
 
-  local triggers = {"."}
-  vim.api.nvim_create_autocmd("InsertCharPre", {
+  local triggers = {'.'}
+  vim.api.nvim_create_autocmd('InsertCharPre', {
     buffer = vim.api.nvim_get_current_buf(),
     callback = function()
-      if vim.fn.pumvisible() == 1 or vim.fn.state("m") == "m" then
+      if vim.fn.pumvisible() == 1 or vim.fn.state('m') == 'm' then
         return
       end
       local char = vim.v.char
       if vim.list_contains(triggers, char) then
-        local key = vim.keycode("<C-x><C-n>")
-        vim.api.nvim_feedkeys(key, "m", false)
+        local key = vim.keycode('<C-x><C-n>')
+        vim.api.nvim_feedkeys(key, 'm', false)
       end
     end
   })
@@ -1189,6 +1200,7 @@ items:
 			|hl-PmenuKind| highlight group, allowing for the
 			customization of ctermfg and guifg properties for the
 			completion kind
+	match		See "matches" in |complete_info()|.
 
 All of these except "icase", "equal", "dup" and "empty" must be a string.  If
 an item does not meet these requirements then an error message is given and
@@ -1285,6 +1297,7 @@ use all space available.
 The 'pumwidth' option can be used to set a minimum width.  The default is 15
 characters.
 
+							*compl-states*
 There are three states:
 1. A complete match has been inserted, e.g., after using CTRL-N or CTRL-P.
 2. A cursor key has been used to select another match.  The match was not
@@ -1494,6 +1507,11 @@ Regardless from state of implementation in browsers but if element is defined
 in standards, completion plugin will place element in suggestion list. When
 both major engines implemented element, even if this is not in standards it
 will be suggested. All other elements are not placed in suggestion list.
+
+
+LUA                                                     *ft-lua-omni*
+
+Lua |ftplugin| sets 'omnifunc' to |vim.lua_omnifunc()|.
 
 
 PHP							*ft-php-omni*
@@ -1907,7 +1925,7 @@ These commands are used to start inserting text.  You can end insert mode with
 <Esc>.  See |mode-ins-repl| for the other special characters in Insert mode.
 The effect of [count] takes place after Insert mode is exited.
 
-The following commands insert text, but stay in normal mode:
+The following |default-mappings| insert text, but stay in normal mode:
 
 							*]<Space>*
 ]<Space>		Insert an empty line below the cursor without leaving
@@ -2026,7 +2044,7 @@ the cursor is, or below the specified line.  To insert text above the first
 line use the command ":0r {name}".
 
 After the ":read" command, the cursor is left on the first non-blank in the
-first new line.  Unless in Ex mode, then the cursor is left on the last new
+first new line.  If in Ex mode, then the cursor is left on the last new
 line (sorry, this is Vi compatible).
 
 If a file name is given with ":r", it becomes the alternate file.  This can be

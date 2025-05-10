@@ -444,7 +444,7 @@ void spell_suggest(int count)
   char wcopy[MAXWLEN + 2];
   suginfo_T sug;
   suggest_T *stp;
-  bool mouse_used;
+  bool mouse_used = false;
   int selected = count;
   int badlen = 0;
   int msg_scroll_save = msg_scroll;
@@ -516,7 +516,7 @@ void spell_suggest(int count)
   spell_find_suggest(line + curwin->w_cursor.col, badlen, &sug, limit,
                      true, need_cap, true);
 
-  msg_ext_set_kind("list_cmd");
+  msg_ext_set_kind("confirm");
   if (GA_EMPTY(&sug.su_ga)) {
     msg(_("Sorry, no suggestions"), 0);
   } else if (count > 0) {
@@ -588,21 +588,19 @@ void spell_suggest(int count)
         msg_advance(30);
         msg_puts(IObuff);
       }
-      msg_putchar('\n');
+      if (!ui_has(kUIMessages) || i < sug.su_ga.ga_len - 1) {
+        msg_putchar('\n');
+      }
     }
 
     cmdmsg_rl = false;
     msg_col = 0;
     // Ask for choice.
-    selected = prompt_for_number(&mouse_used);
-
-    if (ui_has(kUIMessages)) {
-      ui_call_msg_clear();
-    }
-
+    selected = prompt_for_input(NULL, 0, false, &mouse_used);
     if (mouse_used) {
-      selected -= lines_left;
+      selected = sug.su_ga.ga_len + 1 - (cmdline_row - mouse_row);
     }
+
     lines_left = Rows;                  // avoid more prompt
     // don't delay for 'smd' in normal_cmd()
     msg_scroll = msg_scroll_save;

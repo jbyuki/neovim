@@ -37,10 +37,10 @@
 -- Tests will often share a group of extra attribute sets to expect(). Those can be
 -- defined at the beginning of a test:
 --
---    screen:add_extra_attr_ids {
+--    screen:add_extra_attr_ids({
 --      [100] = { background = Screen.colors.Plum1, underline = true },
 --      [101] = { background = Screen.colors.Red1, bold = true, underline = true },
---    }
+--    })
 --
 -- To help write screen tests, see Screen:snapshot_util().
 -- To debug screen tests, see Screen:redraw_debug().
@@ -79,6 +79,7 @@ end
 --- @field win_position table<integer,table<string,integer>>
 --- @field float_pos table<integer,table>
 --- @field cmdline table<integer,table>
+--- @field cmdline_hide_level integer?
 --- @field cmdline_block table[]
 --- @field hl_groups table<string,integer>
 --- @field messages table<integer,table>
@@ -337,6 +338,7 @@ local ext_keys = {
   'showmode',
   'showcmd',
   'ruler',
+  'win_pos',
   'float_pos',
   'win_viewport',
   'win_viewport_margins',
@@ -356,6 +358,7 @@ local expect_keys = {
   request_cb = true,
   hl_groups = true,
   extmarks = true,
+  win_pos = true,
 }
 
 for _, v in ipairs(ext_keys) do
@@ -425,6 +428,7 @@ end
 --- @field mouse_enabled? boolean
 ---
 --- @field win_viewport? table<integer,table<string,integer>>
+--- @field win_pos? table<integer,table<string,integer>>
 --- @field float_pos? [integer,integer]
 --- @field hl_groups? table<string,integer>
 ---
@@ -454,7 +458,7 @@ end
 ---    screen:expect(grid, [attr_ids])
 ---    screen:expect(condition)
 --- or keyword args (supports more options):
----    screen:expect{grid=[[...]], cmdline={...}, condition=function() ... end}
+---    screen:expect({ grid=[[...]], cmdline={...}, condition=function() ... end })
 ---
 --- @param expected string|function|test.function.ui.screen.Expect
 --- @param attr_ids? table<integer,table<string,any>>
@@ -490,9 +494,8 @@ function Screen:expect(expected, attr_ids, ...)
 
   local expected_rows = {} --- @type string[]
   if grid then
-    -- Remove the last line and dedent. Note that gsub returns more then one
-    -- value.
-    grid = dedent(grid:gsub('\n[ ]+$', ''), 0)
+    -- Dedent (ignores last line if it is blank).
+    grid = dedent(grid, 0)
     for row in grid:gmatch('[^\n]+') do
       table.insert(expected_rows, row)
     end
@@ -627,6 +630,12 @@ screen:redraw_debug() to show all intermediate screen states.]]
     if expected.win_viewport_margins == nil then
       extstate.win_viewport_margins = nil
     end
+    if expected.win_pos == nil then
+      extstate.win_pos = nil
+    end
+    if expected.cmdline == nil then
+      extstate.cmdline = nil
+    end
 
     if expected.float_pos then
       expected.float_pos = deepcopy(expected.float_pos)
@@ -685,6 +694,11 @@ screen:redraw_debug() to show all intermediate screen states.]]
       end
     end
   end, expected)
+  -- Only test the abort state of a cmdline level once.
+  if self.cmdline_hide_level ~= nil then
+    self.cmdline[self.cmdline_hide_level] = nil
+    self.cmdline_hide_level = nil
+  end
 end
 
 function Screen:expect_unchanged(intermediate, waittime_ms)
@@ -939,11 +953,13 @@ function Screen:_handle_grid_resize(grid, width, height)
   }
 end
 
-function Screen:_handle_msg_set_pos(grid, row, scrolled, char)
+function Screen:_handle_msg_set_pos(grid, row, scrolled, char, zindex, compindex)
   self.msg_grid = grid
   self.msg_grid_pos = row
   self.msg_scrolled = scrolled
   self.msg_sep_char = char
+  self.msg_zindex = zindex
+  self.msg_compindex = compindex
 end
 
 function Screen:_handle_flush() end
@@ -959,6 +975,10 @@ function Screen:_reset()
   self.wildmenu_items = nil
   self.wildmenu_pos = nil
   self._grid_win_extmarks = {}
+  self.msg_grid = nil
+  self.msg_grid_pos = nil
+  self.msg_scrolled = false
+  self.msg_sep_char = nil
 end
 
 --- @param cursor_style_enabled boolean
@@ -967,11 +987,11 @@ function Screen:_handle_mode_info_set(cursor_style_enabled, mode_info)
   self._cursor_style_enabled = cursor_style_enabled
   for _, item in pairs(mode_info) do
     -- attr IDs are not stable, but their value should be
-    if item.attr_id ~= nil then
+    if item.attr_id ~= nil and self._attr_table[item.attr_id] ~= nil then
       item.attr = self._attr_table[item.attr_id][1]
       item.attr_id = nil
     end
-    if item.attr_id_lm ~= nil then
+    if item.attr_id_lm ~= nil and self._attr_table[item.attr_id_lm] ~= nil then
       item.attr_lm = self._attr_table[item.attr_id_lm][1]
       item.attr_id_lm = nil
     end
@@ -1210,12 +1230,13 @@ end
 --- @param row integer
 --- @param col integer
 --- @param items integer[][]
-function Screen:_handle_grid_line(grid, row, col, items)
+function Screen:_handle_grid_line(grid, row, col, items, wrap)
   assert(self._options.ext_linegrid)
   assert(#items > 0)
   local line = self._grids[grid].rows[row + 1]
   local colpos = col + 1
   local hl_id = 0
+  line.wrap = wrap
   for _, item in ipairs(items) do
     local text, hl_id_cell, count = item[1], item[2], item[3]
     if hl_id_cell ~= nil then
@@ -1296,7 +1317,7 @@ function Screen:_handle_popupmenu_hide()
   self.popupmenu = nil
 end
 
-function Screen:_handle_cmdline_show(content, pos, firstc, prompt, indent, level)
+function Screen:_handle_cmdline_show(content, pos, firstc, prompt, indent, level, hl_id)
   if firstc == '' then
     firstc = nil
   end
@@ -1320,11 +1341,13 @@ function Screen:_handle_cmdline_show(content, pos, firstc, prompt, indent, level
     firstc = firstc,
     prompt = prompt,
     indent = indent,
+    hl_id = prompt and hl_id,
   }
 end
 
-function Screen:_handle_cmdline_hide(level)
-  self.cmdline[level] = nil
+function Screen:_handle_cmdline_hide(level, abort)
+  self.cmdline[level] = { abort = abort }
+  self.cmdline_hide_level = level
 end
 
 function Screen:_handle_cmdline_special_char(char, shift, level)
@@ -1360,12 +1383,12 @@ function Screen:_handle_wildmenu_hide()
   self.wildmenu_items, self.wildmenu_pos = nil, nil
 end
 
-function Screen:_handle_msg_show(kind, chunks, replace_last)
+function Screen:_handle_msg_show(kind, chunks, replace_last, history)
   local pos = #self.messages
   if not replace_last or pos == 0 then
     pos = pos + 1
   end
-  self.messages[pos] = { kind = kind, content = chunks }
+  self.messages[pos] = { kind = kind, content = chunks, history = history }
 end
 
 function Screen:_handle_msg_clear()
@@ -1468,7 +1491,9 @@ function Screen:_extstate_repr(attr_state)
   local cmdline = {}
   for i, entry in pairs(self.cmdline) do
     entry = shallowcopy(entry)
-    entry.content = self:_chunks_repr(entry.content, attr_state)
+    if entry.content ~= nil then
+      entry.content = self:_chunks_repr(entry.content, attr_state)
+    end
     cmdline[i] = entry
   end
 
@@ -1479,7 +1504,11 @@ function Screen:_extstate_repr(attr_state)
 
   local messages = {}
   for i, entry in ipairs(self.messages) do
-    messages[i] = { kind = entry.kind, content = self:_chunks_repr(entry.content, attr_state) }
+    messages[i] = {
+      kind = entry.kind,
+      content = self:_chunks_repr(entry.content, attr_state),
+      history = entry.history,
+    }
   end
 
   local msg_history = {}
@@ -1505,6 +1534,7 @@ function Screen:_extstate_repr(attr_state)
     float_pos = self.float_pos,
     win_viewport = win_viewport,
     win_viewport_margins = win_viewport_margins,
+    win_pos = self.win_position,
   }
 end
 
@@ -1713,21 +1743,24 @@ function Screen:_print_snapshot()
       end
     end
     local fn_name = modify_attrs and 'add_extra_attr_ids' or 'set_default_attr_ids'
-    attrstr = ('screen:' .. fn_name .. ' {\n' .. table.concat(attrstrs, '\n') .. '\n}\n\n')
+    attrstr = ('screen:' .. fn_name .. '({\n' .. table.concat(attrstrs, '\n') .. '\n})\n\n')
   end
 
-  local result = ('%sscreen:expect({\n  grid = [[\n  %s\n  ]]'):format(
-    attrstr,
-    kwargs.grid:gsub('\n', '\n  ')
-  )
+  local extstr = ''
   for _, k in ipairs(ext_keys) do
     if ext_state[k] ~= nil and not (k == 'win_viewport' and not self.options.ext_multigrid) then
-      result = result .. ', ' .. k .. '=' .. fmt_ext_state(k, ext_state[k])
+      extstr = extstr .. '\n  ' .. k .. ' = ' .. fmt_ext_state(k, ext_state[k]) .. ','
     end
   end
-  result = result .. '\n})'
 
-  return result
+  return ('%sscreen:expect(%s%s%s%s%s'):format(
+    attrstr,
+    #extstr > 0 and '{\n  grid = [[\n  ' or '[[\n',
+    #extstr > 0 and kwargs.grid:gsub('\n', '\n  ') or kwargs.grid,
+    #extstr > 0 and '\n  ]],' or '\n]]',
+    extstr,
+    #extstr > 0 and '\n})' or ')'
+  )
 end
 
 function Screen:print_snapshot()

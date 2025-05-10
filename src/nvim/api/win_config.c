@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -7,25 +8,22 @@
 #include "nvim/api/private/defs.h"
 #include "nvim/api/private/dispatch.h"
 #include "nvim/api/private/helpers.h"
-#include "nvim/api/tabpage.h"
 #include "nvim/api/win_config.h"
 #include "nvim/ascii_defs.h"
 #include "nvim/autocmd.h"
 #include "nvim/autocmd_defs.h"
 #include "nvim/buffer.h"
 #include "nvim/buffer_defs.h"
-#include "nvim/decoration.h"
 #include "nvim/decoration_defs.h"
 #include "nvim/drawscreen.h"
 #include "nvim/errors.h"
 #include "nvim/eval/window.h"
-#include "nvim/extmark_defs.h"
 #include "nvim/globals.h"
-#include "nvim/grid_defs.h"
 #include "nvim/highlight_group.h"
 #include "nvim/macros_defs.h"
 #include "nvim/mbyte.h"
 #include "nvim/memory.h"
+#include "nvim/memory_defs.h"
 #include "nvim/option.h"
 #include "nvim/option_vars.h"
 #include "nvim/pos_defs.h"
@@ -33,7 +31,6 @@
 #include "nvim/syntax.h"
 #include "nvim/types_defs.h"
 #include "nvim/ui.h"
-#include "nvim/ui_compositor.h"
 #include "nvim/ui_defs.h"
 #include "nvim/vim_defs.h"
 #include "nvim/window.h"
@@ -104,10 +101,12 @@
 /// @param config Map defining the window configuration. Keys:
 ///   - relative: Sets the window layout to "floating", placed at (row,col)
 ///                 coordinates relative to:
-///      - "editor" The global editor grid
-///      - "win"    Window given by the `win` field, or current window.
-///      - "cursor" Cursor position in current window.
-///      - "mouse"  Mouse position
+///      - "cursor"     Cursor position in current window.
+///      - "editor"     The global editor grid.
+///      - "laststatus" 'laststatus' if present, or last row.
+///      - "mouse"      Mouse position.
+///      - "tabline"    Tabline if present, or first row.
+///      - "win"        Window given by the `win` field, or current window.
 ///   - win: |window-ID| window to split, or relative window when creating a
 ///      float (relative="win").
 ///   - anchor: Decides which corner of the float to place at (row,col):
@@ -125,8 +124,7 @@
 ///       - `row=0` and `col=0` if `anchor` is "SW" or "SE"
 ///         (thus like a tooltip near the buffer text).
 ///   - row: Row position in units of "screen cell height", may be fractional.
-///   - col: Column position in units of "screen cell width", may be
-///            fractional.
+///   - col: Column position in units of screen cell width, may be fractional.
 ///   - focusable: Enable focus by user actions (wincmds, mouse events).
 ///       Defaults to true. Non-focusable windows can be entered by
 ///       |nvim_set_current_win()|, or, when the `mouse` field is set to true,
@@ -159,47 +157,40 @@
 ///                     region is hidden by setting `eob` flag of
 ///                    'fillchars' to a space char, and clearing the
 ///                    |hl-EndOfBuffer| region in 'winhighlight'.
-///   - border: Style of (optional) window border. This can either be a string
-///     or an array. The string values are
-///     - "none": No border (default).
-///     - "single": A single line box.
-///     - "double": A double line box.
-///     - "rounded": Like "single", but with rounded corners ("╭" etc.).
-///     - "solid": Adds padding by a single whitespace cell.
-///     - "shadow": A drop shadow effect by blending with the background.
-///     - If it is an array, it should have a length of eight or any divisor of
-///       eight. The array will specify the eight chars building up the border
-///       in a clockwise fashion starting with the top-left corner. As an
-///       example, the double box style could be specified as:
-///       ```
-///       [ "╔", "═" ,"╗", "║", "╝", "═", "╚", "║" ].
-///       ```
-///       If the number of chars are less than eight, they will be repeated. Thus
-///       an ASCII border could be specified as
-///       ```
-///       [ "/", "-", \"\\\\\", "|" ],
-///       ```
-///       or all chars the same as
-///       ```
-///       [ "x" ].
-///       ```
-///     An empty string can be used to turn off a specific border, for instance,
+///   - border: (`string|string[]`) (defaults to 'winborder' option) Window border. The string form
+///     accepts the same values as the 'winborder' option. The array form must have a length of
+///     eight or any divisor of eight, specifying the chars that form the border in a clockwise
+///     fashion starting from the top-left corner. For example, the double-box style can be
+///     specified as:
 ///     ```
-///       [ "", "", "", ">", "", "", "", "<" ]
+///     [ "╔", "═" ,"╗", "║", "╝", "═", "╚", "║" ].
 ///     ```
-///     will only make vertical borders but not horizontal ones.
-///     By default, `FloatBorder` highlight is used, which links to `WinSeparator`
-///     when not defined.  It could also be specified by character:
+///     If fewer than eight chars are given, they will be repeated. An ASCII border could be
+///     specified as:
 ///     ```
-///       [ ["+", "MyCorner"], ["x", "MyBorder"] ].
+///     [ "/", "-", \"\\\\\", "|" ],
 ///     ```
-///   - title: Title (optional) in window border, string or list.
+///     Or one char for all sides:
+///     ```
+///     [ "x" ].
+///     ```
+///     Empty string can be used to hide a specific border. This example will show only vertical
+///     borders, not horizontal:
+///     ```
+///     [ "", "", "", ">", "", "", "", "<" ]
+///     ```
+///     By default, |hl-FloatBorder| highlight is used, which links to |hl-WinSeparator| when not
+///     defined.  Each border side can specify an optional highlight:
+///     ```
+///     [ ["+", "MyCorner"], ["x", "MyBorder"] ].
+///     ```
+///   - title: (optional) Title in window border, string or list.
 ///     List should consist of `[text, highlight]` tuples.
 ///     If string, or a tuple lacks a highlight, the default highlight group is `FloatTitle`.
 ///   - title_pos: Title position. Must be set with `title` option.
 ///     Value can be one of "left", "center", or "right".
 ///     Default is `"left"`.
-///   - footer: Footer (optional) in window border, string or list.
+///   - footer: (optional) Footer in window border, string or list.
 ///     List should consist of `[text, highlight]` tuples.
 ///     If string, or a tuple lacks a highlight, the default highlight group is `FloatFooter`.
 ///   - footer_pos: Footer position. Must be set with `footer` option.
@@ -209,13 +200,16 @@
 ///     the call.
 ///   - fixed: If true when anchor is NW or SW, the float window
 ///            would be kept fixed even if the window would be truncated.
-///   - hide: If true the floating window will be hidden.
+///   - hide: If true the floating window will be hidden and the cursor will be invisible when
+///           focused on it.
 ///   - vertical: Split vertically |:vertical|.
 ///   - split: Split direction: "left", "right", "above", "below".
+///   - _cmdline_offset: (EXPERIMENTAL) When provided, anchor the |cmdline-completion|
+///     popupmenu to this window, with an offset in screen cell width.
 ///
 /// @param[out] err Error details, if any
 ///
-/// @return Window handle, or 0 on error
+/// @return |window-ID|, or 0 on error
 Window nvim_open_win(Buffer buffer, Boolean enter, Dict(win_config) *config, Error *err)
   FUNC_API_SINCE(6) FUNC_API_TEXTLOCK_ALLOW_CMDWIN
 {
@@ -293,6 +287,10 @@ Window nvim_open_win(Buffer buffer, Boolean enter, Dict(win_config) *config, Err
       api_set_error(err, kErrorTypeException, "Failed to create window");
     }
     goto cleanup;
+  }
+
+  if (fconfig._cmdline_offset < INT_MAX) {
+    cmdline_win = wp;
   }
 
   // Autocommands may close `wp` or move it to another tabpage, so update and check `tp` after each
@@ -388,7 +386,7 @@ static int win_split_flags(WinSplit split, bool toplevel)
 ///
 /// @see |nvim_open_win()|
 ///
-/// @param      window  Window handle, or 0 for current window
+/// @param      window  |window-ID|, or 0 for current window
 /// @param      config  Map defining the window configuration,
 ///                     see |nvim_open_win()|
 /// @param[out] err     Error details, if any
@@ -643,6 +641,11 @@ restore_curwin:
       didset_window_options(win, true);
     }
   }
+  if (fconfig._cmdline_offset < INT_MAX) {
+    cmdline_win = win;
+  } else if (win == cmdline_win && fconfig._cmdline_offset == INT_MAX) {
+    cmdline_win = NULL;
+  }
 #undef HAS_KEY_X
 }
 
@@ -695,14 +698,16 @@ static void config_put_bordertext(Dict(win_config) *config, WinConfig *fconfig,
 ///
 /// `relative` is empty for normal windows.
 ///
-/// @param      window Window handle, or 0 for current window
+/// @param      window |window-ID|, or 0 for current window
 /// @param[out] err Error details, if any
 /// @return     Map defining the window configuration, see |nvim_open_win()|
 Dict(win_config) nvim_win_get_config(Window window, Arena *arena, Error *err)
   FUNC_API_SINCE(6)
 {
   /// Keep in sync with FloatRelative in buffer_defs.h
-  static const char *const float_relative_str[] = { "editor", "win", "cursor", "mouse" };
+  static const char *const float_relative_str[] = {
+    "editor", "win", "cursor", "mouse", "tabline", "laststatus"
+  };
 
   /// Keep in sync with WinSplit in buffer_defs.h
   static const char *const win_split_str[] = { "left", "right", "above", "below" };
@@ -773,6 +778,9 @@ Dict(win_config) nvim_win_get_config(Window window, Arena *arena, Error *err)
   const char *rel = (wp->w_floating && !config->external
                      ? float_relative_str[config->relative] : "");
   PUT_KEY_X(rv, relative, cstr_as_string(rel));
+  if (config->_cmdline_offset < INT_MAX) {
+    PUT_KEY_X(rv, _cmdline_offset, config->_cmdline_offset);
+  }
 
   return rv;
 }
@@ -808,6 +816,10 @@ static bool parse_float_relative(String relative, FloatRelative *out)
     *out = kFloatRelativeCursor;
   } else if (striequal(str, "mouse")) {
     *out = kFloatRelativeMouse;
+  } else if (striequal(str, "tabline")) {
+    *out = kFloatRelativeTabline;
+  } else if (striequal(str, "laststatus")) {
+    *out = kFloatRelativeLaststatus;
   } else {
     return false;
   }
@@ -890,7 +902,7 @@ static void parse_bordertext(Object bordertext, BorderTextType bordertext_type, 
   *is_present = true;
 }
 
-static bool parse_bordertext_pos(String bordertext_pos, BorderTextType bordertext_type,
+static bool parse_bordertext_pos(win_T *wp, String bordertext_pos, BorderTextType bordertext_type,
                                  WinConfig *fconfig, Error *err)
 {
   AlignTextPos *align;
@@ -904,7 +916,9 @@ static bool parse_bordertext_pos(String bordertext_pos, BorderTextType bordertex
   }
 
   if (bordertext_pos.size == 0) {
-    *align = kAlignLeft;
+    if (!wp) {
+      *align = kAlignLeft;
+    }
     return true;
   }
 
@@ -937,11 +951,12 @@ static void parse_border_style(Object style, WinConfig *fconfig, Error *err)
     char chars[8][MAX_SCHAR_SIZE];
     bool shadow_color;
   } defaults[] = {
-    { "double", { "╔", "═", "╗", "║", "╝", "═", "╚", "║" }, false },
-    { "single", { "┌", "─", "┐", "│", "┘", "─", "└", "│" }, false },
-    { "shadow", { "", "", " ", " ", " ", " ", " ", "" }, true },
-    { "rounded", { "╭", "─", "╮", "│", "╯", "─", "╰", "│" }, false },
-    { "solid", { " ", " ", " ", " ", " ", " ", " ", " " }, false },
+    { opt_winborder_values[1], { "╔", "═", "╗", "║", "╝", "═", "╚", "║" }, false },
+    { opt_winborder_values[2], { "┌", "─", "┐", "│", "┘", "─", "└", "│" }, false },
+    { opt_winborder_values[3], { "", "", " ", " ", " ", " ", " ", "" }, true },
+    { opt_winborder_values[4], { "╭", "─", "╮", "│", "╯", "─", "╰", "│" }, false },
+    { opt_winborder_values[5], { " ", " ", " ", " ", " ", " ", " ", " " }, false },
+    { opt_winborder_values[6], { "┏", "━", "┓", "┃", "┛", "━", "┗", "┃" }, false },
     { NULL, { { NUL } }, false },
   };
 
@@ -1233,11 +1248,6 @@ static bool parse_win_config(win_T *wp, Dict(win_config) *config, WinConfig *fco
       api_set_error(err, kErrorTypeValidation, "non-float cannot have 'title'");
       goto fail;
     }
-    // title only work with border
-    if (!HAS_KEY_X(config, border) && !fconfig->border) {
-      api_set_error(err, kErrorTypeException, "title requires border to be set");
-      goto fail;
-    }
 
     parse_bordertext(config->title, kBorderTextTitle, fconfig, err);
     if (ERROR_SET(err)) {
@@ -1245,7 +1255,7 @@ static bool parse_win_config(win_T *wp, Dict(win_config) *config, WinConfig *fco
     }
 
     // handles unset 'title_pos' same as empty string
-    if (!parse_bordertext_pos(config->title_pos, kBorderTextTitle, fconfig, err)) {
+    if (!parse_bordertext_pos(wp, config->title_pos, kBorderTextTitle, fconfig, err)) {
       goto fail;
     }
   } else {
@@ -1260,11 +1270,6 @@ static bool parse_win_config(win_T *wp, Dict(win_config) *config, WinConfig *fco
       api_set_error(err, kErrorTypeValidation, "non-float cannot have 'footer'");
       goto fail;
     }
-    // footer only work with border
-    if (!HAS_KEY_X(config, border) && !fconfig->border) {
-      api_set_error(err, kErrorTypeException, "footer requires border to be set");
-      goto fail;
-    }
 
     parse_bordertext(config->footer, kBorderTextFooter, fconfig, err);
     if (ERROR_SET(err)) {
@@ -1272,7 +1277,7 @@ static bool parse_win_config(win_T *wp, Dict(win_config) *config, WinConfig *fco
     }
 
     // handles unset 'footer_pos' same as empty string
-    if (!parse_bordertext_pos(config->footer_pos, kBorderTextFooter, fconfig, err)) {
+    if (!parse_bordertext_pos(wp, config->footer_pos, kBorderTextFooter, fconfig, err)) {
       goto fail;
     }
   } else {
@@ -1282,12 +1287,18 @@ static bool parse_win_config(win_T *wp, Dict(win_config) *config, WinConfig *fco
     }
   }
 
+  Object border_style = OBJECT_INIT;
   if (HAS_KEY_X(config, border)) {
     if (is_split) {
       api_set_error(err, kErrorTypeValidation, "non-float cannot have 'border'");
       goto fail;
     }
-    parse_border_style(config->border, fconfig, err);
+    border_style = config->border;
+  } else if (*p_winborder != NUL && (wp == NULL || !wp->w_floating)) {
+    border_style = CSTR_AS_OBJ(p_winborder);
+  }
+  if (border_style.type != kObjectTypeNil) {
+    parse_border_style(border_style, fconfig, err);
     if (ERROR_SET(err)) {
       goto fail;
     }
@@ -1318,6 +1329,10 @@ static bool parse_win_config(win_T *wp, Dict(win_config) *config, WinConfig *fco
 
   if (HAS_KEY_X(config, hide)) {
     fconfig->hide = config->hide;
+  }
+
+  if (HAS_KEY_X(config, _cmdline_offset)) {
+    fconfig->_cmdline_offset = (int)config->_cmdline_offset;
   }
 
   return true;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
-#include <stddef.h>
+#include <stddef.h>  // IWYU pragma: keep
 
 #include "klib/kvec.h"
 #include "nvim/api/private/defs.h"  // IWYU pragma: keep
@@ -64,7 +64,7 @@
 #define NIL ((Object)OBJECT_INIT)
 #define NULL_STRING ((String)STRING_INIT)
 
-#define HAS_KEY(d, typ, key) (((d)->is_set__##typ##_ & (1 << KEYSET_OPTIDX_##typ##__##key)) != 0)
+#define HAS_KEY(d, typ, key) (((d)->is_set__##typ##_ & (1ULL << KEYSET_OPTIDX_##typ##__##key)) != 0)
 
 #define GET_BOOL_OR_TRUE(d, typ, key) (HAS_KEY(d, typ, key) ? (d)->key : true)
 
@@ -75,7 +75,7 @@
   kv_push_c(dict, ((KeyValuePair) { .key = cstr_as_string(k), .value = v }))
 
 #define PUT_KEY(d, typ, key, v) \
-  do { (d).is_set__##typ##_ |= (1 << KEYSET_OPTIDX_##typ##__##key); (d).key = v; } while (0)
+  do { (d).is_set__##typ##_ |= (1ULL << KEYSET_OPTIDX_##typ##__##key); (d).key = v; } while (0)
 
 #define ADD(array, item) \
   kv_push(array, item)
@@ -147,27 +147,19 @@ typedef struct {
   except_T *current_exception;
   msglist_T *private_msg_list;
   const msglist_T *const *msg_list;
-  int trylevel;
   int got_int;
   bool did_throw;
   int need_rethrow;
   int did_emsg;
 } TryState;
 
-// `msg_list` controls the collection of abort-causing non-exception errors,
-// which would otherwise be ignored.  This pattern is from do_cmdline().
-//
 // TODO(bfredl): prepare error-handling at "top level" (nv_event).
 #define TRY_WRAP(err, code) \
   do { \
-    msglist_T **saved_msg_list = msg_list; \
-    msglist_T *private_msg_list; \
-    msg_list = &private_msg_list; \
-    private_msg_list = NULL; \
-    try_start(); \
+    TryState tstate; \
+    try_enter(&tstate); \
     code; \
-    try_end(err); \
-    msg_list = saved_msg_list;  /* Restore the exception context. */ \
+    try_leave(&tstate, err); \
   } while (0)
 
 // Execute code with cursor position saved and restored and textlock active.
@@ -194,13 +186,7 @@ typedef struct {
 
 #define WITH_SCRIPT_CONTEXT(channel_id, code) \
   do { \
-    const sctx_T save_current_sctx = current_sctx; \
-    const uint64_t save_channel_id = current_channel_id; \
-    current_sctx.sc_sid = \
-      (channel_id) == LUA_INTERNAL_CALL ? SID_LUA : SID_API_CLIENT; \
-    current_sctx.sc_lnum = 0; \
-    current_channel_id = channel_id; \
+    const sctx_T save_current_sctx = api_set_sctx(channel_id); \
     code; \
-    current_channel_id = save_channel_id; \
     current_sctx = save_current_sctx; \
   } while (0);

@@ -2,7 +2,7 @@ local t = require('test.testutil')
 local n = require('test.functional.testnvim')()
 local Screen = require('test.functional.ui.screen')
 
-local spawn, set_session, clear = n.spawn, n.set_session, n.clear
+local set_session, clear = n.set_session, n.clear
 local feed, command = n.feed, n.command
 local exec = n.exec
 local insert = n.insert
@@ -26,7 +26,7 @@ describe('screen', function()
   }
 
   before_each(function()
-    local screen_nvim = spawn(nvim_argv)
+    local screen_nvim = n.new_session(false, { args = nvim_argv, merge = false })
     set_session(screen_nvim)
     screen = Screen.new()
   end)
@@ -645,6 +645,59 @@ local function screen_tests(linegrid)
                             |
       ]])
     end)
+
+    it('clamps &cmdheight for current tabpage', function()
+      command('set cmdheight=10 laststatus=2')
+      screen:expect([[
+        ^                                                     |
+        {0:~                                                    }|*2
+        {1:[No Name]                                            }|
+                                                             |*10
+      ]])
+      screen:try_resize(53, 8)
+      screen:expect([[
+        ^                                                     |
+        {1:[No Name]                                            }|
+                                                             |*6
+      ]])
+      eq(6, api.nvim_get_option_value('cmdheight', {}))
+    end)
+
+    it('clamps &cmdheight for another tabpage #31380', function()
+      command('tabnew')
+      command('set cmdheight=9 laststatus=2')
+      screen:expect([[
+        {4: [No Name] }{2: [No Name] }{3:                              }{4:X}|
+        ^                                                     |
+        {0:~                                                    }|*2
+        {1:[No Name]                                            }|
+                                                             |*9
+      ]])
+      command('tabprev')
+      screen:expect([[
+        {2: [No Name] }{4: [No Name] }{3:                              }{4:X}|
+        ^                                                     |
+        {0:~                                                    }|*10
+        {1:[No Name]                                            }|
+                                                             |
+      ]])
+      screen:try_resize(53, 8)
+      screen:expect([[
+        {2: [No Name] }{4: [No Name] }{3:                              }{4:X}|
+        ^                                                     |
+        {0:~                                                    }|*4
+        {1:[No Name]                                            }|
+                                                             |
+      ]])
+      command('tabnext')
+      screen:expect([[
+        {4: [No Name] }{2: [No Name] }{3:                              }{4:X}|
+        ^                                                     |
+        {1:[No Name]                                            }|
+                                                             |*5
+      ]])
+      eq(5, api.nvim_get_option_value('cmdheight', {}))
+    end)
   end)
 
   describe('press enter', function()
@@ -713,7 +766,7 @@ describe('Screen default colors', function()
       'colorscheme vim',
       '--embed',
     }
-    local screen_nvim = spawn(nvim_argv)
+    local screen_nvim = n.new_session(false, { args = nvim_argv, merge = false })
     set_session(screen_nvim)
     screen = Screen.new(53, 14, { rgb = true, ext_termcolors = termcolors or nil })
   end

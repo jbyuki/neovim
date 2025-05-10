@@ -27,7 +27,6 @@
 #include "nvim/fileio.h"
 #include "nvim/gettext_defs.h"
 #include "nvim/globals.h"
-#include "nvim/highlight.h"
 #include "nvim/highlight_defs.h"
 #include "nvim/iconv_defs.h"
 #include "nvim/input.h"
@@ -351,7 +350,7 @@ static int check_mtime(buf_T *buf, FileInfo *file_info)
     msg_silent = 0;     // Must give this prompt.
     // Don't use emsg() here, don't want to flush the buffers.
     msg(_("WARNING: The file has been changed since reading it!!!"), HLF_E);
-    if (ask_yesno(_("Do you really want to write to it"), true) == 'n') {
+    if (ask_yesno(_("Do you really want to write to it")) == 'n') {
       return FAIL;
     }
     msg_scroll = false;  // Always overwrite the file message now.
@@ -1148,6 +1147,7 @@ int buf_write(buf_T *buf, char *fname, char *sfname, linenr_T start, linenr_T en
     msg_scroll = true;              // don't overwrite previous file message
   }
   if (!filtering) {
+    msg_ext_set_kind("bufwrite");
     // show that we are busy
 #ifndef UNIX
     filemess(buf, sfname, "");
@@ -1763,6 +1763,7 @@ restore_backup:
     if (msg_add_fileformat(fileformat)) {
       insert_space = true;
     }
+    msg_ext_set_kind("bufwrite");
     msg_add_lines(insert_space, lnum, nchars);       // add line/char count
     if (!shortmess(SHM_WRITE)) {
       if (append) {

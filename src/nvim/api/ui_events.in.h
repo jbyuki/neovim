@@ -102,7 +102,8 @@ void win_pos(Integer grid, Window win, Integer startrow, Integer startcol, Integ
              Integer height)
   FUNC_API_SINCE(6) FUNC_API_REMOTE_ONLY;
 void win_float_pos(Integer grid, Window win, String anchor, Integer anchor_grid, Float anchor_row,
-                   Float anchor_col, Boolean mouse_enabled, Integer zindex)
+                   Float anchor_col, Boolean mouse_enabled, Integer zindex, Integer compindex,
+                   Integer screen_row, Integer screen_col)
   FUNC_API_SINCE(6) FUNC_API_REMOTE_ONLY;
 void win_external_pos(Integer grid, Window win)
   FUNC_API_SINCE(6) FUNC_API_REMOTE_ONLY;
@@ -111,7 +112,8 @@ void win_hide(Integer grid)
 void win_close(Integer grid)
   FUNC_API_SINCE(6) FUNC_API_REMOTE_ONLY;
 
-void msg_set_pos(Integer grid, Integer row, Boolean scrolled, String sep_char)
+void msg_set_pos(Integer grid, Integer row, Boolean scrolled, String sep_char, Integer zindex,
+                 Integer compindex)
   FUNC_API_SINCE(6) FUNC_API_COMPOSITOR_IMPL FUNC_API_CLIENT_IGNORE;
 
 void win_viewport(Integer grid, Window win, Integer topline, Integer botline, Integer curline,
@@ -136,13 +138,13 @@ void tabline_update(Tabpage current, Array tabs, Buffer current_buffer, Array bu
   FUNC_API_SINCE(3) FUNC_API_REMOTE_ONLY;
 
 void cmdline_show(Array content, Integer pos, String firstc, String prompt, Integer indent,
-                  Integer level)
+                  Integer level, Integer hl_id)
   FUNC_API_SINCE(3) FUNC_API_REMOTE_ONLY;
 void cmdline_pos(Integer pos, Integer level)
   FUNC_API_SINCE(3) FUNC_API_REMOTE_ONLY;
 void cmdline_special_char(String c, Boolean shift, Integer level)
   FUNC_API_SINCE(3) FUNC_API_REMOTE_ONLY;
-void cmdline_hide(Integer level)
+void cmdline_hide(Integer level, Boolean abort)
   FUNC_API_SINCE(3) FUNC_API_REMOTE_ONLY;
 void cmdline_block_show(Array lines)
   FUNC_API_SINCE(3) FUNC_API_REMOTE_ONLY;
@@ -158,7 +160,7 @@ void wildmenu_select(Integer selected)
 void wildmenu_hide(void)
   FUNC_API_SINCE(3) FUNC_API_REMOTE_ONLY;
 
-void msg_show(String kind, Array content, Boolean replace_last)
+void msg_show(String kind, Array content, Boolean replace_last, Boolean history)
   FUNC_API_SINCE(6) FUNC_API_FAST FUNC_API_REMOTE_ONLY;
 void msg_clear(void)
   FUNC_API_SINCE(6) FUNC_API_REMOTE_ONLY;

@@ -34,7 +34,6 @@
 #include "nvim/hashtab.h"
 #include "nvim/hashtab_defs.h"
 #include "nvim/help.h"
-#include "nvim/highlight.h"
 #include "nvim/highlight_defs.h"
 #include "nvim/input.h"
 #include "nvim/insexpand.h"
@@ -669,7 +668,7 @@ void do_tag(char *tag, int type, int count, int forceit, bool verbose)
 
       if (ask_for_selection) {
         // Ask to select a tag from the list.
-        int i = prompt_for_number(NULL);
+        int i = prompt_for_input(NULL, 0, false, NULL);
         if (i <= 0 || i > num_matches || got_int) {
           // no valid choice: don't change anything
           if (use_tagstack) {
@@ -741,7 +740,7 @@ void do_tag(char *tag, int type, int count, int forceit, bool verbose)
         } else {
           give_warning(IObuff, ic);
         }
-        if (ic && !msg_scrolled && msg_silent == 0) {
+        if (ic && !msg_scrolled && msg_silent == 0 && !ui_has(kUIMessages)) {
           ui_flush();
           os_delay(1007, true);
         }
@@ -814,6 +813,7 @@ static void print_tag_list(bool new_tag, bool use_tagstack, int num_matches, cha
   if (msg_col == 0) {
     msg_didout = false;     // overwrite previous message
   }
+  msg_ext_set_kind("confirm");
   msg_start();
   msg_puts_hl(_("  # pri kind tag"), HLF_T, false);
   msg_clr_eos();
@@ -961,7 +961,7 @@ static void print_tag_list(bool new_tag, bool use_tagstack, int num_matches, cha
         break;
       }
     }
-    if (msg_col) {
+    if (msg_col && (!ui_has(kUIMessages) || i < num_matches - 1)) {
       msg_putchar('\n');
     }
     os_breakcheck();
@@ -1250,6 +1250,7 @@ static int find_tagfunc_tags(char *pat, garray_T *ga, int *match_count, int flag
   pos_T save_pos = curwin->w_cursor;
   int result = callback_call(&curbuf->b_tfu_cb, 3, args, &rettv);
   curwin->w_cursor = save_pos;  // restore the cursor position
+  check_cursor(curwin);         // make sure cursor position is valid
   d->dv_refcount--;
 
   if (result == FAIL) {
@@ -1501,7 +1502,8 @@ static bool findtags_in_help_init(findtags_state_T *st)
 /// Use the function set in 'tagfunc' (if configured and enabled) to get the
 /// tags.
 /// Return OK if at least 1 tag has been successfully found, NOTDONE if the
-/// 'tagfunc' is not used or the 'tagfunc' returns v:null and FAIL otherwise.
+/// 'tagfunc' is not used, still executing or the 'tagfunc' returned v:null and
+/// FAIL otherwise.
 static int findtags_apply_tfu(findtags_state_T *st, char *pat, char *buf_ffname)
 {
   const bool use_tfu = ((st->flags & TAG_NO_TAGFUNC) == 0);
@@ -2557,7 +2559,7 @@ int get_tagfname(tagname_T *tnp, int first, char *buf)
       STRMOVE(filename + 1, filename);
       *filename++ = NUL;
 
-      tnp->tn_search_ctx = vim_findfile_init(buf, filename,
+      tnp->tn_search_ctx = vim_findfile_init(buf, filename, strlen(filename),
                                              r_ptr, 100,
                                              false,                   // don't free visited list
                                              FINDFILE_FILE,           // we search for a file
@@ -2964,7 +2966,7 @@ static int jumpto_tag(const char *lbuf_arg, int forceit, bool keep_help)
           // is set and match found while ignoring case.
           if (found == 2 || !save_p_ic) {
             msg(_("E435: Couldn't find tag, just guessing!"), 0);
-            if (!msg_scrolled && msg_silent == 0) {
+            if (!msg_scrolled && msg_silent == 0 && !ui_has(kUIMessages)) {
               ui_flush();
               os_delay(1010, true);
             }
@@ -2986,6 +2988,8 @@ static int jumpto_tag(const char *lbuf_arg, int forceit, bool keep_help)
       secure = 1;
       sandbox++;
       curwin->w_cursor.lnum = 1;  // start command in line 1
+      curwin->w_cursor.col = 0;
+      curwin->w_cursor.coladd = 0;
       do_cmdline_cmd(pbuf);
       retval = OK;
 

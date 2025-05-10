@@ -22,13 +22,6 @@ local M = {
   paths = Paths,
 }
 
---- @param p string
---- @return string
-local function relpath(p)
-  p = vim.fs.normalize(p)
-  return (p:gsub('^' .. uv.cwd, ''))
-end
-
 --- @param path string
 --- @return boolean
 function M.isdir(path)
@@ -45,14 +38,15 @@ end
 --- (Only on Windows) Replaces yucky "\\" slashes with delicious "/" slashes in a string, or all
 --- string values in a table (recursively).
 ---
---- @param obj string|table
---- @return any
+--- @generic T: string|table
+--- @param obj T
+--- @return T|nil
 function M.fix_slashes(obj)
   if not M.is_os('win') then
     return obj
   end
   if type(obj) == 'string' then
-    local ret = obj:gsub('\\', '/')
+    local ret = string.gsub(obj, '\\', '/')
     return ret
   elseif type(obj) == 'table' then
     --- @cast obj table<any,any>
@@ -154,17 +148,20 @@ end
 --- @param actual string
 --- @return boolean
 function M.matches(pat, actual)
+  assert(pat and pat ~= '', 'pat must be a non-empty string')
   if nil ~= string.match(actual, pat) then
     return true
   end
   error(string.format('Pattern does not match.\nPattern:\n%s\nActual:\n%s', pat, actual))
 end
 
---- Asserts that `pat` matches (or *not* if inverse=true) any line in the tail of `logfile`.
+--- Asserts that `pat` matches (or *not* if inverse=true) any text in the tail of `logfile`.
+---
+--- Matches are not restricted to a single line.
 ---
 --- Retries for 1 second in case of filesystem delay.
 ---
----@param pat (string) Lua pattern to match lines in the log file
+---@param pat (string) Lua pattern to match text in the log file
 ---@param logfile? (string) Full path to log file (default=$NVIM_LOG_FILE)
 ---@param nrlines? (number) Search up to this many log lines (default 10)
 ---@param inverse? (boolean) Assert that the pattern does NOT match.
@@ -172,28 +169,20 @@ function M.assert_log(pat, logfile, nrlines, inverse)
   logfile = logfile or os.getenv('NVIM_LOG_FILE') or '.nvimlog'
   luaassert(logfile ~= nil, 'no logfile')
   nrlines = nrlines or 10
-  inverse = inverse or false
 
   M.retry(nil, 1000, function()
     local lines = M.read_file_list(logfile, -nrlines) or {}
-    local msg = string.format(
-      'Pattern %q %sfound in log (last %d lines): %s:\n%s',
-      pat,
-      (inverse and '' or 'not '),
-      nrlines,
-      logfile,
-      '    ' .. table.concat(lines, '\n    ')
-    )
-    for _, line in ipairs(lines) do
-      if line:match(pat) then
-        if inverse then
-          error(msg)
-        else
-          return
-        end
-      end
-    end
-    if not inverse then
+    local text = table.concat(lines, '\n')
+    local ismatch = not not text:match(pat)
+    if (ismatch and inverse) or not (ismatch or inverse) then
+      local msg = string.format(
+        'Pattern %s %sfound in log (last %d lines): %s:\n%s',
+        vim.inspect(pat),
+        (inverse and '' or 'not '),
+        nrlines,
+        logfile,
+        vim.text.indent(4, text)
+      )
       error(msg)
     end
   end)
@@ -279,7 +268,7 @@ function M.pcall_err_withtrace(fn, ...)
   return (
     errmsg
       :gsub('^%.%.%./testnvim%.lua:0: ', '')
-      :gsub('^Error executing lua:- ', '')
+      :gsub('^Lua:- ', '')
       :gsub('^%[string "<nvim>"%]:0: ', '')
   )
 end
@@ -394,19 +383,41 @@ end
 
 local sysname = uv.os_uname().sysname:lower()
 
---- @param s 'win'|'mac'|'freebsd'|'openbsd'|'bsd'
+--- @param s 'win'|'mac'|'linux'|'freebsd'|'openbsd'|'bsd'
 --- @return boolean
 function M.is_os(s)
-  if not (s == 'win' or s == 'mac' or s == 'freebsd' or s == 'openbsd' or s == 'bsd') then
+  if
+    not (s == 'win' or s == 'mac' or s == 'linux' or s == 'freebsd' or s == 'openbsd' or s == 'bsd')
+  then
     error('unknown platform: ' .. tostring(s))
   end
   return not not (
     (s == 'win' and (sysname:find('windows') or sysname:find('mingw')))
     or (s == 'mac' and sysname == 'darwin')
+    or (s == 'linux' and sysname == 'linux')
     or (s == 'freebsd' and sysname == 'freebsd')
     or (s == 'openbsd' and sysname == 'openbsd')
     or (s == 'bsd' and sysname:find('bsd'))
   )
+end
+
+local architecture = uv.os_uname().machine
+
+--- @param s 'x86_64'|'arm64'
+--- @return boolean
+function M.is_arch(s)
+  if not (s == 'x86_64' or s == 'arm64') then
+    error('unknown architecture: ' .. tostring(s))
+  end
+  return s == architecture
+end
+
+function M.is_asan()
+  return M.paths.is_asan
+end
+
+function M.is_zig_build()
+  return M.paths.is_zig_build
 end
 
 local tmpname_id = 0
@@ -471,7 +482,8 @@ function M.check_cores(app, force) -- luacheck: ignore
   -- "./Xtest-tmpdir/" => "Xtest%-tmpdir"
   local local_tmpdir = nil
   if tmpdir_is_local and tmpdir then
-    local_tmpdir = vim.pesc(relpath(tmpdir):gsub('^[ ./]+', ''):gsub('%/+$', ''))
+    local_tmpdir =
+      vim.pesc(vim.fs.relpath(assert(vim.uv.cwd()), tmpdir):gsub('^[ ./]+', ''):gsub('%/+$', ''))
   end
 
   local db_cmd --- @type string
@@ -632,28 +644,9 @@ end
 --- @param leave_indent? integer
 --- @return string
 function M.dedent(str, leave_indent)
-  -- find minimum common indent across lines
-  local indent --- @type string?
-  for line in str:gmatch('[^\n]+') do
-    local line_indent = line:match('^%s+') or ''
-    if indent == nil or #line_indent < #indent then
-      indent = line_indent
-    end
-  end
-
-  if not indent or #indent == 0 then
-    -- no minimum common indent
-    return str
-  end
-
-  local left_indent = (' '):rep(leave_indent or 0)
-  -- create a pattern for the indent
-  indent = indent:gsub('%s', '[ \t]')
-  -- strip it from the first line
-  str = str:gsub('^' .. indent, left_indent)
-  -- strip it from the remaining lines
-  str = str:gsub('[\n]' .. indent, '\n' .. left_indent)
-  return str
+  -- Last blank line often has non-matching indent, so remove it.
+  str = str:gsub('\n[ ]+$', '\n')
+  return (vim.text.indent(leave_indent or 0, str))
 end
 
 function M.intchar2lua(ch)
@@ -847,6 +840,10 @@ function M.skip_fragile(pending_fn, cond)
     return true
   end
   return false
+end
+
+function M.translations_enabled()
+  return M.paths.translations_enabled
 end
 
 return M

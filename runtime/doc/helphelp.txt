@@ -193,6 +193,7 @@ Jump to specific subjects by using tags.  This can be done in two ways:
 
 Use CTRL-T or CTRL-O to jump back.
 Use ":q" to close the help window.
+Use `g==` to execute the current Lua/Vimscript code block.
 
 If there are several matches for an item you are looking for, this is how you
 can jump to each one of them:
@@ -388,6 +389,12 @@ highlighting.  So do these:
 	Error	something wrong
 
 You can find the details in $VIMRUNTIME/syntax/help.vim
+
+
+FILETYPE COMPLETION					*ft-help-omni*
+
+To get completion for help tags when writing a tag reference, you can use the
+|i_CTRL-X_CTRL-O| command.
 
 
  vim:tw=78:ts=8:noet:ft=help:norl:

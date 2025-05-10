@@ -1,5 +1,6 @@
 /// Nvim's own UI client, which attaches to a child or remote Nvim server.
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -60,9 +61,15 @@ uint64_t ui_client_start_server(int argc, char **argv)
   CallbackReader on_err = CALLBACK_READER_INIT;
   on_err.fwd_err = true;
 
+#ifdef MSWIN
+  // TODO(justinmk): detach breaks `tt.setup_child_nvim` tests on Windows?
+  bool detach = os_env_exists("__NVIM_DETACH", true);
+#else
+  bool detach = true;
+#endif
   Channel *channel = channel_job_start(args, get_vim_var_str(VV_PROGPATH),
                                        CALLBACK_READER_INIT, on_err, CALLBACK_NONE,
-                                       false, true, true, false, kChannelStdinPipe,
+                                       false, true, true, detach, kChannelStdinPipe,
                                        NULL, 0, 0, NULL, &exit_status);
   if (!channel) {
     return 0;
@@ -165,7 +172,7 @@ void ui_client_run(bool remote_ui)
   ui_client_attach(width, height, term, rgb);
 
   // TODO(justinmk): this is for log_spec. Can remove this after nvim_log #7062 is merged.
-  if (os_env_exists("__NVIM_TEST_LOG")) {
+  if (os_env_exists("__NVIM_TEST_LOG", true)) {
     ELOG("test log message");
   }
 
@@ -179,6 +186,7 @@ void ui_client_run(bool remote_ui)
 
 void ui_client_stop(void)
 {
+  ui_client_attached = false;
   if (!tui_is_stopped(tui)) {
     tui_stop(tui);
   }

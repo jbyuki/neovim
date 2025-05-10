@@ -651,6 +651,11 @@ describe('nvim_create_user_command', function()
     api.nvim_set_current_buf(bufnr)
     command('Hello')
     assert_alive()
+    eq(
+      'Invalid buffer id: 1234',
+      pcall_err(api.nvim_buf_create_user_command, 1234, 'Hello', '', {})
+    )
+    assert_alive()
   end)
 
   it('can use a Lua complete function', function()
@@ -674,6 +679,19 @@ describe('nvim_create_user_command', function()
     eq('Test aaa', fn.getcmdline())
     feed('<C-U>Test b<Tab>')
     eq('Test bbb', fn.getcmdline())
+  end)
+
+  it('no crash when Lua complete function errors #33447', function()
+    exec_lua([[
+      vim.api.nvim_create_user_command('Test','', {
+          nargs = 1,
+          complete = function() error() end
+      })
+    ]])
+    feed(':Test <Tab>')
+    eq('E5108: Lua function: [NULL]', api.nvim_get_vvar('errmsg'))
+    eq('Test ', fn.getcmdline())
+    assert_alive()
   end)
 
   it('does not allow invalid command names', function()
@@ -771,5 +789,9 @@ describe('nvim_del_user_command', function()
     command('Hello')
     api.nvim_buf_del_user_command(0, 'Hello')
     matches('Not an editor command: Hello', pcall_err(command, 'Hello'))
+    eq('Invalid command (not found): Hello', pcall_err(api.nvim_buf_del_user_command, 0, 'Hello'))
+    eq('Invalid command (not found): Bye', pcall_err(api.nvim_buf_del_user_command, 0, 'Bye'))
+    eq('Invalid buffer id: 1234', pcall_err(api.nvim_buf_del_user_command, 1234, 'Hello'))
+    assert_alive()
   end)
 end)

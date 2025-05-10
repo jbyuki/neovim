@@ -1338,11 +1338,27 @@ func Test_scroll_in_ex_mode()
       call writefile(['done'], 'Xdone')
       qa!
   END
-  call writefile(lines, 'Xscript')
+  call writefile(lines, 'Xscript', 'D')
   call assert_equal(1, RunVim([], [], '--clean -X -Z -e -s -S Xscript'))
   call assert_equal(['done'], readfile('Xdone'))
 
-  call delete('Xscript')
+  call delete('Xdone')
+endfunc
+
+func Test_scroll_and_paste_in_ex_mode()
+  throw 'Skipped: does not work when Nvim is run from :!'
+  " This used to crash because of moving cursor to line 0.
+  let lines =<< trim END
+      v/foo/vi|YY9PYQ
+      v/bar/vi|YY9PYQ
+      v/bar/exe line('.') == 1 ? "vi|Y\<C-B>9PYQ" : "vi|YQ"
+      call writefile(['done'], 'Xdone')
+      qa!
+  END
+  call writefile(lines, 'Xscript', 'D')
+  call assert_equal(1, RunVim([], [], '-u NONE -i NONE -n -X -Z -e -s -S Xscript'))
+  call assert_equal(['done'], readfile('Xdone'))
+
   call delete('Xdone')
 endfunc
 
@@ -2688,6 +2704,22 @@ func Test_normal33_g_cmd2()
   norm! 60gMyl
   call assert_equal(87, col('.'))
   call assert_equal('E', getreg(0))
+
+  " Have an odd number of chars in the line
+  norm! A.
+  call assert_equal(145, col('.'))
+  norm! gMyl
+  call assert_equal(73, col('.'))
+  call assert_equal('0', getreg(0))
+
+  " 'listchars' "eol" should not affect gM behavior
+  setlocal list listchars=eol:$
+  norm! $
+  call assert_equal(145, col('.'))
+  norm! gMyl
+  call assert_equal(73, col('.'))
+  call assert_equal('0', getreg(0))
+  setlocal nolist
 
   " Test for gM with Tab characters
   call setline('.', "\ta\tb\tc\td\te\tf")
@@ -4303,4 +4335,24 @@ func Test_normal_go()
 
   bwipe!
 endfunc
+
+" Test for Ctrl-D with 'scrolloff' and narrow window does not get stuck.
+func Test_scroll_longline_scrolloff()
+  11new
+  36vsplit
+  set scrolloff=5
+
+  call setline(1, ['']->repeat(5))
+  call setline(6, ['foo'->repeat(20)]->repeat(2))
+  call setline(8, ['bar'->repeat(30)])
+  call setline(9, ['']->repeat(5))
+  exe "normal! \<C-D>"
+  call assert_equal(6, line('w0'))
+  exe "normal! \<C-D>"
+  call assert_equal(7, line('w0'))
+
+  set scrolloff&
+  bwipe!
+endfunc
+
 " vim: shiftwidth=2 sts=2 expandtab nofoldenable

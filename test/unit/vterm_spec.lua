@@ -17,7 +17,9 @@ local bit = require('bit')
 --- @field VTERM_KEY_NONE integer
 --- @field VTERM_KEY_TAB integer
 --- @field VTERM_KEY_UP integer
---- @field VTERM_MAX_CHARS_PER_CELL integer
+--- @field VTERM_KEY_BACKSPACE integer
+--- @field VTERM_KEY_ESCAPE integer
+--- @field VTERM_KEY_DEL integer
 --- @field VTERM_MOD_ALT integer
 --- @field VTERM_MOD_CTRL integer
 --- @field VTERM_MOD_SHIFT integer
@@ -29,6 +31,7 @@ local bit = require('bit')
 --- @field parser_sos function
 --- @field parser_text function
 --- @field print_color function
+--- @field schar_get fun(any, any):integer
 --- @field screen_sb_clear function
 --- @field screen_sb_popline function
 --- @field screen_sb_pushline function
@@ -44,6 +47,8 @@ local bit = require('bit')
 --- @field state_setpenattr function
 --- @field state_settermprop function
 --- @field term_output function
+--- @field utf_ptr2char fun(any):integer
+--- @field utf_ptr2len fun(any):integer
 --- @field vterm_input_write function
 --- @field vterm_keyboard_end_paste function
 --- @field vterm_keyboard_key function
@@ -62,7 +67,6 @@ local bit = require('bit')
 --- @field vterm_screen_enable_reflow function
 --- @field vterm_screen_get_attrs_extent function
 --- @field vterm_screen_get_cell function
---- @field vterm_screen_get_chars fun(any, any, any, any):any
 --- @field vterm_screen_get_text fun(any, any, any, any):any
 --- @field vterm_screen_is_eol fun(any, any):any
 --- @field vterm_screen_reset function
@@ -79,7 +83,20 @@ local bit = require('bit')
 --- @field vterm_state_set_callbacks function
 --- @field vterm_state_set_selection_callbacks function
 --- @field vterm_state_set_unrecognised_fallbacks function
-local vterm = t.cimport('./src/vterm/vterm.h', './src/vterm/vterm_internal.h')
+local vterm = t.cimport(
+  './src/nvim/grid.h',
+  './src/nvim/mbyte.h',
+  './src/nvim/vterm/encoding.h',
+  './src/nvim/vterm/keyboard.h',
+  './src/nvim/vterm/mouse.h',
+  './src/nvim/vterm/parser.h',
+  './src/nvim/vterm/pen.h',
+  './src/nvim/vterm/screen.h',
+  './src/nvim/vterm/state.h',
+  './src/nvim/vterm/vterm.h',
+  './src/nvim/vterm/vterm_internal.h',
+  './test/unit/fixtures/vterm_test.h'
+)
 
 --- @return string
 local function read_rm()
@@ -298,16 +315,12 @@ local function screen_chars(start_row, start_col, end_row, end_col, expected, sc
   rect['end_row'] = end_row
   rect['end_col'] = end_col
 
-  local len = vterm.vterm_screen_get_chars(screen, nil, 0, rect)
+  local len = vterm.vterm_screen_get_text(screen, nil, 0, rect)
 
-  local chars = t.ffi.new('uint32_t[?]', len)
-  vterm.vterm_screen_get_chars(screen, chars, len, rect)
+  local text = t.ffi.new('unsigned char[?]', len)
+  vterm.vterm_screen_get_text(screen, text, len, rect)
 
-  local actual = ''
-  for i = 0, tonumber(len) - 1 do
-    actual = actual .. string.char(chars[i])
-  end
-
+  local actual = t.ffi.string(text, len)
   t.eq(expected, actual)
 end
 
@@ -345,7 +358,7 @@ local function screen_row(row, expected, screen, end_col)
   local text = t.ffi.new('unsigned char[?]', len)
   vterm.vterm_screen_get_text(screen, text, len, rect)
 
-  t.eq(expected, t.ffi.string(text))
+  t.eq(expected, t.ffi.string(text, len))
 end
 
 local function screen_cell(row, col, expected, screen)
@@ -353,17 +366,23 @@ local function screen_cell(row, col, expected, screen)
   pos['row'] = row
   pos['col'] = col
 
-  local cell = t.ffi.new('VTermScreenCell')
+  local cell = t.ffi.new('VTermScreenCell') ---@type any
   vterm.vterm_screen_get_cell(screen, pos, cell)
 
+  local buf = t.ffi.new('unsigned char[32]')
+  vterm.schar_get(buf, cell.schar)
+
   local actual = '{'
-  for i = 0, vterm.VTERM_MAX_CHARS_PER_CELL - 1 do
-    if cell['chars'][i] ~= 0 then
-      if i > 0 then
-        actual = actual .. ','
-      end
-      actual = string.format('%s%02x', actual, cell['chars'][i])
+  local i = 0
+  while buf[i] > 0 do
+    local char = vterm.utf_ptr2char(buf + i)
+    local charlen = vterm.utf_ptr2len(buf + i)
+    if i > 0 then
+      actual = actual .. ','
     end
+    local invalid = char >= 128 and charlen == 1
+    actual = string.format('%s%s%02x', actual, invalid and '?' or '', char)
+    i = i + charlen
   end
   actual = string.format('%s} width=%d attrs={', actual, cell['width'])
   actual = actual .. (cell['attrs'].bold ~= 0 and 'B' or '')
@@ -487,6 +506,18 @@ local function strp_key(input_key)
 
   if input_key == 'enter' then
     return vterm.VTERM_KEY_ENTER
+  end
+
+  if input_key == 'bs' then
+    return vterm.VTERM_KEY_BACKSPACE
+  end
+
+  if input_key == 'del' then
+    return vterm.VTERM_KEY_DEL
+  end
+
+  if input_key == 'esc' then
+    return vterm.VTERM_KEY_ESCAPE
   end
 
   if input_key == 'f1' then
@@ -958,8 +989,8 @@ describe('vterm', function()
 
     -- Spare combining chars get truncated
     reset(state, nil)
-    push('e' .. string.rep('\xCC\x81', 10), vt)
-    expect('putglyph 65,301,301,301,301,301 1 0,0') -- and nothing more
+    push('e' .. string.rep('\xCC\x81', 20), vt)
+    expect('putglyph 65,301,301,301,301,301,301,301,301,301,301,301,301,301,301 1 0,0') -- and nothing more
 
     reset(state, nil)
     push('e', vt)
@@ -968,6 +999,34 @@ describe('vterm', function()
     expect('putglyph 65,301 1 0,0')
     push('\xCC\x82', vt)
     expect('putglyph 65,301,302 1 0,0')
+
+    -- emoji with ZWJ and variant selectors, as one chunk
+    reset(state, nil)
+    push('🏳️‍🌈🏳️‍⚧️🏴‍☠️', vt)
+    expect([[putglyph 1f3f3,fe0f,200d,1f308 2 0,0
+putglyph 1f3f3,fe0f,200d,26a7,fe0f 2 0,2
+putglyph 1f3f4,200d,2620,fe0f 2 0,4]])
+
+    -- emoji, one code point at a time
+    reset(state, nil)
+    push('🏳', vt)
+    expect('putglyph 1f3f3 2 0,0')
+    push('\xef\xb8\x8f', vt)
+    expect('putglyph 1f3f3,fe0f 2 0,0')
+    push('\xe2\x80\x8d', vt)
+    expect('putglyph 1f3f3,fe0f,200d 2 0,0')
+    push('🌈', vt)
+    expect('putglyph 1f3f3,fe0f,200d,1f308 2 0,0')
+
+    -- modifier can change width
+    push('❤', vt)
+    expect('putglyph 2764 1 0,2')
+    push('\xef\xb8\x8f', vt)
+    expect('putglyph 2764,fe0f 2 0,2')
+
+    -- also works batched
+    push('❤️', vt)
+    expect('putglyph 2764,fe0f 2 0,4')
 
     -- DECSCA protected
     reset(state, nil)
@@ -1090,7 +1149,7 @@ describe('vterm', function()
     push('\x1b[0F', vt)
     cursor(0, 0, state)
 
-    -- Cursor Horizonal Absolute
+    -- Cursor Horizontal Absolute
     push('\n', vt)
     cursor(1, 0, state)
     push('\x1b[20G', vt)
@@ -1664,12 +1723,6 @@ describe('vterm', function()
     push('#', vt)
     expect('putglyph 23 1 0,0')
 
-    -- Designate G0=UK
-    reset(state, nil)
-    push('\x1b(A', vt)
-    push('#', vt)
-    expect('putglyph a3 1 0,0')
-
     -- Designate G0=DEC drawing
     reset(state, nil)
     push('\x1b(0', vt)
@@ -2026,6 +2079,18 @@ describe('vterm', function()
     mousebtn('u', 1, vt)
     expect_output('\x1b[<0;301;301m')
 
+    -- Button 8 on SGR extended encoding mode
+    mousebtn('d', 8, vt)
+    expect_output('\x1b[<128;301;301M')
+    mousebtn('u', 8, vt)
+    expect_output('\x1b[<128;301;301m')
+
+    -- Button 9 on SGR extended encoding mode
+    mousebtn('d', 9, vt)
+    expect_output('\x1b[<129;301;301M')
+    mousebtn('u', 9, vt)
+    expect_output('\x1b[<129;301;301m')
+
     -- DECRQM on SGR extended encoding mode
     push('\x1b[?1005$p', vt)
     expect_output('\x1b[?1005;2$y')
@@ -2039,6 +2104,18 @@ describe('vterm', function()
     mousebtn('d', 1, vt)
     expect_output('\x1b[0;301;301M')
     mousebtn('u', 1, vt)
+    expect_output('\x1b[3;301;301M')
+
+    -- Button 8 on rxvt extended encoding mode
+    mousebtn('d', 8, vt)
+    expect_output('\x1b[128;301;301M')
+    mousebtn('u', 8, vt)
+    expect_output('\x1b[3;301;301M')
+
+    -- Button 9 on rxvt extended encoding mode
+    mousebtn('d', 9, vt)
+    expect_output('\x1b[129;301;301M')
+    mousebtn('u', 9, vt)
     expect_output('\x1b[3;301;301M')
 
     -- DECRQM on rxvt extended encoding mode
@@ -2286,65 +2363,83 @@ describe('vterm', function()
     local vt = init()
     local state = wantstate(vt)
 
+    -- Disambiguate escape codes enabled
+    push('\x1b[>1u', vt)
+
     -- Unmodified ASCII
-    inchar(41, vt)
-    expect('output 29')
-    inchar(61, vt)
-    expect('output 3d')
+    inchar(0x41, vt)
+    expect_output('A')
+    inchar(0x61, vt)
+    expect_output('a')
 
     -- Ctrl modifier on ASCII letters
-    inchar(41, vt, { C = true })
-    expect('output 1b,5b,34,31,3b,35,75')
-    inchar(61, vt, { C = true })
-    expect('output 1b,5b,36,31,3b,35,75')
+    inchar(0x41, vt, { C = true })
+    expect_output('\x1b[97;6u')
+    inchar(0x61, vt, { C = true })
+    expect_output('\x1b[97;5u')
 
     -- Alt modifier on ASCII letters
-    inchar(41, vt, { A = true })
-    expect('output 1b,29')
-    inchar(61, vt, { A = true })
-    expect('output 1b,3d')
+    inchar(0x41, vt, { A = true })
+    expect_output('\x1b[97;4u')
+    inchar(0x61, vt, { A = true })
+    expect_output('\x1b[97;3u')
 
     -- Ctrl-Alt modifier on ASCII letters
-    inchar(41, vt, { C = true, A = true })
-    expect('output 1b,5b,34,31,3b,37,75')
-    inchar(61, vt, { C = true, A = true })
-    expect('output 1b,5b,36,31,3b,37,75')
+    inchar(0x41, vt, { C = true, A = true })
+    expect_output('\x1b[97;8u')
+    inchar(0x61, vt, { C = true, A = true })
+    expect_output('\x1b[97;7u')
 
-    -- Special handling of Ctrl-I
-    inchar(49, vt)
-    expect('output 31')
-    inchar(69, vt)
-    expect('output 45')
-    inchar(49, vt, { C = true })
-    expect('output 1b,5b,34,39,3b,35,75')
-    inchar(69, vt, { C = true })
-    expect('output 1b,5b,36,39,3b,35,75')
-    inchar(49, vt, { A = true })
-    expect('output 1b,31')
-    inchar(69, vt, { A = true })
-    expect('output 1b,45')
-    inchar(49, vt, { A = true, C = true })
-    expect('output 1b,5b,34,39,3b,37,75')
-    inchar(69, vt, { A = true, C = true })
-    expect('output 1b,5b,36,39,3b,37,75')
+    -- Ctrl-I is disambiguated
+    inchar(0x49, vt)
+    expect_output('I')
+    inchar(0x69, vt)
+    expect_output('i')
+    inchar(0x49, vt, { C = true })
+    expect_output('\x1b[105;6u')
+    inchar(0x69, vt, { C = true })
+    expect_output('\x1b[105;5u')
+    inchar(0x49, vt, { A = true })
+    expect_output('\x1b[105;4u')
+    inchar(0x69, vt, { A = true })
+    expect_output('\x1b[105;3u')
+    inchar(0x49, vt, { A = true, C = true })
+    expect_output('\x1b[105;8u')
+    inchar(0x69, vt, { A = true, C = true })
+    expect_output('\x1b[105;7u')
+
+    -- Ctrl+Digits
+    for i = 0, 9 do
+      local c = 0x30 + i
+      inchar(c, vt)
+      expect_output(tostring(i))
+      inchar(c, vt, { C = true })
+      expect_output(string.format('\x1b[%d;5u', c))
+      inchar(c, vt, { C = true, S = true })
+      expect_output(string.format('\x1b[%d;6u', c))
+      inchar(c, vt, { C = true, A = true })
+      expect_output(string.format('\x1b[%d;7u', c))
+      inchar(c, vt, { C = true, A = true, S = true })
+      expect_output(string.format('\x1b[%d;8u', c))
+    end
 
     -- Special handling of Space
-    inchar(20, vt)
-    expect('output 14')
-    inchar(20, vt, { S = true })
-    expect('output 14')
-    inchar(20, vt, { C = true })
-    expect('output 1b,5b,32,30,3b,35,75')
-    inchar(20, vt, { C = true, S = true })
-    expect('output 1b,5b,32,30,3b,35,75')
-    inchar(20, vt, { A = true })
-    expect('output 1b,14')
-    inchar(20, vt, { S = true, A = true })
-    expect('output 1b,14')
-    inchar(20, vt, { C = true, A = true })
-    expect('output 1b,5b,32,30,3b,37,75')
-    inchar(20, vt, { S = true, C = true, A = true })
-    expect('output 1b,5b,32,30,3b,37,75')
+    inchar(0x20, vt)
+    expect_output(' ')
+    inchar(0x20, vt, { S = true })
+    expect_output('\x1b[32;2u')
+    inchar(0x20, vt, { C = true })
+    expect_output('\x1b[32;5u')
+    inchar(0x20, vt, { C = true, S = true })
+    expect_output('\x1b[32;6u')
+    inchar(0x20, vt, { A = true })
+    expect_output('\x1b[32;3u')
+    inchar(0x20, vt, { S = true, A = true })
+    expect_output('\x1b[32;4u')
+    inchar(0x20, vt, { C = true, A = true })
+    expect_output('\x1b[32;7u')
+    inchar(0x20, vt, { S = true, C = true, A = true })
+    expect_output('\x1b[32;8u')
 
     -- Cursor keys in reset (cursor) mode
     inkey('up', vt)
@@ -2375,21 +2470,65 @@ describe('vterm', function()
     inkey('up', vt, { C = true })
     expect_output('\x1b[1;5A')
 
-    -- Shift-Tab should be different
+    -- Tab
     inkey('tab', vt)
     expect_output('\x09')
     inkey('tab', vt, { S = true })
-    expect_output('\x1b[Z')
+    expect_output('\x1b[9;2u')
     inkey('tab', vt, { C = true })
     expect_output('\x1b[9;5u')
     inkey('tab', vt, { A = true })
-    expect_output('\x1b\x09')
+    expect_output('\x1b[9;3u')
     inkey('tab', vt, { C = true, A = true })
     expect_output('\x1b[9;7u')
+
+    -- Backspace
+    inkey('bs', vt)
+    expect_output('\x7f')
+    inkey('bs', vt, { S = true })
+    expect_output('\x1b[127;2u')
+    inkey('bs', vt, { C = true })
+    expect_output('\x1b[127;5u')
+    inkey('bs', vt, { A = true })
+    expect_output('\x1b[127;3u')
+    inkey('bs', vt, { C = true, A = true })
+    expect_output('\x1b[127;7u')
+
+    -- DEL
+    inkey('del', vt)
+    expect_output('\x1b[3~')
+    inkey('del', vt, { S = true })
+    expect_output('\x1b[3;2~')
+    inkey('del', vt, { C = true })
+    expect_output('\x1b[3;5~')
+    inkey('del', vt, { A = true })
+    expect_output('\x1b[3;3~')
+    inkey('del', vt, { C = true, A = true })
+    expect_output('\x1b[3;7~')
+
+    -- ESC
+    inkey('esc', vt)
+    expect_output('\x1b[27;1u')
+    inkey('esc', vt, { S = true })
+    expect_output('\x1b[27;2u')
+    inkey('esc', vt, { C = true })
+    expect_output('\x1b[27;5u')
+    inkey('esc', vt, { A = true })
+    expect_output('\x1b[27;3u')
+    inkey('esc', vt, { C = true, A = true })
+    expect_output('\x1b[27;7u')
 
     -- Enter in linefeed mode
     inkey('enter', vt)
     expect_output('\x0d')
+    inkey('enter', vt, { S = true })
+    expect_output('\x1b[13;2u')
+    inkey('enter', vt, { C = true })
+    expect_output('\x1b[13;5u')
+    inkey('enter', vt, { A = true })
+    expect_output('\x1b[13;3u')
+    inkey('enter', vt, { C = true, A = true })
+    expect_output('\x1b[13;7u')
 
     -- Enter in newline mode
     push('\x1b[20h', vt)
@@ -2410,7 +2549,7 @@ describe('vterm', function()
 
     -- Keypad in DECKPNM
     inkey('kp0', vt)
-    expect_output('0')
+    expect_output('\x1b[57399;1u')
 
     -- Keypad in DECKPAM
     push('\x1b=', vt)
@@ -2440,6 +2579,77 @@ describe('vterm', function()
     expect_output('\x1b[I')
     vterm.vterm_state_focus_out(state)
     expect_output('\x1b[O')
+
+    -- Disambiguate escape codes disabled
+    push('\x1b[<u', vt)
+
+    -- Unmodified ASCII
+    inchar(0x41, vt)
+    expect_output('A')
+    inchar(0x61, vt)
+    expect_output('a')
+
+    -- Ctrl modifier on ASCII letters
+    inchar(0x41, vt, { C = true })
+    expect_output('\x01')
+    inchar(0x61, vt, { C = true })
+    expect_output('\x01')
+
+    -- Alt modifier on ASCII letters
+    inchar(0x41, vt, { A = true })
+    expect_output('\x1bA')
+    inchar(0x61, vt, { A = true })
+    expect_output('\x1ba')
+
+    -- Ctrl-Alt modifier on ASCII letters
+    inchar(0x41, vt, { C = true, A = true })
+    expect_output('\x1b\x01')
+    inchar(0x61, vt, { C = true, A = true })
+    expect_output('\x1b\x01')
+
+    -- Ctrl-I is ambiguous
+    inchar(0x49, vt)
+    expect_output('I')
+    inchar(0x69, vt)
+    expect_output('i')
+    inchar(0x49, vt, { C = true })
+    expect_output('\x09')
+    inchar(0x69, vt, { C = true })
+    expect_output('\x09')
+    inchar(0x49, vt, { A = true })
+    expect_output('\x1bI')
+    inchar(0x69, vt, { A = true })
+    expect_output('\x1bi')
+    inchar(0x49, vt, { A = true, C = true })
+    expect_output('\x1b\x09')
+    inchar(0x69, vt, { A = true, C = true })
+    expect_output('\x1b\x09')
+
+    -- Ctrl+Digits
+    inchar(0x30, vt, { C = true })
+    expect_output('0')
+    inchar(0x31, vt, { C = true })
+    expect_output('1')
+    inchar(0x32, vt, { C = true })
+    expect_output('\x00')
+    inchar(0x33, vt, { C = true })
+    expect_output('\x1b')
+    inchar(0x34, vt, { C = true })
+    expect_output('\x1c')
+    inchar(0x35, vt, { C = true })
+    expect_output('\x1d')
+    inchar(0x36, vt, { C = true })
+    expect_output('\x1e')
+    inchar(0x37, vt, { C = true })
+    expect_output('\x1f')
+    inchar(0x38, vt, { C = true })
+    expect_output('\x7f')
+    inchar(0x39, vt, { C = true })
+    expect_output('9')
+
+    -- Ctrl+/
+    inchar(0x2F, vt, { C = true })
+    expect_output('\x1f')
   end)
 
   itp('26state_query', function()
@@ -3042,7 +3252,7 @@ describe('vterm', function()
     screen_cell(
       0,
       0,
-      '{65,301,302,303,304,305} width=1 attrs={} fg=rgb(240,240,240) bg=rgb(0,0,0)',
+      '{65,301,302,303,304,305,306,307,308,309,30a} width=1 attrs={} fg=rgb(240,240,240) bg=rgb(0,0,0)',
       screen
     )
 
@@ -3059,15 +3269,25 @@ describe('vterm', function()
     screen_cell(
       0,
       0,
-      '{65,301,301,301,301,301} width=1 attrs={} fg=rgb(240,240,240) bg=rgb(0,0,0)',
+      '{65,301,301,301,301,301,301,301,301,301,301,301,301,301,301} width=1 attrs={} fg=rgb(240,240,240) bg=rgb(0,0,0)',
       screen
     )
 
-    -- Outputing CJK doublewidth in 80th column should wraparound to next line and not crash"
+    -- Outputting CJK doublewidth in 80th column should wraparound to next line and not crash"
     reset(nil, screen)
     push('\x1b[80G\xEF\xBC\x90', vt)
     screen_cell(0, 79, '{} width=1 attrs={} fg=rgb(240,240,240) bg=rgb(0,0,0)', screen)
     screen_cell(1, 0, '{ff10} width=2 attrs={} fg=rgb(240,240,240) bg=rgb(0,0,0)', screen)
+
+    -- Outputting emoji with ZWJ and variant selectors
+    reset(nil, screen)
+    push('🏳️‍🌈🏳️‍⚧️🏴‍☠️', vt)
+
+    -- stylua: ignore start
+    screen_cell(0, 0, '{1f3f3,fe0f,200d,1f308} width=2 attrs={} fg=rgb(240,240,240) bg=rgb(0,0,0)', screen)
+    screen_cell(0, 2, '{1f3f3,fe0f,200d,26a7,fe0f} width=2 attrs={} fg=rgb(240,240,240) bg=rgb(0,0,0)', screen)
+    screen_cell(0, 4, '{1f3f4,200d,2620,fe0f} width=2 attrs={} fg=rgb(240,240,240) bg=rgb(0,0,0)', screen)
+    -- stylua: ignore end
   end)
 
   pending('62screen_damage', function() end)
@@ -3121,7 +3341,7 @@ describe('vterm', function()
     screen = wantscreen(vt, { b = true })
     resize(20, 80, vt)
     expect(
-      'sb_pushline 80 = 54 6F 70\nsb_pushline 80 =\nsb_pushline 80 =\nsb_pushline 80 =\nsb_pushline 80 ='
+      'sb_pushline 80 = 54 6f 70\nsb_pushline 80 =\nsb_pushline 80 =\nsb_pushline 80 =\nsb_pushline 80 ='
     )
     -- TODO(dundargoc): fix or remove
     -- screen_row( 0  , "",screen)

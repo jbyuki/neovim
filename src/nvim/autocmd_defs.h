@@ -37,10 +37,11 @@ typedef struct {
 } AutoPat;
 
 typedef struct {
-  AucmdExecutable exec;     ///< Command or callback function
   AutoPat *pat;             ///< Pattern reference (NULL when autocmd was removed)
   int64_t id;               ///< ID used for uniquely tracking an autocmd
   char *desc;               ///< Description for the autocmd
+  char *handler_cmd;        ///< Handler Ex command (NULL if handler is a function).
+  Callback handler_fn;      ///< Handler callback (ignored if `handler_cmd` is not NULL).
   sctx_T script_ctx;        ///< Script context where it is defined
   bool once;                ///< "One shot": removed after execution
   bool nested;              ///< If autocommands nest here
@@ -52,6 +53,7 @@ struct AutoPatCmd_S {
   AutoPat *lastpat;         ///< Last matched AutoPat
   size_t auidx;             ///< Current autocmd index to execute
   size_t ausize;            ///< Saved AutoCmd vector size
+  char *afile_orig;         ///< Unexpanded <afile>
   char *fname;              ///< Fname to match with
   char *sfname;             ///< Sfname to match with
   char *tail;               ///< Tail of fname
