@@ -273,45 +273,48 @@ function M.get_captures_at_pos(bufnr, row, col)
 
   local matches = {}
 
-  buf_highlighter.tree:for_each_tree(function(tstree, tree)
-    if not tstree then
-      return
-    end
+  for _,buf_tree in pairs(buf_highlighter.trees) do
+    buf_tree:for_each_tree(function(tstree, tree)
+      if not tstree then
+        return
+      end
 
-    local root = tstree:root()
-    local root_start_row, _, root_end_row, _ = root:range()
+      local root = tstree:root()
+      local root_start_row, _, root_end_row, _ = root:range()
 
-    -- Only worry about trees within the line range
-    if root_start_row > row or root_end_row < row then
-      return
-    end
+      -- Only worry about trees within the line range
+      if root_start_row > row or root_end_row < row then
+        return
+      end
 
-    local q = buf_highlighter:get_query(tree:lang())
+      local q = buf_highlighter:get_query(tree:lang())
 
-    -- Some injected languages may not have highlight queries.
-    if not q:query() then
-      return
-    end
+      -- Some injected languages may not have highlight queries.
+      if not q:query() then
+        return
+      end
 
-    local iter = q:query():iter_captures(root, buf_highlighter.bufnr, row, row + 1)
+      local iter = q:query():iter_captures(root, buf_highlighter.bufnr, row, row + 1)
 
-    for id, node, metadata, match in iter do
-      if M.is_in_node_range(node, row, col) then
-        ---@diagnostic disable-next-line: invisible
-        local capture = q._query.captures[id] -- name of the capture in the query
-        if capture ~= nil then
-          local _, pattern_id = match:info()
-          table.insert(matches, {
-            capture = capture,
-            metadata = metadata,
-            lang = tree:lang(),
-            id = id,
-            pattern_id = pattern_id,
-          })
+      for id, node, metadata, match in iter do
+        if M.is_in_node_range(node, row, col) then
+          ---@diagnostic disable-next-line: invisible
+          local capture = q._query.captures[id] -- name of the capture in the query
+          if capture ~= nil then
+            local _, pattern_id = match:info()
+            table.insert(matches, {
+              capture = capture,
+              metadata = metadata,
+              lang = tree:lang(),
+              id = id,
+              pattern_id = pattern_id,
+            })
+          end
         end
       end
-    end
-  end)
+    end)
+  end
+
   return matches
 end
 
