@@ -1176,6 +1176,8 @@ function M.set(namespace, bufnr, diagnostics, opts)
   vim.validate('diagnostics', diagnostics, vim.islist, 'a list of diagnostics')
   vim.validate('opts', opts, 'table', true)
 
+  bufnr = vim._resolve_bufnr(bufnr)
+
   local hl = Tangle.get_hl_from_buf(bufnr)
   if hl then
     bufnr = M.untangle_diagnostics(hl, bufnr, diagnostics)
@@ -1184,8 +1186,6 @@ function M.set(namespace, bufnr, diagnostics, opts)
   if type(bufnr) ~= "number" then
     return
   end
-
-  bufnr = get_bufnr(bufnr)
 
   if vim.tbl_isempty(diagnostics) then
     diagnostic_cache[bufnr][namespace] = nil
