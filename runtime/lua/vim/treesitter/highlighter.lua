@@ -431,8 +431,8 @@ local function on_line_impl(self, buf, line, is_spell_nav)
 	
 	            -- FIX MULTI LINE
 	
-	            if sr and er then
-	              if start_row == line then -- FIX THIS
+	            if sr and er and er >= sr then
+	              if start_row == line and end_row == line then -- FIX THIS
 	                api.nvim_buf_set_extmark(buf, ns, sr, start_col - col_off, {
 	                  end_line = er,
 	                  end_col = math.max(end_col - col_off, 0),
@@ -530,11 +530,12 @@ function TSHighlighter._on_conceal_line(_, _, buf, row)
   end
 
   -- Do not affect potentially populated highlight state.
-  local highlight_states = self._highlight_states
-  self.tree:parse({ row, row })
-  self:prepare_highlight_states(row, row)
-  on_line_impl(self, buf, row, false, true)
-  self._highlight_states = highlight_states
+  -- TODO
+  -- local highlight_states = self._highlight_states
+  -- self.tree:parse({ row, row })
+  -- self:prepare_highlight_states(row, row)
+  -- on_line_impl(self, buf, row, false, true)
+  -- self._highlight_states = highlight_states
 end
 
 ---@private
