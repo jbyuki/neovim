@@ -1717,4 +1717,6 @@ lsp.commands = setmetatable({}, {
   end,
 })
 
+lsp.create_and_init_client = create_and_init_client
+
 return lsp
