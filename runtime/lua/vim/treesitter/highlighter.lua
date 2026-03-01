@@ -224,6 +224,7 @@ function TSHighlighter:prepare_highlight_states(srow, erow)
       -- _highlight_states should be a list so that the highlights are added in the same order as
       -- for_each_tree traversal. This ensures that parents' highlight don't override children's.
       table.insert(self._highlight_states, {
+        root_section = root_section,
         tstree = tstree,
         next_row = 0,
         iter = nil,
